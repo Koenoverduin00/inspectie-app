@@ -1,0 +1,14 @@
+{
+  "name": "Inspectie & Registratie – Civiele Techniek",
+  "short_name": "Inspectie",
+  "description": "Registreren en inspecteren van civieltechnische objecten.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f6f8",
+  "theme_color": "#0b4f6c",
+  "lang": "nl",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
