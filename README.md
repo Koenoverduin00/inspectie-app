@@ -22,6 +22,23 @@ ook **offline in het veld**, synchroniseert tussen pc en telefoon, en is te inst
   zegt de app dat en komen de taken van dat vlak bovenaan. Eén urgentiestap weegt even zwaar als 750 m afstand.
   Een taak aantikken opent direct het juiste formulier; na opslaan staat de taak op gereed.
 
+## Werkpakketten
+
+Een werkpakket is één klus op een vaste set objecten, bijvoorbeeld *Maaironde 3 – Park Zuid* (werkzaamheid,
+werksoort Groenonderhoud) of *Schouw kunstwerken 2027* (schouw/inspectie).
+
+- **Samenstellen (pc)** – kies met filter-dropdowns (GIS-laag, objecttype, kenmerk + waarde, conditie, planning,
+  zoeken) en voeg alle gefilterde objecten in één keer toe of haal ze weg; losse objecten vink je aan of uit.
+  Verder: periode, uitvoerders (projectleden), instructie en status (gepland / actief / afgerond).
+- **Voortgang** – een object is *gedaan* zodra er vanuit het pakket een werkzaamheid of afgeronde inspectie is
+  vastgelegd. Uitvoerders kunnen een object *overslaan* met verplichte reden. Je ziet bijv. **5/20 gedaan · 1 overgeslagen**.
+- **Telefoon** – het pakket opent met een kaart (oranje = te doen, groen = gedaan, grijs = overgeslagen, blauw = jij),
+  de lijst op afstand en de knop **Volgende dichtbij**; het formulier opent met de juiste soort ingevuld en na
+  opslaan ga je terug naar het pakket. Open objecten van actieve pakketten staan ook in *Logisch nu*.
+- **Herhalen** maakt een kopie voor de volgende ronde (*Maaironde 3* → *Maaironde 4*); **CSV** exporteert de status per object.
+- De kaartbibliotheek (Leaflet) wordt meegeleverd, zodat de objecten ook zonder bereik op de kaart staan; alleen de
+  achtergrondkaart heeft internet nodig.
+
 ## Eigen formuliervelden per project
 
 Via **Projecten → Formuliervelden** stelt een beheerder per project extra regels in voor *werkzaamheden*,
@@ -116,7 +133,8 @@ veld zonder bereik kunt inspecteren. Ben je ingelogd, dan worden wijzigingen aut
    [`supabase/schema.sql`](supabase/schema.sql), vervang onderaan `jouw@email.nl` door je eigen e-mailadres en klik *Run*.
    Haal in stap 5 van het script de `--` weg voor de `insert`-regel en vul je eigen adres in.
    Voer daarna in volgorde [`002_werkzaamheden.sql`](supabase/002_werkzaamheden.sql) en
-   [`003_projecten_gis_taken.sql`](supabase/003_projecten_gis_taken.sql) uit (alle scripts zijn veilig opnieuw uit te voeren).
+   [`003_projecten_gis_taken.sql`](supabase/003_projecten_gis_taken.sql) en [`004_werkpakketten.sql`](supabase/004_werkpakketten.sql)
+   uit (alle scripts zijn veilig opnieuw uit te voeren).
    Alleen e-mailadressen in de tabel `teamleden` hebben toegang tot de gegevens; collega's voeg je later toe met
    `insert into public.teamleden (email) values ('collega@bedrijf.nl');`.
 2. **Sleutel invullen** – zet de *Project URL* en de *publishable/anon key* (Supabase → *Project Settings → API*) in
@@ -143,7 +161,8 @@ js/sync.js            inloggen en synchronisatie met Supabase
 js/gis.js             GIS inlezen (GeoJSON, Shapefile, GeoPackage), RD→WGS84, geometrie
 js/taken.js           taken samenstellen en sorteren op urgentie en locatie
 js/velden.js          eigen formuliervelden: zichtbaarheid, controle en weergave
-vendor/               shpjs en sql.js (MIT), lokaal meegeleverd zodat import ook offline werkt
+js/pakketten.js       werkpakketten: voortgang, toewijzing en objectfilters
+vendor/               shpjs, sql.js en Leaflet, lokaal meegeleverd zodat import en kaart ook offline werken
 js/config.js          Supabase-URL en publishable key
 js/nen2767.js         conditieberekening en planning (pure functies)
 js/catalogus.js       keuzelijsten: objecttypen, bouwdelen, gebreken

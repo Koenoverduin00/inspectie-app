@@ -5,7 +5,7 @@
 import * as db from './db.js';
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
 
-const TABELLEN = ['projecten', 'lagen', 'objecten', 'inspecties', 'werkzaamheden', 'taken'];
+const TABELLEN = ['projecten', 'lagen', 'objecten', 'inspecties', 'werkzaamheden', 'taken', 'werkpakketten', 'overgeslagen'];
 const BUCKET = 'fotos';
 const OVERLAP_MS = 60_000; // haal iets terug in de tijd opnieuw op i.v.m. gelijktijdige transacties
 const PAGINA = 500;
@@ -189,7 +189,7 @@ export function rol() {
 // ---------------------------------------------------------------------------
 // Versturen (lokale wachtrij → server)
 // ---------------------------------------------------------------------------
-const VOLGORDE = ['fotos', 'projecten', 'lagen', 'objecten', 'inspecties', 'werkzaamheden', 'taken'];
+const VOLGORDE = ['fotos', 'projecten', 'lagen', 'objecten', 'werkpakketten', 'inspecties', 'werkzaamheden', 'taken', 'overgeslagen'];
 const BATCH = 200;
 
 async function verstuur() {

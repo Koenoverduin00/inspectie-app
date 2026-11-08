@@ -109,5 +109,16 @@ export function demoData() {
     aangemaakt: nu, gewijzigd: nu,
   }];
 
-  return { app: 'inspectie-app', versie: 1, lagen, objecten, inspecties, werkzaamheden, taken, fotos: [] };
+  const werkpakketten = [{
+    id: nieuwId(), naam: 'Maaironde 1 – Park Zuid', soort: 'werk', werksoort: 'Groenonderhoud', inspectiesoort: '',
+    status: 'actief', start: new Date().toISOString().slice(0, 10), eind: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
+    toegewezen: [], omschrijving: 'Gazons maaien, randen bijwerken en maaisel afvoeren.', objecten: vakken.map((v) => v.id),
+    aangemaakt: nu, gewijzigd: nu,
+  }, {
+    id: nieuwId(), naam: 'Schouw kunstwerken 2026', soort: 'inspectie', werksoort: '', inspectiesoort: 'Schouw',
+    status: 'gepland', start: '', eind: '', toegewezen: [], omschrijving: '', objecten: [brug, viaduct, fietsbrug, duiker, kade].map((o) => o.id),
+    aangemaakt: nu, gewijzigd: nu,
+  }];
+
+  return { app: 'inspectie-app', versie: 1, lagen, objecten, inspecties, werkzaamheden, taken, werkpakketten, fotos: [] };
 }

@@ -2,8 +2,8 @@
 // Wijzigingen aan objecten, inspecties en foto's worden in een wachtrij gezet
 // zodat ze naar de server kunnen worden gesynchroniseerd zodra er verbinding is.
 const DB_NAAM = 'inspectie-app';
-const DB_VERSIE = 4;
-export const STORES = ['projecten', 'lagen', 'objecten', 'inspecties', 'werkzaamheden', 'taken', 'fotos'];
+const DB_VERSIE = 5;
+export const STORES = ['projecten', 'lagen', 'objecten', 'inspecties', 'werkzaamheden', 'taken', 'werkpakketten', 'overgeslagen', 'fotos'];
 const WACHTRIJ = 'wachtrij';
 
 let dbPromise;

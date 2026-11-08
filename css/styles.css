@@ -404,3 +404,49 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: .7; }
 .chip, .segment label { position: relative; }
 /* Meldingen op de telefoon bovenin, zodat ze de knoppen onderin niet bedekken */
 body.modus-mobiel .toast { bottom: auto; top: calc(64px + env(safe-area-inset-top)); }
+
+/* Werkpakketten */
+.pakketten { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+.pakketten.compact { gap: .75rem; }
+.pakket { display: flex; flex-direction: column; gap: .45rem; margin: 0; color: var(--tekst); text-decoration: none; }
+.pakketten.compact .pakket { padding: .75rem; border: 1px solid var(--rand); border-radius: var(--radius); }
+.pakket:hover { border-color: var(--primair); }
+.pakket small { color: var(--tekst-zacht); }
+.pakketkop { display: flex; justify-content: space-between; align-items: flex-start; gap: .5rem; }
+.voortgang { display: flex; flex-direction: column; gap: .25rem; font-size: .88rem; }
+.voortgang .balkje { display: flex; height: 10px; border-radius: 999px; overflow: hidden; background: color-mix(in srgb, #e07b00 22%, var(--achtergrond)); }
+.voortgang .balkje i { display: block; height: 100%; }
+.voortgang.groot { font-size: 1rem; margin-bottom: .6rem; }
+.voortgang.groot .balkje { height: 16px; }
+.voortgang.groot strong { font-size: 1.25rem; }
+.samensteller select, .samensteller input { flex: 1 1 160px; }
+tr.gekozen td { background: color-mix(in srgb, var(--ok) 9%, transparent); }
+td input[type=checkbox] { width: 20px; height: 20px; min-height: 0; }
+#pakketkaart { height: 55vh; min-height: 320px; margin: 0; padding: 0; }
+.popupknoppen { display: flex; gap: .4rem; margin-top: .4rem; }
+.popupknoppen .knop { min-height: 34px; }
+.leaflet-popup-content a.knop.primair { color: #fff; }
+
+/* Werkpakket op de telefoon */
+.mkaart { height: 34vh; min-height: 220px; border-radius: var(--radius); border: 1px solid var(--rand); overflow: hidden; margin: 0 0 .75rem; }
+.mpakketknoppen { margin-bottom: .5rem; }
+.mpakketknoppen .knop { flex: 1; min-height: 50px; }
+.mpakketknoppen .knop.primair { flex: 2; }
+.mlijstkop { font-size: 1rem; color: var(--tekst-zacht); margin: 1rem 0 .5rem; }
+.mregel { display: flex; align-items: center; gap: .5rem; padding: .55rem .6rem .55rem .9rem; min-height: 60px; }
+.mregel > span:not(.micoon) { flex: 1; min-width: 0; }
+.mregel .knop { min-height: 42px; min-width: 44px; font-size: 1rem; }
+.mlijst a.mregel-link { flex: 1; min-width: 0; padding: 0; min-height: 0; }
+.mlijst .mregel-link strong, .mlijst .mregel-link small { white-space: normal; }
+.mklapper { margin-top: .75rem; }
+.mklapper summary { cursor: pointer; font-weight: 600; color: var(--tekst-zacht); padding: .5rem 0; }
+.minstructie { padding: .6rem .9rem; }
+.minstructie summary { cursor: pointer; font-weight: 600; color: var(--primair); }
+.pakketlijst .voortgang { margin-top: .35rem; }
+body.modus-mobiel .onderbalk { grid-template-columns: repeat(5, 1fr); }
+.onderbalk a { font-size: .66rem; }
+
+/* Dialoog (overslaan) */
+.dialoog { border: 0; border-radius: 14px; padding: 1.25rem; width: min(440px, calc(100vw - 32px)); background: var(--vlak); color: var(--tekst); box-shadow: 0 10px 40px rgba(0,0,0,.3); }
+.dialoog::backdrop { background: rgba(0,0,0,.45); }
+.dialoog h2 { margin-bottom: .25rem; }

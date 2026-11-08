@@ -31,8 +31,9 @@ export function objectGeometrie(o) {
  * @param {Map} p.planning          objectId → { planning, volgende }
  * @param {string} p.vandaag        YYYY-MM-DD
  * @param {string} [p.ik]           e-mailadres van de ingelogde gebruiker (filtert toegewezen taken)
+ * @param {{ pakket: object, open: string[] }[]} [p.pakketten]  actieve werkpakketten met hun open objecten
  */
-export function takenLijst({ objecten, inspecties, taken, planning, vandaag, ik = '' }) {
+export function takenLijst({ objecten, inspecties, taken, planning, vandaag, ik = '', pakketten = [] }) {
   const objectMap = new Map(objecten.map((o) => [o.id, o]));
   const lijst = [];
   const handmatigeInspectie = new Set();
@@ -67,6 +68,20 @@ export function takenLijst({ objecten, inspecties, taken, planning, vandaag, ik 
         id: `maatregel:${sleutel}`, bron: 'maatregel', soort: 'werk',
         titel: g.maatregel || `${g.bouwdeel} – ${g.gebrek}`, omschrijving: `${g.bouwdeel || ''} – ${g.gebrek || ''}`.trim(),
         object, rang: MAATREGEL_RANG[g.urgentie] ?? 4, deadline: '', maatregel: sleutel,
+      });
+    }
+  }
+
+  for (const { pakket, open } of pakketten) {
+    const telaat = Boolean(pakket.eind && pakket.eind < vandaag);
+    for (const id of open) {
+      const object = objectMap.get(id);
+      if (!object) continue;
+      if (pakket.soort === 'inspectie') handmatigeInspectie.add(id);
+      lijst.push({
+        id: `pakket:${pakket.id}:${id}`, bron: 'pakket', soort: pakket.soort === 'inspectie' ? 'inspectie' : 'werk',
+        titel: pakket.naam, omschrijving: pakket.werksoort || pakket.inspectiesoort || '', object,
+        rang: telaat ? 2 : 3, deadline: pakket.eind ?? '', telaat, pakketId: pakket.id,
       });
     }
   }

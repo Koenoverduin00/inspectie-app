@@ -13,6 +13,9 @@ import { demoData } from './demo.js';
 import * as sync from './sync.js';
 import * as gis from './gis.js';
 import * as velden from './velden.js';
+import {
+  PAKKETSTATUS, OVERSLAAN_REDENEN, overslaanId, voortgang as pakketVoortgang, voorMij as pakketVoorMij, filterObjecten,
+} from './pakketten.js';
 import { takenLijst, sorteerTaken, objectGeometrie, PRIORITEITEN } from './taken.js';
 
 const app = document.getElementById('app');
@@ -35,14 +38,14 @@ const instelling = {
 const ROUTES = [
   [/^\/$/, 'dashboard', () => (isMobiel() ? mobielStart() : dashboard())],
   [/^\/m\/werk$/, 'm-werk', () => objectKiezer('werk')],
-  [/^\/m\/werk\/nieuw$/, 'm-werk', (_, q) => werkFormulier(null, q.get('object'), { mobiel: true, taakId: q.get('taak'), maatregel: q.get('maatregel') })],
+  [/^\/m\/werk\/nieuw$/, 'm-werk', (_, q) => werkFormulier(null, q.get('object'), { mobiel: true, taakId: q.get('taak'), maatregel: q.get('maatregel'), pakketId: q.get('pakket') })],
   [/^\/m\/werk\/([^/]+)$/, 'm-werk', (id) => werkFormulier(id, null, { mobiel: true })],
   [/^\/m\/inspectie$/, 'm-inspectie', () => objectKiezer('inspectie')],
-  [/^\/m\/inspectie\/nieuw$/, 'm-inspectie', (_, q) => inspectieFormulier(null, q.get('object'), { mobiel: true, taakId: q.get('taak') })],
+  [/^\/m\/inspectie\/nieuw$/, 'm-inspectie', (_, q) => inspectieFormulier(null, q.get('object'), { mobiel: true, taakId: q.get('taak'), pakketId: q.get('pakket') })],
   [/^\/m\/inspectie\/([^/]+)$/, 'm-inspectie', (id) => inspectieFormulier(id, null, { mobiel: true })],
   [/^\/m\/account$/, 'm-account', mobielAccount],
   [/^\/werkzaamheden$/, 'werkzaamheden', werkzaamhedenLijst],
-  [/^\/werkzaamheden\/nieuw$/, 'werkzaamheden', (_, q) => werkFormulier(null, q.get('object'), { taakId: q.get('taak'), maatregel: q.get('maatregel') })],
+  [/^\/werkzaamheden\/nieuw$/, 'werkzaamheden', (_, q) => werkFormulier(null, q.get('object'), { taakId: q.get('taak'), maatregel: q.get('maatregel'), pakketId: q.get('pakket') })],
   [/^\/werkzaamheden\/([^/]+)\/bewerken$/, 'werkzaamheden', (id) => werkFormulier(id)],
   [/^\/werkzaamheden\/([^/]+)$/, 'werkzaamheden', werkDetail],
   [/^\/objecten$/, 'objecten', objectenLijst],
@@ -50,7 +53,7 @@ const ROUTES = [
   [/^\/objecten\/([^/]+)\/bewerken$/, 'objecten', objectFormulier],
   [/^\/objecten\/([^/]+)$/, 'objecten', objectDetail],
   [/^\/inspecties$/, 'inspecties', inspectiesLijst],
-  [/^\/inspecties\/nieuw$/, 'inspecties', (_, q) => inspectieFormulier(null, q.get('object'), { taakId: q.get('taak') })],
+  [/^\/inspecties\/nieuw$/, 'inspecties', (_, q) => inspectieFormulier(null, q.get('object'), { taakId: q.get('taak'), pakketId: q.get('pakket') })],
   [/^\/inspecties\/([^/]+)\/bewerken$/, 'inspecties', (id) => inspectieFormulier(id)],
   [/^\/inspecties\/([^/]+)\/rapport$/, 'inspecties', inspectieRapport],
   [/^\/inspecties\/([^/]+)$/, 'inspecties', inspectieDetail],
@@ -61,6 +64,12 @@ const ROUTES = [
   [/^\/projecten\/([^/]+)\/velden$/, 'projecten', formulierveldenPagina],
   [/^\/gis\/importeren$/, 'kaart', gisImport],
   [/^\/taken$/, 'taken', takenPagina],
+  [/^\/werkpakketten$/, 'werkpakketten', werkpakkettenLijst],
+  [/^\/werkpakketten\/nieuw$/, 'werkpakketten', (_, q) => pakketFormulier(null, q)],
+  [/^\/werkpakketten\/([^/]+)\/bewerken$/, 'werkpakketten', (id) => pakketFormulier(id)],
+  [/^\/werkpakketten\/([^/]+)$/, 'werkpakketten', pakketDetail],
+  [/^\/m\/pakketten$/, 'm-pakket', mobielePakketten],
+  [/^\/m\/pakket\/([^/]+)$/, 'm-pakket', mobielPakket],
   [/^\/taken\/nieuw$/, 'taken', (_, q) => taakFormulier(null, q)],
   [/^\/taken\/([^/]+)\/bewerken$/, 'taken', (id) => taakFormulier(id)],
   [/^\/kaart$/, 'kaart', kaart],
@@ -241,7 +250,12 @@ async function dashboard() {
   const geen = statussen.filter((x) => !x.conditie).length;
   const max = Math.max(1, geen, ...verdeling.map((v) => v.n));
 
-  const takenOpen = sorteerTaken(takenLijst({ objecten, inspecties, taken: await inProject('taken'), planning: status, vandaag: vandaag() }));
+  const pakketInfo = await pakketGegevens();
+  const actievePakketten = pakketInfo.pakketten.filter((p) => p.status !== 'afgerond');
+  const takenOpen = sorteerTaken(takenLijst({
+    objecten, inspecties, taken: await inProject('taken'), planning: status, vandaag: vandaag(),
+    pakketten: actievePakketten.filter((p) => p.status === 'actief').map((p) => ({ pakket: p, open: pakketInfo.voortgangen.get(p.id).open })),
+  }));
   const takenUrgent = takenOpen.filter((t) => t.rang <= 2).length;
   const planning = objecten
     .filter((o) => status.get(o.id).planning !== 'geen')
@@ -270,6 +284,12 @@ async function dashboard() {
       <div class="kaart"><div class="getal">${werkRecent.length}</div><div class="label">Werkzaamheden, laatste 30 dagen (${urenTekst(urenRecent)})</div></div>
       <a class="kaart kpi-link ${takenUrgent ? 'waarschuwing' : ''}" href="#/taken"><div class="getal">${takenOpen.length}</div><div class="label">Open taken (${takenUrgent} urgent/hoog)</div></a>
     </div>
+    ${actievePakketten.length ? `<section class="kaart">
+      <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">Werkpakketten</h2><a href="#/werkpakketten">Alle →</a></div>
+      <div class="pakketten compact">${actievePakketten.slice(0, 6).map((p) => `
+        <a class="pakket" href="#/werkpakketten/${esc(p.id)}"><div class="pakketkop"><strong>${esc(p.naam)}</strong>${pakketStatusLabel(p.status)}</div>
+        ${voortgangBalk(pakketInfo.voortgangen.get(p.id))}</a>`).join('')}</div>
+    </section>` : ''}
     <section class="kaart">
       <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">Belangrijkste taken</h2><a href="#/taken">Alle taken →</a></div>
       ${takenOpen.length ? `<div class="tabelhouder"><table><tbody>
@@ -327,7 +347,7 @@ async function dashboard() {
 
 async function laadDemo() {
   const data = demoData();
-  for (const store of ['lagen', 'objecten', 'inspecties', 'werkzaamheden', 'taken']) {
+  for (const store of ['lagen', 'objecten', 'inspecties', 'werkzaamheden', 'taken', 'werkpakketten']) {
     data[store] = (data[store] ?? []).map((r) => ({ ...r, projectId: projectId() }));
   }
   await db.importeer(data);
@@ -662,7 +682,7 @@ async function laadFotos(ids) {
   return (await Promise.all((ids ?? []).map((id) => db.haal('fotos', id)))).filter(Boolean).map((f) => ({ id: f.id, data: f.data }));
 }
 
-async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null } = {}) {
+async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null, pakketId = null } = {}) {
   const objecten = (await inProject('objecten')).sort((a, b) => String(a.code).localeCompare(String(b.code), 'nl', { numeric: true }));
   const bestaand = id ? await db.haal('inspecties', id) : null;
   if (id && !bestaand) {
@@ -685,14 +705,18 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null 
       gebreken: await Promise.all((bestaand.gebreken ?? []).map(async (g) => ({ ...g, fotos: await laadFotos(g.fotoIds) }))),
     }
     : {
-      objectId: objectId ?? '', datum: vandaag(), inspecteur: instelling.lees('inspecteur'),
+      objectId: objectId ?? '', datum: vandaag(), inspecteur: instelling.lees('inspecteur'), werkpakketId: pakketId ?? '',
       soort: mobiel ? 'Schouw' : INSPECTIESOORTEN[0],
       weer: '', status: 'concept', samenvatting: '', fotos: [], gebreken: [],
     };
   const origineleFotoIds = new Set([...(bestaand?.fotoIds ?? []), ...(bestaand?.gebreken ?? []).flatMap((g) => g.fotoIds ?? [])]);
-  const terug = mobiel ? '#/' : bestaand ? `#/inspecties/${esc(id)}` : (objectId ? `#/objecten/${esc(objectId)}` : '#/inspecties');
+  const terug = staat.werkpakketId ? (mobiel ? `#/m/pakket/${esc(staat.werkpakketId)}` : `#/werkpakketten/${esc(staat.werkpakketId)}`)
+    : mobiel ? '#/' : bestaand ? `#/inspecties/${esc(id)}` : (objectId ? `#/objecten/${esc(objectId)}` : '#/inspecties');
   const object = objecten.find((o) => o.id === staat.objectId);
   const taak = taakId ? await db.haal('taken', taakId) : null;
+  const pakket = staat.werkpakketId ? await db.haal('werkpakketten', staat.werkpakketId) : null;
+  if (pakket && !bestaand && pakket.inspectiesoort) staat.soort = pakket.inspectiesoort;
+  const pakketTerug = pakket ? (mobiel ? `#/m/pakket/${pakket.id}` : `#/werkpakketten/${pakket.id}`) : null;
   const openDetails = new Set(); // houdt opengeklapte onderdelen open bij hertekenen
 
   const objectVeld = mobiel && object
@@ -713,11 +737,12 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null 
   const veldFotos = `<div class="veld breed"><label>Overzichtsfoto's</label><div id="algemene-fotos"></div></div>`;
 
   app.innerHTML = mobiel ? `
-    <div class="mkop"><a href="#/" class="mterug" aria-label="Terug">←</a>
+    <div class="mkop"><a href="${terug}" class="mterug" aria-label="Terug">←</a>
       <div><small>${bestaand ? 'Inspectie bewerken' : 'Schouw & inspectie'}</small>
       <h1>${object ? `${esc(object.code)} – ${esc(object.naam)}` : 'Kies een object'}</h1></div></div>
     <form id="form" novalidate class="mform">
       ${taak ? `<div class="kaart mhier">📋 <strong>Taak:</strong> ${esc(taak.titel)}${taak.omschrijving ? `<br><small>${esc(taak.omschrijving)}</small>` : ''}</div>` : ''}
+      ${pakket ? `<div class="kaart mhier">📦 <strong>Werkpakket:</strong> ${esc(pakket.naam)}<br><small>Telt mee als gedaan na <strong>Afronden</strong>.</small></div>` : ''}
       <section class="kaart">
         <div class="velden">${objectVeld}${veldSoort}${veldDatum}${veldSamenvatting}${veldFotos}</div>
         <details data-details="algemeen"><summary>Inspecteur en weer</summary>
@@ -923,6 +948,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null 
       id: inspectieId,
       projectId: staat.projectId ?? projectId(),
       objectId: data.objectId,
+      werkpakketId: staat.werkpakketId ?? '',
       datum: data.datum,
       inspecteur: data.inspecteur,
       soort: data.soort,
@@ -949,7 +975,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null 
     formulierGewijzigd = false;
     melding(status === 'afgerond' ? 'Inspectie afgerond en opgeslagen' : 'Concept opgeslagen');
     if (status === 'afgerond') await rondTaakAf(taakId, inspectieId);
-    ga(mobiel ? '#/' : `#/inspecties/${inspectieId}`);
+    ga(pakketTerug ?? (mobiel ? '#/' : `#/inspecties/${inspectieId}`));
   };
 }
 
@@ -1209,11 +1235,22 @@ async function mobielStart() {
       ${concepten.length ? `<h2>Verder gaan</h2><ul class="mlijst">${concepten.slice(0, 5).map((i) => regel({
     href: `#/m/inspectie/${i.id}`, icoon: '📝', titel: `Concept ${i.soort.toLowerCase()} · ${datumNL(i.datum)}`, object: objectMap.get(i.objectId),
   })).join('')}</ul>` : ''}
+      <section id="mijnpakketten"></section>
       <section id="logisch"></section>
       <h2>Vandaag vastgelegd</h2>
       ${vandaagLijst.length ? `<ul class="mlijst">${vandaagLijst.map(regel).join('')}</ul>` : '<p class="mleeg">Nog niets vastgelegd vandaag.</p>'}
     </div>`;
+  toonMijnPakketten(app.querySelector('#mijnpakketten'));
   toonLogischNu(app.querySelector('#logisch'));
+}
+
+async function toonMijnPakketten(el) {
+  const { pakketten, voortgangen } = await pakketGegevens();
+  const ik = sync.sessie()?.gebruiker?.email ?? '';
+  const mijn = pakketten.filter((p) => p.status === 'actief' && pakketVoorMij(p, ik));
+  if (!el.isConnected || !mijn.length) return;
+  el.innerHTML = `<h2>Mijn werkpakketten</h2><ul class="mlijst pakketlijst">${mijn.slice(0, 4).map((p) => mobielPakketRegel(p, voortgangen.get(p.id))).join('')}</ul>
+    ${mijn.length > 4 ? '<p><a href="#/m/pakketten">Alle werkpakketten →</a></p>' : ''}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1474,7 +1511,7 @@ async function verwijderWerk(w) {
   await db.verwijder('werkzaamheden', w.id);
 }
 
-async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maatregel = null } = {}) {
+async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maatregel = null, pakketId = null } = {}) {
   const [objecten, inspecties] = await Promise.all([inProject('objecten'), inProject('inspecties')]);
   objecten.sort((a, b) => String(a.code).localeCompare(String(b.code), 'nl', { numeric: true }));
   const bestaand = id ? await db.haal('werkzaamheden', id) : null;
@@ -1490,7 +1527,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     return;
   }
   const w = bestaand ?? {
-    objectId: objectId ?? '', datum: vandaag(), soort: '', uitvoerder: instelling.lees('inspecteur'), uren: '',
+    objectId: objectId ?? '', datum: vandaag(), soort: '', uitvoerder: instelling.lees('inspecteur'), uren: '', werkpakketId: pakketId ?? '',
     omschrijving: '', materiaal: '', status: 'gereed', vervolg: '', maatregelen: [], fotoIds: [],
   };
   const fotos = await laadFotos(w.fotoIds);
@@ -1498,6 +1535,10 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
   const origineleKoppelingen = new Set((w.maatregelen ?? []).map((m) => `${m.inspectieId}:${m.gebrekId}`));
   const object = objecten.find((o) => o.id === w.objectId);
   const taak = taakId ? await db.haal('taken', taakId) : null;
+  const pakket = w.werkpakketId ? await db.haal('werkpakketten', w.werkpakketId) : null;
+  if (pakket && !bestaand && pakket.werksoort) w.soort = pakket.werksoort;
+  const pakketTerug = pakket ? (mobiel ? `#/m/pakket/${pakket.id}` : `#/werkpakketten/${pakket.id}`) : null;
+  const pakketBanner = pakket ? `<div class="kaart mhier">📦 <strong>Werkpakket:</strong> ${esc(pakket.naam)}${pakket.omschrijving ? `<br><small>${esc(pakket.omschrijving)}</small>` : ''}</div>` : '';
   const maatregelInfo = maatregel ? (() => {
     const [iid, gid] = maatregel.split(':');
     return inspecties.find((i) => i.id === iid)?.gebreken?.find((g) => g.id === gid);
@@ -1530,11 +1571,11 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
       <input id="f-materiaal" name="materiaal" maxlength="500" value="${esc(w.materiaal)}"></div>`;
 
   app.innerHTML = mobiel ? `
-    <div class="mkop"><a href="#/" class="mterug" aria-label="Terug">←</a>
+    <div class="mkop"><a href="${pakketTerug ?? '#/'}" class="mterug" aria-label="Terug">←</a>
       <div><small>${bestaand ? 'Werkzaamheid bewerken' : 'Registratie werkzaamheden'}</small>
       <h1>${object ? `${esc(object.code)} – ${esc(object.naam)}` : 'Kies een object'}</h1></div></div>
     <form id="form" novalidate class="mform">
-      ${taakBanner}
+      ${taakBanner}${pakketBanner}
       <section class="kaart"><div class="velden">${velden}</div></section>
       <section class="kaart" id="extra-blok" hidden><h2>Extra gegevens</h2><div class="extra-velden"></div></section>
       <section class="kaart" id="maatregelen-blok"></section>
@@ -1653,6 +1694,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
       status: data.status || 'gereed',
       vervolg: data.status === 'vervolg' ? data.vervolg : '',
       materiaal: data.materiaal,
+      werkpakketId: w.werkpakketId ?? '',
       maatregelen: [...gekozen].map((k) => {
         const [inspectieId, gebrekId] = k.split(':');
         return { inspectieId, gebrekId };
@@ -1668,7 +1710,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     formulierGewijzigd = false;
     melding('Werkzaamheid opgeslagen');
     await rondTaakAf(taakId, werkId);
-    ga(mobiel ? '#/' : `#/werkzaamheden/${werkId}`);
+    ga(pakketTerug ?? (mobiel ? '#/' : `#/werkzaamheden/${werkId}`));
   };
 }
 
@@ -1838,7 +1880,7 @@ async function projectFormulier(id) {
   app.querySelector('#verwijder')?.addEventListener('click', async () => {
     const naam = prompt(`Hiermee verwijder je het project met álle objecten, GIS-lagen, inspecties, werkzaamheden, taken en foto's.\n\nTyp de projectnaam "${p.naam}" om te bevestigen:`);
     if (naam !== p.naam) return;
-    for (const store of ['fotos', 'taken', 'werkzaamheden', 'inspecties', 'objecten', 'lagen']) {
+    for (const store of ['fotos', 'overgeslagen', 'werkpakketten', 'taken', 'werkzaamheden', 'inspecties', 'objecten', 'lagen']) {
       const ids = (await db.alle(store)).filter((r) => r.projectId === p.id).map((r) => r.id);
       await db.verwijderVeel(store, ids);
     }
@@ -2039,12 +2081,12 @@ function laadLeaflet() {
   leafletBelofte ??= new Promise((resolve, reject) => {
     const css = document.createElement('link');
     css.rel = 'stylesheet';
-    css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    css.href = 'vendor/leaflet/leaflet.css';
     document.head.append(css);
     const js = document.createElement('script');
-    js.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    js.src = 'vendor/leaflet/leaflet.js';
     js.onload = () => resolve(window.L);
-    js.onerror = () => { leafletBelofte = null; reject(new Error('Kaartbibliotheek kon niet worden geladen (offline?).')); };
+    js.onerror = () => { leafletBelofte = null; reject(new Error('Kaartbibliotheek kon niet worden geladen.')); };
     document.head.append(js);
   });
   return leafletBelofte;
@@ -2112,7 +2154,7 @@ async function tekenGisKaart(el, { groepen, status, takenPerObject }) {
   }
   if (!el.isConnected) return; // inmiddels naar een andere pagina
   el.innerHTML = '';
-  const map = L.map(el, { preferCanvas: true });
+  const map = L.map(el, { preferCanvas: true, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 20, maxNativeZoom: 19, attribution: '&copy; OpenStreetMap-bijdragers' }).addTo(map);
 
   const popup = (o) => {
@@ -2137,13 +2179,15 @@ async function tekenGisKaart(el, { groepen, status, takenPerObject }) {
         return L.circleMarker(ll, { radius: 8, color: '#fff', weight: 2, fillColor: s?.conditie ? CONDITIES[s.conditie].kleur : g.kleur, fillOpacity: 1 });
       },
       onEachFeature: (f, l) => l.bindPopup(() => popup(objectMap.get(f.properties.id))),
-    }).addTo(map);
+    });
     kaartlagen.set(g.id, laag);
     const b = laag.getBounds();
     if (b.isValid()) grenzen.push(b);
   }
   const totaal = grenzen.reduce((t, b) => t.extend(b), L.latLngBounds(grenzen[0].getSouthWest(), grenzen[0].getNorthEast()));
-  map.fitBounds(totaal, { padding: [30, 30], maxZoom: 17 });
+  // Eerst het kaartbeeld, dan de lagen toevoegen.
+  map.fitBounds(totaal, { padding: [30, 30], maxZoom: 17, animate: false });
+  kaartlagen.forEach((l) => l.addTo(map));
   app.querySelectorAll('[data-laag]').forEach((c) => {
     c.onchange = () => {
       const l = kaartlagen.get(c.dataset.laag);
@@ -2157,7 +2201,7 @@ async function tekenGisKaart(el, { groepen, status, takenPerObject }) {
 // Taken
 // ---------------------------------------------------------------------------
 const RANG_TEKST = { 1: 'Urgent', 2: 'Hoog', 3: 'Normaal', 4: 'Laag', 5: 'Monitoren' };
-const BRON_TEKST = { gepland: 'Gepland', maatregel: 'Maatregel', planning: 'Inspectieplanning' };
+const BRON_TEKST = { gepland: 'Gepland', maatregel: 'Maatregel', planning: 'Inspectieplanning', pakket: 'Werkpakket' };
 
 function rangLabel(rang) {
   const k = rang <= 1 ? 'direct' : rang === 2 ? 'binnenkort' : '';
@@ -2168,6 +2212,7 @@ function taakHref(t, mobiel) {
   const q = new URLSearchParams({ object: t.object.id });
   if (t.taakId) q.set('taak', t.taakId);
   if (t.maatregel) q.set('maatregel', t.maatregel);
+  if (t.pakketId) q.set('pakket', t.pakketId);
   if (t.soort === 'werk') return `${mobiel ? '#/m/werk' : '#/werkzaamheden'}/nieuw?${q}`;
   return `${mobiel ? '#/m/inspectie' : '#/inspecties'}/nieuw?${q}`;
 }
@@ -2176,7 +2221,13 @@ async function alleTaken({ alleenMijn = false } = {}) {
   const { objecten, inspecties, status } = await laadAlles();
   const taken = await inProject('taken');
   const ik = alleenMijn ? (sync.sessie()?.gebruiker?.email ?? '') : '';
-  return { lijst: takenLijst({ objecten, inspecties, taken, planning: status, vandaag: vandaag(), ik }), taken, objecten };
+  let metOpen;
+  if (alleenMijn) metOpen = await openPakketObjecten();
+  else {
+    const pg = await pakketGegevens();
+    metOpen = pg.pakketten.filter((p) => p.status === 'actief').map((p) => ({ pakket: p, open: pg.voortgangen.get(p.id).open }));
+  }
+  return { lijst: takenLijst({ objecten, inspecties, taken, planning: status, vandaag: vandaag(), ik, pakketten: metOpen }), taken, objecten };
 }
 
 async function rondTaakAf(taakId, gekoppeldId) {
@@ -2664,6 +2715,525 @@ async function formulierveldenPagina(id, q) {
   };
 
   teken();
+}
+
+// ---------------------------------------------------------------------------
+// Werkpakketten
+// ---------------------------------------------------------------------------
+const PAKKET_KLEUR = { open: '#e07b00', gedaan: '#1a7f37', overgeslagen: '#8a96a3' };
+
+async function pakketGegevens() {
+  const [pakketten, objecten, werkzaamheden, inspecties, overgeslagen] = await Promise.all([
+    inProject('werkpakketten'), inProject('objecten'), inProject('werkzaamheden'), inProject('inspecties'), inProject('overgeslagen'),
+  ]);
+  const objectIds = objecten.map((o) => o.id);
+  const volgorde = { actief: 0, gepland: 1, afgerond: 2 };
+  pakketten.sort((a, b) => (volgorde[a.status] ?? 3) - (volgorde[b.status] ?? 3) || String(a.naam).localeCompare(String(b.naam), 'nl', { numeric: true }));
+  const voortgangen = new Map(pakketten.map((p) => [p.id, pakketVoortgang(p, { werkzaamheden, inspecties, overgeslagen, objectIds })]));
+  return { pakketten, objecten, objectMap: new Map(objecten.map((o) => [o.id, o])), werkzaamheden, inspecties, overgeslagen, voortgangen };
+}
+
+/** Actieve pakketten voor de ingelogde gebruiker, met hun open objecten (voor 'Logisch nu'). */
+async function openPakketObjecten() {
+  const { pakketten, voortgangen } = await pakketGegevens();
+  const ik = sync.sessie()?.gebruiker?.email ?? '';
+  return pakketten.filter((p) => p.status === 'actief' && pakketVoorMij(p, ik))
+    .map((p) => ({ pakket: p, open: voortgangen.get(p.id).open }));
+}
+
+function voortgangBalk(v, { groot = false } = {}) {
+  const pct = (n) => (v.totaal ? (n / v.totaal) * 100 : 0);
+  return `<div class="voortgang${groot ? ' groot' : ''}">
+    <div class="balkje" role="progressbar" aria-valuemin="0" aria-valuemax="${v.totaal}" aria-valuenow="${v.gedaan.size}"
+      aria-label="${v.gedaan.size} van ${v.totaal} gedaan">
+      <i style="width:${pct(v.gedaan.size)}%;background:${PAKKET_KLEUR.gedaan}"></i><i style="width:${pct(v.overgeslagen.size)}%;background:${PAKKET_KLEUR.overgeslagen}"></i></div>
+    <span><strong>${v.gedaan.size}/${v.totaal}</strong> gedaan${v.overgeslagen.size ? ` · ${v.overgeslagen.size} overgeslagen` : ''}</span></div>`;
+}
+
+function pakketStatusLabel(status) {
+  const k = { actief: 'binnenkort', afgerond: 'afgerond', gepland: '' }[status] ?? '';
+  return `<span class="label-status ${k}">${PAKKETSTATUS[status] ?? 'Gepland'}</span>`;
+}
+
+function pakketSoortTekst(p) {
+  return p.soort === 'inspectie' ? `🔍 ${esc(p.inspectiesoort || 'Schouw / inspectie')}` : `🛠️ ${esc(p.werksoort || 'Werkzaamheid')}`;
+}
+
+function periodeTekst(p) {
+  if (!p.start && !p.eind) return '';
+  return `${p.start ? datumNL(p.start) : '…'} – ${p.eind ? datumNL(p.eind) : '…'}`;
+}
+
+function pakketHref(p, objectId, mobiel) {
+  const q = new URLSearchParams({ object: objectId, pakket: p.id });
+  if (p.soort === 'inspectie') return `${mobiel ? '#/m/inspectie' : '#/inspecties'}/nieuw?${q}`;
+  return `${mobiel ? '#/m/werk' : '#/werkzaamheden'}/nieuw?${q}`;
+}
+
+// --- Kaart met de objecten van een pakket ------------------------------------
+async function tekenPakketKaart(el, { pakket, objecten, statusVan, positie = null, mobiel = false }) {
+  let L;
+  try {
+    L = await laadLeaflet();
+  } catch (fout) {
+    if (el.isConnected) el.innerHTML = `<p class="leeg">${esc(fout.message)}</p>`;
+    return null;
+  }
+  if (!el.isConnected) return null;
+  el.innerHTML = '';
+  // Zonder animaties: die lopen anders door nadat je de pagina al hebt verlaten.
+  const map = L.map(el, { preferCanvas: true, zoomControl: !mobiel, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 20, maxNativeZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
+  const metGeo = objecten.filter((o) => objectGeometrie(o));
+  const fc = { type: 'FeatureCollection', features: metGeo.map((o) => ({ type: 'Feature', geometry: objectGeometrie(o), properties: { id: o.id } })) };
+  const objectMap = new Map(metGeo.map((o) => [o.id, o]));
+  const popup = (o) => {
+    const st = statusVan(o.id);
+    const knoppen = st === 'open'
+      ? `<div class="popupknoppen"><a class="knop klein primair" href="${pakketHref(pakket, o.id, mobiel)}">Uitvoeren</a>
+         <button class="knop klein" data-overslaan="${esc(o.id)}">Overslaan</button></div>`
+      : `<small>${st === 'gedaan' ? '✓ Gedaan' : '⏭ Overgeslagen'}</small>`;
+    return `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br>${knoppen}${mobiel ? '' : `<br><a href="#/objecten/${esc(o.id)}">Object openen</a>`}`;
+  };
+  const laag = L.geoJSON(fc, {
+    style: (f) => {
+      const k = PAKKET_KLEUR[statusVan(f.properties.id)];
+      return { color: k, weight: 3, fillColor: k, fillOpacity: 0.35 };
+    },
+    pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 9, color: '#fff', weight: 2, fillColor: PAKKET_KLEUR[statusVan(f.properties.id)], fillOpacity: 1 }),
+    onEachFeature: (f, l) => l.bindPopup(() => popup(objectMap.get(f.properties.id))),
+  });
+  // Eerst het kaartbeeld bepalen, dan pas de vlakken toevoegen (anders kan Leaflet niet clippen).
+  const b = laag.getBounds();
+  if (b.isValid()) map.fitBounds(b, { padding: [24, 24], maxZoom: 18, animate: false });
+  else if (positie) map.setView([positie[1], positie[0]], 16, { animate: false });
+  else map.setView([52.1, 5.1], 8, { animate: false });
+  laag.addTo(map);
+  let jij = null;
+  // Eigen locatie: alleen de stip verplaatsen, de kaart blijft staan.
+  const zetPositie = (pos) => {
+    if (!pos) return;
+    if (jij) jij.setLatLng([pos[1], pos[0]]);
+    else jij = L.circleMarker([pos[1], pos[0]], { radius: 8, color: '#fff', weight: 3, fillColor: '#1f6feb', fillOpacity: 1 }).addTo(map).bindTooltip('Jij');
+  };
+  zetPositie(positie);
+  return { map, zetPositie };
+}
+
+// --- Overslaan ----------------------------------------------------------------
+function overslaanDialoog(object) {
+  return new Promise((resolve) => {
+    const d = document.createElement('dialog');
+    d.className = 'dialoog';
+    d.innerHTML = `
+      <form method="dialog" novalidate>
+        <h2>Object overslaan</h2>
+        <p>${objectNaam(object)}</p>
+        <div class="veld"><label for="d-reden" class="vereist">Reden</label>
+          <select id="d-reden" name="reden" required><option value="">– kies –</option>${OVERSLAAN_REDENEN.map((r) => optie(r, r)).join('')}</select></div>
+        <div class="veld" style="margin-top:.75rem"><label for="d-toelichting">Toelichting</label>
+          <textarea id="d-toelichting" name="toelichting" maxlength="500" style="min-height:70px"></textarea></div>
+        <div class="formvoet"><button class="knop" value="annuleer" type="button" id="d-annuleer">Annuleren</button>
+          <button class="knop primair" value="ok" type="submit">Overslaan</button></div>
+      </form>`;
+    document.body.append(d);
+    const klaar = (waarde) => { d.close(); d.remove(); resolve(waarde); };
+    d.querySelector('#d-annuleer').onclick = () => klaar(null);
+    d.addEventListener('cancel', (e) => { e.preventDefault(); klaar(null); });
+    d.querySelector('form').onsubmit = (e) => {
+      e.preventDefault();
+      const reden = d.querySelector('#d-reden').value;
+      const toelichting = d.querySelector('#d-toelichting').value.trim();
+      if (!reden) return melding('Kies een reden.', 'fout');
+      if (reden === 'Anders' && !toelichting) return melding('Licht de reden toe.', 'fout');
+      klaar({ reden, toelichting });
+    };
+    d.showModal();
+  });
+}
+
+async function slaObjectOver(pakket, object) {
+  const keuze = await overslaanDialoog(object);
+  if (!keuze) return false;
+  const nu = new Date().toISOString();
+  await db.bewaar('overgeslagen', {
+    id: overslaanId(pakket.id, object.id), projectId: pakket.projectId, pakketId: pakket.id, objectId: object.id,
+    ...keuze, door: sync.sessie()?.gebruiker?.email || instelling.lees('inspecteur') || '', op: vandaag(), gewijzigd: nu,
+  });
+  melding(`${object.code} overgeslagen`);
+  return true;
+}
+
+// --- Overzicht (pc) -----------------------------------------------------------
+async function werkpakkettenLijst() {
+  const { pakketten, voortgangen } = await pakketGegevens();
+  app.innerHTML = `
+    <div class="paginakop">
+      <div><h1>Werkpakketten</h1><p>Een klus op een vaste set objecten, met voortgang per object.</p></div>
+      ${magBeheren() ? '<a class="knop primair" href="#/werkpakketten/nieuw">+ Nieuw werkpakket</a>' : ''}
+    </div>
+    ${pakketten.length ? `<div class="pakketten">${pakketten.map((p) => `
+      <a class="kaart pakket" href="#/werkpakketten/${esc(p.id)}">
+        <div class="pakketkop"><strong>${esc(p.naam)}</strong>${pakketStatusLabel(p.status)}</div>
+        <small>${pakketSoortTekst(p)}${periodeTekst(p) ? ` · ${periodeTekst(p)}` : ''}</small>
+        ${voortgangBalk(voortgangen.get(p.id))}
+        ${p.toegewezen?.length ? `<small>👤 ${p.toegewezen.map(esc).join(', ')}</small>` : ''}
+      </a>`).join('')}</div>`
+    : leegKaart('Nog geen werkpakketten in dit project.', magBeheren() ? '<a class="knop primair" href="#/werkpakketten/nieuw">+ Nieuw werkpakket</a>' : '')}`;
+}
+
+// --- Samenstellen (pc) --------------------------------------------------------
+async function pakketFormulier(id, q = new URLSearchParams()) {
+  if (!magBeheren()) {
+    app.innerHTML = leegKaart('Alleen beheerders kunnen werkpakketten samenstellen.', '<a class="knop" href="#/werkpakketten">Terug</a>');
+    return;
+  }
+  const { objecten, status } = await laadAlles();
+  const [lagen, project] = await Promise.all([inProject('lagen'), actiefProject()]);
+  const bron = id ? await db.haal('werkpakketten', id) : (q.get('kopie') ? await db.haal('werkpakketten', q.get('kopie')) : null);
+  if (id && !bron) {
+    app.innerHTML = leegKaart('Werkpakket niet gevonden.', '<a class="knop" href="#/werkpakketten">Terug</a>');
+    return;
+  }
+  const kopie = !id && bron;
+  const p = bron
+    ? { ...bron, ...(kopie ? { naam: volgendeRondeNaam(bron.naam), status: 'gepland', start: '', eind: '' } : {}) }
+    : { naam: '', soort: 'werk', werksoort: '', inspectiesoort: 'Schouw', start: vandaag(), eind: '', status: 'gepland', toegewezen: [], omschrijving: '', objecten: [] };
+  const gekozen = new Set(p.objecten ?? []);
+  const leden = project?.leden ?? [];
+  const terug = id ? `#/werkpakketten/${esc(id)}` : '#/werkpakketten';
+
+  app.innerHTML = `
+    <div class="paginakop"><div><p><a href="${terug}">← Terug</a></p>
+      <h1>${id ? 'Werkpakket bewerken' : kopie ? 'Werkpakket herhalen' : 'Nieuw werkpakket'}</h1></div></div>
+    <form id="form" novalidate>
+      <section class="kaart">
+        <h2>Gegevens</h2>
+        <div class="velden">
+          <div class="veld breed"><label for="f-naam" class="vereist">Naam</label>
+            <input id="f-naam" name="naam" required maxlength="120" value="${esc(p.naam)}" placeholder="bijv. Maaironde 3 – Park Zuid"></div>
+          <div class="veld"><label for="f-soort">Soort klus</label><select id="f-soort" name="soort">
+            ${optie('werk', 'Werkzaamheid', p.soort)}${optie('inspectie', 'Schouw / inspectie', p.soort)}</select></div>
+          <div class="veld" id="werksoort-veld"><label for="f-werksoort">Werksoort</label><select id="f-werksoort" name="werksoort">
+            <option value="">– vrij te kiezen –</option>${WERKSOORTEN.map((s) => optie(s, s, p.werksoort)).join('')}</select></div>
+          <div class="veld" id="inspectiesoort-veld"><label for="f-inspectiesoort">Soort inspectie</label><select id="f-inspectiesoort" name="inspectiesoort">
+            ${INSPECTIESOORTEN.map((s) => optie(s, s, p.inspectiesoort)).join('')}</select></div>
+          <div class="veld"><label for="f-status">Status</label><select id="f-status" name="status">
+            ${Object.entries(PAKKETSTATUS).map(([k, v]) => optie(k, v, p.status)).join('')}</select>
+            <small>Alleen actieve pakketten verschijnen bij de uitvoerders.</small></div>
+          <div class="veld"><label for="f-start">Start</label><input id="f-start" name="start" type="date" value="${esc(p.start)}"></div>
+          <div class="veld"><label for="f-eind">Gereed uiterlijk</label><input id="f-eind" name="eind" type="date" value="${esc(p.eind)}"></div>
+          <div class="veld breed"><label>Uitvoerders</label>
+            ${leden.length ? `<div class="chips">${leden.map((l) => `<label class="chip"><input type="checkbox" name="toegewezen" value="${esc(l)}" ${p.toegewezen?.includes(l) ? 'checked' : ''}><span>${esc(l)}</span></label>`).join('')}</div>
+            <small>Niets aangevinkt = iedereen in het project.</small>` : '<small>Voeg projectleden toe bij het project om uitvoerders te kunnen kiezen. Nu: iedereen in het project.</small>'}</div>
+          <div class="veld breed"><label for="f-omschrijving">Instructie voor de uitvoerder</label>
+            <textarea id="f-omschrijving" name="omschrijving" maxlength="2000">${esc(p.omschrijving)}</textarea></div>
+        </div>
+      </section>
+      <section class="kaart">
+        <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">Objecten samenstellen</h2>
+          <span class="label-status afgerond" id="teller" style="font-size:.95rem"></span></div>
+        <div class="filters samensteller">
+          <select id="z-laag" aria-label="Laag"><option value="">Alle lagen</option>${lagen.map((l) => optie(l.id, l.naam)).join('')}${optie('-', 'Losse objecten (geen laag)')}</select>
+          <select id="z-type" aria-label="Objecttype"><option value="">Alle typen</option>${[...new Set(objecten.map((o) => o.type).filter(Boolean))].sort().map((t) => optie(t, t)).join('')}</select>
+          <select id="z-kenmerk" aria-label="Kenmerk"><option value="">Kenmerk…</option></select>
+          <select id="z-waarde" aria-label="Waarde" disabled><option value="">Waarde…</option></select>
+          <select id="z-conditie" aria-label="Conditie"><option value="">Alle condities</option>
+            ${[1, 2, 3, 4, 5, 6].map((s) => optie(s, `${s} · ${CONDITIES[s].label}`)).join('')}${optie('geen', 'Niet geïnspecteerd')}</select>
+          <select id="z-planning" aria-label="Planning"><option value="">Alle planningen</option>
+            ${Object.entries(PLANNING_TEKST).filter(([k]) => k !== 'onbekend').map(([k, v]) => optie(k, v)).join('')}</select>
+          <input type="search" id="z-zoek" placeholder="Zoek code of naam…" aria-label="Zoeken">
+          <select id="z-toon" aria-label="Toon">${optie('', 'Toon alle gefilterde')}${optie('in', 'Alleen in pakket')}${optie('uit', 'Alleen niet in pakket')}</select>
+        </div>
+        <div class="knoppen" style="margin-bottom:.75rem">
+          <button type="button" class="knop" id="alles-erin"></button>
+          <button type="button" class="knop" id="alles-eruit"></button>
+        </div>
+        <div class="tabelhouder" style="max-height:480px;overflow:auto;border:1px solid var(--rand);border-radius:8px"><table>
+          <thead><tr><th style="width:42px"></th><th>Code</th><th>Naam</th><th class="verberg-mobiel">Type</th><th class="verberg-mobiel">Laag</th><th>Conditie</th></tr></thead>
+          <tbody id="z-rijen"></tbody></table></div>
+      </section>
+      <div class="formvoet kaart">
+        <a class="knop" href="${terug}">Annuleren</a>
+        <button class="knop primair" type="submit">Opslaan</button>
+      </div>
+    </form>`;
+
+  const form = app.querySelector('#form');
+  const $ = (s) => app.querySelector(s);
+  const laagNaam = new Map(lagen.map((l) => [l.id, l.naam]));
+  const soortVelden = () => {
+    const werk = form.elements.soort.value === 'werk';
+    $('#werksoort-veld').hidden = !werk;
+    $('#inspectiesoort-veld').hidden = werk;
+  };
+  soortVelden();
+
+  const filters = () => ({
+    laag: $('#z-laag').value, type: $('#z-type').value, kenmerk: $('#z-kenmerk').value, waarde: $('#z-waarde').value,
+    conditie: $('#z-conditie').value, planning: $('#z-planning').value, zoek: $('#z-zoek').value,
+  });
+  const vulKenmerken = () => {
+    const f = filters();
+    const basis = filterObjecten(objecten, { laag: f.laag, type: f.type });
+    const velden = [...new Set(basis.flatMap((o) => Object.keys(o.kenmerken ?? {})))].sort();
+    const huidig = $('#z-kenmerk').value;
+    $('#z-kenmerk').innerHTML = `<option value="">Kenmerk…</option>${velden.map((v) => optie(v, v, huidig)).join('')}`;
+    vulWaarden();
+  };
+  const vulWaarden = () => {
+    const f = filters();
+    const sel = $('#z-waarde');
+    if (!f.kenmerk) { sel.disabled = true; sel.innerHTML = '<option value="">Waarde…</option>'; return; }
+    const basis = filterObjecten(objecten, { laag: f.laag, type: f.type });
+    const waarden = [...new Set(basis.map((o) => o.kenmerken?.[f.kenmerk]).filter((v) => v !== undefined && v !== null && v !== '').map(String))]
+      .sort((a, b) => a.localeCompare(b, 'nl', { numeric: true }));
+    sel.disabled = false;
+    sel.innerHTML = `<option value="">Alle waarden</option>${waarden.slice(0, 300).map((v) => optie(v, v, f.waarde)).join('')}`;
+  };
+  let zichtbaar = [];
+  const toon = () => {
+    const toonKeuze = $('#z-toon').value;
+    zichtbaar = filterObjecten(objecten, filters(), { status })
+      .filter((o) => (toonKeuze === 'in' ? gekozen.has(o.id) : toonKeuze === 'uit' ? !gekozen.has(o.id) : true));
+    const max = 500;
+    $('#z-rijen').innerHTML = zichtbaar.length ? zichtbaar.slice(0, max).map((o) => `
+      <tr class="${gekozen.has(o.id) ? 'gekozen' : ''}">
+        <td><input type="checkbox" data-kies="${esc(o.id)}" ${gekozen.has(o.id) ? 'checked' : ''} aria-label="${esc(o.code)} in pakket"></td>
+        <td><strong>${esc(o.code)}</strong></td><td>${esc(o.naam)}</td><td class="verberg-mobiel">${esc(o.type || '–')}</td>
+        <td class="verberg-mobiel">${esc(laagNaam.get(o.laagId) ?? '–')}</td><td>${scoreLabel(status.get(o.id)?.conditie)}</td></tr>`).join('')
+      + (zichtbaar.length > max ? `<tr><td colspan="6" class="leeg">+ ${zichtbaar.length - max} meer (verfijn het filter om ze te zien; "alle toevoegen" neemt ze wel mee)</td></tr>` : '')
+      : '<tr><td colspan="6" class="leeg">Geen objecten met dit filter.</td></tr>';
+    const erin = zichtbaar.filter((o) => !gekozen.has(o.id)).length;
+    const eruit = zichtbaar.filter((o) => gekozen.has(o.id)).length;
+    $('#alles-erin').textContent = `＋ Alle ${erin} gefilterde toevoegen`;
+    $('#alles-erin').disabled = !erin;
+    $('#alles-eruit').textContent = `− ${eruit} gefilterde verwijderen`;
+    $('#alles-eruit').disabled = !eruit;
+    $('#teller').textContent = `${gekozen.size} objecten in pakket`;
+  };
+  ['#z-laag', '#z-type'].forEach((s) => $(s).addEventListener('change', () => { vulKenmerken(); toon(); }));
+  $('#z-kenmerk').addEventListener('change', () => { vulWaarden(); toon(); });
+  ['#z-waarde', '#z-conditie', '#z-planning', '#z-toon'].forEach((s) => $(s).addEventListener('change', toon));
+  $('#z-zoek').addEventListener('input', toon);
+  $('#z-rijen').addEventListener('change', (e) => {
+    const k = e.target.dataset.kies;
+    if (!k) return;
+    if (e.target.checked) gekozen.add(k); else gekozen.delete(k);
+    e.target.closest('tr').classList.toggle('gekozen', e.target.checked);
+    formulierGewijzigd = true;
+    $('#teller').textContent = `${gekozen.size} objecten in pakket`;
+  });
+  $('#alles-erin').onclick = () => { zichtbaar.forEach((o) => gekozen.add(o.id)); formulierGewijzigd = true; toon(); };
+  $('#alles-eruit').onclick = () => { zichtbaar.forEach((o) => gekozen.delete(o.id)); formulierGewijzigd = true; toon(); };
+  form.addEventListener('input', () => { formulierGewijzigd = true; });
+  form.elements.soort.addEventListener('change', soortVelden);
+  vulKenmerken();
+  toon();
+
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const d = formulierData(form);
+    if (!d.naam) return melding('Geef het werkpakket een naam.', 'fout');
+    if (!gekozen.size) return melding('Voeg minstens één object toe.', 'fout');
+    if (d.start && d.eind && d.eind < d.start) return melding('De einddatum ligt vóór de startdatum.', 'fout');
+    const nu = new Date().toISOString();
+    const opslaan = {
+      ...(id ? bron : {}), id: id ?? nieuwId(), projectId: (id ? bron.projectId : null) ?? projectId(), naam: d.naam, soort: d.soort,
+      werksoort: d.soort === 'werk' ? d.werksoort : '', inspectiesoort: d.soort === 'inspectie' ? d.inspectiesoort : '',
+      status: d.status, start: d.start, eind: d.eind, omschrijving: d.omschrijving,
+      toegewezen: [...form.querySelectorAll('input[name=toegewezen]:checked')].map((c) => c.value),
+      objecten: objecten.filter((o) => gekozen.has(o.id)).map((o) => o.id), // vaste volgorde (op code)
+      aangemaakt: (id ? bron.aangemaakt : null) ?? nu, gewijzigd: nu,
+    };
+    await db.bewaar('werkpakketten', opslaan);
+    formulierGewijzigd = false;
+    melding('Werkpakket opgeslagen');
+    ga(`#/werkpakketten/${opslaan.id}`);
+  };
+}
+
+function volgendeRondeNaam(naam) {
+  const m = String(naam).match(/^(.*?)(\d+)(\D*)$/);
+  return m ? `${m[1]}${Number(m[2]) + 1}${m[3]}` : `${naam} (herhaling)`;
+}
+
+// --- Detail met kaart (pc) ----------------------------------------------------
+async function pakketDetail(id) {
+  const g = await pakketGegevens();
+  const p = g.pakketten.find((x) => x.id === id);
+  if (!p) {
+    app.innerHTML = leegKaart('Werkpakket niet gevonden.', '<a class="knop" href="#/werkpakketten">Terug</a>');
+    return;
+  }
+  const v = g.voortgangen.get(id);
+  const objecten = (p.objecten ?? []).map((oid) => g.objectMap.get(oid)).filter(Boolean);
+  const statusVan = (oid) => (v.gedaan.has(oid) ? 'gedaan' : v.overgeslagen.has(oid) ? 'overgeslagen' : 'open');
+  const regHref = (r) => (p.soort === 'inspectie' ? `#/inspecties/${esc(r.id)}` : `#/werkzaamheden/${esc(r.id)}`);
+  app.innerHTML = `
+    <div class="paginakop">
+      <div><p><a href="#/werkpakketten">← Werkpakketten</a></p><h1>${esc(p.naam)}</h1>
+        <p>${pakketSoortTekst(p)}${periodeTekst(p) ? ` · ${periodeTekst(p)}` : ''} · ${pakketStatusLabel(p.status)}</p></div>
+      <div class="knoppen">
+        ${magBeheren() ? `<a class="knop" href="#/werkpakketten/${esc(id)}/bewerken">Bewerken</a>
+          <a class="knop" href="#/werkpakketten/nieuw?kopie=${esc(id)}" title="Kopie voor de volgende ronde">🔁 Herhalen</a>
+          ${p.status !== 'actief' ? '<button class="knop primair" id="activeer">▶ Actief maken</button>' : '<button class="knop" id="afronden">✓ Afronden</button>'}` : ''}
+        <button class="knop" id="export">CSV</button>
+        ${magBeheren() ? '<button class="knop gevaar" id="verwijder">Verwijderen</button>' : ''}
+      </div>
+    </div>
+    <section class="kaart">${voortgangBalk(v, { groot: true })}
+      ${p.toegewezen?.length ? `<p style="margin:.5rem 0 0"><small>👤 ${p.toegewezen.map(esc).join(', ')}</small></p>` : ''}
+      ${p.omschrijving ? `<p style="white-space:pre-wrap;margin:.5rem 0 0">${esc(p.omschrijving)}</p>` : ''}</section>
+    <div class="kaartindeling">
+      <div id="pakketkaart" class="kaart"><p class="leeg">Kaart laden…</p></div>
+      <aside class="kaart lagenpaneel"><h2>Legenda</h2><div class="legenda">
+        <span><i style="background:${PAKKET_KLEUR.open}"></i>Nog te doen (${v.open.length})</span>
+        <span><i style="background:${PAKKET_KLEUR.gedaan}"></i>Gedaan (${v.gedaan.size})</span>
+        <span><i style="background:${PAKKET_KLEUR.overgeslagen}"></i>Overgeslagen (${v.overgeslagen.size})</span></div></aside>
+    </div>
+    <section class="kaart" style="padding:0"><div class="tabelhouder"><table>
+      <thead><tr><th>Code</th><th>Naam</th><th>Status</th><th>Wanneer / door</th><th class="verberg-mobiel">Toelichting</th><th></th></tr></thead>
+      <tbody>${objecten.map((o) => {
+    const st = statusVan(o.id);
+    const r = v.gedaan.get(o.id);
+    const ov = v.overgeslagen.get(o.id);
+    return `<tr>
+          <td><a href="#/objecten/${esc(o.id)}"><strong>${esc(o.code)}</strong></a></td><td>${esc(o.naam)}</td>
+          <td><span class="label-status ${st === 'gedaan' ? 'afgerond' : st === 'open' ? 'binnenkort' : ''}">${{ open: 'Open', gedaan: 'Gedaan', overgeslagen: 'Overgeslagen' }[st]}</span></td>
+          <td>${r ? `<a href="${regHref(r)}">${datumNL(r.datum)}</a> · ${esc(r.uitvoerder || r.inspecteur || '')}` : ov ? `${datumNL(ov.op)} · ${esc(ov.door)}` : '–'}</td>
+          <td class="verberg-mobiel">${ov ? `${esc(ov.reden)}${ov.toelichting ? `: ${esc(ov.toelichting)}` : ''}` : r ? esc(r.omschrijving || r.samenvatting || '') : ''}</td>
+          <td>${st === 'open' ? `<a class="knop klein" href="${pakketHref(p, o.id, false)}">Uitvoeren</a>`
+    : ov ? `<button class="knop klein" data-terug="${esc(o.id)}">Terugzetten</button>` : ''}</td></tr>`;
+  }).join('')}</tbody></table></div></section>`;
+
+  tekenPakketKaart(app.querySelector('#pakketkaart'), { pakket: p, objecten, statusVan });
+  app.querySelector('#pakketkaart').addEventListener('click', async (e) => {
+    const over = e.target.closest('[data-overslaan]');
+    if (over && await slaObjectOver(p, g.objectMap.get(over.dataset.overslaan))) router();
+  });
+  app.querySelectorAll('[data-terug]').forEach((k) => {
+    k.onclick = async () => {
+      await db.verwijder('overgeslagen', overslaanId(p.id, k.dataset.terug));
+      router();
+    };
+  });
+  const zetStatus = async (status) => {
+    await db.bewaar('werkpakketten', { ...p, status, gewijzigd: new Date().toISOString() });
+    router();
+  };
+  app.querySelector('#activeer')?.addEventListener('click', () => zetStatus('actief'));
+  app.querySelector('#afronden')?.addEventListener('click', () => {
+    if (v.open.length && !confirm(`Er staan nog ${v.open.length} objecten open. Toch afronden?`)) return;
+    zetStatus('afgerond');
+  });
+  app.querySelector('#verwijder')?.addEventListener('click', async () => {
+    if (!confirm(`Werkpakket "${p.naam}" verwijderen? Registraties blijven bewaard.`)) return;
+    await db.verwijderVeel('overgeslagen', g.overgeslagen.filter((o) => o.pakketId === p.id).map((o) => o.id));
+    await db.verwijder('werkpakketten', p.id);
+    ga('#/werkpakketten');
+  });
+  app.querySelector('#export').onclick = () => {
+    const rijen = [['Code', 'Naam', 'Type', 'Status', 'Datum', 'Door', 'Reden / omschrijving']];
+    for (const o of objecten) {
+      const r = v.gedaan.get(o.id);
+      const ov = v.overgeslagen.get(o.id);
+      rijen.push([o.code, o.naam, o.type, r ? 'Gedaan' : ov ? 'Overgeslagen' : 'Open', r?.datum ?? ov?.op ?? '',
+        r ? (r.uitvoerder || r.inspecteur || '') : ov?.door ?? '', ov ? [ov.reden, ov.toelichting].filter(Boolean).join(': ') : (r?.omschrijving || r?.samenvatting || '')]);
+    }
+    download(`werkpakket-${p.naam.replace(/[^\w-]+/g, '_')}-${vandaag()}.csv`, csv(rijen), 'text/csv;charset=utf-8');
+  };
+}
+
+// --- Telefoon -----------------------------------------------------------------
+async function mobielePakketten() {
+  const { pakketten, voortgangen } = await pakketGegevens();
+  const ik = sync.sessie()?.gebruiker?.email ?? '';
+  const mijn = pakketten.filter((p) => p.status !== 'afgerond' && pakketVoorMij(p, ik));
+  app.innerHTML = `
+    <div class="mkop"><a href="#/" class="mterug" aria-label="Terug">←</a><div><small>Werkpakketten</small><h1>Mijn werkpakketten</h1></div></div>
+    ${mijn.length ? `<ul class="mlijst pakketlijst">${mijn.map((p) => mobielPakketRegel(p, voortgangen.get(p.id))).join('')}</ul>`
+    : '<p class="mleeg">Er zijn geen werkpakketten voor jou in dit project.</p>'}`;
+}
+
+function mobielPakketRegel(p, v) {
+  return `<li><a href="#/m/pakket/${esc(p.id)}">
+    <span class="micoon klein">📦</span>
+    <span><strong>${esc(p.naam)}</strong><small>${pakketSoortTekst(p)}${p.eind ? ` · uiterlijk ${datumNL(p.eind)}` : ''}${p.status === 'gepland' ? ' · gepland' : ''}</small>
+    ${voortgangBalk(v)}</span></a></li>`;
+}
+
+async function mobielPakket(id) {
+  const g = await pakketGegevens();
+  const p = g.pakketten.find((x) => x.id === id);
+  if (!p) {
+    app.innerHTML = leegKaart('Werkpakket niet gevonden.', '<a class="knop" href="#/m/pakketten">Terug</a>');
+    return;
+  }
+  const v = g.voortgangen.get(id);
+  const objecten = (p.objecten ?? []).map((oid) => g.objectMap.get(oid)).filter(Boolean);
+  const statusVan = (oid) => (v.gedaan.has(oid) ? 'gedaan' : v.overgeslagen.has(oid) ? 'overgeslagen' : 'open');
+  const open = objecten.filter((o) => statusVan(o.id) === 'open');
+
+  app.innerHTML = `
+    <div class="mkop"><a href="#/m/pakketten" class="mterug" aria-label="Terug">←</a>
+      <div style="flex:1;min-width:0"><small>${pakketSoortTekst(p)}</small><h1>${esc(p.naam)}</h1></div></div>
+    ${voortgangBalk(v, { groot: true })}
+    ${p.omschrijving ? `<details class="kaart minstructie"><summary>Instructie</summary><p style="white-space:pre-wrap;margin:.5rem 0 0">${esc(p.omschrijving)}</p></details>` : ''}
+    ${open.length ? `<div class="knoppen mpakketknoppen">
+      <button class="knop primair" id="volgende" type="button">📍 Volgende dichtbij</button>
+      <button class="knop" id="locatie" type="button">↻ Locatie</button></div>` : '<div class="kaart mhier">🎉 Alle objecten zijn gedaan.</div>'}
+    <div id="pakketkaart" class="mkaart"><p class="leeg">Kaart laden…</p></div>
+    <h2 class="mlijstkop">Nog te doen (${open.length})</h2>
+    <ul class="mlijst" id="open-lijst"></ul>
+    ${v.gedaan.size ? `<details class="mklapper"><summary>Gedaan (${v.gedaan.size})</summary><ul class="mlijst">${objecten.filter((o) => v.gedaan.has(o.id)).map((o) => `
+      <li><a href="${p.soort === 'inspectie' ? `#/m/inspectie/${esc(v.gedaan.get(o.id).id)}` : `#/m/werk/${esc(v.gedaan.get(o.id).id)}`}">
+        <span class="micoon klein">✅</span><span><strong>${esc(o.code)} – ${esc(o.naam)}</strong><small>${datumNL(v.gedaan.get(o.id).datum)}</small></span></a></li>`).join('')}</ul></details>` : ''}
+    ${v.overgeslagen.size ? `<details class="mklapper"><summary>Overgeslagen (${v.overgeslagen.size})</summary><ul class="mlijst">${objecten.filter((o) => v.overgeslagen.has(o.id)).map((o) => `
+      <li><div class="mregel"><span class="micoon klein">⏭</span><span><strong>${esc(o.code)} – ${esc(o.naam)}</strong><small>${esc(v.overgeslagen.get(o.id).reden)}</small></span>
+        <button class="knop klein" data-terug="${esc(o.id)}">Terugzetten</button></div></li>`).join('')}</ul></details>` : ''}`;
+
+  const tekenLijst = () => {
+    const metAfstand = open.map((o) => ({ o, afstand: laatstePositie ? gis.afstandTot(laatstePositie, objectGeometrie(o)) : null }));
+    if (laatstePositie) metAfstand.sort((a, b) => (a.afstand ?? Infinity) - (b.afstand ?? Infinity));
+    const el = app.querySelector('#open-lijst');
+    if (!el) return [];
+    el.innerHTML = metAfstand.length ? metAfstand.map(({ o, afstand }) => `
+      <li><div class="mregel">
+        <a href="${pakketHref(p, o.id, true)}" class="mregel-link"><span><strong>${esc(o.code)} – ${esc(o.naam)}</strong>
+          <small>${esc(o.type || '')}${afstand != null ? ` · ${afstand === 0 ? '📍 hier' : afstandTekst(afstand)}` : ''}</small></span></a>
+        <button class="knop klein" data-overslaan="${esc(o.id)}" aria-label="${esc(o.code)} overslaan">⏭</button>
+        <a class="knop klein primair" href="${pakketHref(p, o.id, true)}">▶</a></div></li>`).join('') : '';
+    return metAfstand;
+  };
+  let gesorteerd = tekenLijst();
+  // De kaart wordt één keer getekend; een nieuwe locatie verplaatst alleen de stip.
+  const kaart = tekenPakketKaart(app.querySelector('#pakketkaart'), { pakket: p, objecten, statusVan, positie: laatstePositie, mobiel: true });
+  const metLocatie = (stil) => bepaalPositie(async () => {
+    gesorteerd = tekenLijst();
+    (await kaart)?.zetPositie(laatstePositie);
+  }, { stil });
+  if (!laatstePositie && navigator.permissions?.query) {
+    navigator.permissions.query({ name: 'geolocation' }).then((s) => { if (s.state === 'granted') metLocatie(true); }).catch(() => {});
+  }
+  app.querySelector('#locatie')?.addEventListener('click', () => metLocatie(false));
+  app.querySelector('#volgende')?.addEventListener('click', () => {
+    if (!laatstePositie) {
+      bepaalPositie(() => { gesorteerd = tekenLijst(); if (gesorteerd[0]) location.hash = pakketHref(p, gesorteerd[0].o.id, true); });
+      return;
+    }
+    if (gesorteerd[0]) location.hash = pakketHref(p, gesorteerd[0].o.id, true);
+  });
+  const klik = async (e) => {
+    const over = e.target.closest('[data-overslaan]');
+    if (over && await slaObjectOver(p, g.objectMap.get(over.dataset.overslaan))) router();
+    const terug = e.target.closest('[data-terug]');
+    if (terug) {
+      await db.verwijder('overgeslagen', overslaanId(p.id, terug.dataset.terug));
+      router();
+    }
+  };
+  app.querySelectorAll('#pakketkaart, #open-lijst, .mklapper').forEach((el) => el.addEventListener('click', klik));
 }
 
 // ---------------------------------------------------------------------------
