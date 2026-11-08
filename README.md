@@ -2,7 +2,7 @@
 
 Web-app voor het **registreren** van civieltechnische objecten (bruggen, viaducten, duikers, sluizen, kademuren,
 wegvakken, …) en het **inspecteren** ervan volgens de systematiek van NEN 2767. De app werkt volledig in de browser,
-ook **offline in het veld**, en is te installeren op telefoon of tablet (PWA).
+ook **offline in het veld**, synchroniseert tussen pc en telefoon, en is te installeren op telefoon of tablet (PWA).
 
 ## Functies
 
@@ -51,11 +51,35 @@ eindstadium) tot een zwaarte 1–5, en vermenigvuldigt die met de **omvangklasse
 gebrekenbibliotheek zijn niet opgenomen. Gebruik voor formele conditiemetingen de handmatige conditie waar nodig.
 De logica staat in [`js/nen2767.js`](js/nen2767.js) en is gedekt door tests.
 
-## Opslag
+## Opslag en synchronisatie (pc ↔ telefoon)
 
-Alle gegevens (incl. foto's) staan lokaal in de browser (IndexedDB) op het apparaat. Er is geen server of account.
-Maak regelmatig een back-up via **Instellingen → Back-up downloaden**; die kan op een ander apparaat worden
-geïmporteerd.
+De app werkt *offline-first*: alle gegevens (incl. foto's) staan lokaal in de browser (IndexedDB), zodat je in het
+veld zonder bereik kunt inspecteren. Ben je ingelogd, dan worden wijzigingen automatisch gesynchroniseerd met
+[Supabase](https://supabase.com), en zie je op pc en telefoon dezelfde objecten, inspecties en foto's.
+
+- Wijzigingen gaan in een wachtrij en worden verstuurd zodra er verbinding is (indicator rechtsboven).
+- Nieuwe gegevens van andere apparaten worden opgehaald bij het openen van de app, elke minuut en na elke wijziging.
+- Bij gelijktijdige wijzigingen aan hetzelfde object of dezelfde inspectie wint de laatst opgeslagen versie.
+- Zonder inloggen werkt de app gewoon lokaal; wat je dan invoert wordt verstuurd zodra je inlogt.
+
+### Eenmalig instellen
+
+1. **Database inrichten** – open in Supabase de *SQL Editor*, plak de inhoud van
+   [`supabase/schema.sql`](supabase/schema.sql), vervang onderaan `jouw@email.nl` door je eigen e-mailadres en klik *Run*.
+   Alleen e-mailadressen in de tabel `teamleden` hebben toegang tot de gegevens; collega's voeg je later toe met
+   `insert into public.teamleden (email) values ('collega@bedrijf.nl');`.
+2. **Sleutel invullen** – zet de *Project URL* en de *publishable/anon key* (Supabase → *Project Settings → API*) in
+   [`js/config.js`](js/config.js). Gebruik **nooit** de `service_role`/secret key. (Of vul ze per apparaat in onder
+   *Instellingen* in de app.)
+3. **Online zetten** – kies in GitHub *Settings → Pages → Source: GitHub Actions*. De workflow
+   [`.github/workflows/pages.yml`](.github/workflows/pages.yml) publiceert de app bij elke push naar `main`
+   op `https://<gebruiker>.github.io/inspectie-app/`.
+4. **Inloggen** – open de app op de pc, ga naar *Instellingen* en kies *Account aanmaken* (bevestig je e-mail) of
+   *Inloggen*. Doe hetzelfde op je telefoon en zet de app op het beginscherm.
+5. **Aanbevolen** – zet daarna in Supabase onder *Authentication → Sign In / Providers* de optie
+   *Allow new users to sign up* uit, en maak accounts voor collega's aan via *Authentication → Users → Invite*.
+
+Maak daarnaast af en toe een back-up via **Instellingen → Back-up downloaden**.
 
 ## Structuur
 
@@ -63,11 +87,15 @@ geïmporteerd.
 index.html            app-shell en navigatie
 css/styles.css        opmaak (licht/donker, mobiel, print)
 js/app.js             router en alle schermen
-js/db.js              IndexedDB-opslag, export/import
+js/db.js              IndexedDB-opslag, wachtrij, export/import
+js/sync.js            inloggen en synchronisatie met Supabase
+js/config.js          Supabase-URL en publishable key
 js/nen2767.js         conditieberekening en planning (pure functies)
 js/catalogus.js       keuzelijsten: objecttypen, bouwdelen, gebreken
 js/demo.js            voorbeelddata
 sw.js                 service worker (offline)
 server.js             minimale statische server
 tests/                unittests (node --test)
+supabase/schema.sql   database, beveiliging (RLS) en foto-opslag voor Supabase
+.github/workflows/    automatisch publiceren op GitHub Pages
 ```

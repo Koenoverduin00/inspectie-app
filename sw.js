@@ -1,8 +1,9 @@
 // Service worker: maakt de app offline bruikbaar in het veld.
-const CACHE = 'inspectie-app-v1';
+const CACHE = 'inspectie-app-v2';
 const BESTANDEN = [
   './', 'index.html', 'manifest.webmanifest', 'css/styles.css', 'icons/icon.svg',
   'js/app.js', 'js/db.js', 'js/nen2767.js', 'js/utils.js', 'js/catalogus.js', 'js/demo.js',
+  'js/sync.js', 'js/config.js',
 ];
 
 self.addEventListener('install', (e) => {

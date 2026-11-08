@@ -30,6 +30,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
@@ -197,3 +198,21 @@ dl.gegevens dd { margin: 0; }
   .balk { grid-template-columns: 90px 1fr 30px; }
 }
 .raster-2 .breed { grid-column: 1 / -1; }
+
+/* Synchronisatiestatus in de kop */
+.syncstatus {
+  margin-left: auto; display: inline-flex; align-items: center; gap: .4rem;
+  color: #fff; text-decoration: none; font-size: .85rem; white-space: nowrap;
+  padding: .25rem .65rem; border-radius: 999px; background: rgba(255,255,255,.12);
+}
+.syncstatus::before { content: ""; width: .6rem; height: .6rem; border-radius: 50%; background: #9aa7b4; }
+.syncstatus[data-fase="ok"]::before { background: #4cc26a; }
+.syncstatus[data-fase="bezig"]::before { background: #f2a900; animation: knipper 1s infinite alternate; }
+.syncstatus[data-fase="offline"]::before { background: #f2a900; }
+.syncstatus[data-fase="fout"]::before, .syncstatus[data-fase="uitgelogd"]::before { background: #ff6b5b; }
+@keyframes knipper { to { opacity: .3; } }
+@media (max-width: 600px) {
+  .merk span { font-size: .95rem; }
+  .syncstatus { order: 2; }
+  .nav { order: 3; }
+}

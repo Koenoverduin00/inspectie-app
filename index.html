@@ -14,7 +14,7 @@
   <header class="kop">
     <a class="merk" href="#/">
       <img src="icons/icon.svg" alt="" width="28" height="28">
-      <span>Inspectie &amp; Registratie</span>
+      <span>Inspectie<span class="verberg-mobiel"> &amp; Registratie</span></span>
     </a>
     <nav class="nav" aria-label="Hoofdmenu">
       <a href="#/" data-nav="dashboard">Dashboard</a>
@@ -24,6 +24,7 @@
       <a href="#/kaart" data-nav="kaart">Kaart</a>
       <a href="#/instellingen" data-nav="instellingen">Instellingen</a>
     </nav>
+    <a id="syncstatus" class="syncstatus" href="#/instellingen" data-fase="uit">Alleen lokaal</a>
   </header>
   <main id="app" tabindex="-1"><p class="laden">Laden…</p></main>
   <script type="module" src="js/app.js"></script>

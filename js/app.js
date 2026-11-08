@@ -8,6 +8,7 @@ import {
   esc, nieuwId, vandaag, datumNL, euro, optie, formulierData, verkleinFoto, csv, download, melding,
 } from './utils.js';
 import { demoData } from './demo.js';
+import * as sync from './sync.js';
 
 const app = document.getElementById('app');
 
@@ -1034,7 +1035,8 @@ async function instellingen() {
   } catch { /* niet ondersteund */ }
 
   app.innerHTML = `
-    <div class="paginakop"><div><h1>Instellingen</h1><p>Gegevens worden lokaal op dit apparaat opgeslagen en werken ook offline.</p></div></div>
+    <div class="paginakop"><div><h1>Instellingen</h1><p>Gegevens staan op dit apparaat en werken ook offline. Log in om ze te synchroniseren tussen pc en telefoon.</p></div></div>
+    <section class="kaart" id="account"></section>
     <div class="raster-2">
       <form class="kaart" id="voorkeuren">
         <h2>Voorkeuren</h2>
@@ -1064,9 +1066,10 @@ async function instellingen() {
         <button class="knop" id="demo">Voorbeelddata laden</button>
       </section>
       <section class="kaart">
-        <h2>Alles wissen</h2>
-        <p>Verwijdert alle objecten, inspecties en foto's van dit apparaat.</p>
-        <button class="knop gevaar" id="wis">Alle gegevens wissen</button>
+        <h2>Gegevens op dit apparaat wissen</h2>
+        <p>Verwijdert alle objecten, inspecties en foto's van dit apparaat. Gegevens die al online staan blijven bewaard
+        en worden bij de volgende synchronisatie opnieuw opgehaald. Nog niet verstuurde wijzigingen gaan verloren.</p>
+        <button class="knop gevaar" id="wis">Lokale gegevens wissen</button>
       </section>
       <section class="kaart breed">
         <h2>Conditieschaal NEN 2767</h2>
@@ -1095,6 +1098,7 @@ async function instellingen() {
       const data = JSON.parse(await bestand.text());
       const vervangen = confirm('Huidige gegevens vervangen door de back-up?\n\nOK = vervangen, Annuleren = samenvoegen.');
       await db.importeer(data, { vervangen });
+      if (vervangen) sync.resetOphalen();
       melding('Back-up geïmporteerd');
       router();
     } catch (fout) {
@@ -1102,12 +1106,157 @@ async function instellingen() {
     }
   };
   app.querySelector('#demo').onclick = laadDemo;
+  toonAccount(app.querySelector('#account'));
   app.querySelector('#wis').onclick = async () => {
-    if (!confirm('Weet je zeker dat je ALLE gegevens wilt wissen? Dit kan niet ongedaan worden gemaakt.')) return;
-    for (const s of db.STORES) await db.leeg(s);
-    melding('Alle gegevens gewist');
+    const wachtend = await db.sync.aantalInWachtrij();
+    const waarschuwing = wachtend ? `\n\nLet op: ${wachtend} wijziging(en) zijn nog niet verstuurd en gaan verloren.` : '';
+    if (!confirm(`Alle gegevens op dit apparaat wissen?${waarschuwing}`)) return;
+    await db.wisLokaal();
+    sync.resetOphalen();
+    melding('Lokale gegevens gewist');
+    sync.synchroniseer();
     ga('#/');
   };
+}
+
+// ---------------------------------------------------------------------------
+// Account en synchronisatie
+// ---------------------------------------------------------------------------
+const FASE_TEKST = {
+  uit: 'Alleen lokaal',
+  uitgelogd: 'Niet ingelogd',
+  offline: 'Offline',
+  bezig: 'Synchroniseren…',
+  ok: 'Gesynchroniseerd',
+  fout: 'Synchronisatiefout',
+};
+
+function syncIndicator(st) {
+  const el = document.getElementById('syncstatus');
+  if (!el) return;
+  let tekst = FASE_TEKST[st.fase] ?? st.fase;
+  if (st.wachtend && st.fase !== 'bezig') tekst = st.fase === 'ok' ? `${st.wachtend} te versturen` : `${tekst} · ${st.wachtend} wachtend`;
+  el.textContent = tekst;
+  el.dataset.fase = st.fase;
+  el.title = st.fout || (st.laatsteSync ? `Laatst gesynchroniseerd: ${new Date(st.laatsteSync).toLocaleString('nl-NL')}` : tekst);
+}
+
+let stopAccountStatus = () => {};
+
+function toonAccount(el) {
+  stopAccountStatus();
+  const s = sync.sessie();
+  const { url, key } = sync.configuratie();
+
+  if (!sync.isIngesteld()) {
+    el.innerHTML = `
+      <h2>Online synchronisatie instellen</h2>
+      <p>Koppel de app aan je Supabase-project om gegevens te delen tussen pc en telefoon.
+      Je vindt beide waarden in Supabase onder <em>Project Settings → API</em>.</p>
+      <form id="verbinding" class="velden">
+        <div class="veld"><label for="f-url">Project URL</label><input id="f-url" name="url" value="${esc(url)}" placeholder="https://xxxx.supabase.co" required></div>
+        <div class="veld"><label for="f-key">Publishable / anon key</label><input id="f-key" name="key" value="${esc(key)}" required autocomplete="off">
+          <small>Gebruik nooit de <em>service_role</em>- of <em>secret</em>-sleutel.</small></div>
+        <div class="veld" style="justify-content:flex-end"><button class="knop primair" type="submit">Verbinden</button></div>
+      </form>`;
+    el.querySelector('#verbinding').onsubmit = (e) => {
+      e.preventDefault();
+      const d = formulierData(e.target);
+      if (!/^https:\/\/.+/.test(d.url) || !d.key) return melding('Vul een geldige https-URL en sleutel in.', 'fout');
+      sync.stelIn(d.url, d.key);
+      toonAccount(el);
+    };
+    return;
+  }
+
+  if (!s) {
+    el.innerHTML = `
+      <h2>Inloggen voor synchronisatie</h2>
+      <p>Log op pc én telefoon in met hetzelfde account. Je kunt ook zonder inloggen werken; wijzigingen worden dan
+      verstuurd zodra je inlogt.</p>
+      <form id="login" class="velden">
+        <div class="veld"><label for="f-email">E-mailadres</label><input id="f-email" name="email" type="email" autocomplete="username" required></div>
+        <div class="veld"><label for="f-wachtwoord">Wachtwoord</label><input id="f-wachtwoord" name="wachtwoord" type="password" autocomplete="current-password" minlength="6" required></div>
+        <div class="veld" style="justify-content:flex-end"><div class="knoppen">
+          <button class="knop primair" type="submit" data-actie="in">Inloggen</button>
+          <button class="knop" type="submit" data-actie="nieuw">Account aanmaken</button></div></div>
+      </form>
+      <p><small>Verbonden met ${esc(url)} · <a href="#" id="ontkoppel">wijzigen</a></small></p>
+      <p id="loginfout" class="label-status verlopen" hidden></p>`;
+    const fout = el.querySelector('#loginfout');
+    el.querySelector('#ontkoppel').onclick = (e) => {
+      e.preventDefault();
+      sync.stelIn('', '');
+      toonAccount(el);
+    };
+    el.querySelector('#login').onsubmit = async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      if (!form.checkValidity()) return form.reportValidity();
+      const d = formulierData(form);
+      const knoppen = form.querySelectorAll('button');
+      knoppen.forEach((k) => { k.disabled = true; });
+      fout.hidden = true;
+      try {
+        if (e.submitter?.dataset.actie === 'nieuw') {
+          const r = await sync.registreren(d.email, form.elements.wachtwoord.value);
+          if (r.bevestigen) {
+            el.innerHTML = `<h2>Bevestig je e-mailadres</h2><p>We hebben een bevestigingsmail gestuurd naar <strong>${esc(d.email)}</strong>.
+              Klik op de link in die mail en log daarna hier in.</p><button class="knop" id="terug">Naar inloggen</button>`;
+            el.querySelector('#terug').onclick = () => toonAccount(el);
+            return;
+          }
+        } else {
+          await sync.inloggen(d.email, form.elements.wachtwoord.value);
+        }
+        melding('Ingelogd');
+        toonAccount(el);
+      } catch (err) {
+        fout.textContent = err instanceof TypeError ? 'Geen verbinding met de server.' : err.message;
+        fout.hidden = false;
+      } finally {
+        knoppen.forEach((k) => { k.disabled = false; });
+      }
+    };
+    return;
+  }
+
+  el.innerHTML = `
+    <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">Account en synchronisatie</h2>
+      <div class="knoppen"><button class="knop primair" id="nu">Nu synchroniseren</button><button class="knop" id="uit">Uitloggen</button></div></div>
+    <dl class="gegevens">
+      <dt>Ingelogd als</dt><dd>${esc(s.gebruiker?.email ?? '–')}</dd>
+      <dt>Status</dt><dd id="st-fase"></dd>
+      <dt>Te versturen</dt><dd id="st-wachtend"></dd>
+      <dt>Laatste synchronisatie</dt><dd id="st-tijd"></dd>
+    </dl>
+    <p id="st-fout" class="label-status verlopen" hidden style="white-space:normal;margin-top:.75rem"></p>
+    <p id="st-team" class="label-status binnenkort" hidden style="white-space:normal;margin-top:.75rem"></p>`;
+  el.querySelector('#nu').onclick = () => sync.synchroniseer();
+  el.querySelector('#uit').onclick = async () => {
+    const wachtend = await db.sync.aantalInWachtrij();
+    if (wachtend && !confirm(`Er zijn nog ${wachtend} wijziging(en) niet verstuurd. Ze blijven op dit apparaat en worden verstuurd bij de volgende keer inloggen. Toch uitloggen?`)) return;
+    await sync.uitloggen();
+    toonAccount(el);
+  };
+  stopAccountStatus = sync.opStatus((st) => {
+    if (!el.isConnected) { stopAccountStatus(); return; }
+    if (st.fase === 'uitgelogd' && !sync.sessie()) { toonAccount(el); return; }
+    el.querySelector('#st-fase').textContent = FASE_TEKST[st.fase] ?? st.fase;
+    el.querySelector('#st-wachtend').textContent = String(st.wachtend);
+    el.querySelector('#st-tijd').textContent = st.laatsteSync ? new Date(st.laatsteSync).toLocaleString('nl-NL') : '–';
+    const f = el.querySelector('#st-fout');
+    f.textContent = st.fout;
+    f.hidden = !st.fout;
+  });
+  if (navigator.onLine) {
+    sync.isTeamlid().then((ok) => {
+      const t = el.querySelector('#st-team');
+      if (!t || ok) return;
+      t.textContent = `Je account heeft nog geen toegang tot de gedeelde gegevens. Voeg ${s.gebruiker?.email ?? 'je e-mailadres'} toe aan de tabel "teamleden" in Supabase (zie supabase/schema.sql).`;
+      t.hidden = false;
+    }).catch(() => {});
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1137,7 +1286,7 @@ function offlineMelding() {
   if (!el) {
     el = document.createElement('div');
     el.className = 'melding-offline';
-    el.textContent = 'Je bent offline. Gegevens worden lokaal opgeslagen; de kaart is niet beschikbaar.';
+    el.textContent = 'Je bent offline. Alles wordt op dit apparaat bewaard en verstuurd zodra je weer verbinding hebt. De kaart is niet beschikbaar.';
     document.querySelector('.kop').after(el);
   }
 }
@@ -1149,4 +1298,11 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   navigator.serviceWorker.register('sw.js').catch((fout) => console.warn('Service worker niet geregistreerd', fout));
 }
 
+sync.opStatus(syncIndicator);
+sync.start({
+  // Nieuwe gegevens van een ander apparaat: scherm verversen, behalve tijdens het invullen van een formulier.
+  naOphalen: () => {
+    if (!/\/(nieuw|bewerken)/.test(location.hash) && !formulierGewijzigd) router();
+  },
+});
 router();
