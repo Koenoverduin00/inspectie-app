@@ -360,3 +360,47 @@ input[type="date"], input[type="time"] {
 input[type="date"]::-webkit-date-and-time-value { text-align: left; margin: 0; }
 input[type="date"]::-webkit-calendar-picker-indicator { opacity: .7; }
 .mform .veld { justify-content: flex-start; }
+
+/* Extra formuliervelden */
+.eenheid { display: flex; align-items: stretch; }
+.eenheid input { border-top-right-radius: 0; border-bottom-right-radius: 0; flex: 1; min-width: 0; }
+.eenheid span {
+  display: flex; align-items: center; padding: 0 .75rem; border: 1px solid var(--rand); border-left: 0;
+  border-radius: 0 8px 8px 0; background: var(--achtergrond); color: var(--tekst-zacht); white-space: nowrap;
+}
+.eenheid input:only-child { border-radius: 8px; }
+.segment { display: flex; gap: .5rem; }
+.segment label { flex: 1; }
+.segment input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.segment span {
+  display: flex; align-items: center; justify-content: center; min-height: 48px; border: 1px solid var(--rand);
+  border-radius: 8px; font-weight: 600; cursor: pointer; background: var(--vlak);
+}
+.segment input:checked + span { background: #0b4f6c; border-color: #0b4f6c; color: #fff; }
+.segment input:focus-visible + span { outline: 3px solid color-mix(in srgb, var(--primair) 40%, transparent); }
+#extra-blok h2 { margin-bottom: .75rem; }
+
+/* Formuliervelden instellen */
+.tabs { display: flex; gap: .25rem; border-bottom: 2px solid var(--rand); margin-bottom: 1rem; overflow-x: auto; }
+.tab { padding: .6rem 1rem; text-decoration: none; color: var(--tekst-zacht); font-weight: 600; border-bottom: 3px solid transparent; margin-bottom: -2px; white-space: nowrap; }
+.tab.actief { color: var(--primair); border-bottom-color: var(--primair); }
+.teller { display: inline-block; min-width: 1.4em; padding: 0 .35em; border-radius: 999px; background: var(--primair-licht); color: var(--primair); font-size: .8rem; text-align: center; }
+.veldenindeling { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; }
+.veldenindeling > .kaart { margin: 0; }
+@media (max-width: 900px) { .veldenindeling { grid-template-columns: 1fr; } }
+.veldlijst { list-style: none; margin: 0; padding: 0; counter-reset: veld; }
+.veldlijst li { display: flex; justify-content: space-between; align-items: center; gap: .75rem; padding: .65rem .5rem; border-bottom: 1px solid var(--rand); counter-increment: veld; }
+.veldlijst li::before { content: counter(veld); flex: none; width: 1.6rem; height: 1.6rem; border-radius: 50%; background: var(--achtergrond); display: grid; place-items: center; font-size: .8rem; font-weight: 700; color: var(--tekst-zacht); }
+.veldlijst li > div:first-child { flex: 1; min-width: 0; }
+.veldlijst li small { display: block; color: var(--tekst-zacht); }
+.veldlijst li.actief { background: var(--primair-licht); border-radius: 8px; }
+.chips { display: flex; flex-wrap: wrap; gap: .4rem; }
+.chip input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.chip span { display: inline-block; padding: .3rem .7rem; border: 1px solid var(--rand); border-radius: 999px; font-size: .85rem; cursor: pointer; }
+.chip input:checked + span { background: var(--primair-licht); border-color: var(--primair); color: var(--primair); font-weight: 600; }
+.chip input:focus-visible + span { outline: 3px solid color-mix(in srgb, var(--primair) 40%, transparent); }
+.voorbeeld { padding: 1rem; border: 1px dashed var(--rand); border-radius: var(--radius); background: var(--achtergrond); }
+.rapport-extra .kaart { border: 0; box-shadow: none; padding: 0; margin-top: 1rem; }
+.chip, .segment label { position: relative; }
+/* Meldingen op de telefoon bovenin, zodat ze de knoppen onderin niet bedekken */
+body.modus-mobiel .toast { bottom: auto; top: calc(64px + env(safe-area-inset-top)); }

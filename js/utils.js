@@ -85,6 +85,7 @@ export function download(bestandsnaam, inhoud, type) {
 }
 
 export function melding(tekst, soort = 'ok') {
+  document.querySelectorAll('.toast').forEach((t) => t.remove()); // nieuwste melding vervangt de vorige
   const el = document.createElement('div');
   el.className = `toast toast-${soort}`;
   el.setAttribute('role', 'status');
