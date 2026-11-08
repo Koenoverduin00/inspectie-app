@@ -83,5 +83,31 @@ export function demoData() {
   begroeiing.werkzaamheidId = werkzaamheden[0].id;
   begroeiing.uitgevoerdOp = werkzaamheden[0].datum;
 
-  return { app: 'inspectie-app', versie: 1, objecten, inspecties, werkzaamheden, fotos: [] };
+  // Kleine GIS-laag: groenvakken rond de fietsbrug.
+  const laagId = nieuwId();
+  const vak = (x, y, b, h) => ({
+    type: 'Polygon',
+    coordinates: [[[x, y], [x + b, y], [x + b, y + h], [x, y + h], [x, y]].map(([a, c]) => [Math.round(a * 1e7) / 1e7, Math.round(c * 1e7) / 1e7])],
+  });
+  const vakken = [
+    ['GV-001', 'Gazon noord', vak(5.1290, 52.0760, 0.0018, 0.0008), { beheertype: 'Gazon', maaifrequentie: 20 }],
+    ['GV-002', 'Heesters oost', vak(5.1312, 52.0748, 0.0010, 0.0012), { beheertype: 'Heesters', maaifrequentie: 2 }],
+    ['GV-003', 'Bloemrijk grasland', vak(5.1285, 52.0740, 0.0020, 0.0010), { beheertype: 'Bloemrijk gras', maaifrequentie: 2 }],
+  ].map(([code, naam, geometrie, kenmerken]) => ({
+    id: nieuwId(), code, naam, type: 'Groenvak', status: 'In gebruik', laagId, geometrie, kenmerken,
+    lat: geometrie.coordinates[0][0][1] + 0.0004, lng: geometrie.coordinates[0][0][0] + 0.0005,
+    inspectieInterval: 1, aangemaakt: nu, gewijzigd: nu,
+  }));
+  objecten.push(...vakken);
+  const lagen = [{
+    id: laagId, naam: 'Groenvakken Park Zuid', bron: 'voorbeeld', kleur: '#33a02c', soort: 'vlak', aantal: vakken.length,
+    velden: ['beheertype', 'maaifrequentie'], aangemaakt: nu, gewijzigd: nu,
+  }];
+  const taken = [{
+    id: nieuwId(), objectId: vakken[1].id, soort: 'werk', titel: 'Heesters snoeien langs fietspad', omschrijving: 'Doorrijhoogte vrijhouden (2,5 m).',
+    prioriteit: 'hoog', deadline: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10), toegewezenAan: '', status: 'open',
+    aangemaakt: nu, gewijzigd: nu,
+  }];
+
+  return { app: 'inspectie-app', versie: 1, lagen, objecten, inspecties, werkzaamheden, taken, fotos: [] };
 }

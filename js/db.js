@@ -2,8 +2,8 @@
 // Wijzigingen aan objecten, inspecties en foto's worden in een wachtrij gezet
 // zodat ze naar de server kunnen worden gesynchroniseerd zodra er verbinding is.
 const DB_NAAM = 'inspectie-app';
-const DB_VERSIE = 3;
-export const STORES = ['objecten', 'inspecties', 'werkzaamheden', 'fotos'];
+const DB_VERSIE = 4;
+export const STORES = ['projecten', 'lagen', 'objecten', 'inspecties', 'werkzaamheden', 'taken', 'fotos'];
 const WACHTRIJ = 'wachtrij';
 
 let dbPromise;
@@ -47,9 +47,13 @@ async function tx(stores, modus, fn) {
   });
 }
 
-function zetInWachtrij(t, store, id, actie) {
-  t.objectStore(WACHTRIJ).put({ id: `${store}:${id}`, store, recordId: id, actie, tijd: new Date().toISOString() });
+function zetInWachtrij(t, store, id, actie, projectId = null) {
+  t.objectStore(WACHTRIJ).put({
+    id: `${store}:${id}`, store, recordId: id, actie, projectId, tijd: new Date().toISOString(),
+  });
 }
+
+const projectVan = (store, item) => (store === 'projecten' ? item?.id : item?.projectId) ?? null;
 
 export const alle = (store) => tx(store, 'readonly', (t) => t.objectStore(store).getAll());
 export const haal = (store, id) => tx(store, 'readonly', (t) => t.objectStore(store).get(id));
@@ -64,7 +68,7 @@ export async function bewaarVeel(store, items) {
     const s = t.objectStore(store);
     for (const item of items) {
       s.put(item);
-      zetInWachtrij(t, store, item.id, 'opslaan');
+      zetInWachtrij(t, store, item.id, 'opslaan', projectVan(store, item));
     }
   });
   meld();
@@ -72,8 +76,28 @@ export async function bewaarVeel(store, items) {
 
 export async function verwijder(store, id) {
   await tx([store, WACHTRIJ], 'readwrite', (t) => {
-    t.objectStore(store).delete(id);
-    zetInWachtrij(t, store, id, 'verwijderen');
+    const s = t.objectStore(store);
+    const req = s.get(id);
+    req.onsuccess = () => {
+      // Het project onthouden: de server heeft het nodig om de verwijdering toe te staan.
+      zetInWachtrij(t, store, id, 'verwijderen', projectVan(store, req.result));
+      s.delete(id);
+    };
+  });
+  meld();
+}
+
+export async function verwijderVeel(store, ids) {
+  if (!ids.length) return;
+  await tx([store, WACHTRIJ], 'readwrite', (t) => {
+    const s = t.objectStore(store);
+    for (const id of ids) {
+      const req = s.get(id);
+      req.onsuccess = () => {
+        zetInWachtrij(t, store, id, 'verwijderen', projectVan(store, req.result));
+        s.delete(id);
+      };
+    }
   });
   meld();
 }
@@ -100,7 +124,7 @@ export const sync = {
   zetAllesInWachtrij: async () => {
     for (const store of STORES) {
       const items = await alle(store);
-      await tx(WACHTRIJ, 'readwrite', (t) => items.forEach((i) => zetInWachtrij(t, store, i.id, 'opslaan')));
+      await tx(WACHTRIJ, 'readwrite', (t) => items.forEach((i) => zetInWachtrij(t, store, i.id, 'opslaan', projectVan(store, i))));
     }
     meld();
   },

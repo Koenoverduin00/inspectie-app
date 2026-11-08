@@ -5,7 +5,7 @@
 import * as db from './db.js';
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
 
-const TABELLEN = ['objecten', 'inspecties', 'werkzaamheden'];
+const TABELLEN = ['projecten', 'lagen', 'objecten', 'inspecties', 'werkzaamheden', 'taken'];
 const BUCKET = 'fotos';
 const OVERLAP_MS = 60_000; // haal iets terug in de tijd opnieuw op i.v.m. gelijktijdige transacties
 const PAGINA = 500;
@@ -43,7 +43,7 @@ export const isIngesteld = () => {
 // ---------------------------------------------------------------------------
 // Status (voor de indicator in de kop en de instellingenpagina)
 // ---------------------------------------------------------------------------
-const status = { fase: 'uit', fout: '', laatsteSync: lees('laatsteSync'), wachtend: 0 };
+const status = { fase: 'uit', fout: '', laatsteSync: lees('laatsteSync'), wachtend: 0, rol: lees('rol') };
 const statusLuisteraars = new Set();
 export function opStatus(fn) {
   statusLuisteraars.add(fn);
@@ -134,7 +134,8 @@ export async function uitloggen() {
       .catch(() => {});
   }
   schrijf('sessie', null);
-  zetStatus({ fase: bepaalRustFase(), fout: '' });
+  schrijf('rol', null);
+  zetStatus({ fase: bepaalRustFase(), fout: '', rol: null });
 }
 
 async function toegangstoken(forceer = false) {
@@ -165,57 +166,108 @@ async function api(pad, opties = {}, opnieuw = true) {
   return res;
 }
 
-/** Controleert of de ingelogde gebruiker toegang heeft tot de teamgegevens. */
-export async function isTeamlid() {
-  const res = await api('/rest/v1/rpc/is_teamlid', {
+// ---------------------------------------------------------------------------
+// Rol en toegang
+// ---------------------------------------------------------------------------
+/** 'beheerder' (mag projecten aanmaken en ziet alles), 'lid' (alleen eigen projecten) of 'geen'. */
+export async function haalRolOp() {
+  const res = await api('/rest/v1/rpc/mijn_rol', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
   });
-  return (await res.json()) === true;
+  const rol = await res.json();
+  schrijf('rol', rol);
+  zetStatus({ rol });
+  return rol;
+}
+
+/** Rol van deze gebruiker. Zonder online account werkt de app lokaal en ben je beheerder. */
+export function rol() {
+  if (!isIngesteld() || !sessie()) return 'beheerder';
+  return status.rol ?? lees('rol') ?? 'lid';
 }
 
 // ---------------------------------------------------------------------------
 // Versturen (lokale wachtrij → server)
 // ---------------------------------------------------------------------------
+const VOLGORDE = ['fotos', 'projecten', 'lagen', 'objecten', 'inspecties', 'werkzaamheden', 'taken'];
+const BATCH = 200;
+
 async function verstuur() {
   const regels = await db.sync.wachtrij();
-  // Foto's eerst, zodat een inspectie op een ander apparaat direct complete foto's heeft.
-  regels.sort((a, b) => (a.store === 'fotos' ? 0 : 1) - (b.store === 'fotos' ? 0 : 1) || a.tijd.localeCompare(b.tijd));
-  for (const regel of regels) {
-    if (regel.store === 'fotos') await verstuurFoto(regel);
-    else await verstuurRecord(regel);
-    await db.sync.afgehandeld(regel);
-    zetStatus({ wachtend: Math.max(0, status.wachtend - 1) });
+  // Foto's eerst (complete inspecties op andere apparaten), dan projecten vóór hun inhoud.
+  regels.sort((a, b) => VOLGORDE.indexOf(a.store) - VOLGORDE.indexOf(b.store) || a.tijd.localeCompare(b.tijd));
+  let eersteFout = null;
+  const weiger = (fout) => {
+    if (fout instanceof TypeError || fout instanceof NietIngelogd) throw fout; // geen verbinding: stoppen
+    eersteFout ??= fout; // geweigerd door de server: overslaan, de rest gaat wel door
+  };
+
+  for (const regel of regels.filter((r) => r.store === 'fotos')) {
+    try {
+      await verstuurFoto(regel);
+      await db.sync.afgehandeld(regel);
+      zetStatus({ wachtend: Math.max(0, status.wachtend - 1) });
+    } catch (fout) { weiger(fout); }
   }
+  for (const store of VOLGORDE.slice(1)) {
+    const eigen = regels.filter((r) => r.store === store);
+    for (let i = 0; i < eigen.length; i += BATCH) {
+      const deel = eigen.slice(i, i + BATCH);
+      try {
+        await verstuurRecords(store, deel);
+        for (const r of deel) await db.sync.afgehandeld(r);
+        zetStatus({ wachtend: Math.max(0, status.wachtend - deel.length) });
+      } catch (fout) {
+        if (fout instanceof TypeError || fout instanceof NietIngelogd) throw fout;
+        // Eén afgekeurde regel mag de rest niet blokkeren: probeer de regels in dit deel los.
+        for (const r of deel) {
+          try {
+            await verstuurRecords(store, [r]);
+            await db.sync.afgehandeld(r);
+          } catch (los) { weiger(los); }
+        }
+      }
+    }
+  }
+  if (eersteFout) throw eersteFout;
 }
 
-async function verstuurRecord(regel) {
-  let rij;
-  if (regel.actie === 'opslaan') {
-    const item = await db.haal(regel.store, regel.recordId);
-    if (!item) return;
-    rij = { id: item.id, data: item, gewijzigd: item.gewijzigd || regel.tijd, verwijderd: false };
-  } else {
-    rij = { id: regel.recordId, data: {}, gewijzigd: regel.tijd, verwijderd: true };
+async function verstuurRecords(store, regels) {
+  const rijen = [];
+  for (const regel of regels) {
+    if (regel.actie === 'opslaan') {
+      const item = await db.haal(store, regel.recordId);
+      if (!item) continue;
+      rijen.push({
+        id: item.id, project_id: store === 'projecten' ? item.id : (item.projectId ?? regel.projectId ?? null),
+        data: item, gewijzigd: item.gewijzigd || regel.tijd, verwijderd: false,
+      });
+    } else {
+      rijen.push({ id: regel.recordId, project_id: regel.projectId ?? null, data: {}, gewijzigd: regel.tijd, verwijderd: true });
+    }
   }
-  await api(`/rest/v1/${regel.store}?on_conflict=id`, {
+  if (!rijen.length) return;
+  await api(`/rest/v1/${store}?on_conflict=id`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
-    body: JSON.stringify(rij),
+    body: JSON.stringify(rijen),
   });
 }
 
+const fotoPad = (id, projectId) => `${projectId ? `${encodeURIComponent(projectId)}/` : ''}${encodeURIComponent(id)}.jpg`;
+
 async function verstuurFoto(regel) {
-  const pad = `${encodeURIComponent(regel.recordId)}.jpg`;
   if (regel.actie === 'opslaan') {
     const foto = await db.haal('fotos', regel.recordId);
     if (!foto) return;
     const blob = await (await fetch(foto.data)).blob();
-    await api(`/storage/v1/object/${BUCKET}/${pad}`, {
+    await api(`/storage/v1/object/${BUCKET}/${fotoPad(foto.id, foto.projectId)}`, {
       method: 'POST', headers: { 'Content-Type': blob.type || 'image/jpeg', 'x-upsert': 'true' }, body: blob,
     });
   } else {
     await api(`/storage/v1/object/${BUCKET}`, {
-      method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prefixes: [pad] }),
+      method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prefixes: [fotoPad(regel.recordId, regel.projectId)] }),
     });
   }
 }
@@ -273,16 +325,16 @@ async function verwerkRij(tabel, rij) {
 
 async function haalOntbrekendeFotosOp() {
   const aanwezig = new Set(await db.sync.fotoIds());
-  const nodig = new Set();
+  const nodig = new Map(); // fotoId → projectId
   const records = [...await db.alle('inspecties'), ...await db.alle('werkzaamheden')];
   for (const record of records) {
-    for (const id of fotoIdsVan(record)) if (!aanwezig.has(id)) nodig.add(id);
+    for (const id of fotoIdsVan(record)) if (!aanwezig.has(id)) nodig.set(id, record.projectId ?? null);
   }
-  for (const id of nodig) {
+  for (const [id, projectId] of nodig) {
     try {
-      const res = await api(`/storage/v1/object/authenticated/${BUCKET}/${encodeURIComponent(id)}.jpg`);
+      const res = await api(`/storage/v1/object/authenticated/${BUCKET}/${fotoPad(id, projectId)}`);
       const data = await blobNaarDataUrl(await res.blob());
-      await db.sync.bewaar('fotos', { id, data, datum: new Date().toISOString() });
+      await db.sync.bewaar('fotos', { id, data, projectId, datum: new Date().toISOString() });
     } catch (fout) {
       if (fout instanceof TypeError || fout instanceof NietIngelogd) throw fout;
       console.warn(`Foto ${id} nog niet beschikbaar`, fout.message); // volgende keer opnieuw
@@ -326,6 +378,9 @@ export function synchroniseer() {
     }
     zetStatus({ fase: 'bezig', fout: '' });
     try {
+      await haalRolOp().catch((fout) => {
+        if (fout instanceof TypeError || fout instanceof NietIngelogd) throw fout;
+      });
       await verstuur();
       const opgehaald = await haalOp();
       const nu = new Date().toISOString();

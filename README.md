@@ -4,7 +4,24 @@ Web-app voor het **registreren** van civieltechnische objecten (bruggen, viaduct
 wegvakken, …) en het **inspecteren** ervan volgens de systematiek van NEN 2767. De app werkt volledig in de browser,
 ook **offline in het veld**, synchroniseert tussen pc en telefoon, en is te installeren op telefoon of tablet (PWA).
 
-## Twee weergaven
+## Projecten, GIS en taken
+
+- **Projecten** – na het openen kies je eerst een project; elk project heeft een eigen inhoud (objecten, GIS-lagen,
+  inspecties, werkzaamheden, taken en foto's). Wisselen kan via de projectnaam in de kop.
+- **Toegang per project** – *beheerders* (tabel `teamleden` in Supabase) maken projecten aan en zien alles.
+  *Projectleden* (e-mailadressen in de ledenlijst van een project) zien alleen hun eigen projecten. Dit wordt in de
+  database afgedwongen met Row Level Security, ook voor foto's.
+- **GIS-lagen inladen** (dashboard of *Kaart & GIS*) – GeoJSON, Shapefile (.zip met .shp/.dbf/.prj) en GeoPackage
+  (.gpkg). RD New (EPSG:28992) en Web Mercator worden automatisch omgerekend naar WGS84 (± 0,3 m t.o.v. proj4).
+  **Elk vlak, elke lijn of elk punt wordt een object** met de oorspronkelijke kenmerken; inspecties, werkzaamheden en
+  taken koppel je dus direct aan het GIS-vlak. Kies bij het inladen de kolom voor code en naam, het objecttype en
+  eventueel een inspectie-interval.
+- **Taken** komen uit drie bronnen: zelf geplande taken (met prioriteit, deadline en toewijzing aan een projectlid),
+  openstaande maatregelen uit inspecties, en de inspectieplanning (verlopen / nooit / binnenkort).
+- **Logisch nu** (telefoon) – taken gesorteerd op urgentie én afstand tot je huidige locatie; sta je in een vlak, dan
+  zegt de app dat en komen de taken van dat vlak bovenaan. Eén urgentiestap weegt even zwaar als 750 m afstand.
+  Een taak aantikken opent direct het juiste formulier; na opslaan staat de taak op gereed.
+
 
 | | Telefoon – **veldversie** | Pc – **volledige versie** |
 |---|---|---|
@@ -81,7 +98,8 @@ veld zonder bereik kunt inspecteren. Ben je ingelogd, dan worden wijzigingen aut
 1. **Database inrichten** – open in Supabase de *SQL Editor*, plak de inhoud van
    [`supabase/schema.sql`](supabase/schema.sql), vervang onderaan `jouw@email.nl` door je eigen e-mailadres en klik *Run*.
    Haal in stap 5 van het script de `--` weg voor de `insert`-regel en vul je eigen adres in.
-   Heb je `schema.sql` al eerder uitgevoerd, voer dan alleen [`supabase/002_werkzaamheden.sql`](supabase/002_werkzaamheden.sql) uit.
+   Voer daarna in volgorde [`002_werkzaamheden.sql`](supabase/002_werkzaamheden.sql) en
+   [`003_projecten_gis_taken.sql`](supabase/003_projecten_gis_taken.sql) uit (alle scripts zijn veilig opnieuw uit te voeren).
    Alleen e-mailadressen in de tabel `teamleden` hebben toegang tot de gegevens; collega's voeg je later toe met
    `insert into public.teamleden (email) values ('collega@bedrijf.nl');`.
 2. **Sleutel invullen** – zet de *Project URL* en de *publishable/anon key* (Supabase → *Project Settings → API*) in
@@ -105,6 +123,9 @@ css/styles.css        opmaak (licht/donker, mobiel, print)
 js/app.js             router en alle schermen
 js/db.js              IndexedDB-opslag, wachtrij, export/import
 js/sync.js            inloggen en synchronisatie met Supabase
+js/gis.js             GIS inlezen (GeoJSON, Shapefile, GeoPackage), RD→WGS84, geometrie
+js/taken.js           taken samenstellen en sorteren op urgentie en locatie
+vendor/               shpjs en sql.js (MIT), lokaal meegeleverd zodat import ook offline werkt
 js/config.js          Supabase-URL en publishable key
 js/nen2767.js         conditieberekening en planning (pure functies)
 js/catalogus.js       keuzelijsten: objecttypen, bouwdelen, gebreken
