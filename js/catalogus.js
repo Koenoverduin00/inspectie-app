@@ -32,3 +32,9 @@ export const GEBREKEN = [
 ];
 
 export const WEER = ['Droog', 'Bewolkt', 'Lichte regen', 'Regen', 'Vorst', 'Sneeuw', 'Harde wind', 'Mist'];
+
+export const WERKSOORTEN = [
+  'Klein onderhoud', 'Reparatie', 'Reiniging', 'Groenonderhoud', 'Conserveren / schilderen', 'Vervangen onderdeel',
+  'Voegen / kitwerk', 'Afwatering vrijmaken', 'Graffiti verwijderen', 'Storing verholpen', 'Calamiteit / noodmaatregel',
+  'Afzetting / verkeersmaatregel', 'Overig',
+];

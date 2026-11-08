@@ -5,7 +5,7 @@
 import * as db from './db.js';
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
 
-const TABELLEN = ['objecten', 'inspecties'];
+const TABELLEN = ['objecten', 'inspecties', 'werkzaamheden'];
 const BUCKET = 'fotos';
 const OVERLAP_MS = 60_000; // haal iets terug in de tijd opnieuw op i.v.m. gelijktijdige transacties
 const PAGINA = 500;
@@ -250,6 +250,7 @@ async function haalOp() {
 }
 
 const tijd = (v) => Date.parse(v ?? '') || 0;
+const fotoIdsVan = (r) => [...(r?.fotoIds ?? []), ...(r?.gebreken ?? []).flatMap((g) => g.fotoIds ?? [])];
 
 async function verwerkRij(tabel, rij) {
   const lokaal = await db.haal(tabel, rij.id);
@@ -261,10 +262,7 @@ async function verwerkRij(tabel, rij) {
   }
   if (rij.verwijderd) {
     if (!lokaal) return false;
-    if (tabel === 'inspecties') {
-      const fotoIds = [...(lokaal.fotoIds ?? []), ...(lokaal.gebreken ?? []).flatMap((g) => g.fotoIds ?? [])];
-      for (const id of fotoIds) await db.sync.verwijder('fotos', id);
-    }
+    for (const id of fotoIdsVan(lokaal)) await db.sync.verwijder('fotos', id);
     await db.sync.verwijder(tabel, rij.id);
     return true;
   }
@@ -276,10 +274,9 @@ async function verwerkRij(tabel, rij) {
 async function haalOntbrekendeFotosOp() {
   const aanwezig = new Set(await db.sync.fotoIds());
   const nodig = new Set();
-  for (const insp of await db.alle('inspecties')) {
-    for (const id of [...(insp.fotoIds ?? []), ...(insp.gebreken ?? []).flatMap((g) => g.fotoIds ?? [])]) {
-      if (!aanwezig.has(id)) nodig.add(id);
-    }
+  const records = [...await db.alle('inspecties'), ...await db.alle('werkzaamheden')];
+  for (const record of records) {
+    for (const id of fotoIdsVan(record)) if (!aanwezig.has(id)) nodig.add(id);
   }
   for (const id of nodig) {
     try {

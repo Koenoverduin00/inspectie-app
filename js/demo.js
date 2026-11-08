@@ -61,5 +61,27 @@ export function demoData() {
     insp(duiker, datumGeleden(2), 'Schouw', [], 'Duiker vrij van gebreken, doorstroming goed.'),
   ];
 
-  return { app: 'inspectie-app', versie: 1, objecten, inspecties, fotos: [] };
+  const begroeiing = inspecties[0].gebreken[1];
+  const werk = (object, datum, velden) => ({
+    id: nieuwId(), objectId: object.id, datum, uitvoerder: 'P. Jansen', status: 'gereed', vervolg: '', materiaal: '',
+    maatregelen: [], fotoIds: [], aangemaakt: nu, gewijzigd: nu, ...velden,
+  });
+  const werkzaamheden = [
+    werk(brug, datumGeleden(4, 9), {
+      soort: 'Groenonderhoud', uren: 3, omschrijving: 'Begroeiing uit voegen metselwerk verwijderd, beide zijden.',
+      maatregelen: [{ inspectieId: inspecties[0].id, gebrekId: begroeiing.id }],
+    }),
+    werk(duiker, datumGeleden(0, 1), {
+      soort: 'Afwatering vrijmaken', uren: 1.5, omschrijving: 'In- en uitstroomopening ontdaan van vuil en takken.',
+    }),
+    werk(fietsbrug, datumGeleden(0, 1), {
+      soort: 'Afzetting / verkeersmaatregel', uren: 2, status: 'vervolg',
+      omschrijving: 'Aangetaste dekplanken tijdelijk afgedekt met rijplaat; brug half afgezet.',
+      vervolg: 'Dekplanken vervangen (zie inspectie).', materiaal: 'Rijplaat 2×1 m, afzethekken (4)',
+    }),
+  ];
+  begroeiing.werkzaamheidId = werkzaamheden[0].id;
+  begroeiing.uitgevoerdOp = werkzaamheden[0].datum;
+
+  return { app: 'inspectie-app', versie: 1, objecten, inspecties, werkzaamheden, fotos: [] };
 }

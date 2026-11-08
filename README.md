@@ -4,7 +4,18 @@ Web-app voor het **registreren** van civieltechnische objecten (bruggen, viaduct
 wegvakken, …) en het **inspecteren** ervan volgens de systematiek van NEN 2767. De app werkt volledig in de browser,
 ook **offline in het veld**, synchroniseert tussen pc en telefoon, en is te installeren op telefoon of tablet (PWA).
 
-## Functies
+## Twee weergaven
+
+| | Telefoon – **veldversie** | Pc – **volledige versie** |
+|---|---|---|
+| Doel | Snel vastleggen buiten | Inrichten, beheren en rapporteren |
+| Start | Twee grote knoppen: **Registratie werkzaamheden** en **Schouw & inspectie** | Dashboard met KPI's, conditieverdeling en planning |
+| Object kiezen | Zoeken of **📍 Dichtbij** (GPS, gesorteerd op afstand) | Lijsten met filters |
+| Menu | Onderin: Start · Werkzaamheden · Schouw · Account | Bovenin: alle onderdelen |
+
+De weergave wordt automatisch gekozen op schermbreedte. Onder *Instellingen → Weergave op dit apparaat* (of
+*Account → Volledige versie openen* op de telefoon) kun je dat per apparaat vastzetten.
+
 
 - **Objectregistratie** – objectcode, naam, type, materiaal, bouwjaar, afmetingen, beheerder, locatie (met GPS-knop),
   status, inspectie-interval en notities.
@@ -14,6 +25,9 @@ ook **offline in het veld**, synchroniseert tussen pc en telefoon, en is te inst
   (camera direct vanaf mobiel, automatisch verkleind), advies maatregel, urgentie en kostenraming.
 - **Conditiescore 1–6** wordt live berekend per gebrek; de conditie van de inspectie is die van het maatgevende gebrek.
   Per gebrek kan de conditie ook handmatig worden vastgesteld.
+- **Werkzaamheden** – soort, datum, omschrijving, foto's voor/na, uren, uitvoerder, gebruikt materiaal en status
+  (gereed / vervolg nodig). Openstaande maatregelen van het object kun je direct afvinken; ze worden dan op
+  *uitgevoerd* gezet en gekoppeld aan het werk. Overzicht met filters en CSV-export op de pc.
 - **Dashboard** – KPI's, conditieverdeling van het areaal, recente inspecties en inspectieplanning
   (verlopen / binnenkort / op schema, op basis van laatste afgeronde inspectie + interval).
 - **Maatregelen** – alle onderhoudsadviezen gesorteerd op urgentie, totale raming, afvinken als uitgevoerd.
@@ -66,6 +80,8 @@ veld zonder bereik kunt inspecteren. Ben je ingelogd, dan worden wijzigingen aut
 
 1. **Database inrichten** – open in Supabase de *SQL Editor*, plak de inhoud van
    [`supabase/schema.sql`](supabase/schema.sql), vervang onderaan `jouw@email.nl` door je eigen e-mailadres en klik *Run*.
+   Haal in stap 5 van het script de `--` weg voor de `insert`-regel en vul je eigen adres in.
+   Heb je `schema.sql` al eerder uitgevoerd, voer dan alleen [`supabase/002_werkzaamheden.sql`](supabase/002_werkzaamheden.sql) uit.
    Alleen e-mailadressen in de tabel `teamleden` hebben toegang tot de gegevens; collega's voeg je later toe met
    `insert into public.teamleden (email) values ('collega@bedrijf.nl');`.
 2. **Sleutel invullen** – zet de *Project URL* en de *publishable/anon key* (Supabase → *Project Settings → API*) in

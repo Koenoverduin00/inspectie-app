@@ -20,6 +20,7 @@
       <a href="#/" data-nav="dashboard">Dashboard</a>
       <a href="#/objecten" data-nav="objecten">Objecten</a>
       <a href="#/inspecties" data-nav="inspecties">Inspecties</a>
+      <a href="#/werkzaamheden" data-nav="werkzaamheden">Werkzaamheden</a>
       <a href="#/maatregelen" data-nav="maatregelen">Maatregelen</a>
       <a href="#/kaart" data-nav="kaart">Kaart</a>
       <a href="#/instellingen" data-nav="instellingen">Instellingen</a>
@@ -27,6 +28,12 @@
     <a id="syncstatus" class="syncstatus" href="#/instellingen" data-fase="uit">Alleen lokaal</a>
   </header>
   <main id="app" tabindex="-1"><p class="laden">Laden…</p></main>
+  <nav class="onderbalk" aria-label="Veldmenu">
+    <a href="#/" data-mnav="dashboard"><span aria-hidden="true">🏠</span>Start</a>
+    <a href="#/m/werk" data-mnav="m-werk"><span aria-hidden="true">🛠️</span>Werkzaamheden</a>
+    <a href="#/m/inspectie" data-mnav="m-inspectie"><span aria-hidden="true">🔍</span>Schouw</a>
+    <a href="#/m/account" data-mnav="m-account"><span aria-hidden="true">👤</span>Account</a>
+  </nav>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

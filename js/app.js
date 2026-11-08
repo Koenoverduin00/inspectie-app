@@ -3,7 +3,9 @@ import {
   CONDITIES, ERNST, INTENSITEIT, URGENTIES, OMVANG_KLASSEN,
   gebrekScore, inspectieScore, volgendeInspectie, planningStatus, omvangKlasse,
 } from './nen2767.js';
-import { OBJECTTYPEN, MATERIALEN, INSPECTIESOORTEN, BOUWDELEN, GEBREKEN, WEER } from './catalogus.js';
+import {
+  OBJECTTYPEN, MATERIALEN, INSPECTIESOORTEN, BOUWDELEN, GEBREKEN, WEER, WERKSOORTEN,
+} from './catalogus.js';
 import {
   esc, nieuwId, vandaag, datumNL, euro, optie, formulierData, verkleinFoto, csv, download, melding,
 } from './utils.js';
@@ -28,14 +30,25 @@ const instelling = {
 // Router
 // ---------------------------------------------------------------------------
 const ROUTES = [
-  [/^\/$/, 'dashboard', dashboard],
+  [/^\/$/, 'dashboard', () => (isMobiel() ? mobielStart() : dashboard())],
+  [/^\/m\/werk$/, 'm-werk', () => objectKiezer('werk')],
+  [/^\/m\/werk\/nieuw$/, 'm-werk', (_, q) => werkFormulier(null, q.get('object'), { mobiel: true })],
+  [/^\/m\/werk\/([^/]+)$/, 'm-werk', (id) => werkFormulier(id, null, { mobiel: true })],
+  [/^\/m\/inspectie$/, 'm-inspectie', () => objectKiezer('inspectie')],
+  [/^\/m\/inspectie\/nieuw$/, 'm-inspectie', (_, q) => inspectieFormulier(null, q.get('object'), { mobiel: true })],
+  [/^\/m\/inspectie\/([^/]+)$/, 'm-inspectie', (id) => inspectieFormulier(id, null, { mobiel: true })],
+  [/^\/m\/account$/, 'm-account', mobielAccount],
+  [/^\/werkzaamheden$/, 'werkzaamheden', werkzaamhedenLijst],
+  [/^\/werkzaamheden\/nieuw$/, 'werkzaamheden', (_, q) => werkFormulier(null, q.get('object'))],
+  [/^\/werkzaamheden\/([^/]+)\/bewerken$/, 'werkzaamheden', (id) => werkFormulier(id)],
+  [/^\/werkzaamheden\/([^/]+)$/, 'werkzaamheden', werkDetail],
   [/^\/objecten$/, 'objecten', objectenLijst],
   [/^\/objecten\/nieuw$/, 'objecten', () => objectFormulier()],
   [/^\/objecten\/([^/]+)\/bewerken$/, 'objecten', objectFormulier],
   [/^\/objecten\/([^/]+)$/, 'objecten', objectDetail],
   [/^\/inspecties$/, 'inspecties', inspectiesLijst],
   [/^\/inspecties\/nieuw$/, 'inspecties', (_, q) => inspectieFormulier(null, q.get('object'))],
-  [/^\/inspecties\/([^/]+)\/bewerken$/, 'inspecties', inspectieFormulier],
+  [/^\/inspecties\/([^/]+)\/bewerken$/, 'inspecties', (id) => inspectieFormulier(id)],
   [/^\/inspecties\/([^/]+)\/rapport$/, 'inspecties', inspectieRapport],
   [/^\/inspecties\/([^/]+)$/, 'inspecties', inspectieDetail],
   [/^\/maatregelen$/, 'maatregelen', maatregelen],
@@ -50,6 +63,13 @@ async function router() {
   const query = new URLSearchParams(zoek);
   const route = ROUTES.find(([re]) => re.test(pad));
   formulierGewijzigd = false;
+  const mobiel = isMobiel();
+  document.body.classList.toggle('modus-mobiel', mobiel);
+  document.querySelectorAll('[data-mnav]').forEach((a) => {
+    const actief = route?.[1] === a.dataset.mnav;
+    a.classList.toggle('actief', actief);
+    if (actief) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+  });
   document.querySelectorAll('[data-nav]').forEach((a) => {
     a.classList.toggle('actief', route?.[1] === a.dataset.nav);
     if (route?.[1] === a.dataset.nav) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
@@ -82,12 +102,13 @@ window.addEventListener('beforeunload', (e) => {
 // Gegevens en afgeleide informatie
 // ---------------------------------------------------------------------------
 async function laadAlles() {
-  const [objecten, inspecties] = await Promise.all([db.alle('objecten'), db.alle('inspecties')]);
+  const [objecten, inspecties, werkzaamheden] = await Promise.all([db.alle('objecten'), db.alle('inspecties'), db.alle('werkzaamheden')]);
+  werkzaamheden.sort((a, b) => String(b.datum).localeCompare(String(a.datum)) || String(b.gewijzigd).localeCompare(String(a.gewijzigd)));
   objecten.sort((a, b) => String(a.code).localeCompare(String(b.code), 'nl', { numeric: true }));
   inspecties.sort((a, b) => String(b.datum).localeCompare(String(a.datum)));
   const objectMap = new Map(objecten.map((o) => [o.id, o]));
   const status = new Map(objecten.map((o) => [o.id, objectStatus(o, inspecties)]));
-  return { objecten, inspecties, objectMap, status };
+  return { objecten, inspecties, werkzaamheden, objectMap, status };
 }
 
 function objectStatus(object, inspecties) {
@@ -159,7 +180,7 @@ async function fotosHtml(ids, { verwijderbaar = false } = {}) {
 // Dashboard
 // ---------------------------------------------------------------------------
 async function dashboard() {
-  const { objecten, inspecties, objectMap, status } = await laadAlles();
+  const { objecten, inspecties, werkzaamheden, objectMap, status } = await laadAlles();
   if (objecten.length === 0) {
     app.innerHTML = `
       <div class="paginakop"><div><h1>Dashboard</h1><p>Overzicht van het areaal en de inspectieplanning.</p></div></div>
@@ -183,6 +204,9 @@ async function dashboard() {
   const maatregelenOpen = alleMaatregelen(inspecties, objectMap).filter((m) => m.gebrek.maatregelStatus !== 'uitgevoerd');
   const direct = maatregelenOpen.filter((m) => m.gebrek.urgentie === 'direct').length;
   const kosten = maatregelenOpen.reduce((t, m) => t + (Number(m.gebrek.kostenraming) || 0), 0);
+  const grens = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const werkRecent = werkzaamheden.filter((w) => String(w.datum) >= grens);
+  const urenRecent = werkRecent.reduce((t, w) => t + (Number(w.uren) || 0), 0);
 
   const verdeling = [1, 2, 3, 4, 5, 6].map((s) => ({ s, n: statussen.filter((x) => x.conditie === s).length }));
   const geen = statussen.filter((x) => !x.conditie).length;
@@ -198,6 +222,7 @@ async function dashboard() {
       <div><h1>Dashboard</h1><p>Overzicht van het areaal en de inspectieplanning.</p></div>
       <div class="knoppen">
         <a class="knop" href="#/objecten/nieuw">+ Object</a>
+        <a class="knop" href="#/werkzaamheden/nieuw">+ Werkzaamheid</a>
         <a class="knop primair" href="#/inspecties/nieuw">+ Inspectie</a>
       </div>
     </div>
@@ -208,6 +233,7 @@ async function dashboard() {
       <div class="kaart"><div class="getal">${binnenkort}</div><div class="label">Inspectie binnen 90 dagen</div></div>
       <div class="kaart ${direct ? 'waarschuwing' : ''}"><div class="getal">${direct}</div><div class="label">Directe maatregelen open</div></div>
       <div class="kaart"><div class="getal" style="font-size:1.5rem">${euro(kosten)}</div><div class="label">Raming open maatregelen</div></div>
+      <div class="kaart"><div class="getal">${werkRecent.length}</div><div class="label">Werkzaamheden, laatste 30 dagen (${urenTekst(urenRecent)})</div></div>
     </div>
     <div class="raster-2">
       <section class="kaart">
@@ -231,6 +257,16 @@ async function dashboard() {
               <td>${i.status === 'afgerond' ? scoreLabel(inspectieScore(i)) : statusLabel(i.status)}</td>
             </tr>`).join('')}
         </tbody></table></div>` : '<p class="leeg">Nog geen inspecties uitgevoerd.</p>'}
+      </section>
+      <section class="kaart">
+        <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">Recente werkzaamheden</h2><a href="#/werkzaamheden">Alle →</a></div>
+        ${werkzaamheden.length ? `<div class="tabelhouder"><table><tbody>
+          ${werkzaamheden.slice(0, 6).map((w) => `
+            <tr class="klikbaar" data-href="#/werkzaamheden/${esc(w.id)}">
+              <td>${datumNL(w.datum)}</td><td>${objectNaam(objectMap.get(w.objectId))}</td><td>${esc(w.soort || '–')}</td>
+              <td>${werkStatusLabel(w.status)}</td>
+            </tr>`).join('')}
+        </tbody></table></div>` : '<p class="leeg">Nog geen werkzaamheden geregistreerd.</p>'}
       </section>
     </div>
     <section class="kaart">
@@ -314,7 +350,7 @@ async function objectenLijst() {
 }
 
 async function objectDetail(id) {
-  const { inspecties, objectMap } = await laadAlles();
+  const { inspecties, werkzaamheden, objectMap } = await laadAlles();
   const o = objectMap.get(id);
   if (!o) {
     app.innerHTML = leegKaart('Object niet gevonden.', '<a class="knop" href="#/objecten">Terug naar objecten</a>');
@@ -322,6 +358,7 @@ async function objectDetail(id) {
   }
   const s = objectStatus(o, inspecties);
   const eigen = inspecties.filter((i) => i.objectId === id);
+  const eigenWerk = werkzaamheden.filter((w) => w.objectId === id);
   const maatregelenOpen = alleMaatregelen(eigen, objectMap).filter((m) => m.gebrek.maatregelStatus !== 'uitgevoerd');
   const heeftLocatie = o.lat !== '' && o.lat != null && o.lng !== '' && o.lng != null;
 
@@ -331,6 +368,7 @@ async function objectDetail(id) {
       <div class="knoppen">
         <a class="knop" href="#/objecten/${esc(id)}/bewerken">Bewerken</a>
         <button class="knop gevaar" id="verwijder">Verwijderen</button>
+        <a class="knop" href="#/werkzaamheden/nieuw?object=${esc(id)}">+ Werkzaamheid</a>
         <a class="knop primair" href="#/inspecties/nieuw?object=${esc(id)}">+ Nieuwe inspectie</a>
       </div>
     </div>
@@ -372,6 +410,16 @@ async function objectDetail(id) {
             <td>${i.gebreken?.length ?? 0}</td><td>${scoreLabel(inspectieScore(i))}</td><td>${statusLabel(i.status)}</td>
           </tr>`).join('')}</tbody></table></div>` : '<p class="leeg">Er zijn nog geen inspecties voor dit object.</p>'}
     </section>
+    <section class="kaart">
+      <h2>Uitgevoerde werkzaamheden</h2>
+      ${eigenWerk.length ? `<div class="tabelhouder"><table>
+        <thead><tr><th>Datum</th><th>Soort</th><th class="verberg-mobiel">Uitvoerder</th><th>Uren</th><th>Status</th></tr></thead>
+        <tbody>${eigenWerk.map((w) => `
+          <tr class="klikbaar" data-href="#/werkzaamheden/${esc(w.id)}">
+            <td>${datumNL(w.datum)}</td><td>${esc(w.soort || '–')}</td><td class="verberg-mobiel">${esc(w.uitvoerder || '–')}</td>
+            <td>${urenTekst(w.uren)}</td><td>${werkStatusLabel(w.status)}</td>
+          </tr>`).join('')}</tbody></table></div>` : '<p class="leeg">Er zijn nog geen werkzaamheden geregistreerd voor dit object.</p>'}
+    </section>
     ${maatregelenOpen.length ? `<section class="kaart">
       <h2>Openstaande maatregelen</h2>
       <div class="tabelhouder"><table>
@@ -382,10 +430,14 @@ async function objectDetail(id) {
         </tbody></table></div></section>` : ''}`;
 
   app.querySelector('#verwijder').onclick = async () => {
-    const tekst = eigen.length
-      ? `Object ${o.code} en de ${eigen.length} bijbehorende inspectie(s) inclusief foto's definitief verwijderen?`
+    const tekst = eigen.length || eigenWerk.length
+      ? `Object ${o.code} met ${eigen.length} inspectie(s) en ${eigenWerk.length} werkzaamheid/werkzaamheden inclusief foto's definitief verwijderen?`
       : `Object ${o.code} definitief verwijderen?`;
     if (!confirm(tekst)) return;
+    for (const w of eigenWerk) {
+      for (const fid of w.fotoIds ?? []) await db.verwijder('fotos', fid);
+      await db.verwijder('werkzaamheden', w.id);
+    }
     for (const i of eigen) await verwijderInspectieData(i);
     await db.verwijder('objecten', id);
     melding('Object verwijderd');
@@ -546,16 +598,18 @@ async function laadFotos(ids) {
   return (await Promise.all((ids ?? []).map((id) => db.haal('fotos', id)))).filter(Boolean).map((f) => ({ id: f.id, data: f.data }));
 }
 
-async function inspectieFormulier(id, objectId) {
+async function inspectieFormulier(id, objectId, { mobiel = false } = {}) {
   const objecten = (await db.alle('objecten')).sort((a, b) => String(a.code).localeCompare(String(b.code), 'nl', { numeric: true }));
   const bestaand = id ? await db.haal('inspecties', id) : null;
   if (id && !bestaand) {
-    app.innerHTML = leegKaart('Inspectie niet gevonden.', '<a class="knop" href="#/inspecties">Terug</a>');
+    app.innerHTML = leegKaart('Inspectie niet gevonden.', `<a class="knop" href="${mobiel ? '#/' : '#/inspecties'}">Terug</a>`);
     return;
   }
   if (!objecten.length) {
-    app.innerHTML = leegKaart('Registreer eerst een object voordat je een inspectie vastlegt.',
-      '<a class="knop primair" href="#/objecten/nieuw">+ Object registreren</a>');
+    app.innerHTML = leegKaart(mobiel
+      ? 'Er zijn nog geen objecten. Richt de objecten eerst in via de website op de pc.'
+      : 'Registreer eerst een object voordat je een inspectie vastlegt.',
+    mobiel ? '' : '<a class="knop primair" href="#/objecten/nieuw">+ Object registreren</a>');
     return;
   }
 
@@ -567,36 +621,57 @@ async function inspectieFormulier(id, objectId) {
       gebreken: await Promise.all((bestaand.gebreken ?? []).map(async (g) => ({ ...g, fotos: await laadFotos(g.fotoIds) }))),
     }
     : {
-      objectId: objectId ?? '', datum: vandaag(), inspecteur: instelling.lees('inspecteur'), soort: INSPECTIESOORTEN[0],
+      objectId: objectId ?? '', datum: vandaag(), inspecteur: instelling.lees('inspecteur'),
+      soort: mobiel ? 'Schouw' : INSPECTIESOORTEN[0],
       weer: '', status: 'concept', samenvatting: '', fotos: [], gebreken: [],
     };
   const origineleFotoIds = new Set([...(bestaand?.fotoIds ?? []), ...(bestaand?.gebreken ?? []).flatMap((g) => g.fotoIds ?? [])]);
-  const terug = bestaand ? `#/inspecties/${esc(id)}` : (objectId ? `#/objecten/${esc(objectId)}` : '#/inspecties');
+  const terug = mobiel ? '#/' : bestaand ? `#/inspecties/${esc(id)}` : (objectId ? `#/objecten/${esc(objectId)}` : '#/inspecties');
+  const object = objecten.find((o) => o.id === staat.objectId);
+  const openDetails = new Set(); // houdt opengeklapte onderdelen open bij hertekenen
 
-  app.innerHTML = `
+  const objectVeld = mobiel && object
+    ? `<input type="hidden" name="objectId" value="${esc(object.id)}">`
+    : `<div class="veld breed"><label for="f-object" class="vereist">Object</label>
+        <select id="f-object" name="objectId" required><option value="">– kies een object –</option>
+        ${objecten.map((o) => optie(o.id, `${o.code} – ${o.naam}`, staat.objectId)).join('')}</select></div>`;
+  const veldDatum = `<div class="veld"><label for="f-datum" class="vereist">Datum</label>
+      <input id="f-datum" name="datum" type="date" required value="${esc(staat.datum)}"></div>`;
+  const veldSoort = `<div class="veld"><label for="f-soort">Soort</label>
+      <select id="f-soort" name="soort">${INSPECTIESOORTEN.map((s) => optie(s, s, staat.soort)).join('')}</select></div>`;
+  const veldInspecteur = `<div class="veld"><label for="f-inspecteur">Inspecteur</label>
+      <input id="f-inspecteur" name="inspecteur" value="${esc(staat.inspecteur)}" maxlength="100"></div>`;
+  const veldWeer = `<div class="veld"><label for="f-weer">Weersomstandigheden</label>
+      <select id="f-weer" name="weer"><option value="">–</option>${WEER.map((w) => optie(w, w, staat.weer)).join('')}</select></div>`;
+  const veldSamenvatting = `<div class="veld breed"><label for="f-samenvatting">${mobiel ? 'Algemene bevindingen' : 'Samenvatting / algemene bevindingen'}</label>
+      <textarea id="f-samenvatting" name="samenvatting" maxlength="4000">${esc(staat.samenvatting)}</textarea></div>`;
+  const veldFotos = `<div class="veld breed"><label>Overzichtsfoto's</label><div id="algemene-fotos"></div></div>`;
+
+  app.innerHTML = mobiel ? `
+    <div class="mkop"><a href="#/" class="mterug" aria-label="Terug">←</a>
+      <div><small>${bestaand ? 'Inspectie bewerken' : 'Schouw & inspectie'}</small>
+      <h1>${object ? `${esc(object.code)} – ${esc(object.naam)}` : 'Kies een object'}</h1></div></div>
+    <form id="form" novalidate class="mform">
+      <section class="kaart">
+        <div class="velden">${objectVeld}${veldSoort}${veldDatum}${veldSamenvatting}${veldFotos}</div>
+        <details data-details="algemeen"><summary>Inspecteur en weer</summary>
+          <div class="velden" style="margin-top:.75rem">${veldInspecteur}${veldWeer}</div></details>
+      </section>
+      <div class="mtussen"><h2>Gebreken</h2><div id="totaal"></div></div>
+      <div id="gebreken"></div>
+      <button type="button" class="knop mgroot" id="gebrek-toevoegen">＋ Gebrek vastleggen</button>
+      <div class="mvoet">
+        <button class="knop" type="submit" data-status="concept">Concept</button>
+        <button class="knop primair" type="submit" data-status="afgerond">✓ Afronden</button>
+      </div>
+    </form>` : `
     <div class="paginakop"><div><p><a href="${terug}">← Terug</a></p>
       <h1>${bestaand ? 'Inspectie bewerken' : 'Nieuwe inspectie'}</h1></div>
       <div id="totaal"></div></div>
     <form id="form" novalidate>
       <section class="kaart">
         <h2>Algemeen</h2>
-        <div class="velden">
-          <div class="veld breed"><label for="f-object" class="vereist">Object</label>
-            <select id="f-object" name="objectId" required><option value="">– kies een object –</option>
-            ${objecten.map((o) => optie(o.id, `${o.code} – ${o.naam}`, staat.objectId)).join('')}</select></div>
-          <div class="veld"><label for="f-datum" class="vereist">Inspectiedatum</label>
-            <input id="f-datum" name="datum" type="date" required value="${esc(staat.datum)}"></div>
-          <div class="veld"><label for="f-inspecteur">Inspecteur</label>
-            <input id="f-inspecteur" name="inspecteur" value="${esc(staat.inspecteur)}" maxlength="100"></div>
-          <div class="veld"><label for="f-soort">Soort inspectie</label>
-            <select id="f-soort" name="soort">${INSPECTIESOORTEN.map((s) => optie(s, s, staat.soort)).join('')}</select></div>
-          <div class="veld"><label for="f-weer">Weersomstandigheden</label>
-            <select id="f-weer" name="weer"><option value="">–</option>${WEER.map((w) => optie(w, w, staat.weer)).join('')}</select></div>
-          <div class="veld breed"><label for="f-samenvatting">Samenvatting / algemene bevindingen</label>
-            <textarea id="f-samenvatting" name="samenvatting" maxlength="4000">${esc(staat.samenvatting)}</textarea></div>
-          <div class="veld breed"><label>Overzichtsfoto's</label>
-            <div id="algemene-fotos"></div></div>
-        </div>
+        <div class="velden">${objectVeld}${veldDatum}${veldInspecteur}${veldSoort}${veldWeer}${veldSamenvatting}${veldFotos}</div>
       </section>
       <section>
         <div class="paginakop"><h2 style="margin:0">Gebreken</h2>
@@ -617,54 +692,68 @@ async function inspectieFormulier(id, objectId) {
     <div class="fotos">
       ${fotos.map((f, n) => `<div class="foto"><img src="${esc(f.data)}" alt="Foto ${n + 1}" data-lichtbak>
         <button type="button" data-foto-weg="${esc(sleutel)}:${n}" aria-label="Foto verwijderen">×</button></div>`).join('')}
-      <label class="knop fotoknop">📷 Foto toevoegen
+      <label class="knop fotoknop">📷 Foto${mobiel ? '' : ' toevoegen'}
         <input type="file" accept="image/*" capture="environment" multiple data-foto-bij="${esc(sleutel)}"></label>
     </div>`;
 
   const scoreVoor = (g) => scoreLabel(gebrekScore(g));
   const toonTotaal = () => {
-    app.querySelector('#totaal').innerHTML = `<div style="text-align:right"><small>Conditie (maatgevend gebrek)</small><br>${scoreLabel(inspectieScore(staat), true)}</div>`;
+    app.querySelector('#totaal').innerHTML = mobiel
+      ? scoreLabel(inspectieScore(staat))
+      : `<div style="text-align:right"><small>Conditie (maatgevend gebrek)</small><br>${scoreLabel(inspectieScore(staat), true)}</div>`;
   };
 
-  const gebrekHtml = (g, i) => `
+  const gebrekHtml = (g, i) => {
+    const v = {
+      bouwdeel: `<div class="veld"><label>Bouwdeel</label><select data-g="${i}" data-veld="bouwdeel"><option value="">– kies –</option>
+        ${BOUWDELEN.map((b) => optie(b, b, g.bouwdeel)).join('')}</select></div>`,
+      gebrek: `<div class="veld"><label>Gebrek</label><select data-g="${i}" data-veld="gebrek"><option value="">– kies –</option>
+        ${GEBREKEN.map((b) => optie(b, b, g.gebrek)).join('')}</select></div>`,
+      locatie: `<div class="veld"><label>Plaats</label><input data-g="${i}" data-veld="locatie" value="${esc(g.locatie)}" placeholder="bijv. steunpunt 2, zuidzijde" maxlength="200"></div>`,
+      ernst: `<div class="veld"><label>Ernst</label><select data-g="${i}" data-veld="ernst">
+        ${Object.entries(ERNST).map(([k, x]) => optie(k, x.label, g.ernst)).join('')}</select></div>`,
+      intensiteit: `<div class="veld"><label>Intensiteit</label><select data-g="${i}" data-veld="intensiteit">
+        ${Object.entries(INTENSITEIT).map(([k, x]) => optie(k, `${k} · ${x}`, g.intensiteit)).join('')}</select></div>`,
+      omvang: `<div class="veld"><label>Omvang (% van bouwdeel)</label>
+        <input type="number" min="0" max="100" step="0.5" inputmode="decimal" data-g="${i}" data-veld="omvang" value="${esc(g.omvang)}">
+        <small data-omvang="${i}">${OMVANG_KLASSEN[omvangKlasse(g.omvang) - 1].label}</small></div>`,
+      conditie: `<div class="veld"><label>Conditie</label><select data-g="${i}" data-veld="conditieHandmatig">
+        ${optie('', 'Automatisch (ernst × intensiteit × omvang)', g.conditieHandmatig)}
+        ${[1, 2, 3, 4, 5, 6].map((s) => optie(s, `Handmatig: ${s} · ${CONDITIES[s].label}`, g.conditieHandmatig)).join('')}</select></div>`,
+      toelichting: `<div class="veld breed"><label>Toelichting / waarneming</label>
+        <textarea data-g="${i}" data-veld="toelichting" maxlength="4000">${esc(g.toelichting)}</textarea></div>`,
+      maatregel: `<div class="veld breed"><label>Advies maatregel</label>
+        <textarea data-g="${i}" data-veld="maatregel" maxlength="2000" style="min-height:60px">${esc(g.maatregel)}</textarea></div>`,
+      urgentie: `<div class="veld"><label>Urgentie</label><select data-g="${i}" data-veld="urgentie"><option value="">–</option>
+        ${URGENTIES.map((u) => optie(u.id, u.label, g.urgentie)).join('')}</select></div>`,
+      kosten: `<div class="veld"><label>Kostenraming (€)</label>
+        <input type="number" min="0" step="100" inputmode="numeric" data-g="${i}" data-veld="kostenraming" value="${esc(g.kostenraming)}"></div>`,
+      status: `<div class="veld"><label>Status maatregel</label><select data-g="${i}" data-veld="maatregelStatus">
+        ${optie('open', 'Open', g.maatregelStatus)}${optie('uitgevoerd', 'Uitgevoerd', g.maatregelStatus)}</select></div>`,
+      fotos: `<div class="veld breed"><label>Foto's</label>${fotoBlok(g.fotos, `g${i}`)}</div>`,
+    };
+    const sleutel = `advies-${g.id}`;
+    const inhoud = mobiel
+      ? `<div class="velden">${v.fotos}${v.bouwdeel}${v.gebrek}${v.ernst}${v.intensiteit}${v.omvang}${v.toelichting}</div>
+         <details data-details="${sleutel}" ${openDetails.has(sleutel) ? 'open' : ''}><summary>Plaats, advies en urgentie</summary>
+           <div class="velden" style="margin-top:.75rem">${v.locatie}${v.maatregel}${v.urgentie}${v.kosten}${v.conditie}${v.status}</div></details>`
+      : `<div class="velden">${v.bouwdeel}${v.gebrek}${v.locatie}${v.ernst}${v.intensiteit}${v.omvang}${v.conditie}${v.toelichting}
+           ${v.maatregel}${v.urgentie}${v.kosten}${v.status}${v.fotos}</div>`;
+    return `
     <div class="gebrek" data-gebrek="${i}" style="border-left-color:${CONDITIES[gebrekScore(g)].kleur}">
       <div class="gebrek-kop"><h3 style="margin:0">Gebrek ${i + 1}</h3>
         <div class="knoppen"><span data-score="${i}">${scoreVoor(g)}</span>
-        <button type="button" class="knop klein gevaar" data-gebrek-weg="${i}">Verwijderen</button></div></div>
-      <div class="velden">
-        <div class="veld"><label>Bouwdeel</label><select data-g="${i}" data-veld="bouwdeel"><option value="">– kies –</option>
-          ${BOUWDELEN.map((b) => optie(b, b, g.bouwdeel)).join('')}</select></div>
-        <div class="veld"><label>Gebrek</label><select data-g="${i}" data-veld="gebrek"><option value="">– kies –</option>
-          ${GEBREKEN.map((b) => optie(b, b, g.gebrek)).join('')}</select></div>
-        <div class="veld"><label>Plaats</label><input data-g="${i}" data-veld="locatie" value="${esc(g.locatie)}" placeholder="bijv. steunpunt 2, zuidzijde" maxlength="200"></div>
-        <div class="veld"><label>Ernst</label><select data-g="${i}" data-veld="ernst">
-          ${Object.entries(ERNST).map(([k, v]) => optie(k, v.label, g.ernst)).join('')}</select></div>
-        <div class="veld"><label>Intensiteit</label><select data-g="${i}" data-veld="intensiteit">
-          ${Object.entries(INTENSITEIT).map(([k, v]) => optie(k, `${k} · ${v}`, g.intensiteit)).join('')}</select></div>
-        <div class="veld"><label>Omvang (% van bouwdeel)</label>
-          <input type="number" min="0" max="100" step="0.5" inputmode="decimal" data-g="${i}" data-veld="omvang" value="${esc(g.omvang)}">
-          <small data-omvang="${i}">${OMVANG_KLASSEN[omvangKlasse(g.omvang) - 1].label}</small></div>
-        <div class="veld"><label>Conditie</label><select data-g="${i}" data-veld="conditieHandmatig">
-          ${optie('', 'Automatisch (ernst × intensiteit × omvang)', g.conditieHandmatig)}
-          ${[1, 2, 3, 4, 5, 6].map((s) => optie(s, `Handmatig: ${s} · ${CONDITIES[s].label}`, g.conditieHandmatig)).join('')}</select></div>
-        <div class="veld breed"><label>Toelichting / waarneming</label>
-          <textarea data-g="${i}" data-veld="toelichting" maxlength="4000">${esc(g.toelichting)}</textarea></div>
-        <div class="veld breed"><label>Advies maatregel</label>
-          <textarea data-g="${i}" data-veld="maatregel" maxlength="2000" style="min-height:60px">${esc(g.maatregel)}</textarea></div>
-        <div class="veld"><label>Urgentie</label><select data-g="${i}" data-veld="urgentie"><option value="">–</option>
-          ${URGENTIES.map((u) => optie(u.id, u.label, g.urgentie)).join('')}</select></div>
-        <div class="veld"><label>Kostenraming (€)</label>
-          <input type="number" min="0" step="100" inputmode="numeric" data-g="${i}" data-veld="kostenraming" value="${esc(g.kostenraming)}"></div>
-        <div class="veld"><label>Status maatregel</label><select data-g="${i}" data-veld="maatregelStatus">
-          ${optie('open', 'Open', g.maatregelStatus)}${optie('uitgevoerd', 'Uitgevoerd', g.maatregelStatus)}</select></div>
-        <div class="veld breed"><label>Foto's</label>${fotoBlok(g.fotos, `g${i}`)}</div>
-      </div>
+        <button type="button" class="knop klein gevaar" data-gebrek-weg="${i}">${mobiel ? '🗑' : 'Verwijderen'}</button></div></div>
+      ${inhoud}
     </div>`;
+  };
 
   const toonGebreken = () => {
     app.querySelector('#gebreken').innerHTML = staat.gebreken.length
       ? staat.gebreken.map(gebrekHtml).join('')
-      : leegKaart('Geen gebreken vastgelegd. Een inspectie zonder gebreken krijgt conditie 1 (uitstekend).');
+      : leegKaart(mobiel
+        ? 'Geen gebreken? Rond de schouw dan direct af.'
+        : 'Geen gebreken vastgelegd. Een inspectie zonder gebreken krijgt conditie 1 (uitstekend).');
     toonTotaal();
   };
   const toonAlgemeneFotos = () => { app.querySelector('#algemene-fotos').innerHTML = fotoBlok(staat.fotos, 'alg'); };
@@ -673,6 +762,12 @@ async function inspectieFormulier(id, objectId) {
 
   toonAlgemeneFotos();
   toonGebreken();
+
+  form.addEventListener('toggle', (e) => {
+    const k = e.target.dataset?.details;
+    if (!k) return;
+    if (e.target.open) openDetails.add(k); else openDetails.delete(k);
+  }, true);
 
   form.addEventListener('input', (e) => {
     formulierGewijzigd = true;
@@ -724,7 +819,9 @@ async function inspectieFormulier(id, objectId) {
     staat.gebreken.push(nieuwGebrek());
     formulierGewijzigd = true;
     toonGebreken();
-    app.querySelector(`[data-gebrek="${staat.gebreken.length - 1}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const nieuw = app.querySelector(`[data-gebrek="${staat.gebreken.length - 1}"]`);
+    nieuw?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (mobiel) nieuw?.querySelector('input[type=file]')?.closest('label')?.focus();
   };
 
   form.onsubmit = async (e) => {
@@ -769,7 +866,7 @@ async function inspectieFormulier(id, objectId) {
     if (data.inspecteur) instelling.schrijf('inspecteur', data.inspecteur);
     formulierGewijzigd = false;
     melding(status === 'afgerond' ? 'Inspectie afgerond en opgeslagen' : 'Concept opgeslagen');
-    ga(`#/inspecties/${inspectieId}`);
+    ga(mobiel ? '#/' : `#/inspecties/${inspectieId}`);
   };
 }
 
@@ -1023,6 +1120,505 @@ async function kaart() {
 }
 
 // ---------------------------------------------------------------------------
+// Weergave: mobiel (veldwerk) of volledig (inrichten op de pc)
+// ---------------------------------------------------------------------------
+const mobielMedia = window.matchMedia('(max-width: 760px)');
+
+function isMobiel() {
+  const w = instelling.lees('weergave', 'auto');
+  if (w === 'mobiel') return true;
+  if (w === 'volledig') return false;
+  return mobielMedia.matches;
+}
+
+mobielMedia.addEventListener('change', () => {
+  if (instelling.lees('weergave', 'auto') === 'auto' && !formulierGewijzigd) router();
+});
+
+function groet() {
+  const uur = new Date().getHours();
+  if (uur < 6) return 'Goedenacht';
+  if (uur < 12) return 'Goedemorgen';
+  if (uur < 18) return 'Goedemiddag';
+  return 'Goedenavond';
+}
+
+// ---------------------------------------------------------------------------
+// Mobiel: startscherm met de twee veldfuncties
+// ---------------------------------------------------------------------------
+async function mobielStart() {
+  const [objecten, inspecties, werk] = await Promise.all([db.alle('objecten'), db.alle('inspecties'), db.alle('werkzaamheden')]);
+  const objectMap = new Map(objecten.map((o) => [o.id, o]));
+  const naam = instelling.lees('inspecteur');
+  const concepten = inspecties.filter((i) => i.status === 'concept')
+    .sort((a, b) => String(b.gewijzigd).localeCompare(String(a.gewijzigd)));
+  const dag = vandaag();
+  const vandaagLijst = [
+    ...werk.filter((w) => w.datum === dag).map((w) => ({
+      href: `#/m/werk/${w.id}`, icoon: '🛠️', titel: w.soort || 'Werkzaamheid', object: objectMap.get(w.objectId), tijd: w.gewijzigd,
+    })),
+    ...inspecties.filter((i) => i.datum === dag && i.status === 'afgerond').map((i) => ({
+      href: `#/m/inspectie/${i.id}`, icoon: '🔍', titel: `${i.soort} · ${i.gebreken?.length ?? 0} gebrek(en)`, object: objectMap.get(i.objectId), tijd: i.gewijzigd,
+    })),
+  ].sort((a, b) => String(b.tijd).localeCompare(String(a.tijd)));
+
+  const loginHint = sync.isIngesteld() && !sync.sessie()
+    ? `<a class="kaart mhint" href="#/m/account">🔑 <span><strong>Log in</strong> zodat je werk ook op kantoor zichtbaar is.</span></a>` : '';
+  const regel = (x) => `<li><a href="${x.href}"><span class="micoon klein">${x.icoon}</span>
+    <span><strong>${esc(x.titel)}</strong><small>${objectNaam(x.object)}</small></span></a></li>`;
+
+  app.innerHTML = `
+    <div class="mstart">
+      <p class="mgroet">${groet()}${naam ? `, ${esc(naam)}` : ''}</p>
+      ${loginHint}
+      <a class="mtegel" href="#/m/werk">
+        <span class="micoon">🛠️</span>
+        <span><strong>Registratie werkzaamheden</strong><small>Uitgevoerd werk vastleggen, met foto's en uren</small></span>
+      </a>
+      <a class="mtegel" href="#/m/inspectie">
+        <span class="micoon">🔍</span>
+        <span><strong>Schouw &amp; inspectie</strong><small>Gebreken vastleggen met foto's en conditie</small></span>
+      </a>
+      ${concepten.length ? `<h2>Verder gaan</h2><ul class="mlijst">${concepten.slice(0, 5).map((i) => regel({
+    href: `#/m/inspectie/${i.id}`, icoon: '📝', titel: `Concept ${i.soort.toLowerCase()} · ${datumNL(i.datum)}`, object: objectMap.get(i.objectId),
+  })).join('')}</ul>` : ''}
+      <h2>Vandaag vastgelegd</h2>
+      ${vandaagLijst.length ? `<ul class="mlijst">${vandaagLijst.map(regel).join('')}</ul>` : '<p class="mleeg">Nog niets vastgelegd vandaag.</p>'}
+    </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Mobiel: object kiezen (zoeken of dichtbij via GPS)
+// ---------------------------------------------------------------------------
+let laatstePositie = null;
+
+function afstandMeter(a, b) {
+  const r = (x) => (x * Math.PI) / 180;
+  const dLat = r(b.lat - a.lat);
+  const dLng = r(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 6371000 * 2 * Math.asin(Math.sqrt(h));
+}
+
+function afstandTekst(m) {
+  return m < 1000 ? `${Math.round(m / 10) * 10} m` : `${(m / 1000).toFixed(m < 10000 ? 1 : 0).replace('.', ',')} km`;
+}
+
+async function objectKiezer(doel) {
+  const objecten = (await db.alle('objecten'))
+    .filter((o) => o.status !== 'Gesloopt')
+    .sort((a, b) => String(a.code).localeCompare(String(b.code), 'nl', { numeric: true }));
+  const titel = doel === 'werk' ? 'Registratie werkzaamheden' : 'Schouw & inspectie';
+  app.innerHTML = `
+    <div class="mkop"><a href="#/" class="mterug" aria-label="Terug">←</a>
+      <div><small>${titel}</small><h1>Kies een object</h1></div></div>
+    ${objecten.length ? `
+    <div class="mzoek">
+      <input type="search" id="zoek" placeholder="Zoek op code, naam of locatie" autocomplete="off" aria-label="Zoeken">
+      <button class="knop" id="dichtbij" type="button">📍 Dichtbij</button>
+    </div>
+    <ul class="mlijst" id="lijst"></ul>` : leegKaart('Er zijn nog geen objecten. Richt de objecten eerst in via de website op de pc.')}`;
+  if (!objecten.length) return;
+
+  const zoek = app.querySelector('#zoek');
+  const toon = () => {
+    const q = zoek.value.trim().toLowerCase();
+    let lijst = objecten.filter((o) => !q || `${o.code} ${o.naam} ${o.locatie} ${o.type}`.toLowerCase().includes(q));
+    const metAfstand = lijst.map((o) => {
+      const lat = parseFloat(o.lat);
+      const lng = parseFloat(o.lng);
+      const afstand = laatstePositie && Number.isFinite(lat) && Number.isFinite(lng) ? afstandMeter(laatstePositie, { lat, lng }) : null;
+      return { o, afstand };
+    });
+    if (laatstePositie) metAfstand.sort((a, b) => (a.afstand ?? Infinity) - (b.afstand ?? Infinity));
+    lijst = metAfstand;
+    app.querySelector('#lijst').innerHTML = lijst.length ? lijst.map(({ o, afstand }) => `
+      <li><a href="#/m/${doel}/nieuw?object=${encodeURIComponent(o.id)}">
+        <span><strong>${esc(o.code)} – ${esc(o.naam)}</strong><small>${esc([o.type, o.locatie].filter(Boolean).join(' · '))}</small></span>
+        ${afstand != null ? `<span class="mafstand">${afstandTekst(afstand)}</span>` : '<span class="mpijl">›</span>'}
+      </a></li>`).join('') : '<li class="mleeg">Geen objecten gevonden.</li>';
+  };
+  zoek.addEventListener('input', toon);
+  app.querySelector('#dichtbij').onclick = () => {
+    if (!navigator.geolocation) return melding('Locatiebepaling wordt niet ondersteund.', 'fout');
+    const knop = app.querySelector('#dichtbij');
+    knop.disabled = true;
+    knop.textContent = '📍 Zoeken…';
+    navigator.geolocation.getCurrentPosition((pos) => {
+      laatstePositie = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      knop.disabled = false;
+      knop.textContent = '📍 Dichtbij';
+      toon();
+    }, (fout) => {
+      knop.disabled = false;
+      knop.textContent = '📍 Dichtbij';
+      melding(`Locatie niet beschikbaar: ${fout.message}`, 'fout');
+    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+  };
+  toon();
+}
+
+// ---------------------------------------------------------------------------
+// Mobiel: account en weergave
+// ---------------------------------------------------------------------------
+async function mobielAccount() {
+  app.innerHTML = `
+    <div class="mkop"><a href="#/" class="mterug" aria-label="Terug">←</a><div><small>Instellingen</small><h1>Account</h1></div></div>
+    <section class="kaart" id="account"></section>
+    <form class="kaart" id="naam">
+      <div class="veld"><label for="f-naam">Je naam (inspecteur / uitvoerder)</label>
+        <input id="f-naam" name="naam" value="${esc(instelling.lees('inspecteur'))}" autocomplete="name"></div>
+      <div class="formvoet"><button class="knop primair" type="submit">Opslaan</button></div>
+    </form>
+    <section class="kaart">
+      <h2>Weergave</h2>
+      <p>Dashboard, objectbeheer en rapporten zitten in de volledige versie, bedoeld voor de pc.</p>
+      <button class="knop" id="volledig" type="button">Volledige versie openen</button>
+    </section>`;
+  toonAccount(app.querySelector('#account'));
+  app.querySelector('#naam').onsubmit = (e) => {
+    e.preventDefault();
+    instelling.schrijf('inspecteur', formulierData(e.target).naam);
+    melding('Naam opgeslagen');
+  };
+  app.querySelector('#volledig').onclick = () => {
+    instelling.schrijf('weergave', 'volledig');
+    ga('#/');
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Werkzaamheden
+// ---------------------------------------------------------------------------
+const WERKSTATUS = { gereed: 'Gereed', vervolg: 'Vervolg nodig' };
+
+function werkStatusLabel(status) {
+  return `<span class="label-status ${status === 'vervolg' ? 'binnenkort' : 'afgerond'}">${WERKSTATUS[status] ?? 'Gereed'}</span>`;
+}
+
+function urenTekst(uren) {
+  const n = Number(uren);
+  return uren === '' || uren == null || !Number.isFinite(n) ? '–' : `${String(n).replace('.', ',')} u`;
+}
+
+async function werkzaamhedenLijst() {
+  const [werk, objecten] = await Promise.all([db.alle('werkzaamheden'), db.alle('objecten')]);
+  const objectMap = new Map(objecten.map((o) => [o.id, o]));
+  werk.sort((a, b) => String(b.datum).localeCompare(String(a.datum)) || String(b.gewijzigd).localeCompare(String(a.gewijzigd)));
+  const maanden = [...new Set(werk.map((w) => String(w.datum).slice(0, 7)))];
+  app.innerHTML = `
+    <div class="paginakop">
+      <div><h1>Werkzaamheden</h1><p>${werk.length} geregistreerde werkzaamheden.</p></div>
+      <div class="knoppen">
+        <button class="knop" id="export">CSV exporteren</button>
+        <a class="knop primair" href="#/werkzaamheden/nieuw">+ Werkzaamheid registreren</a>
+      </div>
+    </div>
+    <div class="filters">
+      <input type="search" id="zoek" placeholder="Zoek op object, uitvoerder, omschrijving…" aria-label="Zoeken">
+      <select id="soort" aria-label="Soort"><option value="">Alle soorten</option>${WERKSOORTEN.map((s) => optie(s, s)).join('')}</select>
+      <select id="status" aria-label="Status"><option value="">Alle statussen</option>${Object.entries(WERKSTATUS).map(([k, v]) => optie(k, v)).join('')}</select>
+      <select id="maand" aria-label="Maand"><option value="">Alle maanden</option>
+        ${maanden.map((m) => optie(m, new Date(`${m}-01T00:00:00`).toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' }))).join('')}</select>
+    </div>
+    <div id="totaal" class="kaart"></div>
+    <div class="kaart" style="padding:0"><div class="tabelhouder"><table>
+      <thead><tr><th>Datum</th><th>Object</th><th>Soort</th><th class="verberg-mobiel">Uitvoerder</th><th>Uren</th><th class="verberg-mobiel">Foto's</th><th>Status</th></tr></thead>
+      <tbody id="rijen"></tbody></table></div></div>`;
+
+  const filters = ['zoek', 'soort', 'status', 'maand'].map((id) => app.querySelector(`#${id}`));
+  let zichtbaar = [];
+  const toon = () => {
+    const [zoek, soort, status, maand] = filters.map((f) => f.value);
+    zichtbaar = werk.filter((w) => {
+      const o = objectMap.get(w.objectId);
+      if (zoek && !`${o?.code} ${o?.naam} ${w.uitvoerder} ${w.omschrijving} ${w.materiaal}`.toLowerCase().includes(zoek.toLowerCase())) return false;
+      if (soort && w.soort !== soort) return false;
+      if (status && (w.status || 'gereed') !== status) return false;
+      if (maand && !String(w.datum).startsWith(maand)) return false;
+      return true;
+    });
+    const uren = zichtbaar.reduce((t, w) => t + (Number(w.uren) || 0), 0);
+    app.querySelector('#totaal').innerHTML = `<strong>${zichtbaar.length}</strong> werkzaamheden · <strong>${urenTekst(uren)}</strong> totaal`;
+    app.querySelector('#rijen').innerHTML = zichtbaar.length ? zichtbaar.map((w) => `
+      <tr class="klikbaar" data-href="#/werkzaamheden/${esc(w.id)}">
+        <td>${datumNL(w.datum)}</td><td>${objectNaam(objectMap.get(w.objectId))}</td><td>${esc(w.soort || '–')}</td>
+        <td class="verberg-mobiel">${esc(w.uitvoerder || '–')}</td><td>${urenTekst(w.uren)}</td>
+        <td class="verberg-mobiel">${w.fotoIds?.length ?? 0}</td><td>${werkStatusLabel(w.status)}</td>
+      </tr>`).join('') : `<tr><td colspan="7" class="leeg">${werk.length ? 'Geen werkzaamheden gevonden met deze filters.' : 'Nog geen werkzaamheden geregistreerd.'}</td></tr>`;
+  };
+  filters.forEach((f) => f.addEventListener('input', toon));
+  toon();
+
+  app.querySelector('#export').onclick = () => {
+    const rijen = [['Datum', 'Objectcode', 'Object', 'Soort', 'Uitvoerder', 'Uren', 'Omschrijving', 'Materiaal', 'Status', 'Vervolg', 'Afgehandelde maatregelen', 'Foto\'s']];
+    for (const w of zichtbaar) {
+      const o = objectMap.get(w.objectId);
+      rijen.push([w.datum, o?.code, o?.naam, w.soort, w.uitvoerder, w.uren, w.omschrijving, w.materiaal,
+        WERKSTATUS[w.status] ?? 'Gereed', w.vervolg, w.maatregelen?.length ?? 0, w.fotoIds?.length ?? 0]);
+    }
+    download(`werkzaamheden-${vandaag()}.csv`, csv(rijen), 'text/csv;charset=utf-8');
+  };
+}
+
+async function werkDetail(id) {
+  const w = await db.haal('werkzaamheden', id);
+  if (!w) {
+    app.innerHTML = leegKaart('Werkzaamheid niet gevonden.', '<a class="knop" href="#/werkzaamheden">Terug</a>');
+    return;
+  }
+  const o = await db.haal('objecten', w.objectId);
+  const gekoppeld = await gekoppeldeMaatregelen(w);
+  app.innerHTML = `
+    <div class="paginakop">
+      <div><p><a href="${o ? `#/objecten/${esc(o.id)}` : '#/werkzaamheden'}">← ${o ? esc(o.code) : 'Werkzaamheden'}</a></p>
+        <h1>${esc(w.soort || 'Werkzaamheid')} · ${datumNL(w.datum)}</h1><p>${objectNaam(o)}</p></div>
+      <div class="knoppen">
+        <a class="knop" href="#/werkzaamheden/${esc(id)}/bewerken">Bewerken</a>
+        <button class="knop gevaar" id="verwijder">Verwijderen</button>
+      </div>
+    </div>
+    <div class="raster-2">
+      <section class="kaart">
+        <h2>Gegevens</h2>
+        <dl class="gegevens">
+          <dt>Status</dt><dd>${werkStatusLabel(w.status)}</dd>
+          <dt>Datum</dt><dd>${datumNL(w.datum)}</dd>
+          <dt>Uitvoerder</dt><dd>${esc(w.uitvoerder || '–')}</dd>
+          <dt>Uren</dt><dd>${urenTekst(w.uren)}</dd>
+          ${w.materiaal ? `<dt>Materiaal</dt><dd style="white-space:pre-wrap">${esc(w.materiaal)}</dd>` : ''}
+        </dl>
+      </section>
+      <section class="kaart">
+        <h2>Omschrijving</h2>
+        <p style="white-space:pre-wrap">${esc(w.omschrijving || '–')}</p>
+        ${w.status === 'vervolg' ? `<h3>Vervolg nodig</h3><p style="white-space:pre-wrap">${esc(w.vervolg || '–')}</p>` : ''}
+      </section>
+    </div>
+    ${w.fotoIds?.length ? `<section class="kaart"><h2>Foto's</h2>${await fotosHtml(w.fotoIds)}</section>` : ''}
+    ${gekoppeld.length ? `<section class="kaart"><h2>Afgehandelde maatregelen</h2><ul>
+      ${gekoppeld.map(({ gebrek: g, inspectie: i }) => `<li><a href="#/inspecties/${esc(i.id)}">${esc(g.bouwdeel)} – ${esc(g.gebrek)}</a>: ${esc(g.maatregel || '–')}</li>`).join('')}
+    </ul></section>` : ''}`;
+
+  app.querySelector('#verwijder').onclick = async () => {
+    if (!confirm('Deze werkzaamheid inclusief foto\'s verwijderen? Gekoppelde maatregelen worden weer open gezet.')) return;
+    await verwijderWerk(w);
+    melding('Werkzaamheid verwijderd');
+    ga(o ? `#/objecten/${o.id}` : '#/werkzaamheden');
+  };
+}
+
+async function gekoppeldeMaatregelen(w) {
+  const sleutels = new Set((w.maatregelen ?? []).map((m) => `${m.inspectieId}:${m.gebrekId}`));
+  if (!sleutels.size) return [];
+  const inspecties = await db.alle('inspecties');
+  const lijst = [];
+  for (const i of inspecties) {
+    for (const g of i.gebreken ?? []) if (sleutels.has(`${i.id}:${g.id}`)) lijst.push({ gebrek: g, inspectie: i });
+  }
+  return lijst;
+}
+
+// Zet maatregelen (gebreken in inspecties) op uitgevoerd of terug op open.
+async function werkMaatregelenBij(werkId, datum, aanzetten, uitzetten) {
+  const inspecties = await db.alle('inspecties');
+  const nu = new Date().toISOString();
+  for (const insp of inspecties) {
+    let gewijzigd = false;
+    for (const g of insp.gebreken ?? []) {
+      const sleutel = `${insp.id}:${g.id}`;
+      if (aanzetten.has(sleutel) && (g.maatregelStatus !== 'uitgevoerd' || g.werkzaamheidId !== werkId)) {
+        Object.assign(g, { maatregelStatus: 'uitgevoerd', uitgevoerdOp: datum, werkzaamheidId: werkId });
+        gewijzigd = true;
+      } else if (uitzetten.has(sleutel) && g.werkzaamheidId === werkId) {
+        Object.assign(g, { maatregelStatus: 'open', uitgevoerdOp: '', werkzaamheidId: '' });
+        gewijzigd = true;
+      }
+    }
+    if (gewijzigd) await db.bewaar('inspecties', { ...insp, gewijzigd: nu });
+  }
+}
+
+async function verwijderWerk(w) {
+  const sleutels = new Set((w.maatregelen ?? []).map((m) => `${m.inspectieId}:${m.gebrekId}`));
+  if (sleutels.size) await werkMaatregelenBij(w.id, '', new Set(), sleutels);
+  for (const fid of w.fotoIds ?? []) await db.verwijder('fotos', fid);
+  await db.verwijder('werkzaamheden', w.id);
+}
+
+async function werkFormulier(id, objectId, { mobiel = false } = {}) {
+  const [objecten, inspecties] = await Promise.all([db.alle('objecten'), db.alle('inspecties')]);
+  objecten.sort((a, b) => String(a.code).localeCompare(String(b.code), 'nl', { numeric: true }));
+  const bestaand = id ? await db.haal('werkzaamheden', id) : null;
+  const terug = mobiel ? '#/' : bestaand ? `#/werkzaamheden/${esc(id)}` : (objectId ? `#/objecten/${esc(objectId)}` : '#/werkzaamheden');
+  if (id && !bestaand) {
+    app.innerHTML = leegKaart('Werkzaamheid niet gevonden.', `<a class="knop" href="${terug}">Terug</a>`);
+    return;
+  }
+  if (!objecten.length) {
+    app.innerHTML = leegKaart(mobiel
+      ? 'Er zijn nog geen objecten. Richt de objecten eerst in via de website op de pc.'
+      : 'Registreer eerst een object.', mobiel ? '' : '<a class="knop primair" href="#/objecten/nieuw">+ Object registreren</a>');
+    return;
+  }
+  const w = bestaand ?? {
+    objectId: objectId ?? '', datum: vandaag(), soort: '', uitvoerder: instelling.lees('inspecteur'), uren: '',
+    omschrijving: '', materiaal: '', status: 'gereed', vervolg: '', maatregelen: [], fotoIds: [],
+  };
+  const fotos = await laadFotos(w.fotoIds);
+  const origineleFotoIds = new Set(w.fotoIds ?? []);
+  const origineleKoppelingen = new Set((w.maatregelen ?? []).map((m) => `${m.inspectieId}:${m.gebrekId}`));
+  const object = objecten.find((o) => o.id === w.objectId);
+
+  const objectVeld = mobiel && object
+    ? `<input type="hidden" name="objectId" value="${esc(object.id)}">`
+    : `<div class="veld breed"><label for="f-object" class="vereist">Object</label>
+        <select id="f-object" name="objectId" required><option value="">– kies een object –</option>
+        ${objecten.map((o) => optie(o.id, `${o.code} – ${o.naam}`, w.objectId)).join('')}</select></div>`;
+  const velden = `
+    ${objectVeld}
+    <div class="veld"><label for="f-soort" class="vereist">Soort werkzaamheid</label>
+      <select id="f-soort" name="soort" required><option value="">– kies –</option>${WERKSOORTEN.map((s) => optie(s, s, w.soort)).join('')}</select></div>
+    <div class="veld"><label for="f-datum" class="vereist">Datum</label><input id="f-datum" name="datum" type="date" required value="${esc(w.datum)}"></div>
+    <div class="veld breed"><label for="f-omschrijving">Wat is er gedaan?</label>
+      <textarea id="f-omschrijving" name="omschrijving" maxlength="4000" placeholder="Korte omschrijving van het uitgevoerde werk">${esc(w.omschrijving)}</textarea></div>
+    <div class="veld breed"><label>Foto's (voor / na)</label><div id="fotos"></div></div>
+    <div class="veld"><label for="f-uren">Uren</label><input id="f-uren" name="uren" type="number" min="0" max="1000" step="0.25" inputmode="decimal" value="${esc(w.uren)}"></div>
+    <div class="veld"><label for="f-uitvoerder">Uitvoerder</label><input id="f-uitvoerder" name="uitvoerder" maxlength="100" value="${esc(w.uitvoerder)}"></div>
+    <div class="veld"><label for="f-status">Status</label>
+      <select id="f-status" name="status">${Object.entries(WERKSTATUS).map(([k, v]) => optie(k, v, w.status)).join('')}</select></div>
+    <div class="veld breed" id="vervolg-veld" ${w.status === 'vervolg' ? '' : 'hidden'}><label for="f-vervolg">Welk vervolg is nodig?</label>
+      <textarea id="f-vervolg" name="vervolg" maxlength="2000" style="min-height:60px">${esc(w.vervolg)}</textarea></div>
+    <div class="veld breed"><label for="f-materiaal">Gebruikt materiaal</label>
+      <input id="f-materiaal" name="materiaal" maxlength="500" value="${esc(w.materiaal)}"></div>`;
+
+  app.innerHTML = mobiel ? `
+    <div class="mkop"><a href="#/" class="mterug" aria-label="Terug">←</a>
+      <div><small>${bestaand ? 'Werkzaamheid bewerken' : 'Registratie werkzaamheden'}</small>
+      <h1>${object ? `${esc(object.code)} – ${esc(object.naam)}` : 'Kies een object'}</h1></div></div>
+    <form id="form" novalidate class="mform">
+      <section class="kaart"><div class="velden">${velden}</div></section>
+      <section class="kaart" id="maatregelen-blok"></section>
+      <div class="mvoet"><button class="knop primair" type="submit">✓ Opslaan</button></div>
+    </form>` : `
+    <div class="paginakop"><div><p><a href="${terug}">← Terug</a></p>
+      <h1>${bestaand ? 'Werkzaamheid bewerken' : 'Werkzaamheid registreren'}</h1></div></div>
+    <form id="form" novalidate>
+      <section class="kaart"><div class="velden">${velden}</div></section>
+      <section class="kaart" id="maatregelen-blok"></section>
+      <div class="formvoet kaart">
+        <a class="knop" href="${terug}">Annuleren</a>
+        <button class="knop primair" type="submit">Opslaan</button>
+      </div>
+    </form>`;
+
+  const form = app.querySelector('#form');
+  const gekozen = new Set(origineleKoppelingen);
+
+  const toonFotos = () => {
+    app.querySelector('#fotos').innerHTML = `<div class="fotos">
+      ${fotos.map((f, n) => `<div class="foto"><img src="${esc(f.data)}" alt="Foto ${n + 1}" data-lichtbak>
+        <button type="button" data-foto-weg="${n}" aria-label="Foto verwijderen">×</button></div>`).join('')}
+      <label class="knop fotoknop">📷 Foto<input type="file" accept="image/*" capture="environment" multiple id="foto-input"></label></div>`;
+  };
+
+  // Openstaande maatregelen van het gekozen object die met dit werk kunnen worden afgehandeld.
+  const toonMaatregelen = () => {
+    const oid = form.elements.objectId.value;
+    const lijst = alleMaatregelen(inspecties.filter((i) => i.objectId === oid), new Map())
+      .filter(({ gebrek: g, inspectie: i }) => g.maatregelStatus !== 'uitgevoerd' || gekozen.has(`${i.id}:${g.id}`));
+    const blok = app.querySelector('#maatregelen-blok');
+    blok.hidden = !lijst.length;
+    blok.innerHTML = lijst.length ? `
+      <h2>Openstaande maatregelen</h2>
+      <p><small>Vink aan wat met dit werk is afgehandeld; de maatregel wordt dan op uitgevoerd gezet.</small></p>
+      <div class="vinklijst">${lijst.map(({ gebrek: g, inspectie: i }) => {
+    const k = `${i.id}:${g.id}`;
+    return `<label class="vink"><input type="checkbox" data-maatregel="${esc(k)}" ${gekozen.has(k) ? 'checked' : ''}>
+          <span><strong>${esc(g.bouwdeel || 'Bouwdeel')} – ${esc(g.gebrek || 'gebrek')}</strong>
+          <small>${esc(g.maatregel || 'Geen advies')} · ${urgentieLabel(g.urgentie)}</small></span></label>`;
+  }).join('')}</div>` : '';
+  };
+
+  toonFotos();
+  toonMaatregelen();
+
+  form.addEventListener('input', (e) => {
+    formulierGewijzigd = true;
+    if (e.target.name === 'status') app.querySelector('#vervolg-veld').hidden = e.target.value !== 'vervolg';
+    if (e.target.name === 'objectId') {
+      gekozen.clear();
+      toonMaatregelen();
+    }
+    const k = e.target.dataset?.maatregel;
+    if (k) {
+      if (e.target.checked) gekozen.add(k); else gekozen.delete(k);
+    }
+  });
+  form.addEventListener('change', async (e) => {
+    if (e.target.id !== 'foto-input' || !e.target.files?.length) return;
+    melding(`${e.target.files.length} foto('s) verwerken…`);
+    try {
+      for (const bestand of [...e.target.files]) fotos.push({ id: nieuwId(), data: await verkleinFoto(bestand) });
+      formulierGewijzigd = true;
+    } catch (fout) {
+      melding(fout.message, 'fout');
+    }
+    toonFotos();
+  });
+  form.addEventListener('click', (e) => {
+    const weg = e.target.closest('[data-foto-weg]');
+    if (!weg) return;
+    fotos.splice(Number(weg.dataset.fotoWeg), 1);
+    formulierGewijzigd = true;
+    toonFotos();
+  });
+
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const data = formulierData(form);
+    if (!data.objectId) return melding('Kies een object.', 'fout');
+    if (!data.soort) return melding('Kies de soort werkzaamheid.', 'fout');
+    if (!data.datum) return melding('Vul de datum in.', 'fout');
+    const werkId = id ?? nieuwId();
+    const nu = new Date().toISOString();
+
+    await db.bewaarVeel('fotos', fotos.filter((f) => !origineleFotoIds.has(f.id))
+      .map((f) => ({ id: f.id, data: f.data, werkzaamheidId: werkId, datum: nu })));
+    const behouden = new Set(fotos.map((f) => f.id));
+    for (const fid of origineleFotoIds) if (!behouden.has(fid)) await db.verwijder('fotos', fid);
+
+    const uitzetten = new Set([...origineleKoppelingen].filter((k) => !gekozen.has(k)));
+    await werkMaatregelenBij(werkId, data.datum, gekozen, uitzetten);
+
+    await db.bewaar('werkzaamheden', {
+      ...(bestaand ?? {}),
+      id: werkId,
+      objectId: data.objectId,
+      datum: data.datum,
+      soort: data.soort,
+      omschrijving: data.omschrijving,
+      uren: data.uren === '' ? '' : Number(data.uren),
+      uitvoerder: data.uitvoerder,
+      status: data.status || 'gereed',
+      vervolg: data.status === 'vervolg' ? data.vervolg : '',
+      materiaal: data.materiaal,
+      maatregelen: [...gekozen].map((k) => {
+        const [inspectieId, gebrekId] = k.split(':');
+        return { inspectieId, gebrekId };
+      }),
+      fotoIds: fotos.map((f) => f.id),
+      aangemaakt: bestaand?.aangemaakt ?? nu,
+      gewijzigd: nu,
+    });
+    if (data.uitvoerder) instelling.schrijf('inspecteur', data.uitvoerder);
+    formulierGewijzigd = false;
+    melding('Werkzaamheid opgeslagen');
+    ga(mobiel ? '#/' : `#/werkzaamheden/${werkId}`);
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Instellingen, back-up en import
 // ---------------------------------------------------------------------------
 async function instellingen() {
@@ -1045,6 +1641,12 @@ async function instellingen() {
             <input id="f-inspecteur" name="inspecteur" value="${esc(instelling.lees('inspecteur'))}"></div>
           <div class="veld breed"><label for="f-organisatie">Organisatie (in rapporten)</label>
             <input id="f-organisatie" name="organisatie" value="${esc(instelling.lees('organisatie'))}"></div>
+          <div class="veld breed"><label for="f-weergave">Weergave op dit apparaat</label>
+            <select id="f-weergave" name="weergave">
+              ${optie('auto', 'Automatisch (telefoon = veldversie, pc = volledige versie)', instelling.lees('weergave', 'auto'))}
+              ${optie('mobiel', 'Altijd veldversie (werkzaamheden en schouw)', instelling.lees('weergave', 'auto'))}
+              ${optie('volledig', 'Altijd volledige versie met dashboard', instelling.lees('weergave', 'auto'))}
+            </select></div>
         </div>
         <div class="formvoet"><button class="knop primair" type="submit">Opslaan</button></div>
       </form>
@@ -1086,7 +1688,10 @@ async function instellingen() {
     const d = formulierData(e.target);
     instelling.schrijf('inspecteur', d.inspecteur);
     instelling.schrijf('organisatie', d.organisatie);
+    const weergaveGewijzigd = d.weergave !== instelling.lees('weergave', 'auto');
+    instelling.schrijf('weergave', d.weergave);
     melding('Voorkeuren opgeslagen');
+    if (weergaveGewijzigd) ga(isMobiel() ? '#/' : '#/instellingen');
   };
   app.querySelector('#backup').onclick = async () => {
     download(`inspectie-backup-${vandaag()}.json`, JSON.stringify(await db.exporteer()), 'application/json');

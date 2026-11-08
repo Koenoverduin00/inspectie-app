@@ -216,3 +216,86 @@ dl.gegevens dd { margin: 0; }
   .syncstatus { order: 2; }
   .nav { order: 3; }
 }
+
+/* =====================================================================
+   Veldversie (telefoon): twee functies, grote knoppen, menu onderin
+   ===================================================================== */
+.onderbalk { display: none; }
+body.modus-mobiel .nav { display: none; }
+body.modus-mobiel main { padding: .75rem 16px calc(84px + env(safe-area-inset-bottom)); }
+body.modus-mobiel .onderbalk {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 1000;
+  background: var(--vlak); border-top: 1px solid var(--rand);
+  padding-bottom: env(safe-area-inset-bottom); box-shadow: 0 -2px 10px rgba(16, 24, 40, .06);
+}
+.onderbalk a {
+  display: flex; flex-direction: column; align-items: center; gap: .1rem; padding: .45rem .25rem .5rem;
+  color: var(--tekst-zacht); text-decoration: none; font-size: .72rem; font-weight: 600; min-height: 56px; justify-content: center;
+}
+.onderbalk a span { font-size: 1.35rem; line-height: 1; }
+.onderbalk a.actief { color: var(--primair); }
+
+.mstart h2 { font-size: 1rem; margin: 1.5rem 0 .5rem; color: var(--tekst-zacht); }
+.mgroet { font-size: 1.35rem; font-weight: 700; margin: .5rem 0 1rem; }
+.mtegel {
+  display: flex; align-items: center; gap: 1rem; padding: 1.25rem 1.1rem; margin-bottom: .85rem;
+  background: var(--vlak); border: 1px solid var(--rand); border-radius: 14px; box-shadow: var(--schaduw);
+  color: var(--tekst); text-decoration: none; min-height: 104px;
+}
+.mtegel:active { transform: scale(.99); background: var(--primair-licht); }
+.mtegel strong { display: block; font-size: 1.15rem; }
+.mtegel small { display: block; color: var(--tekst-zacht); margin-top: .15rem; }
+.micoon {
+  flex: none; width: 56px; height: 56px; border-radius: 14px; display: grid; place-items: center;
+  font-size: 1.8rem; background: var(--primair-licht);
+}
+.micoon.klein { width: 40px; height: 40px; font-size: 1.2rem; border-radius: 10px; }
+.mhint { display: flex; gap: .6rem; align-items: center; color: var(--tekst); text-decoration: none; background: #fff8e1; border-color: #f2d27a; }
+.mleeg { color: var(--tekst-zacht); }
+
+.mlijst { list-style: none; margin: 0; padding: 0; background: var(--vlak); border: 1px solid var(--rand); border-radius: 12px; overflow: hidden; }
+.mlijst li + li { border-top: 1px solid var(--rand); }
+.mlijst li.mleeg { padding: 1rem; }
+.mlijst a { display: flex; align-items: center; gap: .75rem; padding: .8rem .9rem; min-height: 60px; color: var(--tekst); text-decoration: none; }
+.mlijst a:active { background: var(--primair-licht); }
+.mlijst a > span:not(.micoon) { flex: 1; min-width: 0; }
+.mlijst strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mlijst small { display: block; color: var(--tekst-zacht); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mafstand { flex: none; font-weight: 600; color: var(--primair); font-size: .9rem; }
+.mpijl { flex: none; font-size: 1.5rem; color: var(--tekst-zacht); }
+
+.mkop { display: flex; align-items: center; gap: .6rem; margin: 0 0 .9rem; }
+.mkop small { color: var(--tekst-zacht); display: block; }
+.mkop h1 { font-size: 1.15rem; margin: 0; }
+.mterug {
+  flex: none; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%;
+  background: var(--vlak); border: 1px solid var(--rand); color: var(--tekst); text-decoration: none; font-size: 1.3rem;
+}
+.mzoek { display: flex; gap: .5rem; margin-bottom: .75rem; position: sticky; top: 56px; z-index: 5; background: var(--achtergrond); padding: .25rem 0; }
+.mzoek input { flex: 1; min-height: 48px; }
+.mzoek .knop { min-height: 48px; white-space: nowrap; }
+
+.mform .velden { grid-template-columns: 1fr 1fr; gap: .75rem; }
+.mform .veld.breed, .mform .veld:has(textarea), .mform .veld:has(.fotos) { grid-column: 1 / -1; }
+.mform input, .mform select, .mform textarea { min-height: 48px; }
+.mform details { margin-top: .75rem; }
+.mform summary { cursor: pointer; font-weight: 600; color: var(--primair); padding: .35rem 0; }
+.mform .gebrek { padding: .85rem; }
+.mform .foto { width: 88px; height: 88px; }
+.mform .fotoknop { min-height: 88px; min-width: 88px; flex-direction: column; border-style: dashed; }
+.mtussen { display: flex; justify-content: space-between; align-items: center; margin: 1rem 0 .5rem; }
+.mtussen h2 { margin: 0; }
+.mgroot { width: 100%; min-height: 56px; font-size: 1.05rem; border-style: dashed; margin-bottom: 1rem; }
+.mvoet {
+  position: sticky; bottom: calc(64px + env(safe-area-inset-bottom)); z-index: 10;
+  display: flex; gap: .6rem; padding: .6rem 0; background: var(--achtergrond);
+}
+.mvoet .knop { flex: 1; min-height: 54px; font-size: 1.05rem; }
+.mvoet .knop.primair { flex: 2; }
+
+.vinklijst { display: flex; flex-direction: column; gap: .5rem; }
+.vink { display: flex; gap: .7rem; align-items: flex-start; padding: .7rem; border: 1px solid var(--rand); border-radius: 10px; cursor: pointer; }
+.vink input { width: 22px; height: 22px; min-height: 0; flex: none; margin-top: .15rem; }
+.vink small { display: block; color: var(--tekst-zacht); }
+.vink:has(input:checked) { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 8%, transparent); }

@@ -39,11 +39,11 @@ begin
 end;
 $$;
 
--- 3. Tabellen voor objecten en inspecties (de gegevens zelf staan als JSON in "data").
+-- 3. Tabellen voor objecten, inspecties en werkzaamheden (de gegevens zelf staan als JSON in "data").
 do $$
 declare t text;
 begin
-  foreach t in array array['objecten', 'inspecties'] loop
+  foreach t in array array['objecten', 'inspecties', 'werkzaamheden'] loop
     execute format($f$
       create table if not exists public.%I (
         id             text primary key,
@@ -77,6 +77,8 @@ create policy "fotos_teamleden" on storage.objects for all to authenticated
   with check (bucket_id = 'fotos' and public.is_teamlid());
 
 -- 5. Voeg jezelf (en later collega-inspecteurs) toe als teamlid.
---    Vervang het voorbeeldadres door het e-mailadres waarmee je in de app inlogt.
-insert into public.teamleden (email) values ('jouw@email.nl')
-on conflict (email) do nothing;
+--    Haal de twee streepjes voor de regel hieronder weg en vul je eigen e-mailadres in.
+-- insert into public.teamleden (email) values ('jouw@email.nl') on conflict (email) do nothing;
+
+-- Controle: wie heeft er toegang?
+select email from public.teamleden;
