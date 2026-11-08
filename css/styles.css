@@ -341,3 +341,13 @@ body.modus-mobiel .onderbalk {
 .mhier { background: color-mix(in srgb, var(--ok) 10%, var(--vlak)); border-color: color-mix(in srgb, var(--ok) 40%, var(--rand)); }
 .mmeta { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: .15rem; }
 .mmeta small { font-weight: 600; color: var(--primair); }
+
+/* Veldversie: compacte kop op één regel, taaknamen op twee regels */
+body.modus-mobiel .kop { flex-wrap: nowrap; gap: .6rem; }
+body.modus-mobiel .projectchip { flex: 1; min-width: 0; max-width: none; }
+body.modus-mobiel .syncstatus { margin-left: 0; flex: none; font-size: 0; gap: 0; padding: .45rem; min-width: 30px; justify-content: center; }
+body.modus-mobiel .syncstatus::before { width: .75rem; height: .75rem; }
+body.modus-mobiel .syncstatus[data-wachtend]:not([data-wachtend="0"])::after {
+  content: attr(data-wachtend); font-size: .75rem; font-weight: 700; margin-left: .3rem;
+}
+#logisch .mlijst strong { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }

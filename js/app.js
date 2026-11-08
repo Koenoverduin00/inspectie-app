@@ -1467,6 +1467,15 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
   const origineleFotoIds = new Set(w.fotoIds ?? []);
   const origineleKoppelingen = new Set((w.maatregelen ?? []).map((m) => `${m.inspectieId}:${m.gebrekId}`));
   const object = objecten.find((o) => o.id === w.objectId);
+  const taak = taakId ? await db.haal('taken', taakId) : null;
+  const maatregelInfo = maatregel ? (() => {
+    const [iid, gid] = maatregel.split(':');
+    return inspecties.find((i) => i.id === iid)?.gebreken?.find((g) => g.id === gid);
+  })() : null;
+  const taakBanner = taak || maatregelInfo
+    ? `<div class="kaart mhier">📋 <strong>${taak ? 'Taak' : 'Maatregel'}:</strong> ${esc(taak?.titel ?? maatregelInfo.maatregel ?? '')}
+        ${taak?.omschrijving ? `<br><small>${esc(taak.omschrijving)}</small>` : ''}
+        ${maatregelInfo ? `<br><small>${esc(maatregelInfo.bouwdeel || '')} – ${esc(maatregelInfo.gebrek || '')}; wordt bij opslaan op uitgevoerd gezet.</small>` : ''}</div>` : '';
 
   const objectVeld = mobiel && object
     ? `<input type="hidden" name="objectId" value="${esc(object.id)}">`
@@ -1495,6 +1504,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
       <div><small>${bestaand ? 'Werkzaamheid bewerken' : 'Registratie werkzaamheden'}</small>
       <h1>${object ? `${esc(object.code)} – ${esc(object.naam)}` : 'Kies een object'}</h1></div></div>
     <form id="form" novalidate class="mform">
+      ${taakBanner}
       <section class="kaart"><div class="velden">${velden}</div></section>
       <section class="kaart" id="maatregelen-blok"></section>
       <div class="mvoet"><button class="knop primair" type="submit">✓ Opslaan</button></div>
@@ -2408,6 +2418,8 @@ function syncIndicator(st) {
   if (st.wachtend && st.fase !== 'bezig') tekst = st.fase === 'ok' ? `${st.wachtend} te versturen` : `${tekst} · ${st.wachtend} wachtend`;
   el.textContent = tekst;
   el.dataset.fase = st.fase;
+  el.dataset.wachtend = String(st.wachtend ?? 0);
+  el.setAttribute('aria-label', tekst);
   el.title = st.fout || (st.laatsteSync ? `Laatst gesynchroniseerd: ${new Date(st.laatsteSync).toLocaleString('nl-NL')}` : tekst);
 }
 
