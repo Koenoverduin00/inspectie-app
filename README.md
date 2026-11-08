@@ -82,7 +82,7 @@ De weergave wordt automatisch gekozen op schermbreedte. Onder *Instellingen → 
 - **Dashboard** – KPI's, conditieverdeling van het areaal, recente inspecties en inspectieplanning
   (verlopen / binnenkort / op schema, op basis van laatste afgeronde inspectie + interval).
 - **Maatregelen** – alle onderhoudsadviezen gesorteerd op urgentie, totale raming, afvinken als uitgevoerd.
-- **Kaart** – objecten op OpenStreetMap, gekleurd naar conditie (vereist internet).
+- **Kaart** – objecten op de PDOK-luchtfoto (standaard 50% helderheid, instelbaar met ☀️-schuif; wisselen naar OpenStreetMap kan via de lagenknop), gekleurd naar conditie. De achtergrond vereist internet.
 - **Inspectierapport** – printvriendelijk rapport, op te slaan als PDF via de printfunctie van de browser.
 - **Export / back-up** – CSV-export van objecten en maatregelen (Excel, puntkomma-gescheiden), JSON-back-up en -import.
 - **Voorbeelddata** om de app direct te verkennen.

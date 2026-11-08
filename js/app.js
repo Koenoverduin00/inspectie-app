@@ -2075,6 +2075,57 @@ async function verwijderLaag(laag) {
 // ---------------------------------------------------------------------------
 // Kaart & GIS
 // ---------------------------------------------------------------------------
+// Achtergrondkaarten: standaard de PDOK-luchtfoto (Beeldmateriaal Nederland) op 50% helderheid.
+const ACHTERGRONDEN = {
+  luchtfoto: {
+    naam: 'Luchtfoto',
+    url: 'https://service.pdok.nl/hwh/luchtfotorgb/wmts/v1_0/Actueel_orthoHR/EPSG:3857/{z}/{x}/{y}.jpeg',
+    opties: { maxZoom: 22, maxNativeZoom: 21, attribution: 'Luchtfoto &copy; <a href="https://www.pdok.nl" target="_blank" rel="noopener">PDOK</a> / Beeldmateriaal Nederland' },
+  },
+  kaart: {
+    naam: 'Kaart (OpenStreetMap)',
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    opties: { maxZoom: 22, maxNativeZoom: 19, attribution: '&copy; OpenStreetMap-bijdragers' },
+  },
+};
+
+function voegAchtergrondToe(L, map) {
+  const keuze = ACHTERGRONDEN[instelling.lees('achtergrond', 'luchtfoto')] ? instelling.lees('achtergrond', 'luchtfoto') : 'luchtfoto';
+  const zetHelderheid = (waarde) => map.getContainer().style.setProperty('--kaart-helderheid', String(waarde / 100));
+  let helderheid = Number(instelling.lees('helderheid', '50'));
+  if (!(helderheid >= 10 && helderheid <= 100)) helderheid = 50;
+  zetHelderheid(helderheid);
+
+  const lagen = {};
+  for (const [id, a] of Object.entries(ACHTERGRONDEN)) {
+    lagen[a.naam] = L.tileLayer(a.url, { ...a.opties, className: 'achtergrondlaag' });
+    lagen[a.naam].sleutel = id;
+  }
+  lagen[ACHTERGRONDEN[keuze].naam].addTo(map);
+  L.control.layers(lagen, null, { position: 'topright' }).addTo(map);
+  map.on('baselayerchange', (e) => instelling.schrijf('achtergrond', e.layer.sleutel));
+
+  // Schuif voor de helderheid van de achtergrond (per apparaat onthouden).
+  const Helderheid = L.Control.extend({
+    options: { position: 'bottomleft' },
+    onAdd() {
+      const div = L.DomUtil.create('div', 'leaflet-bar helderheid');
+      div.innerHTML = `<label title="Helderheid achtergrond">☀️<input type="range" min="10" max="100" step="10" value="${helderheid}"
+        aria-label="Helderheid achtergrond"><span>${helderheid}%</span></label>`;
+      L.DomEvent.disableClickPropagation(div);
+      L.DomEvent.disableScrollPropagation(div);
+      const invoer = div.querySelector('input');
+      invoer.addEventListener('input', () => {
+        zetHelderheid(Number(invoer.value));
+        div.querySelector('span').textContent = `${invoer.value}%`;
+        instelling.schrijf('helderheid', invoer.value);
+      });
+      return div;
+    },
+  });
+  new Helderheid().addTo(map);
+}
+
 let leafletBelofte;
 function laadLeaflet() {
   if (window.L) return Promise.resolve(window.L);
@@ -2155,7 +2206,7 @@ async function tekenGisKaart(el, { groepen, status, takenPerObject }) {
   if (!el.isConnected) return; // inmiddels naar een andere pagina
   el.innerHTML = '';
   const map = L.map(el, { preferCanvas: true, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 20, maxNativeZoom: 19, attribution: '&copy; OpenStreetMap-bijdragers' }).addTo(map);
+  voegAchtergrondToe(L, map);
 
   const popup = (o) => {
     const s = status.get(o.id);
@@ -2783,7 +2834,7 @@ async function tekenPakketKaart(el, { pakket, objecten, statusVan, positie = nul
   el.innerHTML = '';
   // Zonder animaties: die lopen anders door nadat je de pagina al hebt verlaten.
   const map = L.map(el, { preferCanvas: true, zoomControl: !mobiel, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 20, maxNativeZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
+  voegAchtergrondToe(L, map);
   const metGeo = objecten.filter((o) => objectGeometrie(o));
   const fc = { type: 'FeatureCollection', features: metGeo.map((o) => ({ type: 'Feature', geometry: objectGeometrie(o), properties: { id: o.id } })) };
   const objectMap = new Map(metGeo.map((o) => [o.id, o]));
