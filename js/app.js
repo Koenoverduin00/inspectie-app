@@ -1484,13 +1484,13 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
         ${objecten.map((o) => optie(o.id, `${o.code} – ${o.naam}`, w.objectId)).join('')}</select></div>`;
   const velden = `
     ${objectVeld}
-    <div class="veld"><label for="f-soort" class="vereist">Soort werkzaamheid</label>
+    <div class="veld breed"><label for="f-soort" class="vereist">Soort werkzaamheid</label>
       <select id="f-soort" name="soort" required><option value="">– kies –</option>${WERKSOORTEN.map((s) => optie(s, s, w.soort)).join('')}</select></div>
     <div class="veld"><label for="f-datum" class="vereist">Datum</label><input id="f-datum" name="datum" type="date" required value="${esc(w.datum)}"></div>
+    <div class="veld"><label for="f-uren">Uren</label><input id="f-uren" name="uren" type="number" min="0" max="1000" step="0.25" inputmode="decimal" value="${esc(w.uren)}"></div>
     <div class="veld breed"><label for="f-omschrijving">Wat is er gedaan?</label>
       <textarea id="f-omschrijving" name="omschrijving" maxlength="4000" placeholder="Korte omschrijving van het uitgevoerde werk">${esc(w.omschrijving)}</textarea></div>
     <div class="veld breed"><label>Foto's (voor / na)</label><div id="fotos"></div></div>
-    <div class="veld"><label for="f-uren">Uren</label><input id="f-uren" name="uren" type="number" min="0" max="1000" step="0.25" inputmode="decimal" value="${esc(w.uren)}"></div>
     <div class="veld"><label for="f-uitvoerder">Uitvoerder</label><input id="f-uitvoerder" name="uitvoerder" maxlength="100" value="${esc(w.uitvoerder)}"></div>
     <div class="veld"><label for="f-status">Status</label>
       <select id="f-status" name="status">${Object.entries(WERKSTATUS).map(([k, v]) => optie(k, v, w.status)).join('')}</select></div>
