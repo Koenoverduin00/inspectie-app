@@ -22,6 +22,22 @@ ook **offline in het veld**, synchroniseert tussen pc en telefoon, en is te inst
   zegt de app dat en komen de taken van dat vlak bovenaan. Eén urgentiestap weegt even zwaar als 750 m afstand.
   Een taak aantikken opent direct het juiste formulier; na opslaan staat de taak op gereed.
 
+## Eigen formuliervelden per project
+
+Via **Projecten → Formuliervelden** stelt een beheerder per project extra regels in voor *werkzaamheden*,
+*schouw & inspectie* en *taken*, naast de standaardvelden. Per veld kies je:
+
+- **type**: tekst, getal (met eenheid en min/max), keuzelijst, ja/nee, datum, tijd, foto of checklist;
+- **verplicht**: een concept-inspectie mag altijd, maar afronden of opslaan kan pas als alles is ingevuld
+  (bij een checklist: alle punten afgevinkt);
+- **alleen tonen bij** een bepaalde soort (bijv. "Gemaaide oppervlakte" alleen bij *Groenonderhoud*);
+- een toelichting voor de invuller; de volgorde stel je in met ↑/↓.
+
+De velden verschijnen automatisch op telefoon en pc in het blok *Extra gegevens*, staan bij het detail en in het
+rapport, en krijgen een eigen kolom in de CSV-export van werkzaamheden. Antwoorden blijven bewaard als een veld
+later wordt verwijderd.
+
+## Twee weergaven
 
 | | Telefoon – **veldversie** | Pc – **volledige versie** |
 |---|---|---|
@@ -33,6 +49,7 @@ ook **offline in het veld**, synchroniseert tussen pc en telefoon, en is te inst
 De weergave wordt automatisch gekozen op schermbreedte. Onder *Instellingen → Weergave op dit apparaat* (of
 *Account → Volledige versie openen* op de telefoon) kun je dat per apparaat vastzetten.
 
+## Functies
 
 - **Objectregistratie** – objectcode, naam, type, materiaal, bouwjaar, afmetingen, beheerder, locatie (met GPS-knop),
   status, inspectie-interval en notities.
@@ -125,6 +142,7 @@ js/db.js              IndexedDB-opslag, wachtrij, export/import
 js/sync.js            inloggen en synchronisatie met Supabase
 js/gis.js             GIS inlezen (GeoJSON, Shapefile, GeoPackage), RD→WGS84, geometrie
 js/taken.js           taken samenstellen en sorteren op urgentie en locatie
+js/velden.js          eigen formuliervelden: zichtbaarheid, controle en weergave
 vendor/               shpjs en sql.js (MIT), lokaal meegeleverd zodat import ook offline werkt
 js/config.js          Supabase-URL en publishable key
 js/nen2767.js         conditieberekening en planning (pure functies)
