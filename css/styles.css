@@ -633,3 +633,16 @@ details.waarneming > summary > span { display: flex; align-items: center; gap: .
 .locatieveld input { flex: 1; min-width: 0; }
 .leaflet-tooltip.puntlabel { background: transparent; border: 0; box-shadow: none; color: #fff; font-weight: 700; font-size: .75rem; padding: 0; }
 .leaflet-tooltip.puntlabel::before { display: none; }
+
+/* Digigids-beoordeling */
+.digigids > label a { margin-left: .25rem; }
+.dg-klassen { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: .5rem; margin-top: .4rem; }
+.dg-klasse { display: flex; flex-direction: column; gap: .3rem; padding: .6rem .7rem; border: 2px solid var(--rand); border-top: 5px solid var(--dk);
+  border-radius: 10px; cursor: pointer; background: var(--vlak); }
+.dg-klasse input { position: absolute; opacity: 0; pointer-events: none; }
+.dg-klasse strong { color: var(--dk); }
+.dg-klasse span { font-size: .88rem; line-height: 1.35; }
+.dg-klasse.gekozen, .dg-klasse:has(input:checked) { border-color: var(--dk); background: color-mix(in srgb, var(--dk) 9%, var(--vlak)); }
+.dg-fotos { display: grid; grid-template-columns: repeat(3, 1fr); gap: .25rem; }
+.dg-fotos img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 6px; cursor: zoom-in; }
+.digigids .bron { color: var(--tekst-zacht); font-size: .75rem; }

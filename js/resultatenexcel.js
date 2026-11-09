@@ -5,6 +5,7 @@ import { CONDITIES, ERNST, INTENSITEIT, URGENTIES, gebrekScore, inspectieScore, 
 import * as BV from './bvc.js';
 import { middelpunt } from './gis.js';
 import * as ST from './stowa.js';
+import * as DG from './digigids.js';
 
 const STATUS_TEKST = { afgerond: 'Gedaan', concept: 'Concept (niet afgerond)', overgeslagen: 'Overgeslagen', open: 'Open' };
 
@@ -122,7 +123,7 @@ export function resultaatRijen({ lijst, laagNaam = new Map(), extra = () => [] }
         const kenm = Object.entries(w.kenmerken ?? {}).filter(([, v]) => v !== '' && v != null).map(([k, v]) => `${k}: ${v}`).join('; ');
         gebreken.push({
           waarden: [o.code, o.naam, datum(i.datum), n + 1, [w.zone, w.locatie].filter(Boolean).join(' · '),
-            w.aard === 'handhaving' ? `Handhaving: ${w.omschrijving ?? ''}` : (wz?.naam ?? ''), wz ? `${ST.CATEGORIEEN[wz.categorie]} (wijzer ${wz.nr})` : '', '',
+            ST.schadebeeldNaam(w), wz ? `${ST.CATEGORIEEN[wz.categorie]} (wijzer ${wz.nr})` : (w.digigids ? 'Digigids' : ''), w.digigidsKlasse ? `Digigids: ${w.digigidsKlasse}` : '',
             '', '', '', ST.URGENTIE[w.urgentieKleur]?.label ?? '', [kenm, w.toelichting].filter(Boolean).join(' — '), w.maatregel ?? '',
             [w.maatregelSoort, w.urgentie ? URGENTIES.find((u) => u.id === w.urgentie)?.label : ''].filter(Boolean).join(' · '), (w.fotoIds ?? []).length || ''],
           kleur: ST.URGENTIE[w.urgentieKleur]?.kleur ?? '',
@@ -164,7 +165,7 @@ export function resultaatRijen({ lijst, laagNaam = new Map(), extra = () => [] }
 }
 
 export const GEBREK_KOLOMMEN = [
-  ['Objectcode', 14], ['Naam', 26], ['Datum', 12, 'datum'], ['Nr', 5], ['Bouwdeel / plaats', 24], ['Gebrek', 28], ['Type', 16], ['Gevolg', 14],
+  ['Objectcode', 14], ['Naam', 26], ['Datum', 12, 'datum'], ['Nr', 5], ['Bouwdeel / plaats', 24], ['Gebrek', 28], ['Type', 16], ['Gevolg / Digigids-klasse', 16],
   ['Ernst', 10], ['Intensiteit', 14], ['Omvang (%)', 10], ['Conditie / urgentie', 11], ['Waarneming / toelichting', 44], ['Maatregel', 34], ['Urgentie', 16], ["Foto's", 8],
 ];
 export const MAATREGEL_KOLOMMEN = [

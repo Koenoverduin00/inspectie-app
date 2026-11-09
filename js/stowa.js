@@ -5,6 +5,8 @@
 // operationeel deel" (typen inspecties; beoordeling per waarneming: categorie schadebeeld/handhaving en
 // urgentie groen/oranje/rood; classificatie maatregelen monitoren/verbeteren/reconstrueren).
 
+import * as DG from './digigids.js';
+
 export const STOWA_SOORT = 'Inspectie waterkering (STOWA)';
 
 /** Typen inspecties (operationeel deel, tabel 4). */
@@ -182,7 +184,7 @@ export function controleer(s) {
   (s.waarnemingen ?? []).forEach((w, i) => {
     const n = `Waarneming ${i + 1}`;
     if (!w.zone) f.push(`${n}: kies de zone.`);
-    if (w.aard === 'handhaving' ? !String(w.omschrijving ?? '').trim() : !w.wijzer) f.push(`${n}: ${w.aard === 'handhaving' ? 'omschrijf de handhavingszaak' : 'kies het schadebeeld'}.`);
+    if (w.aard === 'handhaving' ? !String(w.omschrijving ?? '').trim() : !(w.wijzer || w.digigids)) f.push(`${n}: ${w.aard === 'handhaving' ? 'omschrijf de handhavingszaak' : 'kies het schadebeeld'}.`);
     if (!w.urgentieKleur) f.push(`${n}: kies de urgentie (groen, oranje of rood).`);
     if (w.urgentieKleur === 'rood' && !(w.fotos?.length || w.fotoIds?.length)) f.push(`${n}: maak bij urgentie rood een foto.`);
   });
@@ -192,12 +194,22 @@ export function controleer(s) {
 /** Waarneming in de vorm die maatregelenoverzicht, taken en werkzaamheden gebruiken. */
 export function alsGebrek(w) {
   const wz = wijzer(w.wijzer);
+  const dg = !wz && w.digigids ? DG.schadebeeld(w.digigids) : null;
   return {
     ...w,
-    bouwdeel: [wz?.element ?? (w.aard === 'handhaving' ? 'Handhaving' : ''), w.zone].filter(Boolean).join(' · '),
-    gebrek: w.aard === 'handhaving' ? (w.omschrijving ?? '') : (wz?.schadebeeld ?? ''),
+    bouwdeel: [wz?.element ?? dg?.element ?? (w.aard === 'handhaving' ? 'Handhaving' : ''), w.zone].filter(Boolean).join(' · '),
+    gebrek: w.aard === 'handhaving' ? (w.omschrijving ?? '') : (wz?.schadebeeld ?? dg?.naam ?? ''),
     urgentie: w.maatregel || w.urgentieKleur !== 'groen' ? (URGENTIE[w.urgentieKleur]?.nen ?? '') : '',
   };
+}
+
+/** Naam van het schadebeeld van een waarneming (inspectiewijzer of Digigids). */
+export function schadebeeldNaam(w) {
+  if (w.aard === 'handhaving') return `Handhaving: ${w.omschrijving ?? ''}`;
+  const wz = wijzer(w.wijzer);
+  if (wz) return wz.naam;
+  const dg = w.digigids ? DG.schadebeeld(w.digigids) : null;
+  return dg ? `${dg.element}: ${dg.naam}` : 'Schadebeeld';
 }
 
 /** Alle gebrek-achtige records van een inspectie (NEN-gebreken, BVC-maatregelen, STOWA-waarnemingen). */
