@@ -142,8 +142,10 @@ export function inVlak(pt, geom) {
 
 // Lokale projectie in meters rond een referentiepunt (nauwkeurig genoeg op enkele km).
 function lokaal(ref) {
-  const kx = 111320 * Math.cos((ref[1] * Math.PI) / 180);
-  const ky = 110540;
+  // Meters per graad op de breedtegraad van het referentiepunt (WGS84-ellipsoïde).
+  const f = (ref[1] * Math.PI) / 180;
+  const kx = 111412.84 * Math.cos(f) - 93.5 * Math.cos(3 * f) + 0.118 * Math.cos(5 * f);
+  const ky = 111132.954 - 559.822 * Math.cos(2 * f) + 1.175 * Math.cos(4 * f);
   return (c) => [(c[0] - ref[0]) * kx, (c[1] - ref[1]) * ky];
 }
 

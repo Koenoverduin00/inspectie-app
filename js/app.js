@@ -2141,7 +2141,7 @@ async function verwijderLaag(laag) {
 // ---------------------------------------------------------------------------
 // Kaart & GIS
 // ---------------------------------------------------------------------------
-// Achtergrondkaarten: standaard de PDOK-luchtfoto (Beeldmateriaal Nederland) op 50% helderheid.
+// Achtergrondkaarten: standaard de PDOK-luchtfoto (Beeldmateriaal Nederland) op 50% sterkte, vervaagd naar wit.
 const ACHTERGRONDEN = {
   luchtfoto: {
     naam: 'Luchtfoto',
@@ -2176,8 +2176,8 @@ function voegAchtergrondToe(L, map) {
     options: { position: 'bottomleft' },
     onAdd() {
       const div = L.DomUtil.create('div', 'leaflet-bar helderheid');
-      div.innerHTML = `<label title="Helderheid achtergrond">☀️<input type="range" min="10" max="100" step="10" value="${helderheid}"
-        aria-label="Helderheid achtergrond"><span>${helderheid}%</span></label>`;
+      div.innerHTML = `<label title="Sterkte luchtfoto (lager = lichter)">🛰️<input type="range" min="10" max="100" step="10" value="${helderheid}"
+        aria-label="Sterkte luchtfoto"><span>${helderheid}%</span></label>`;
       L.DomEvent.disableClickPropagation(div);
       L.DomEvent.disableScrollPropagation(div);
       const invoer = div.querySelector('input');
@@ -2209,37 +2209,69 @@ function laadLeaflet() {
   return leafletBelofte;
 }
 
-async function kaart() {
-  const { objecten, inspecties, status } = await laadAlles();
-  const [lagen, taken] = await Promise.all([inProject('lagen'), inProject('taken')]);
-  const takenPerObject = new Map();
-  for (const t of takenLijst({ objecten, inspecties, taken, planning: status, vandaag: vandaag() })) {
-    takenPerObject.set(t.object.id, (takenPerObject.get(t.object.id) ?? 0) + 1);
+// Kaart & GIS toont puur het areaal: lagen, objecttypen en GIS-kenmerken (geen conditiescores).
+const CATEGORIEKLEUREN = ['#1f78b4', '#33a02c', '#e31a1c', '#ff7f00', '#6a3d9a', '#b15928', '#17becf', '#bcbd22', '#e377c2', '#8c564b', '#7f7f7f', '#2ca02c'];
+const OVERIG_KLEUR = '#9aa5b1';
+
+function oppervlakteTekst(m2) {
+  if (!(m2 > 0)) return '';
+  return m2 >= 10000 ? `${(m2 / 10000).toLocaleString('nl-NL', { maximumFractionDigits: 2 })} ha` : `${Math.round(m2).toLocaleString('nl-NL')} m²`;
+}
+
+function lengteTekst(m) {
+  if (!(m > 0)) return '';
+  return m >= 1000 ? `${(m / 1000).toLocaleString('nl-NL', { maximumFractionDigits: 2 })} km` : `${Math.round(m).toLocaleString('nl-NL')} m`;
+}
+
+function areaalMaten(objecten) {
+  let vlak = 0; let lijn = 0; let punten = 0;
+  for (const o of objecten) {
+    const g = objectGeometrie(o);
+    const soort = gis.soortGeometrie(g);
+    if (soort === 'vlak') vlak += gis.oppervlakte(g);
+    else if (soort === 'lijn') lijn += gis.lengte(g);
+    else if (soort === 'punt') punten += 1;
   }
+  return { vlak, lijn, punten };
+}
+
+function matenTekst(m, aantal) {
+  return [`${aantal} objecten`, oppervlakteTekst(m.vlak), lengteTekst(m.lijn)].filter(Boolean).join(' · ');
+}
+
+async function kaart() {
+  const [objecten, lagen] = await Promise.all([inProject('objecten'), inProject('lagen')]);
   const groepen = [
     ...lagen.map((l) => ({ id: l.id, naam: l.naam, kleur: l.kleur, laag: l, objecten: objecten.filter((o) => o.laagId === l.id) })),
     { id: '', naam: 'Losse objecten', kleur: '#0b4f6c', objecten: objecten.filter((o) => !o.laagId || !lagen.some((l) => l.id === o.laagId)) },
   ].map((g) => ({ ...g, objecten: g.objecten.filter((o) => objectGeometrie(o)) })).filter((g) => g.objecten.length || g.laag);
+  const opKaart = groepen.flatMap((g) => g.objecten);
+  const totaal = areaalMaten(opKaart);
+  const velden = [...new Set(opKaart.flatMap((o) => Object.keys(o.kenmerken ?? {})))].sort((a, b) => a.localeCompare(b, 'nl'));
+  let kleurOp = instelling.lees('kaartKleurOp', 'laag');
+  if (kleurOp.startsWith('k:') && !velden.includes(kleurOp.slice(2))) kleurOp = 'laag';
 
   app.innerHTML = `
     <div class="paginakop">
-      <div><h1>Kaart &amp; GIS</h1><p>${objecten.filter((o) => objectGeometrie(o)).length} van ${objecten.length} objecten op de kaart. Vulkleur = conditie.</p></div>
+      <div><h1>Kaart &amp; GIS</h1><p>Areaal: ${matenTekst(totaal, opKaart.length)}${opKaart.length < objecten.length ? ` (${objecten.length - opKaart.length} objecten zonder geometrie)` : ''}.</p></div>
       ${magBeheren() ? '<a class="knop primair" href="#/gis/importeren">🗺️ GIS-laag inladen</a>' : ''}
     </div>
     <div class="kaartindeling">
       <div id="kaart" class="kaart"><p class="leeg">Kaart laden…</p></div>
       <aside class="kaart lagenpaneel">
-        <h2>Lagen</h2>
+        <div class="veld"><label for="kleurop">Kleur op</label>
+          <select id="kleurop">${optie('laag', 'Laag', kleurOp)}${optie('type', 'Objecttype', kleurOp)}
+            ${velden.length ? `<optgroup label="GIS-kenmerk">${velden.map((v) => optie(`k:${v}`, v, kleurOp)).join('')}</optgroup>` : ''}</select></div>
+        <h3 style="margin-top:1rem">Legenda</h3>
+        <div class="legenda" id="legenda"></div>
+        <h2 style="margin-top:1.25rem">Lagen</h2>
         ${groepen.length ? groepen.map((g) => `
           <div class="laagregel">
             <label><input type="checkbox" data-laag="${esc(g.id)}" checked>
               <span class="kleurvak" style="background:${esc(g.kleur)}"></span>
-              <span><strong>${esc(g.naam)}</strong><small>${g.objecten.length} objecten${g.laag ? ` · ${esc(g.laag.soort)} · ${esc(g.laag.bron)}` : ''}</small></span></label>
+              <span><strong>${esc(g.naam)}</strong><small>${matenTekst(areaalMaten(g.objecten), g.objecten.length)}${g.laag ? ` · ${esc(g.laag.bron)}` : ''}</small></span></label>
             ${g.laag && magBeheren() ? `<button class="knop klein gevaar" data-laag-weg="${esc(g.id)}" aria-label="Laag verwijderen">🗑</button>` : ''}
           </div>`).join('') : '<p class="leeg">Nog geen lagen. Laad een GIS-bestand in.</p>'}
-        <h3 style="margin-top:1rem">Conditie</h3>
-        <div class="legenda">${[1, 2, 3, 4, 5, 6].map((s) => `<span><i style="background:${CONDITIES[s].kleur}"></i>${s} ${CONDITIES[s].label}</span>`).join('')}
-          <span><i style="background:#c3cbd3"></i>Onbekend</span></div>
       </aside>
     </div>`;
 
@@ -2253,50 +2285,84 @@ async function kaart() {
     };
   });
 
-  if (!groepen.some((g) => g.objecten.length)) {
+  const groepVan = new Map(groepen.flatMap((g) => g.objecten.map((o) => [o.id, g])));
+  // Kleurtoekenning per modus: laag, objecttype of de waarden van een GIS-kenmerk.
+  const kleurSchema = (modus) => {
+    if (modus === 'laag') {
+      const telling = groepen.map((g) => ({ label: g.naam, kleur: g.kleur, aantal: g.objecten.length }));
+      return { kleur: (o) => groepVan.get(o.id)?.kleur ?? OVERIG_KLEUR, telling };
+    }
+    const waardeVan = modus === 'type' ? (o) => o.type || '(geen type)'
+      : (o) => { const v = o.kenmerken?.[modus.slice(2)]; return v === undefined || v === null || v === '' ? '(leeg)' : String(v); };
+    const aantallen = new Map();
+    for (const o of opKaart) aantallen.set(waardeVan(o), (aantallen.get(waardeVan(o)) ?? 0) + 1);
+    const gesorteerd = [...aantallen.entries()].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), 'nl', { numeric: true }));
+    const top = gesorteerd.slice(0, CATEGORIEKLEUREN.length - 1);
+    const kleuren = new Map(top.map(([w], i) => [w, CATEGORIEKLEUREN[i]]));
+    const overig = gesorteerd.slice(top.length).reduce((t, [, n]) => t + n, 0);
+    const telling = [...top.map(([w, n]) => ({ label: w, kleur: kleuren.get(w), aantal: n })), ...(overig ? [{ label: `Overig (${gesorteerd.length - top.length} waarden)`, kleur: OVERIG_KLEUR, aantal: overig }] : [])];
+    return { kleur: (o) => kleuren.get(waardeVan(o)) ?? OVERIG_KLEUR, telling };
+  };
+  const toonLegenda = (schema) => {
+    app.querySelector('#legenda').innerHTML = schema.telling.map((t) => `<span><i style="background:${esc(t.kleur)}"></i>${esc(t.label)} <small>(${t.aantal})</small></span>`).join('')
+      || '<span class="mleeg">Geen objecten</span>';
+  };
+  let schema = kleurSchema(kleurOp);
+  toonLegenda(schema);
+
+  if (!opKaart.length) {
     app.querySelector('#kaart').innerHTML = '<p class="leeg">Nog niets om te tonen. Laad een GIS-laag in of vul coördinaten in bij een object.</p>';
     return;
   }
   // Niet wachten: de kaart tekent zich zodra de bibliotheek binnen is.
-  tekenGisKaart(app.querySelector('#kaart'), { groepen, status, takenPerObject });
+  const kaartBelofte = tekenGisKaart(app.querySelector('#kaart'), { groepen, kleur: (o) => schema.kleur(o), groepVan });
+  app.querySelector('#kleurop').onchange = async (e) => {
+    instelling.schrijf('kaartKleurOp', e.target.value);
+    schema = kleurSchema(e.target.value);
+    toonLegenda(schema);
+    (await kaartBelofte)?.herkleur();
+  };
 }
 
-async function tekenGisKaart(el, { groepen, status, takenPerObject }) {
+async function tekenGisKaart(el, { groepen, kleur, groepVan }) {
   let L;
   try {
     L = await laadLeaflet();
   } catch (fout) {
     if (el.isConnected) el.innerHTML = `<p class="leeg">${esc(fout.message)}</p>`;
-    return;
+    return null;
   }
-  if (!el.isConnected) return; // inmiddels naar een andere pagina
+  if (!el.isConnected) return null; // inmiddels naar een andere pagina
   el.innerHTML = '';
   const map = L.map(el, { preferCanvas: true, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
   voegAchtergrondToe(L, map);
 
   const popup = (o) => {
-    const s = status.get(o.id);
-    const n = takenPerObject.get(o.id) ?? 0;
-    return `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br><small>${esc(o.type || '')}${o.geometrie ? ` · ${geometrieInfo(o)}` : ''}</small><br>
-      ${oordeelLabel(s)} ${planningLabel(s.planning)}<br>${n ? `<strong>${n}</strong> open taak/taken<br>` : ''}
-      <a href="#/objecten/${esc(o.id)}">Object</a> · <a href="#/taken/nieuw?object=${esc(o.id)}">+ Taak</a> · <a href="#/inspecties/nieuw?object=${esc(o.id)}">+ Inspectie</a>`;
+    const k = Object.entries(o.kenmerken ?? {}).filter(([, v]) => v !== null && v !== '' && typeof v !== 'object');
+    return `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br>
+      <small>${esc(o.type || '')}${groepVan.get(o.id)?.laag ? ` · laag ${esc(groepVan.get(o.id).naam)}` : ''}${o.geometrie ? ` · ${geometrieInfo(o)}` : ''}</small>
+      ${k.length ? `<table class="popuptabel">${k.slice(0, 12).map(([n, v]) => `<tr><th>${esc(n)}</th><td>${esc(v)}</td></tr>`).join('')}</table>
+        ${k.length > 12 ? `<small>+ ${k.length - 12} kenmerken</small><br>` : ''}` : '<br>'}
+      <a href="#/objecten/${esc(o.id)}">Object openen</a>`;
+  };
+  const stijl = (o) => {
+    const k = kleur(o);
+    return { color: k, weight: 2, fillColor: k, fillOpacity: 0.4 };
   };
   const kaartlagen = new Map();
   const grenzen = [];
   for (const g of groepen) {
-    const fc = { type: 'FeatureCollection', features: g.objecten.map((o) => ({ type: 'Feature', geometry: objectGeometrie(o), properties: { id: o.id } })) };
     const objectMap = new Map(g.objecten.map((o) => [o.id, o]));
+    const fc = { type: 'FeatureCollection', features: g.objecten.map((o) => ({ type: 'Feature', geometry: objectGeometrie(o), properties: { id: o.id } })) };
     const laag = L.geoJSON(fc, {
-      style: (f) => {
-        const s = status.get(f.properties.id);
-        return { color: g.kleur, weight: 2, fillColor: s?.conditie ? CONDITIES[s.conditie].kleur : '#c3cbd3', fillOpacity: 0.45 };
+      style: (f) => stijl(objectMap.get(f.properties.id)),
+      pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 7, weight: 2 }),
+      onEachFeature: (f, l) => {
+        l.bindPopup(() => popup(objectMap.get(f.properties.id)), { maxWidth: 320 });
+        if (l.setStyle) l.setStyle({ ...stijl(objectMap.get(f.properties.id)), ...(f.geometry.type.includes('Point') ? { color: '#fff', fillOpacity: 1 } : {}) });
       },
-      pointToLayer: (f, ll) => {
-        const s = status.get(f.properties.id);
-        return L.circleMarker(ll, { radius: 8, color: '#fff', weight: 2, fillColor: s?.conditie ? CONDITIES[s.conditie].kleur : g.kleur, fillOpacity: 1 });
-      },
-      onEachFeature: (f, l) => l.bindPopup(() => popup(objectMap.get(f.properties.id))),
     });
+    laag.objectMap = objectMap;
     kaartlagen.set(g.id, laag);
     const b = laag.getBounds();
     if (b.isValid()) grenzen.push(b);
@@ -2312,6 +2378,15 @@ async function tekenGisKaart(el, { groepen, status, takenPerObject }) {
       if (c.checked) l.addTo(map); else l.remove();
     };
   });
+  return {
+    herkleur() {
+      kaartlagen.forEach((laag) => laag.eachLayer((l) => {
+        const o = laag.objectMap.get(l.feature.properties.id);
+        const punt = l.feature.geometry.type.includes('Point');
+        l.setStyle({ ...stijl(o), ...(punt ? { color: '#fff', fillOpacity: 1 } : {}) });
+      }));
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -4257,6 +4332,12 @@ async function instellingen() {
             <input id="f-inspecteur" name="inspecteur" value="${esc(instelling.lees('inspecteur'))}"></div>
           <div class="veld breed"><label for="f-organisatie">Organisatie (in rapporten)</label>
             <input id="f-organisatie" name="organisatie" value="${esc(instelling.lees('organisatie'))}"></div>
+          <div class="veld breed"><label for="f-thema">Kleurthema</label>
+            <select id="f-thema" name="thema">
+              ${optie('licht', 'Licht (standaard)', instelling.lees('thema', 'licht'))}
+              ${optie('donker', 'Donker', instelling.lees('thema', 'licht'))}
+              ${optie('systeem', 'Volg instelling van het apparaat', instelling.lees('thema', 'licht'))}
+            </select></div>
           <div class="veld breed"><label for="f-weergave">Weergave op dit apparaat</label>
             <select id="f-weergave" name="weergave">
               ${optie('auto', 'Automatisch (telefoon = veldversie, pc = volledige versie)', instelling.lees('weergave', 'auto'))}
@@ -4304,6 +4385,8 @@ async function instellingen() {
     const d = formulierData(e.target);
     instelling.schrijf('inspecteur', d.inspecteur);
     instelling.schrijf('organisatie', d.organisatie);
+    instelling.schrijf('thema', d.thema);
+    document.documentElement.dataset.thema = d.thema;
     const weergaveGewijzigd = d.weergave !== instelling.lees('weergave', 'auto');
     instelling.schrijf('weergave', d.weergave);
     melding('Voorkeuren opgeslagen');

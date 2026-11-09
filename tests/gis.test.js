@@ -47,13 +47,13 @@ test('in vlak en afstand', () => {
   assert.ok(!inVlak([5.005, 52.005], metGat));
   assert.ok(!inVlak([5.02, 52.005], vierkant));
   assert.equal(afstandTot([5.005, 52.005], vierkant), 0);
-  bijna(afstandTot([5.02, 52.005], vierkant), 685, 10); // 0,01° oost ≈ 685 m op 52°
-  bijna(afstandTot([5.0, 52.0], { type: 'Point', coordinates: [5.0, 52.001] }), 110.5, 1);
+  bijna(afstandTot([5.02, 52.005], vierkant), 686.4, 2); // 0,01° oost ≈ 686 m op 52°
+  bijna(afstandTot([5.0, 52.0], { type: 'Point', coordinates: [5.0, 52.001] }), 111.26, 0.1);
 });
 
 test('oppervlakte, lengte en middelpunt', () => {
-  bijna(oppervlakte(vierkant), 685 * 1105, 1500);
-  bijna(lengte({ type: 'LineString', coordinates: [[5, 52], [5, 52.01]] }), 1105, 2);
+  bijna(oppervlakte(vierkant), 686.4 * 1112.6, 1500);
+  bijna(lengte({ type: 'LineString', coordinates: [[5, 52], [5, 52.01]] }), 1112.6, 1);
   const u = { type: 'Polygon', coordinates: [[[0, 0], [3, 0], [3, 3], [2, 3], [2, 1], [1, 1], [1, 3], [0, 3], [0, 0]]] };
   assert.ok(inVlak(middelpunt(u), u), 'middelpunt van een U-vorm ligt in het vlak');
   assert.equal(soortGeometrie(vierkant), 'vlak');
