@@ -4,6 +4,7 @@
 import { CONDITIES, ERNST, INTENSITEIT, URGENTIES, gebrekScore, inspectieScore, volgendeInspectie } from './nen2767.js';
 import * as BV from './bvc.js';
 import { middelpunt } from './gis.js';
+import * as ST from './stowa.js';
 
 const STATUS_TEKST = { afgerond: 'Gedaan', concept: 'Concept (niet afgerond)', overgeslagen: 'Overgeslagen', open: 'Open' };
 
@@ -25,6 +26,10 @@ const getal = (v) => (v === '' || v === null || v === undefined || !Number.isFin
 /** Oordeel van een inspectie: { code, tekst, kleur } – conditie (NEN 2767) of boomveiligheidsklasse. */
 export function oordeel(i) {
   if (!i) return { code: '', tekst: '', kleur: '' };
+  if (i.stowa) {
+    const z = ST.zwaarste(i.stowa.waarnemingen);
+    return z ? { code: ST.URGENTIE[z].label, tekst: ST.URGENTIE[z].uitleg, kleur: ST.URGENTIE[z].kleur } : { code: 'Geen waarnemingen', tekst: '', kleur: '' };
+  }
   if (i.bvc) {
     if (i.bvc.niet) return { code: 'Niet aangetroffen', tekst: 'Niet aangetroffen', kleur: '' };
     const k = BV.BVK[i.bvc.bvk];
@@ -43,7 +48,8 @@ export function oordeel(i) {
  */
 export function resultaatRijen({ lijst, laagNaam = new Map(), extra = () => [] }) {
   const isBvc = lijst.some((r) => r.inspectie?.bvc);
-  const isNen = lijst.some((r) => r.inspectie && !r.inspectie.bvc);
+  const isStowa = lijst.some((r) => r.inspectie?.stowa);
+  const isNen = lijst.some((r) => r.inspectie && !r.inspectie.bvc && !r.inspectie.stowa);
   const extraLabels = [];
   const extraPer = new Map();
   for (const r of lijst) {
@@ -56,11 +62,12 @@ export function resultaatRijen({ lijst, laagNaam = new Map(), extra = () => [] }
   const kol = [
     ['Objectcode', 14], ['Naam', 28], ['Type', 18], ['Laag', 18], ['Status', 16], ['Reden overslaan', 22],
     ['Datum', 12, 'datum'], ['Inspecteur', 20], ['Soort inspectie', 20],
-    [isBvc && !isNen ? 'Boomveiligheidsklasse' : 'Oordeel', 22, 'oordeel'], ['Omschrijving oordeel', 26],
+    [isBvc && !isNen && !isStowa ? 'Boomveiligheidsklasse' : isStowa && !isNen && !isBvc ? 'Zwaarste urgentie' : 'Oordeel', 22, 'oordeel'], ['Omschrijving oordeel', 26],
     ['Aantal gebreken', 10], ['Open maatregelen', 10], ['Urgentste maatregel', 22], ['Volgende inspectie', 13, 'datum'],
   ];
   if (isBvc) kol.push(['Boomsoort', 26], ['Plantjaar', 10], ['Stamdiameter (cm)', 12], ['ORK', 10], ['Controlefrequentie', 14], ['Gesloten beplanting', 12], ['Aantal bomen', 10], ['Methode', 10]);
   if (isNen) kol.push(['Weer', 12], ['Raming open maatregelen (€)', 14, 'euro']);
+  if (isStowa) kol.push(['Type kering', 16], ['Soort inspectie (STOWA)', 18], ['Rood', 7], ['Oranje', 7], ['Groen', 7]);
   kol.push(['Samenvatting / opmerking', 44], ["Foto's", 8], ['X (RD)', 12], ['Y (RD)', 12], ['Breedtegraad', 12], ['Lengtegraad', 12]);
   for (const l of extraLabels) kol.push([l, 18]);
 
@@ -72,26 +79,36 @@ export function resultaatRijen({ lijst, laagNaam = new Map(), extra = () => [] }
     const b = i?.bvc ?? null;
     const c = coordinaten(o);
     const oo = oordeel(i);
-    const nenGebreken = i && !b ? (i.gebreken ?? []) : [];
+    const s = i?.stowa ?? null;
+    const nenGebreken = i && !b && !s ? (i.gebreken ?? []) : [];
+    const waarnemingen = s?.waarnemingen ?? [];
+    const openStowa = waarnemingen.filter((w) => (w.maatregel || w.urgentie) && w.maatregelStatus !== 'uitgevoerd');
     const bvcMaatregelen = b?.maatregelen ?? [];
     const openNen = nenGebreken.filter((g) => (g.maatregel || g.urgentie) && g.maatregelStatus !== 'uitgevoerd');
     const openBvc = bvcMaatregelen.filter((m) => m.maatregelStatus !== 'uitgevoerd');
-    const urgentst = b
+    const urgentst = s
+      ? (ST.URGENTIE[ST.zwaarste(openStowa)]?.label ?? '')
+      : b
       ? (openBvc.find((m) => m.termijn === 'acuut') ? 'Acuut (48 uur)' : openBvc.length ? BV.URGENTIE[openBvc[0].termijn]?.label ?? '' : '')
       : URGENTIES.find((u) => openNen.some((g) => g.urgentie === u.id))?.label ?? '';
     const volgende = b ? b.volgendeControle : (i ? volgendeInspectie(i.datum, o.inspectieInterval) : '');
-    const fotoIds = [...(i?.fotoIds ?? []), ...nenGebreken.flatMap((g) => g.fotoIds ?? []), ...(b?.gebreken ?? []).flatMap((g) => g.fotoIds ?? [])];
+    const fotoIds = [...(i?.fotoIds ?? []), ...nenGebreken.flatMap((g) => g.fotoIds ?? []), ...(b?.gebreken ?? []).flatMap((g) => g.fotoIds ?? []),
+      ...waarnemingen.flatMap((w) => w.fotoIds ?? [])];
     const rij = [
       o.code ?? '', o.naam ?? '', o.type ?? '', laagNaam.get(o.laagId) ?? '', STATUS_TEKST[i ? i.status : status] ?? status, status === 'overgeslagen' ? (reden ?? '') : '',
       datum(i?.datum), i?.inspecteur ?? '', i?.soort ?? '', oo.code, oo.tekst,
-      i ? (b ? (b.gebreken ?? []).length : nenGebreken.length) : '', i ? (b ? openBvc.length : openNen.length) : '', urgentst, datum(volgende),
+      i ? (s ? waarnemingen.length : b ? (b.gebreken ?? []).length : nenGebreken.length) : '', i ? (s ? openStowa.length : b ? openBvc.length : openNen.length) : '', urgentst, datum(volgende),
     ];
     if (isBvc) {
       const soort = BV.BOOMSOORTEN.find(([w]) => w === b?.soort);
       rij.push(b ? (soort ? `${soort[0]} – ${soort[1]}` : b.soort ?? '') : '', b ? getal(b.plantjaar) : '', b ? getal(b.dbh) : '', b?.ork ?? '',
         b && !b.niet ? BV.CONTROLEFREQUENTIE[b.frequentieJaren ?? BV.frequentie(b.bvk, b.ork)] ?? '' : '', b ? (b.gb ? 'Ja' : 'Nee') : '', b?.gb ? getal(b.aantalBomen) : '', b?.methode ?? '');
     }
-    if (isNen) rij.push(i && !b ? i.weer ?? '' : '', i && !b ? openNen.reduce((t, g) => t + (Number(g.kostenraming) || 0), 0) || '' : '');
+    if (isNen) rij.push(i && !b && !s ? i.weer ?? '' : '', i && !b && !s ? openNen.reduce((t, g) => t + (Number(g.kostenraming) || 0), 0) || '' : '');
+    if (isStowa) {
+      const n = (k) => (s ? waarnemingen.filter((w) => w.urgentieKleur === k).length : '');
+      rij.push(s ? ST.KERINGEN[s.kering]?.label ?? '' : '', s?.moment ?? '', n('rood'), n('oranje'), n('groen'));
+    }
     rij.push((b ? b.opmerking : i?.samenvatting) ?? '', fotoIds.length || '', c.x, c.y, c.lat, c.lng);
     const ex = i ? extraPer.get(i.id) : null;
     for (const l of extraLabels) rij.push(ex?.get(l) ?? '');
@@ -99,7 +116,23 @@ export function resultaatRijen({ lijst, laagNaam = new Map(), extra = () => [] }
 
     if (!i) continue;
     for (const fid of i.fotoIds ?? []) fotos.push({ objectcode: o.code, onderwerp: 'Algemeen', fotoId: fid });
-    if (b) {
+    if (s) {
+      waarnemingen.forEach((w, n) => {
+        const wz = ST.wijzer(w.wijzer);
+        const kenm = Object.entries(w.kenmerken ?? {}).filter(([, v]) => v !== '' && v != null).map(([k, v]) => `${k}: ${v}`).join('; ');
+        gebreken.push({
+          waarden: [o.code, o.naam, datum(i.datum), n + 1, [w.zone, w.locatie].filter(Boolean).join(' · '),
+            w.aard === 'handhaving' ? `Handhaving: ${w.omschrijving ?? ''}` : (wz?.naam ?? ''), wz ? `${ST.CATEGORIEEN[wz.categorie]} (wijzer ${wz.nr})` : '', '',
+            '', '', '', ST.URGENTIE[w.urgentieKleur]?.label ?? '', [kenm, w.toelichting].filter(Boolean).join(' — '), w.maatregel ?? '',
+            [w.maatregelSoort, w.urgentie ? URGENTIES.find((u) => u.id === w.urgentie)?.label : ''].filter(Boolean).join(' · '), (w.fotoIds ?? []).length || ''],
+          kleur: ST.URGENTIE[w.urgentieKleur]?.kleur ?? '',
+        });
+        if (w.maatregel || w.urgentie) {
+          maatregelen.push({ waarden: [o.code, o.naam, datum(i.datum), w.maatregel || `${w.bouwdeel} – ${w.gebrek}`, ST.URGENTIE[w.urgentieKleur]?.label ?? '', null, '', w.maatregelStatus === 'uitgevoerd' ? 'Uitgevoerd' : 'Open'], kleur: ST.URGENTIE[w.urgentieKleur]?.kleur ?? '' });
+        }
+        for (const fid of w.fotoIds ?? []) fotos.push({ objectcode: o.code, onderwerp: `Waarneming ${n + 1}: ${wz?.naam ?? w.omschrijving ?? ''}`, fotoId: fid });
+      });
+    } else if (b) {
       (b.gebreken ?? []).forEach((g, n) => {
         gebreken.push({ waarden: [o.code, o.naam, datum(i.datum), n + 1, g.plaats ?? '', g.omschrijving ?? '', g.type || BV.gebrekType(g.omschrijving), g.gevolg ?? '', '', '', '', '', g.toelichting ?? '', '', '', (g.fotoIds ?? []).length || ''], kleur: '' });
         for (const fid of g.fotoIds ?? []) fotos.push({ objectcode: o.code, onderwerp: `Gebrek ${n + 1}: ${g.omschrijving ?? ''}`, fotoId: fid });
@@ -132,7 +165,7 @@ export function resultaatRijen({ lijst, laagNaam = new Map(), extra = () => [] }
 
 export const GEBREK_KOLOMMEN = [
   ['Objectcode', 14], ['Naam', 26], ['Datum', 12, 'datum'], ['Nr', 5], ['Bouwdeel / plaats', 24], ['Gebrek', 28], ['Type', 16], ['Gevolg', 14],
-  ['Ernst', 10], ['Intensiteit', 14], ['Omvang (%)', 10], ['Conditie', 9], ['Waarneming / toelichting', 44], ['Maatregel', 34], ['Urgentie', 16], ["Foto's", 8],
+  ['Ernst', 10], ['Intensiteit', 14], ['Omvang (%)', 10], ['Conditie / urgentie', 11], ['Waarneming / toelichting', 44], ['Maatregel', 34], ['Urgentie', 16], ["Foto's", 8],
 ];
 export const MAATREGEL_KOLOMMEN = [
   ['Objectcode', 14], ['Naam', 26], ['Datum inspectie', 13, 'datum'], ['Maatregel', 40], ['Urgentie', 18], ['Uitvoeren vóór', 13, 'datum'], ['Raming (€)', 12, 'euro'], ['Status', 12],

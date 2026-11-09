@@ -619,3 +619,17 @@ table.klein td, table.klein th { white-space: nowrap; max-width: 12rem; overflow
 .il-waarden span { padding: .1rem .5rem; border-radius: 99px; background: var(--vlak); border: 1px solid var(--rand); font-size: .85rem; overflow-wrap: anywhere; }
 .il-waarden span small { color: var(--tekst-zacht); }
 .il-let-op { color: #a12a1d; width: 100%; }
+
+/* STOWA-inspectie waterkering */
+details.waarneming > summary { cursor: pointer; list-style: none; margin-bottom: 0; }
+details.waarneming > summary::-webkit-details-marker { display: none; }
+details.waarneming[open] > summary { margin-bottom: .75rem; }
+details.waarneming > summary h3 { overflow-wrap: anywhere; flex: 1; min-width: 0; }
+details.waarneming > summary > span { display: flex; align-items: center; gap: .4rem; flex: none; }
+.kenmerkvelden { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: .5rem; }
+.kenmerkvelden label { display: flex; flex-direction: column; gap: .2rem; min-width: 0; }
+.kenmerkvelden small { color: var(--tekst-zacht); text-transform: capitalize; }
+.locatieveld { display: flex; gap: .4rem; }
+.locatieveld input { flex: 1; min-width: 0; }
+.leaflet-tooltip.puntlabel { background: transparent; border: 0; box-shadow: none; color: #fff; font-weight: 700; font-size: .75rem; padding: 0; }
+.leaflet-tooltip.puntlabel::before { display: none; }

@@ -15,6 +15,7 @@ export const MATERIALEN = [
 export const INSPECTIESOORTEN = [
   'Visuele inspectie', 'Conditiemeting NEN 2767', 'Schouw', 'Nadere / specialistische inspectie',
   'Inspectie na incident / calamiteit', 'Oplevering', 'Duikinspectie', 'Boomveiligheidscontrole',
+  'Inspectie waterkering (STOWA)',
 ];
 
 export const BOUWDELEN = [

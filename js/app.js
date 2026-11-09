@@ -22,6 +22,7 @@ import {
 import * as PX from './pakketexcel.js';
 import * as RX from './resultatenexcel.js';
 import * as IMP from './gisimport.js';
+import * as ST from './stowa.js';
 import { takenLijst, sorteerTaken, objectGeometrie, PRIORITEITEN } from './taken.js';
 
 const app = document.getElementById('app');
@@ -56,6 +57,8 @@ const ROUTES = [
   [/^\/m\/vrijgave\/([^/]+)$/, 'm-vrijgave', (id) => vrijgaveDetail(id, { mobiel: true })],
   [/^\/m\/bvc$/, 'm-inspectie', () => objectKiezer('bvc')],
   [/^\/m\/bvc\/nieuw$/, 'm-inspectie', (_, q) => bvcFormulier(null, q.get('object'), { mobiel: true, taakId: q.get('taak'), pakketId: q.get('pakket'), rondeId: q.get('ronde') })],
+  [/^\/m\/stowa\/nieuw$/, 'm-inspectie', (_, q) => stowaFormulier(null, q.get('object'), { mobiel: true, taakId: q.get('taak'), pakketId: q.get('pakket'), rondeId: q.get('ronde') })],
+  [/^\/stowa\/nieuw$/, 'inspecties', (_, q) => stowaFormulier(null, q.get('object'), { taakId: q.get('taak'), pakketId: q.get('pakket'), rondeId: q.get('ronde') })],
   [/^\/bvc\/nieuw$/, 'inspecties', (_, q) => bvcFormulier(null, q.get('object'), { taakId: q.get('taak'), pakketId: q.get('pakket'), rondeId: q.get('ronde') })],
   [/^\/vrijgaven$/, 'vrijgaven', vrijgavenLijst],
   [/^\/vrijgaven\/nieuw$/, 'vrijgaven', (_, q) => vrijgaveFormulier(null, q)],
@@ -172,6 +175,11 @@ function objectStatus(object, inspecties) {
     return { laatste, conditie: null, bvk, volgende, planning: laatste.bvc.niet ? 'geen' : planningStatus(volgende, vandaag()) };
   }
   const periodiek = Number(object.inspectieInterval) > 0;
+  if (laatste?.stowa) {
+    // Waterkering (STOWA): oordeel is de zwaarste urgentie, geen NEN-conditiescore.
+    const volgende = periodiek ? volgendeInspectie(laatste.datum, object.inspectieInterval) : null;
+    return { laatste, conditie: null, stowa: ST.zwaarste(laatste.stowa.waarnemingen), volgende, planning: periodiek ? planningStatus(volgende, vandaag()) : 'geen' };
+  }
   if (!laatste) return { laatste: null, conditie: null, volgende: null, planning: periodiek ? 'nooit' : 'geen' };
   if (!periodiek) return { laatste, conditie: inspectieScore(laatste), volgende: null, planning: 'geen' };
   const volgende = volgendeInspectie(laatste.datum, object.inspectieInterval);
@@ -181,7 +189,7 @@ function objectStatus(object, inspecties) {
 function alleMaatregelen(inspecties, objectMap) {
   const lijst = [];
   for (const insp of inspecties) {
-    for (const g of [...(insp.gebreken ?? []), ...(insp.bvc?.maatregelen ?? [])]) {
+    for (const g of ST.gebrekItems(insp)) {
       if (!g.maatregel && !g.urgentie) continue;
       lijst.push({ gebrek: g, inspectie: insp, object: objectMap.get(insp.objectId) });
     }
@@ -245,7 +253,7 @@ async function fotoGalerij(ids, { titel = '' } = {}) {
 }
 
 /** Kaartje met de ligging van één object, met de rest van de laag lichtgrijs als context. */
-async function tekenObjectKaartje(el, o, kleur = '#e07b00') {
+async function tekenObjectKaartje(el, o, kleur = '#e07b00', punten = []) {
   if (!el) return;
   const geo = o ? objectGeometrie(o) : null;
   if (!geo) {
@@ -272,10 +280,14 @@ async function tekenObjectKaartje(el, o, kleur = '#e07b00') {
     style: { color: kleur, weight: 4, fillColor: kleur, fillOpacity: 0.35 },
     pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 10, color: '#fff', weight: 3, fillColor: kleur, fillOpacity: 1 }),
   });
+  const extra = punten.map((p) => L.circleMarker([p.lat, p.lng], { radius: 9, color: '#fff', weight: 2, fillColor: p.kleur, fillOpacity: 1 })
+    .bindTooltip(p.label, { permanent: true, direction: 'center', className: 'puntlabel' }));
   const b = laag.getBounds();
-  if (geo.type === 'Point') map.setView(b.getCenter(), 18, { animate: false });
+  extra.forEach((m) => b.extend(m.getLatLng()));
+  if (geo.type === 'Point' && !extra.length) map.setView(b.getCenter(), 18, { animate: false });
   else map.fitBounds(b, { padding: [30, 30], maxZoom: 19, animate: false });
   context.addTo(map);
+  extra.forEach((m) => m.addTo(map));
   laag.addTo(map).bindTooltip(`${o.code ?? ''}`, { permanent: false });
 }
 
@@ -832,6 +844,10 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     return;
   }
   if (bestaand?.bvc) return bvcFormulier(id, null, { mobiel, taakId, pakketId });
+  if (bestaand?.stowa) return stowaFormulier(id, null, { mobiel, taakId, pakketId });
+  if (!bestaand && pakketId && (await laadPakketView(pakketId, rondeId))?.inspectiesoort === ST.STOWA_SOORT) {
+    return stowaFormulier(null, objectId, { mobiel, taakId, pakketId, rondeId });
+  }
   if (!objecten.length) {
     app.innerHTML = leegKaart(mobiel
       ? 'Er zijn nog geen objecten. Richt de objecten eerst in via de website op de pc.'
@@ -871,7 +887,8 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
   const veldDatum = `<div class="veld"><label for="f-datum" class="vereist">Datum</label>
       <input id="f-datum" name="datum" type="date" required value="${esc(staat.datum)}"></div>`;
   const veldSoort = `<div class="veld"><label for="f-soort">Soort</label>
-      <select id="f-soort" name="soort">${INSPECTIESOORTEN.filter((s) => s !== BV.BVC_SOORT).map((s) => optie(s, s, staat.soort)).join('')}</select></div>`;
+      <select id="f-soort" name="soort">${INSPECTIESOORTEN.filter((s) => s !== BV.BVC_SOORT).map((s) => optie(s, s, staat.soort)).join('')}</select>
+      <small>Waterkering? Kies "${ST.STOWA_SOORT}" voor de STOWA-inspectiewijzers.</small></div>`;
   const veldInspecteur = `<div class="veld"><label for="f-inspecteur">Inspecteur</label>
       <input id="f-inspecteur" name="inspecteur" value="${esc(staat.inspecteur)}" maxlength="100"></div>`;
   const veldWeer = `<div class="veld"><label for="f-weer">Weersomstandigheden</label>
@@ -925,7 +942,22 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
 
   const form = app.querySelector('#form');
   const extraB = await extraBlok(app.querySelector('#extra-blok'), await projectVelden('inspectie', () => form.elements.soort.value), bestaand);
-  form.addEventListener('change', (e) => { if (e.target.name === 'soort') extraB.teken(); });
+  form.addEventListener('change', (e) => {
+    if (e.target.name !== 'soort') return;
+    if (e.target.value === ST.STOWA_SOORT && !bestaand) {
+      // Waterkering: verder in het STOWA-formulier, met hetzelfde object, taak en pakket.
+      const q = new URLSearchParams();
+      const oid = form.elements.objectId?.value || staat.objectId;
+      if (oid) q.set('object', oid);
+      if (taakId) q.set('taak', taakId);
+      if (staat.werkpakketId) q.set('pakket', staat.werkpakketId);
+      if (staat.rondeId && staat.rondeId !== STANDAARD_RONDE) q.set('ronde', staat.rondeId);
+      formulierGewijzigd = false;
+      ga(`${mobiel ? '#/m/stowa' : '#/stowa'}/nieuw?${q}`);
+      return;
+    }
+    extraB.teken();
+  });
 
   const fotoBlok = (fotos, sleutel) => `
     <div class="fotos">
@@ -1130,6 +1162,7 @@ async function inspectieDetail(id) {
     return;
   }
   if (i.bvc) return bvcDetail(i);
+  if (i.stowa) return stowaDetail(i);
   const o = await db.haal('objecten', i.objectId);
   const gebreken = i.gebreken ?? [];
   const score = inspectieScore(i);
@@ -1181,7 +1214,8 @@ async function inspectieDetail(id) {
 }
 
 async function verwijderInspectieData(inspectie) {
-  const fotoIds = [...(inspectie.fotoIds ?? []), ...(inspectie.extraFotoIds ?? []), ...(inspectie.gebreken ?? []).flatMap((g) => g.fotoIds ?? [])];
+  const fotoIds = [...(inspectie.fotoIds ?? []), ...(inspectie.extraFotoIds ?? []), ...ST.gebrekItems(inspectie).flatMap((g) => g.fotoIds ?? []),
+    ...(inspectie.bvc?.gebreken ?? []).flatMap((g) => g.fotoIds ?? [])];
   for (const fid of fotoIds) await db.verwijder('fotos', fid);
   await db.verwijder('inspecties', inspectie.id);
 }
@@ -1193,6 +1227,7 @@ async function inspectieRapport(id) {
     return;
   }
   if (i.bvc) return bvcDetail(i, { rapport: true });
+  if (i.stowa) return stowaDetail(i, { rapport: true });
   const o = (await db.haal('objecten', i.objectId)) ?? {};
   const score = inspectieScore(i);
   const organisatie = instelling.lees('organisatie');
@@ -1277,7 +1312,7 @@ async function maatregelen() {
         <td><a href="#/objecten/${esc(o?.id ?? '')}">${objectNaam(o)}</a></td>
         <td><a href="#/inspecties/${esc(i.id)}">${esc(g.bouwdeel)} – ${esc(g.gebrek)}</a><br><small>${datumNL(i.datum)}</small></td>
         <td class="verberg-mobiel">${esc(g.maatregel || '–')}</td>
-        <td>${g.bvcMaatregel ? bvkLabel(i.bvc?.bvk) : scoreLabel(gebrekScore(g))}</td><td>${euro(g.kostenraming)}</td>
+        <td>${g.urgentieKleur ? stowaLabel(g.urgentieKleur) : g.bvcMaatregel ? bvkLabel(i.bvc?.bvk) : scoreLabel(gebrekScore(g))}</td><td>${euro(g.kostenraming)}</td>
         <td><button class="knop klein" data-wissel="${n}">${g.maatregelStatus === 'uitgevoerd' ? 'Heropenen' : '✓ Uitgevoerd'}</button></td>
       </tr>`).join('') : '<tr><td colspan="7" class="leeg">Geen maatregelen gevonden.</td></tr>';
   };
@@ -1299,7 +1334,7 @@ async function maatregelen() {
   app.querySelector('#export').onclick = () => {
     const rijen = [['Objectcode', 'Object', 'Inspectiedatum', 'Bouwdeel', 'Gebrek', 'Plaats', 'Conditie', 'Maatregel', 'Urgentie', 'Kostenraming', 'Status', 'Uitgevoerd op']];
     for (const { gebrek: g, inspectie: i, object: o } of zichtbaar) {
-      rijen.push([o?.code, o?.naam, i.datum, g.bouwdeel, g.gebrek, g.locatie, gebrekScore(g), g.maatregel,
+      rijen.push([o?.code, o?.naam, i.datum, g.bouwdeel, g.gebrek, g.locatie, g.urgentieKleur ? `STOWA ${ST.URGENTIE[g.urgentieKleur]?.label ?? ''}` : g.bvcMaatregel ? (BV.BVK[i.bvc?.bvk]?.kort ?? '') : gebrekScore(g), g.maatregel,
         URGENTIES.find((u) => u.id === g.urgentie)?.label ?? '', g.kostenraming, g.maatregelStatus ?? 'open', g.uitgevoerdOp ?? '']);
     }
     download(`maatregelen-${vandaag()}.csv`, csv(rijen), 'text/csv;charset=utf-8');
@@ -1345,8 +1380,10 @@ async function mobielStart() {
       href: `#/m/werk/${w.id}`, icoon: '🛠️', titel: w.soort || 'Werkzaamheid', object: objectMap.get(w.objectId), tijd: w.gewijzigd,
     })),
     ...inspecties.filter((i) => i.datum === dag && i.status === 'afgerond').map((i) => ({
-      href: `#/m/inspectie/${i.id}`, icoon: i.bvc ? '🌳' : '🔍',
-      titel: i.bvc ? `Boomveiligheid · ${i.bvc.niet ? 'niet aangetroffen' : BV.BVK[i.bvc.bvk]?.kort ?? ''}` : `${i.soort} · ${i.gebreken?.length ?? 0} gebrek(en)`,
+      href: `#/m/inspectie/${i.id}`, icoon: i.bvc ? '🌳' : i.stowa ? '🌊' : '🔍',
+      titel: i.bvc ? `Boomveiligheid · ${i.bvc.niet ? 'niet aangetroffen' : BV.BVK[i.bvc.bvk]?.kort ?? ''}`
+        : i.stowa ? `Waterkering · ${i.stowa.waarnemingen?.length ?? 0} waarneming(en)${ST.zwaarste(i.stowa.waarnemingen) ? ` · ${ST.URGENTIE[ST.zwaarste(i.stowa.waarnemingen)].label.toLowerCase()}` : ''}`
+          : `${i.soort} · ${i.gebreken?.length ?? 0} gebrek(en)`,
       object: objectMap.get(i.objectId), tijd: i.gewijzigd,
     })),
     ...(await inProject('vrijgaven')).filter((v) => v.datum === dag).map((v) => ({
@@ -1635,7 +1672,7 @@ async function gekoppeldeMaatregelen(w) {
   const inspecties = await inProject('inspecties');
   const lijst = [];
   for (const i of inspecties) {
-    for (const g of [...(i.gebreken ?? []), ...(i.bvc?.maatregelen ?? [])]) if (sleutels.has(`${i.id}:${g.id}`)) lijst.push({ gebrek: g, inspectie: i });
+    for (const g of ST.gebrekItems(i)) if (sleutels.has(`${i.id}:${g.id}`)) lijst.push({ gebrek: g, inspectie: i });
   }
   return lijst;
 }
@@ -1646,7 +1683,7 @@ async function werkMaatregelenBij(werkId, datum, aanzetten, uitzetten) {
   const nu = new Date().toISOString();
   for (const insp of inspecties) {
     let gewijzigd = false;
-    for (const g of [...(insp.gebreken ?? []), ...(insp.bvc?.maatregelen ?? [])]) {
+    for (const g of ST.gebrekItems(insp)) {
       const sleutel = `${insp.id}:${g.id}`;
       if (aanzetten.has(sleutel) && (g.maatregelStatus !== 'uitgevoerd' || g.werkzaamheidId !== werkId)) {
         Object.assign(g, { maatregelStatus: 'uitgevoerd', uitgevoerdOp: datum, werkzaamheidId: werkId });
@@ -3283,7 +3320,7 @@ function pakketStatusLabel(status) {
 }
 
 function pakketSoortTekst(p) {
-  if (p.soort === 'inspectie') return `${p.inspectiesoort === BV.BVC_SOORT ? '🌳' : '🔍'} ${esc(p.inspectiesoort || 'Schouw / inspectie')}`;
+  if (p.soort === 'inspectie') return `${p.inspectiesoort === BV.BVC_SOORT ? '🌳' : p.inspectiesoort === ST.STOWA_SOORT ? '🌊' : '🔍'} ${esc(p.inspectiesoort || 'Schouw / inspectie')}`;
   return `🛠️ ${esc(p.werksoort || 'Werkzaamheid')}`;
 }
 
@@ -3303,6 +3340,7 @@ function pakketHref(p, objectId, mobiel) {
   const q = new URLSearchParams({ object: objectId, pakket: p.id });
   if (rondeParam(p)) q.set('ronde', rondeParam(p));
   if (p.soort === 'inspectie' && p.inspectiesoort === BV.BVC_SOORT) return `${mobiel ? '#/m/bvc' : '#/bvc'}/nieuw?${q}`;
+  if (p.soort === 'inspectie' && p.inspectiesoort === ST.STOWA_SOORT) return `${mobiel ? '#/m/stowa' : '#/stowa'}/nieuw?${q}`;
   if (p.soort === 'inspectie') return `${mobiel ? '#/m/inspectie' : '#/inspecties'}/nieuw?${q}`;
   return `${mobiel ? '#/m/werk' : '#/werkzaamheden'}/nieuw?${q}`;
 }
@@ -3780,7 +3818,7 @@ async function pakketDetail(id, q = new URLSearchParams()) {
 /** Vraagt of foto's mee moeten en maakt het bestand. lijst: [{ object, inspectie, status, reden }] */
 async function exporteerResultaten({ lijst, titel, onderdeel = '', filter = '', bestandsnaam }) {
   if (!lijst.length) return melding('Er is niets om te exporteren.', 'fout');
-  const aantalFotos = lijst.reduce((t, { inspectie: i }) => t + (i ? [...(i.fotoIds ?? []), ...(i.gebreken ?? []).flatMap((g) => g.fotoIds ?? []), ...(i.bvc?.gebreken ?? []).flatMap((g) => g.fotoIds ?? [])].length : 0), 0);
+  const aantalFotos = lijst.reduce((t, { inspectie: i }) => t + (i ? [...(i.fotoIds ?? []), ...(i.gebreken ?? []).flatMap((g) => g.fotoIds ?? []), ...(i.bvc?.gebreken ?? []).flatMap((g) => g.fotoIds ?? []), ...(i.stowa?.waarnemingen ?? []).flatMap((g) => g.fotoIds ?? [])].length : 0), 0);
   const d = document.createElement('dialog');
   d.className = 'dialoog';
   d.innerHTML = `<form method="dialog">
@@ -4075,10 +4113,12 @@ function bvkLabel(bvk) {
 
 /** Conditie (NEN 2767) of, bij bomen, de boomveiligheidsklasse. */
 function oordeelLabel(s) {
+  if (s?.laatste?.stowa) return stowaLabel(s.stowa);
   return s?.bvk ? bvkLabel(s.bvk) : scoreLabel(s?.conditie);
 }
 
 function inspectieOordeel(i) {
+  if (i.stowa) return stowaLabel(ST.zwaarste(i.stowa.waarnemingen));
   if (!i.bvc) return scoreLabel(inspectieScore(i));
   return i.bvc.niet ? '<span class="label-status">Niet aangetroffen</span>' : bvkLabel(i.bvc.bvk);
 }
@@ -4140,6 +4180,363 @@ function gisOrk(o) {
 function soortNaam(latijn) {
   const s = BV.BOOMSOORTEN.find(([w]) => w === latijn);
   return s ? `${s[0]} – ${s[1]}` : (latijn || '–');
+}
+
+// ---------------------------------------------------------------------------
+// Inspectie waterkering volgens de STOWA-systematiek
+// ---------------------------------------------------------------------------
+function stowaLabel(kleur, { leeg = 'Geen waarnemingen' } = {}) {
+  const u = ST.URGENTIE[kleur];
+  return u ? `<span class="score" style="background:${u.kleur}" title="${esc(u.uitleg)}">● ${esc(u.label)}</span>` : `<span class="label-status">${esc(leeg)}</span>`;
+}
+
+const ZONE_NAAM = (z) => (z ? z.charAt(0).toUpperCase() + z.slice(1) : '');
+
+async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pakketId = null, rondeId = null } = {}) {
+  const objecten = (await inProject('objecten')).sort((a, b) => String(a.code).localeCompare(String(b.code), 'nl', { numeric: true }));
+  const bestaand = id ? await db.haal('inspecties', id) : null;
+  if (id && !bestaand) {
+    app.innerHTML = leegKaart('Inspectie niet gevonden.', '<a class="knop" href="#/inspecties">Terug</a>');
+    return;
+  }
+  const object = objecten.find((o) => o.id === (bestaand?.objectId ?? objectId));
+  if (!object) {
+    const q = new URLSearchParams({ ...(pakketId ? { pakket: pakketId } : {}), ...(rondeId ? { ronde: rondeId } : {}), ...(taakId ? { taak: taakId } : {}) });
+    app.innerHTML = `<div class="paginakop"><div><p><a href="${mobiel ? '#/' : '#/inspecties'}">← Terug</a></p><h1>Inspectie waterkering (STOWA)</h1></div></div>
+      <div class="kaart"><div class="veld"><label for="kies">Dijkvak / object</label><select id="kies"><option value="">– kies –</option>
+      ${objecten.map((o) => optie(o.id, `${o.code} – ${o.naam}`)).join('')}</select></div></div>`;
+    app.querySelector('#kies').onchange = (e) => {
+      if (e.target.value) { q.set('object', e.target.value); ga(`${mobiel ? '#/m/stowa' : '#/stowa'}/nieuw?${q}`); }
+    };
+    return;
+  }
+  const s0 = bestaand?.stowa ?? {};
+  const staat = {
+    datum: bestaand?.datum ?? vandaag(),
+    inspecteur: bestaand?.inspecteur ?? instelling.lees('inspecteur'),
+    weer: bestaand?.weer ?? '',
+    samenvatting: bestaand?.samenvatting ?? '',
+    werkpakketId: bestaand?.werkpakketId ?? pakketId ?? '',
+    rondeId: bestaand?.rondeId ?? rondeId ?? '',
+    fotos: await laadFotos(bestaand?.fotoIds),
+    kering: s0.kering ?? object.stowaKering ?? instelling.lees('stowaKering', ''),
+    moment: s0.moment ?? instelling.lees('stowaMoment', 'Schouw'),
+    waarnemingen: await Promise.all((s0.waarnemingen ?? []).map(async (w) => ({ ...w, kenmerken: { ...(w.kenmerken ?? {}) }, fotos: await laadFotos(w.fotoIds) }))),
+  };
+  const origineel = new Set([...(bestaand?.fotoIds ?? []), ...(s0.waarnemingen ?? []).flatMap((w) => w.fotoIds ?? [])]);
+  const pakket = await laadPakketView(staat.werkpakketId, staat.rondeId);
+  if (pakket) staat.rondeId = pakket.rondeId;
+  const taak = taakId ? await db.haal('taken', taakId) : null;
+  const terug = pakket ? pakketPagina(pakket, mobiel) : mobiel ? '#/' : bestaand ? `#/inspecties/${esc(id)}` : `#/objecten/${esc(object.id)}`;
+  const open = new Set(staat.waarnemingen.length ? [] : [0]);
+
+  const kop = mobiel
+    ? `<div class="mkop"><a href="${terug}" class="mterug" aria-label="Terug">←</a>
+        <div><small>🌊 Inspectie waterkering · STOWA</small><h1>${esc(object.code)} – ${esc(object.naam)}</h1></div></div>`
+    : `<div class="paginakop"><div><p><a href="${terug}">← Terug</a></p><h1>Inspectie waterkering (STOWA)</h1><p>${objectNaam(object)}</p></div></div>`;
+  app.innerHTML = `${kop}
+    <form id="form" novalidate class="${mobiel ? 'mform' : ''}">
+      ${taak ? `<div class="kaart mhier">📋 <strong>Taak:</strong> ${esc(taak.titel)}</div>` : ''}
+      ${pakket ? `<div class="kaart mhier">📦 <strong>Werkpakket:</strong> ${esc(pakket.naam)}</div>` : ''}
+      <section class="kaart">
+        <h2>Inspectie</h2>
+        <div class="velden">
+          <div class="veld"><label for="f-datum" class="vereist">Datum</label><input id="f-datum" name="datum" type="date" value="${esc(staat.datum)}"></div>
+          <div class="veld"><label for="f-inspecteur" class="vereist">Inspecteur</label><input id="f-inspecteur" name="inspecteur" value="${esc(staat.inspecteur)}" maxlength="100"></div>
+          <div class="veld"><label for="f-moment">Soort inspectie</label><select id="f-moment" data-s="moment">${ST.INSPECTIEMOMENTEN.map((m) => optie(m, m, staat.moment)).join('')}</select></div>
+          <div class="veld"><label for="f-weer">Weer</label><select id="f-weer" data-s="weer"><option value="">–</option>${WEER.map((w) => optie(w, w, staat.weer)).join('')}</select></div>
+          <div class="veld breed"><label class="vereist">Type waterkering</label>
+            ${segment('kering', staat.kering, Object.entries(ST.KERINGEN).map(([k, v]) => [k, v.label]), 'data-s="kering"')}</div>
+        </div>
+      </section>
+      <section>
+        <div class="mtussen"><h2>Waarnemingen</h2><button type="button" class="knop" id="w-plus">＋ Waarneming</button></div>
+        <p class="hulptekst">Per waarneming: zone → schadebeeld (inspectiewijzer) → kenmerken → urgentie. Geen schade gezien? Dan rond je de inspectie af zonder waarnemingen.</p>
+        <div id="waarnemingen"></div>
+      </section>
+      <section class="kaart">
+        <h2>Samenvatting</h2>
+        <div class="velden">
+          <div class="veld breed"><textarea id="f-samenvatting" data-s="samenvatting" maxlength="2000" placeholder="Algemeen beeld van het dijkvak">${esc(staat.samenvatting)}</textarea></div>
+          <div class="veld breed"><label>Overzichtsfoto's</label><div id="algemene-fotos"></div></div>
+        </div>
+      </section>
+      <div class="${mobiel ? 'mvoet' : 'formvoet kaart'}">
+        ${mobiel ? '' : `<a class="knop" href="${terug}">Annuleren</a>`}
+        <button class="knop" type="submit" data-status="concept">Concept</button>
+        <button class="knop primair" type="submit" data-status="afgerond">✓ Afronden</button>
+      </div>
+    </form>`;
+
+  const form = app.querySelector('#form');
+  const $ = (q) => app.querySelector(q);
+  const W = staat.waarnemingen;
+  const fotoLijst = (k) => (k === 'alg' ? staat.fotos : W[Number(k.slice(1))].fotos);
+  const nieuw = () => ({ id: nieuwId(), aard: 'schadebeeld', zone: '', wijzer: '', kenmerken: {}, urgentieKleur: '', omschrijving: '', locatie: '', toelichting: '', maatregel: '', maatregelSoort: '', maatregelStatus: 'open', fotos: [] });
+
+  const wijzerOpties = (w) => {
+    const passend = ST.wijzersVoorZone(w.zone);
+    const rest = ST.WIJZERS.filter((x) => !passend.includes(x));
+    const groep = (lijst) => Object.entries(ST.CATEGORIEEN).map(([c, naam]) => {
+      const l = lijst.filter((x) => x.categorie === Number(c));
+      return l.length ? `<optgroup label="${esc(naam)}">${l.map((x) => optie(x.nr, `${x.naam}  (${x.nr})`, w.wijzer)).join('')}</optgroup>` : '';
+    }).join('');
+    return `<option value="">– kies schadebeeld –</option>${groep(passend)}${w.zone && rest.length ? `<optgroup label="── Andere zones ──"></optgroup>${groep(rest)}` : ''}`;
+  };
+
+  const tekenW = () => {
+    const zones = ST.KERINGEN[staat.kering]?.zones ?? [];
+    $('#waarnemingen').innerHTML = W.length ? W.map((w, i) => {
+      const wz = ST.wijzer(w.wijzer);
+      const u = ST.URGENTIE[w.urgentieKleur];
+      const titel = w.aard === 'handhaving' ? (w.omschrijving || 'Handhaving') : (wz?.naam ?? 'Nieuwe waarneming');
+      return `<details class="gebrek waarneming" style="border-left-color:${u?.kleur ?? 'var(--rand)'}" ${open.has(i) ? 'open' : ''} data-w-blok="${i}">
+        <summary class="gebrek-kop"><h3 style="margin:0">${i + 1}. ${esc(titel)}</h3>
+          <span>${w.zone ? `<small>${esc(ZONE_NAAM(w.zone))}</small> ` : ''}${stowaLabel(w.urgentieKleur, { leeg: 'urgentie?' })}</span></summary>
+        <div class="velden">
+          <div class="veld breed"><label>Categorie</label>${segment(`aard-${i}`, w.aard, [['schadebeeld', '● Schadebeeld'], ['handhaving', '▲ Handhaving']], `data-w="${i}" data-veld="aard"`)}</div>
+          <div class="veld"><label class="vereist">Zone</label><select data-w="${i}" data-veld="zone"><option value="">– kies zone –</option>
+            ${zones.map((z) => optie(z, ZONE_NAAM(z), w.zone)).join('')}${w.zone && !zones.includes(w.zone) ? optie(w.zone, ZONE_NAAM(w.zone), w.zone) : ''}</select>
+            ${zones.length ? '' : '<small>Kies eerst het type waterkering.</small>'}</div>
+          ${w.aard === 'handhaving'
+    ? `<div class="veld breed"><label class="vereist">Omschrijving handhavingszaak</label><input data-w="${i}" data-veld="omschrijving" value="${esc(w.omschrijving)}" maxlength="200" placeholder="bijv. niet-vergunde steiger, opslag op de kruin"></div>`
+    : `<div class="veld breed"><label class="vereist">Element en schadebeeld (inspectiewijzer)</label><select data-w="${i}" data-veld="wijzer">${wijzerOpties(w)}</select>
+            ${wz ? `<small>${esc(ST.CATEGORIEEN[wz.categorie])} · komt voor bij: ${esc(wz.zones.join(', '))}</small>` : ''}</div>
+          ${wz && wz.kenmerken.length ? `<div class="veld breed"><label>Kenmerken schade</label><div class="kenmerkvelden">${wz.kenmerken.map((k) => {
+    const lijst = ST.keuzelijst(wz.nr, k);
+    const v = w.kenmerken[k] ?? '';
+    return `<label><small>${esc(k)}</small>${lijst
+      ? `<select data-w="${i}" data-kenmerk="${esc(k)}"><option value="">–</option>${lijst.map((x) => optie(x, x, v)).join('')}</select>`
+      : `<input data-w="${i}" data-kenmerk="${esc(k)}" value="${esc(v)}" maxlength="80">`}</label>`;
+  }).join('')}</div></div>` : ''}`}
+          <div class="veld breed"><label class="vereist">Urgentie</label>
+            ${segment(`urg-${i}`, w.urgentieKleur, Object.entries(ST.URGENTIE).map(([k, x]) => [k, x.label]), `data-w="${i}" data-veld="urgentieKleur" class="stowa-urgentie"`)}
+            <small>${u ? esc(u.uitleg) : 'Groen = geen directe actie · Oranje = binnen 3 maanden · Rood = direct gevaar kerend vermogen'}</small>
+            ${w.urgentieKleur === 'rood' ? '<p class="label-status verlopen" style="white-space:normal;margin-top:.35rem">⚠ Direct melden aan de beheerder en een foto maken.</p>' : ''}</div>
+          <div class="veld breed"><label>Locatie</label><div class="locatieveld">
+            <input data-w="${i}" data-veld="locatie" value="${esc(w.locatie)}" maxlength="120" placeholder="bijv. dijkpaal 12 + 40 m">
+            <button type="button" class="knop" data-gps="${i}">📍 ${w.lat ? 'Opnieuw' : 'GPS'}</button></div>
+            ${w.lat ? `<small>${Number(w.lat).toFixed(6)}, ${Number(w.lng).toFixed(6)}${w.nauwkeurigheid ? ` (± ${w.nauwkeurigheid} m)` : ''}</small>` : ''}</div>
+          <div class="veld breed"><label>Toelichting</label><textarea data-w="${i}" data-veld="toelichting" maxlength="1000" placeholder="Wat zie je, oorzaak, ontwikkeling">${esc(w.toelichting)}</textarea></div>
+          <div class="veld"><label>Maatregel</label><input data-w="${i}" data-veld="maatregel" value="${esc(w.maatregel)}" maxlength="200"></div>
+          <div class="veld"><label>Type maatregel</label><select data-w="${i}" data-veld="maatregelSoort"><option value="">–</option>${ST.MAATREGELSOORTEN.map((m) => optie(m, m, w.maatregelSoort)).join('')}</select></div>
+          <div class="veld breed"><label>Foto's (overzicht en detail)</label>${fotoRij(w.fotos, `w${i}`)}</div>
+          <div class="veld breed"><button type="button" class="knop klein gevaar" data-w-weg="${i}">🗑 Waarneming verwijderen</button></div>
+        </div></details>`;
+    }).join('') : '<p class="mleeg">Nog geen waarnemingen.</p>';
+  };
+  const tekenAlg = () => { $('#algemene-fotos').innerHTML = fotoRij(staat.fotos, 'alg'); };
+  tekenW(); tekenAlg();
+
+  form.addEventListener('toggle', (e) => {
+    const i = e.target.dataset?.wBlok;
+    if (i !== undefined) { if (e.target.open) open.add(Number(i)); else open.delete(Number(i)); }
+  }, true);
+  form.addEventListener('input', (e) => {
+    formulierGewijzigd = true;
+    const el = e.target;
+    if (el.dataset.s) {
+      staat[el.dataset.s] = el.value;
+      if (el.dataset.s === 'kering') tekenW();
+      return;
+    }
+    if (el.dataset.w === undefined) return;
+    const w = W[Number(el.dataset.w)];
+    if (el.dataset.kenmerk) { w.kenmerken[el.dataset.kenmerk] = el.value; return; }
+    const veld = el.dataset.veld;
+    w[veld] = el.value;
+    if (veld === 'wijzer') {
+      // Kenmerken van het vorige schadebeeld horen er niet meer bij.
+      const wz = ST.wijzer(w.wijzer);
+      w.kenmerken = Object.fromEntries(Object.entries(w.kenmerken).filter(([k]) => wz?.kenmerken.includes(k)));
+    }
+    if (['aard', 'zone', 'wijzer', 'urgentieKleur'].includes(veld)) tekenW();
+  });
+  form.addEventListener('change', async (e) => {
+    const k = e.target.dataset.fotoBij;
+    if (!k || !e.target.files?.length) return;
+    try {
+      for (const f of [...e.target.files]) fotoLijst(k).push({ id: nieuwId(), data: await verkleinFoto(f) });
+    } catch (fout) { melding(fout.message, 'fout'); }
+    if (k === 'alg') tekenAlg(); else tekenW();
+  });
+  form.addEventListener('click', (e) => {
+    const fw = e.target.closest('[data-foto-weg]');
+    if (fw) {
+      const [k, n] = fw.dataset.fotoWeg.split(':');
+      fotoLijst(k).splice(Number(n), 1);
+      if (k === 'alg') tekenAlg(); else tekenW();
+      return;
+    }
+    const ww = e.target.closest('[data-w-weg]');
+    if (ww && confirm('Deze waarneming verwijderen?')) {
+      W.splice(Number(ww.dataset.wWeg), 1);
+      open.clear();
+      tekenW();
+      return;
+    }
+    const gps = e.target.closest('[data-gps]');
+    if (gps) {
+      if (!navigator.geolocation) { melding('Locatiebepaling wordt niet ondersteund.', 'fout'); return; }
+      gps.disabled = true;
+      navigator.geolocation.getCurrentPosition((pos) => {
+        Object.assign(W[Number(gps.dataset.gps)], { lat: Number(pos.coords.latitude.toFixed(7)), lng: Number(pos.coords.longitude.toFixed(7)), nauwkeurigheid: Math.round(pos.coords.accuracy) });
+        formulierGewijzigd = true;
+        tekenW();
+      }, (fout) => { gps.disabled = false; melding(`Locatie niet beschikbaar: ${fout.message}`, 'fout'); }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 });
+    }
+  });
+  $('#w-plus').onclick = () => {
+    W.push(nieuw());
+    open.clear();
+    open.add(W.length - 1);
+    tekenW();
+    $('#waarnemingen').lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const status = e.submitter?.dataset.status ?? 'concept';
+    const datum = $('#f-datum').value;
+    const inspecteur = $('#f-inspecteur').value.trim();
+    if (!datum) return melding('Vul de datum in.', 'fout');
+    if (status === 'afgerond') {
+      if (!inspecteur) return melding('Vul de inspecteur in.', 'fout');
+      const fouten = ST.controleer(staat);
+      if (fouten.length) {
+        melding(`${fouten[0]}${fouten.length > 1 ? ` (en ${fouten.length - 1} meer)` : ''}`, 'fout');
+        const nr = Number(fouten[0].match(/^Waarneming (\d+)/)?.[1]);
+        if (nr) { open.add(nr - 1); tekenW(); }
+        return;
+      }
+    }
+    const inspectieId = id ?? nieuwId();
+    const nu = new Date().toISOString();
+    const pid = bestaand?.projectId ?? projectId();
+    await bewaarFotoLijsten([staat.fotos, ...W.map((w) => w.fotos)], origineel, { inspectieId, projectId: pid, datum: nu });
+    const waarnemingen = W.map(({ fotos, ...w }) => ST.alsGebrek({ ...w, fotoIds: fotos.map((f) => f.id) }));
+    await db.bewaar('inspecties', {
+      ...(bestaand ?? {}), id: inspectieId, projectId: pid, objectId: object.id,
+      werkpakketId: staat.werkpakketId, rondeId: staat.werkpakketId ? staat.rondeId : '',
+      soort: ST.STOWA_SOORT, datum, inspecteur, status, weer: staat.weer, samenvatting: staat.samenvatting,
+      fotoIds: staat.fotos.map((f) => f.id), gebreken: [],
+      stowa: { kering: staat.kering, moment: staat.moment, waarnemingen, zwaarste: ST.zwaarste(waarnemingen) },
+      aangemaakt: bestaand?.aangemaakt ?? nu, gewijzigd: nu,
+    });
+    if (status === 'afgerond') {
+      if (staat.kering && object.stowaKering !== staat.kering) {
+        const o = await db.haal('objecten', object.id);
+        await db.bewaar('objecten', { ...o, stowaKering: staat.kering, gewijzigd: nu });
+      }
+      await rondTaakAf(taakId, inspectieId);
+    }
+    instelling.schrijf('inspecteur', inspecteur);
+    instelling.schrijf('stowaKering', staat.kering);
+    instelling.schrijf('stowaMoment', staat.moment);
+    formulierGewijzigd = false;
+    const rood = waarnemingen.filter((w) => w.urgentieKleur === 'rood').length;
+    melding(status === 'afgerond' ? `Inspectie afgerond${rood ? ` – ${rood}× rood: direct melden aan de beheerder!` : ''}` : 'Concept opgeslagen', rood && status === 'afgerond' ? 'fout' : 'ok');
+    ga(pakket ? pakketPagina(pakket, mobiel) : (mobiel ? '#/' : `#/inspecties/${inspectieId}`));
+  };
+}
+
+/** Eén STOWA-waarneming als kaart (detail en rapport). */
+async function stowaWaarnemingKaart(w, n) {
+  const wz = ST.wijzer(w.wijzer);
+  const u = ST.URGENTIE[w.urgentieKleur];
+  const kenm = Object.entries(w.kenmerken ?? {}).filter(([, v]) => v !== '' && v != null);
+  return `<article class="gebrekkaart" style="--gk:${u?.kleur ?? '#9aa5b1'}">
+    <header><span class="gk-nr">${n + 1}</span>
+      <div class="gk-titel"><h3>${esc(w.aard === 'handhaving' ? `Handhaving: ${w.omschrijving}` : (wz?.naam ?? 'Schadebeeld'))}</h3>
+        <small>${[ZONE_NAAM(w.zone), wz ? `inspectiewijzer ${wz.nr} · ${ST.CATEGORIEEN[wz.categorie]}` : '', w.locatie ? `📍 ${w.locatie}` : ''].filter(Boolean).map(esc).join(' · ')}</small></div>
+      ${stowaLabel(w.urgentieKleur)}</header>
+    <div class="kenmerken">
+      ${kenm.map(([k, v]) => kenmerk(k, esc(v))).join('')}
+      ${w.maatregelSoort ? kenmerk('Type maatregel', esc(w.maatregelSoort)) : ''}
+      ${w.maatregel || w.urgentie ? kenmerk('Maatregel', w.maatregelStatus === 'uitgevoerd' ? '<span class="label-status uitgevoerd">Uitgevoerd</span>' : '<span class="label-status binnenkort">Open</span>') : ''}
+    </div>
+    ${w.toelichting || w.maatregel ? `<div class="gk-tekst">
+      ${w.toelichting ? `<div><h4>Toelichting</h4><p>${esc(w.toelichting)}</p></div>` : ''}
+      ${w.maatregel ? `<div><h4>Maatregel</h4><p>${esc(w.maatregel)}</p></div>` : ''}</div>` : ''}
+    ${await fotoGalerij(w.fotoIds, { titel: "Foto's" })}
+  </article>`;
+}
+
+async function stowaInhoud(i, o) {
+  const s = i.stowa ?? {};
+  const W = s.waarnemingen ?? [];
+  const z = ST.zwaarste(W);
+  const tel = Object.keys(ST.URGENTIE).map((k) => [k, W.filter((w) => w.urgentieKleur === k).length]).filter(([, n]) => n);
+  const kaarten = await Promise.all(W.map((w, n) => stowaWaarnemingKaart(w, n)));
+  const pakket = i.werkpakketId ? await laadPakketView(i.werkpakketId, i.rondeId) : null;
+  return `
+    <div class="raster-2 detailkop">
+      <section class="kaart">
+        <div class="oordeelblok" style="--gk:${ST.URGENTIE[z]?.kleur ?? '#1a7f37'}">
+          <div><small>Zwaarste urgentie</small>${stowaLabel(z)}</div>
+          <p>${z ? esc(ST.URGENTIE[z].uitleg) : 'Geen schade of handhavingszaken waargenomen.'}</p>
+        </div>
+        <dl class="gegevens">
+          <dt>Systematiek</dt><dd>STOWA inspectiewijzers waterkeringen</dd>
+          <dt>Type kering</dt><dd>${esc(ST.KERINGEN[s.kering]?.label ?? '–')}</dd>
+          <dt>Soort inspectie</dt><dd>${esc(s.moment ?? '–')}</dd>
+          <dt>Status</dt><dd>${statusLabel(i.status)}</dd>
+          <dt>Datum</dt><dd>${datumNL(i.datum)}</dd>
+          <dt>Inspecteur</dt><dd>${esc(i.inspecteur || '–')}</dd>
+          ${i.weer ? `<dt>Weer</dt><dd>${esc(i.weer)}</dd>` : ''}
+          <dt>Waarnemingen</dt><dd>${W.length}${tel.length ? ` · ${tel.map(([k, n]) => `${n}× ${ST.URGENTIE[k].label.toLowerCase()}`).join(', ')}` : ''}</dd>
+          ${pakket ? `<dt>Werkpakket</dt><dd><a href="${pakketPagina(pakket, false)}">📦 ${esc(pakket.naam)}</a></dd>` : ''}
+        </dl>
+      </section>
+      ${locatieBlok(o)}
+    </div>
+    ${i.samenvatting || i.fotoIds?.length ? `<section class="kaart"><h2>Samenvatting</h2>
+      ${i.samenvatting ? `<p style="white-space:pre-wrap">${esc(i.samenvatting)}</p>` : ''}${await fotoGalerij(i.fotoIds, { titel: "Foto's" })}</section>` : ''}
+    <h2>Waarnemingen${W.length ? ` (${W.length})` : ''}</h2>
+    ${kaarten.join('') || leegKaart('Geen waarnemingen: geen schade of handhavingszaken gezien.')}`;
+}
+
+function stowaKaartPunten(i) {
+  return (i.stowa?.waarnemingen ?? []).filter((w) => w.lat && w.lng)
+    .map((w, n) => ({ lat: w.lat, lng: w.lng, kleur: ST.URGENTIE[w.urgentieKleur]?.kleur ?? '#555', label: `${n + 1}` }));
+}
+
+async function stowaDetail(i, { rapport = false } = {}) {
+  const o = await db.haal('objecten', i.objectId);
+  const inhoud = await stowaInhoud(i, o);
+  const kleur = ST.URGENTIE[ST.zwaarste(i.stowa?.waarnemingen)]?.kleur ?? '#0b4f6c';
+  if (rapport) {
+    const organisatie = instelling.lees('organisatie');
+    app.innerHTML = `
+      <div class="paginakop geen-print"><p><a href="#/inspecties/${esc(i.id)}">← Terug</a></p>
+        <button class="knop primair" onclick="window.print()">Afdrukken / opslaan als PDF</button></div>
+      <article class="rapport">
+        <div class="rapport-kop"><div><small>${esc(organisatie || 'Inspectierapport waterkering')}</small>
+          <h1 style="margin:.25rem 0">Inspectie waterkering ${esc(o?.code ?? '')}</h1>
+          <div>${esc(o?.naam ?? '')} · ${datumNL(i.datum)} · ${esc(i.inspecteur || '')}</div></div>
+          <div style="text-align:right"><small>Zwaarste urgentie</small><br>${stowaLabel(ST.zwaarste(i.stowa?.waarnemingen))}</div></div>
+        <p><small>Visuele inspectie volgens de STOWA-systematiek (Inspectiewijzers waterkeringen, STOWA 2012-14); urgentie per
+          waarneming: groen = geen directe actie, oranje = actie binnen 3 maanden, rood = direct gevaar voor het kerend vermogen.</small></p>
+        ${inhoud}
+      </article>`;
+  } else {
+    app.innerHTML = `
+      <div class="paginakop">
+        <div><p><a href="${o ? `#/objecten/${esc(o.id)}` : '#/inspecties'}">← ${o ? esc(o.code) : 'Inspecties'}</a></p>
+          <h1>🌊 Inspectie waterkering · ${datumNL(i.datum)}</h1><p>${objectNaam(o)} · ${statusLabel(i.status)}</p></div>
+        <div class="knoppen">
+          <a class="knop" href="#/inspecties/${esc(i.id)}/rapport">Rapport</a>
+          <a class="knop" href="#/inspecties/${esc(i.id)}/bewerken">Bewerken</a>
+          <button class="knop gevaar" id="verwijder">Verwijderen</button>
+        </div>
+      </div>${inhoud}`;
+    app.querySelector('#verwijder').onclick = async () => {
+      if (!confirm('Deze inspectie inclusief foto\'s verwijderen?')) return;
+      await verwijderInspectieData(i);
+      ga(o ? `#/objecten/${o.id}` : '#/inspecties');
+    };
+  }
+  tekenObjectKaartje(app.querySelector('#objectkaartje'), o, kleur, stowaKaartPunten(i));
 }
 
 // ---------------------------------------------------------------------------

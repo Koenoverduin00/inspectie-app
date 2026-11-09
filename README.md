@@ -117,6 +117,30 @@ werkzaamheden op de actuele situatie van beschermde soorten en broedgevallen.
 - Bij een **werkpakket** kun je "flora- en fauna-vrijgave vereist" aanzetten: uitvoerders zien per object of er een
   geldige vrijgave is en het werkformulier waarschuwt als die ontbreekt (inclusief de voorwaarden).
 
+## Inspectie waterkering (STOWA)
+
+Visuele inspectie van waterkeringen volgens de STOWA-systematiek: *Inspectiewijzers waterkeringen* (STOWA 2012-14,
+technisch deel van de Handreiking inspecties waterkeringen) en de *Handreiking inspectie waterkeringen,
+operationeel deel* (STOWA VIW 2008-02).
+
+- **Starten**: kies bij een inspectie de soort *Inspectie waterkering (STOWA)*, of maak een werkpakket-ronde met die
+  inspectiesoort; uitvoerders openen dan vanzelf het STOWA-formulier (pc en telefoon).
+- **Hiërarchie**: type kering (rivierdijk, zeedijk, regionale kering, duin, (haven)dam, hoge grond, kunstwerk) →
+  zone (bijv. buitentalud, kruin, binnentalud, teen, berm, teensloot; per type volgens bijlage C) → element en
+  schadebeeld (de **61 inspectiewijzers** in 7 categorieën: oevers, gras-, steen- en asfaltbekleding, wegen, overig,
+  duinen) → kenmerken. Bij een zone staan de passende schadebeelden bovenaan; de kenmerken per schadebeeld hebben
+  de keuzelijsten uit bijlage D (bijv. breedte < 25 / 25-50 / 50-100 / > 100 cm, oorzaak graverij, zand meevoerend).
+- **Per waarneming**: categorie schadebeeld of handhaving, **urgentie groen / oranje / rood** (geen directe actie /
+  actie binnen 3 maanden / direct gevaar voor het kerend vermogen), locatie (tekst + GPS), toelichting, maatregel en
+  type maatregel (monitoren / verbeteren / reconstrueren), overzichts- en detailfoto's. Rood vraagt een foto en
+  geeft na afronden een melding om direct de beheerder te waarschuwen.
+- **Soort inspectie**: schouw, najaars- en voorjaarsinspectie, dagelijkse inspectie, bestuursschouw, gericht
+  technische inspectie, droogte- en storminspectie.
+- **Resultaat**: detail en rapport met kaart (object + GPS-punten van de waarnemingen), waarnemingen als kaarten met
+  kenmerken en foto's. Oranje en rood (en groen met maatregel) komen in *Maatregelen*, *Taken* en kunnen aan
+  werkzaamheden gekoppeld worden; de Excel-export heeft per inspectie de aantallen rood/oranje/groen en per
+  waarneming een regel. Het oordeel van een STOWA-inspectie is de zwaarste urgentie (geen NEN 2767-conditiescore).
+
 ## Boomveiligheidscontrole (BVC)
 
 Onder de tegel *Schouw & inspectie* (keuze 🌳 Boomveiligheid). Gebaseerd op het **Boomveiligheidsprotocol
@@ -277,6 +301,7 @@ js/velden.js          eigen formuliervelden: zichtbaarheid, controle en weergave
 js/pakketten.js       werkpakketten en rondes: voortgang, toewijzing en objectfilters
 js/pakketexcel.js     Excel-sjabloon (keuzelijsten, controles, beveiliging) en import met controle
 js/resultatenexcel.js inspectieresultaten naar Excel (resultaten, gebreken, maatregelen, foto's)
+js/stowa.js           STOWA-systematiek waterkeringen: zones, 61 inspectiewijzers, keuzelijsten, urgentie
 js/gisimport.js       GIS inladen: splitsen per geometrie, instellingen raden, controles, bestaande laag bijwerken
 js/bvc.js             boomveiligheidscontrole volgens protocol RWS, SUF-BVC, RD-coördinaten
 js/ecologie.js        flora- en fauna-vrijgave (veldcheck) volgens Gedragscode Soortenbescherming RWS

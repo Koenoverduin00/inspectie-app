@@ -1,6 +1,7 @@
 // Taken: wat moet er gebeuren, en wat is op deze locatie het meest logisch?
 // Bronnen: zelf geplande taken, de inspectieplanning en openstaande maatregelen.
 import { afstandTot } from './gis.js';
+import { gebrekItems } from './stowa.js';
 
 export const PRIORITEITEN = [
   { id: 'hoog', label: 'Hoog', rang: 2 },
@@ -60,7 +61,7 @@ export function takenLijst({ objecten, inspecties, taken, planning, vandaag, ik 
     if (insp.status !== 'afgerond') continue;
     const object = objectMap.get(insp.objectId);
     if (!object) continue;
-    for (const g of [...(insp.gebreken ?? []), ...(insp.bvc?.maatregelen ?? [])]) {
+    for (const g of gebrekItems(insp)) {
       if (g.maatregelStatus === 'uitgevoerd' || (!g.maatregel && !g.urgentie)) continue;
       const sleutel = `${insp.id}:${g.id}`;
       if (handmatigeMaatregel.has(sleutel)) continue;

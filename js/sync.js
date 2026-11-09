@@ -305,6 +305,7 @@ const tijd = (v) => Date.parse(v ?? '') || 0;
 const fotoIdsVan = (r) => [
   ...(r?.fotoIds ?? []), ...(r?.extraFotoIds ?? []), ...(r?.gebreken ?? []).flatMap((g) => g.fotoIds ?? []),
   ...(r?.bvc?.gebreken ?? []).flatMap((g) => g.fotoIds ?? []), ...(r?.waarnemingen ?? []).flatMap((w) => w.fotoIds ?? []),
+  ...(r?.stowa?.waarnemingen ?? []).flatMap((w) => w.fotoIds ?? []),
 ];
 
 async function verwerkRij(tabel, rij) {
