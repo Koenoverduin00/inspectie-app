@@ -24,18 +24,47 @@ ook **offline in het veld**, synchroniseert tussen pc en telefoon, en is te inst
 
 ## Werkpakketten
 
-Een werkpakket is één klus op een vaste set objecten, bijvoorbeeld *Maaironde 3 – Park Zuid* (werkzaamheid,
-werksoort Groenonderhoud) of *Schouw kunstwerken 2027* (schouw/inspectie).
+Structuur: **werkpakket → rondes (taken) → objecten**. Een werkpakket is het contractonderdeel op een vaste set
+objecten (bijv. *WP-2027-001 Groenonderhoud Park Zuid*); de rondes zijn de keren dat er iets gebeurt
+(*R1 Maaien april*, *R2 Maaien juni*, *R3 Schouw*), elk met eigen soort, periode, status en voortgang.
 
-- **Samenstellen (pc)** – kies met filter-dropdowns (GIS-laag, objecttype, kenmerk + waarde, conditie, planning,
-  zoeken) en voeg alle gefilterde objecten in één keer toe of haal ze weg; losse objecten vink je aan of uit.
-  Verder: periode, uitvoerders (projectleden), instructie en status (gepland / actief / afgerond).
-- **Voortgang** – een object is *gedaan* zodra er vanuit het pakket een werkzaamheid of afgeronde inspectie is
-  vastgelegd. Uitvoerders kunnen een object *overslaan* met verplichte reden. Je ziet bijv. **5/20 gedaan · 1 overgeslagen**.
-- **Telefoon** – het pakket opent met een kaart (oranje = te doen, groen = gedaan, grijs = overgeslagen, blauw = jij),
-  de lijst op afstand en de knop **Volgende dichtbij**; het formulier opent met de juiste soort ingevuld en na
-  opslaan ga je terug naar het pakket. Open objecten van actieve pakketten staan ook in *Logisch nu*.
-- **Herhalen** maakt een kopie voor de volgende ronde (*Maaironde 3* → *Maaironde 4*); **CSV** exporteert de status per object.
+- **Objecten koppelen** – objecten horen bij het pakket en een ronde geldt standaard voor álle objecten van het
+  pakket. Alleen als een object maar in één ronde mee moet, geef je een *deelselectie* op (via Excel: kolom
+  *Alleen in ronde*). Zo hoef je niets dubbel in te voeren en blijft een extra ronde één regel werk.
+- **Samenstellen (pc)** – pakketcode (vaste sleutel, automatisch `WP-jjjj-nnn`), naam, uitvoerders, instructie en
+  flora/fauna-vrijgave; daaronder de rondes (**＋ Ronde**) en de objecten via filter-dropdowns (GIS-laag,
+  objecttype, kenmerk + waarde, conditie, planning, zoeken).
+- **Voortgang per ronde** – een object is *gedaan* zodra er vanuit die ronde een werkzaamheid of afgeronde
+  inspectie is vastgelegd; uitvoerders kunnen een object *overslaan* met verplichte reden. Het pakket toont het
+  totaal over alle rondes, de detailpagina een tabel met per ronde de voortgang en de knop *Actief / Afronden*.
+- **Telefoon** – alleen *actieve* rondes verschijnen. Zijn er meer tegelijk actief, dan kies je eerst de ronde.
+  De ronde opent met een kaart (oranje = te doen, groen = gedaan, grijs = overgeslagen, blauw = jij), de lijst op
+  afstand en **Volgende dichtbij**; na opslaan ga je terug naar de ronde. Open objecten staan ook in *Logisch nu*.
+- **＋ Volgende ronde** voegt een ronde toe aan hetzelfde pakket (*Maaironde 3* → *Maaironde 4*); **CSV** en
+  (bij BVC) **SUF-BVC** exporteren de gekozen ronde.
+
+### Werkpakketten via Excel (grote onderhoudscontracten)
+
+Op *Werkpakketten* staan drie knoppen: **📥 Excel-sjabloon**, **📤 Naar Excel** (alle pakketten, om te bewerken
+en terug te laden) en **📂 Excel inladen**. Het `.xlsx`-bestand is zo gemaakt dat je alleen kunt invullen wat
+gevraagd wordt:
+
+| Blad | Eén regel per | Invullen |
+|---|---|---|
+| Werkpakketten | pakket | pakketcode (uniek), naam, uitvoerder 1–3 (keuzelijst projectleden), vrijgave Ja/Nee, instructie |
+| Rondes | ronde | pakketcode (keuzelijst), rondenr (heel getal, uniek per pakket), naam, soort → werk-/inspectiesoort (afhankelijke keuzelijst), start, gereed (≥ start), status |
+| Objecten | object of laag | pakketcode, objectcode (keuzelijst) **of** een hele GIS-laag, optioneel *Alleen in ronde* |
+
+- Keuzelijsten komen uit het project (objecten, lagen, leden, werk- en inspectiesoorten); ongeldige waarden en
+  datums worden in Excel direct geweigerd. Grijze kolommen (rondecode, objectnaam, type, laag, controle met ⚠)
+  rekenen zichzelf uit. De bladen zijn beveiligd (zonder wachtwoord): alleen de witte invoerkolommen zijn
+  bewerkbaar, de lijsten staan op een verborgen blad.
+- Bij inladen controleert de app alles opnieuw en toont een overzicht per pakket (*nieuw / bijwerken*, rondes,
+  objecten +/−) met fouten per blad en rij. Opslaan kan pas als er geen fouten meer zijn.
+- Bijwerken gaat op pakketcode; R1 in het bestand blijft R1 in de app (registraties blijven gekoppeld). Pakketten
+  die niet in het bestand staan en rondes worden nooit via Excel verwijderd. Optie (standaard aan): objecten die
+  niet meer in het bestand staan uit het pakket halen, **behalve** objecten die al gedaan of overgeslagen zijn.
+
 - De kaartbibliotheek (Leaflet) wordt meegeleverd, zodat de objecten ook zonder bereik op de kaart staan; alleen de
   achtergrondkaart heeft internet nodig.
 
@@ -80,7 +109,7 @@ Rijkswaterstaat** (Loo Plan, 8 februari 2017, definitief) en het CROW **Standaar
 - **Controles**: kwalificatie controleur (ETW, ETT, gecertificeerd boomveiligheidscontroleur of gelijkwaardig),
   methode (VTA/IBA/SIA), waarschuwing buiten de controleperiode juli–november, hint bijzondere boom (> 40 / > 90 cm dbh),
   melding bij beschermde soorten in de boom (koppeling naar een flora- en fauna-vrijgave).
-- **Als werkpakket**: kies bij een werkpakket *Schouw / inspectie* → *Boomveiligheidscontrole* en stel het samen uit
+- **Als werkpakket**: kies bij een ronde van een werkpakket *Schouw / inspectie* → *Boomveiligheidscontrole* en stel het samen uit
   de ingeladen GIS-lagen (bomen als punten, gesloten beplantingen als vlakken). Uitvoerders openen vanuit het pakket
   direct het BVC-formulier; de voortgang (bijv. 12/80), de samenvatting en de SUF-export per pakket volgen vanzelf.
   Bij het inladen worden laagnamen als *bomen* en *singels/houtwallen* herkend als *Boom* of *Gesloten beplanting*,
@@ -219,10 +248,11 @@ js/sync.js            inloggen en synchronisatie met Supabase
 js/gis.js             GIS inlezen (GeoJSON, Shapefile, GeoPackage), RD→WGS84, geometrie
 js/taken.js           taken samenstellen en sorteren op urgentie en locatie
 js/velden.js          eigen formuliervelden: zichtbaarheid, controle en weergave
-js/pakketten.js       werkpakketten: voortgang, toewijzing en objectfilters
+js/pakketten.js       werkpakketten en rondes: voortgang, toewijzing en objectfilters
+js/pakketexcel.js     Excel-sjabloon (keuzelijsten, controles, beveiliging) en import met controle
 js/bvc.js             boomveiligheidscontrole volgens protocol RWS, SUF-BVC, RD-coördinaten
 js/ecologie.js        flora- en fauna-vrijgave (veldcheck) volgens Gedragscode Soortenbescherming RWS
-vendor/               shpjs, sql.js en Leaflet, lokaal meegeleverd zodat import en kaart ook offline werken
+vendor/               shpjs, sql.js, Leaflet en ExcelJS, lokaal meegeleverd zodat import en kaart ook offline werken
 js/config.js          Supabase-URL en publishable key
 js/nen2767.js         conditieberekening en planning (pure functies)
 js/catalogus.js       keuzelijsten: objecttypen, bouwdelen, gebreken

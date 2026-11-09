@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { voortgang, voorMij, filterObjecten } from '../js/pakketten.js';
+import {
+  voortgang, voorMij, filterObjecten, rondesVan, rondeView, pakketStatus, overslaanId, totaalVoortgang,
+} from '../js/pakketten.js';
 import { takenLijst } from '../js/taken.js';
 
 const pakket = { id: 'p1', soort: 'werk', objecten: ['a', 'b', 'c', 'd', 'weg'] };
@@ -70,4 +72,40 @@ test('open pakketobjecten worden taken', () => {
   assert.equal(pak[0].rang, 2, 'verlopen pakket is hoog');
   assert.equal(pak[0].pakketId, 'p');
   assert.ok(!lijst.some((t) => t.bron === 'planning'), 'geen dubbele planningstaak voor object in inspectiepakket');
+});
+
+test('rondes: impliciete ronde, weergave en voortgang per ronde', () => {
+  const oud = { id: 'p', naam: 'Oud', soort: 'werk', werksoort: 'Reiniging', status: 'actief', objecten: ['a', 'b'] };
+  assert.equal(rondesVan(oud).length, 1);
+  assert.equal(rondesVan(oud)[0].id, 'standaard');
+  assert.equal(rondeView(oud, rondesVan(oud)[0]).naam, 'Oud');
+  assert.equal(overslaanId('p', 'a'), 'p:a', 'oude id blijft gelijk');
+
+  const p = {
+    id: 'p', code: 'WP-1', naam: 'Groen 2027', objecten: ['a', 'b', 'c'],
+    rondes: [
+      { id: 'r2', nummer: 2, naam: 'Maaien juni', soort: 'werk', werksoort: 'Groenonderhoud', status: 'gepland', objectIds: ['c', 'x'] },
+      { id: 'r1', nummer: 1, naam: 'Maaien april', soort: 'werk', werksoort: 'Groenonderhoud', status: 'actief', objectIds: null },
+    ],
+  };
+  assert.deepEqual(rondesVan(p).map((r) => r.id), ['r1', 'r2'], 'op volgorde van nummer');
+  const v1 = rondeView(p, rondesVan(p)[0]);
+  const v2 = rondeView(p, rondesVan(p)[1]);
+  assert.deepEqual(v1.objecten, ['a', 'b', 'c'], 'zonder selectie: alle objecten van het pakket');
+  assert.deepEqual(v2.objecten, ['c'], 'deelselectie, alleen objecten die in het pakket zitten');
+  assert.equal(v2.naam, 'Groen 2027 – Maaien juni');
+  assert.equal(pakketStatus(p), 'actief');
+  assert.equal(overslaanId('p', 'a', 'r2'), 'p:r2:a');
+
+  const werkzaamheden = [
+    { objectId: 'a', werkpakketId: 'p', rondeId: 'r1', datum: '2027-04-02' },
+    { objectId: 'c', werkpakketId: 'p', rondeId: 'r2', datum: '2027-06-02' },
+  ];
+  const overgeslagen = [{ pakketId: 'p', rondeId: 'r1', objectId: 'b', reden: 'Niet bereikbaar' }];
+  const g1 = voortgang(v1, { werkzaamheden, overgeslagen });
+  const g2 = voortgang(v2, { werkzaamheden, overgeslagen });
+  assert.deepEqual([g1.gedaan.size, g1.overgeslagen.size, g1.open], [1, 1, ['c']]);
+  assert.deepEqual([g2.gedaan.size, g2.overgeslagen.size, g2.open], [1, 0, []]);
+  const t = totaalVoortgang([g1, g2]);
+  assert.deepEqual([t.totaal, t.gedaan.size, t.overgeslagen.size], [4, 2, 1]);
 });

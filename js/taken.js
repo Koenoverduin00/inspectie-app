@@ -79,9 +79,9 @@ export function takenLijst({ objecten, inspecties, taken, planning, vandaag, ik 
       if (!object) continue;
       if (pakket.soort === 'inspectie') handmatigeInspectie.add(id);
       lijst.push({
-        id: `pakket:${pakket.id}:${id}`, bron: 'pakket', soort: pakket.soort === 'inspectie' ? 'inspectie' : 'werk',
+        id: `pakket:${pakket.id}:${pakket.rondeId ?? ''}:${id}`, bron: 'pakket', soort: pakket.soort === 'inspectie' ? 'inspectie' : 'werk',
         titel: pakket.naam, omschrijving: pakket.werksoort || pakket.inspectiesoort || '', object,
-        rang: telaat ? 2 : 3, deadline: pakket.eind ?? '', telaat, pakketId: pakket.id,
+        rang: telaat ? 2 : 3, deadline: pakket.eind ?? '', telaat, pakketId: pakket.id, rondeId: pakket.rondeId ?? '',
       });
     }
   }

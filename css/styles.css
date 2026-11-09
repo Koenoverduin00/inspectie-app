@@ -508,3 +508,10 @@ body.modus-mobiel .onderbalk { grid-template-columns: repeat(5, 1fr); }
 .popuptabel th, .popuptabel td { padding: .1rem .4rem .1rem 0; border: 0; text-transform: none; letter-spacing: 0; color: #333; font-weight: 400; vertical-align: top; }
 .popuptabel th { color: #667; }
 .legenda small { color: var(--tekst-zacht); }
+
+/* Werkpakketten: rondes en Excel-import */
+.rondetabel tr.gekozen td { background: color-mix(in srgb, var(--primair, #0b5cad) 8%, transparent); }
+.kaart.waarschuwing { border-left: 4px solid var(--gevaar); }
+.importmeldingen { margin: .5rem 0 0; padding-left: 1.2rem; max-height: 22rem; overflow: auto; }
+.importmeldingen li { margin: .15rem 0; }
+.gebrek.ronde .velden { margin-top: .25rem; }

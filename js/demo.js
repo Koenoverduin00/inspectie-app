@@ -109,14 +109,19 @@ export function demoData() {
     aangemaakt: nu, gewijzigd: nu,
   }];
 
+  const dag = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
   const werkpakketten = [{
-    id: nieuwId(), naam: 'Maaironde 1 – Park Zuid', soort: 'werk', werksoort: 'Groenonderhoud', inspectiesoort: '',
-    status: 'actief', start: new Date().toISOString().slice(0, 10), eind: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
+    id: nieuwId(), code: 'WP-DEMO-001', naam: 'Groenonderhoud Park Zuid', status: 'actief',
+    rondes: [
+      { id: nieuwId(), nummer: 1, naam: 'Maaironde 1', soort: 'werk', werksoort: 'Groenonderhoud', inspectiesoort: '', start: dag(0), eind: dag(7), status: 'actief', objectIds: null },
+      { id: nieuwId(), nummer: 2, naam: 'Maaironde 2', soort: 'werk', werksoort: 'Groenonderhoud', inspectiesoort: '', start: dag(28), eind: dag(35), status: 'gepland', objectIds: null },
+    ],
     toegewezen: [], omschrijving: 'Gazons maaien, randen bijwerken en maaisel afvoeren.', objecten: vakken.map((v) => v.id),
     aangemaakt: nu, gewijzigd: nu,
   }, {
-    id: nieuwId(), naam: 'Schouw kunstwerken 2026', soort: 'inspectie', werksoort: '', inspectiesoort: 'Schouw',
-    status: 'gepland', start: '', eind: '', toegewezen: [], omschrijving: '', objecten: [brug, viaduct, fietsbrug, duiker, kade].map((o) => o.id),
+    id: nieuwId(), code: 'WP-DEMO-002', naam: 'Schouw kunstwerken 2026', status: 'gepland',
+    rondes: [{ id: nieuwId(), nummer: 1, naam: 'Voorjaarsschouw', soort: 'inspectie', werksoort: '', inspectiesoort: 'Schouw', start: '', eind: '', status: 'gepland', objectIds: null }],
+    toegewezen: [], omschrijving: '', objecten: [brug, viaduct, fietsbrug, duiker, kade].map((o) => o.id),
     aangemaakt: nu, gewijzigd: nu,
   }];
 
