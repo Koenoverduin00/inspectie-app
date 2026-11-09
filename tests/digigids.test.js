@@ -4,22 +4,26 @@ import * as DG from '../js/digigids.js';
 import * as ST from '../js/stowa.js';
 import { resultaatRijen } from '../js/resultatenexcel.js';
 
-test('Digigids steenbekledingen: 9 schadebeelden met 4 klassen', () => {
-  assert.equal(DG.SCHADEBEELDEN.length, 9);
+test('Digigids: alle 6 categorieën, 100 schadebeelden met 4 klassen', () => {
+  assert.equal(DG.SCHADEBEELDEN.length, 100);
+  assert.equal(DG.CATEGORIEEN.length, 6);
+  assert.deepEqual([...new Set(DG.SCHADEBEELDEN.map((s) => s.categorie))].sort(), [...DG.CATEGORIEEN].sort());
   for (const s of DG.SCHADEBEELDEN) {
     assert.deepEqual(s.klassen.map((k) => k.klasse), DG.KLASSEN, s.id);
-    assert.ok(s.klassen.every((k) => k.criterium.length > 5), s.id);
-    assert.ok(s.url.startsWith('https://digigids.stowa.nl/gids/steenbekledingen/'));
+    assert.ok(s.klassen.every((k) => DG.klasseTekst(k).length > 3), `${s.id}: elke klasse heeft een criterium of fotobijschrift`);
+    assert.ok(s.url.startsWith('https://digigids.stowa.nl/gids/'));
     if (s.wijzer !== null) assert.ok(ST.wijzer(s.wijzer), `wijzer ${s.wijzer} bestaat`);
   }
-  assert.equal(DG.schadebeeld('zuilen-blokken/losse-gekamde-stenen').klassen[3].criterium, 'Overhang > 10 cm');
-  assert.deepEqual(DG.bijWijzer(22).map((s) => s.id), ['zuilen-blokken/losse-gekamde-stenen']);
+  assert.equal(DG.schadebeeld('steenbekledingen/zuilen-blokken/losse-gekamde-stenen').klassen[3].criterium, 'Overhang > 10 cm');
+  assert.deepEqual(DG.bijWijzer(22).map((s) => s.id), ['steenbekledingen/zuilen-blokken/losse-gekamde-stenen']);
   assert.equal(DG.bijWijzer(52).length, 2, 'schanskorven: wapening en gaten');
-  assert.deepEqual(DG.zonderWijzer().map((s) => s.id).sort(), ['steenbestorting/gaten', 'zuilen-blokken/drijf-zwerfvuil']);
+  assert.equal(DG.zonderWijzer().length, 49);
+  assert.equal(DG.bijWijzer(9).length, 4, 'onkruid groot/klein, ruigte, houtopslag');
+  assert.equal(DG.klasseTekst(DG.schadebeeld('bijzondere-constructies/damwand-beschoeiing/conditie').klassen[2]), 'Matige staat van materiaal');
 });
 
 test('waarneming met alleen een Digigids-schadebeeld', () => {
-  const w = ST.alsGebrek({ id: 'x', aard: 'schadebeeld', zone: 'buitentalud', wijzer: '', digigids: 'zuilen-blokken/drijf-zwerfvuil', digigidsKlasse: 'Matig', urgentieKleur: 'oranje' });
+  const w = ST.alsGebrek({ id: 'x', aard: 'schadebeeld', zone: 'buitentalud', wijzer: '', digigids: 'steenbekledingen/zuilen-blokken/drijf-zwerfvuil', digigidsKlasse: 'Matig', urgentieKleur: 'oranje' });
   assert.deepEqual(ST.controleer({ kering: 'zeedijk', waarnemingen: [w] }), []);
   assert.equal(w.bouwdeel, 'Zuilen of blokken · buitentalud');
   assert.equal(w.gebrek, 'Drijf- of zwerfvuil');

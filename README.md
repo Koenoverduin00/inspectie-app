@@ -134,13 +134,16 @@ operationeel deel* (STOWA VIW 2008-02).
   actie binnen 3 maanden / direct gevaar voor het kerend vermogen), locatie (tekst + GPS), toelichting, maatregel en
   type maatregel (monitoren / verbeteren / reconstrueren), overzichts- en detailfoto's. Rood vraagt een foto en
   geeft na afronden een melding om direct de beheerder te waarschuwen.
-- **Digigids** (nationale catalogus schadebeelden, STOWA en Rijkswaterstaat): bij de schadebeelden van
-  **steenbekledingen** (zuilen of blokken, steenbestorting, breuksteen in schanskorven) beoordeel je de schade met de
-  Digigids-klassen **Goed / Redelijk / Matig / Slecht**. Per klasse staat het criterium (bijv. "Overhang > 5 cm en
-  < 10 cm") met voorbeeldfoto's; tik de klasse die past, tik een foto om te vergroten. De foto's worden rechtstreeks
-  van digigids.stowa.nl getoond (alleen met internet). Schadebeelden die geen eigen inspectiewijzer hebben (drijf- of
-  zwerfvuil, gaten in steenbestorting) staan als groep *Digigids* in de keuzelijst. De klasse komt in het detail,
-  het rapport en de Excel-export. Bijwerken of andere onderdelen ophalen: `python3 scripts/digigids.py /gids/<onderdeel>`.
+- **Digigids** (nationale catalogus schadebeelden, STOWA en Rijkswaterstaat): alle **100 schadebeelden** uit de 6
+  categorieën – grasbekledingen, steenbekledingen, asfaltbekledingen, bijzondere constructies, niet-waterkerende
+  elementen en duinen. Per schadebeeld beoordeel je de schade met de klassen **Goed / Redelijk / Matig / Slecht**:
+  per klasse het criterium (bijv. "Overhang > 5 cm en < 10 cm") of, waar de Digigids geen criterium geeft, het
+  bijschrift van de voorbeeldfoto's, met de voorbeeldfoto's zelf; tik de klasse die past, tik een foto om te
+  vergroten. 51 schadebeelden zijn gekoppeld aan een STOWA-inspectiewijzer en verschijnen vanzelf bij die wijzer
+  (staan er meer bij één wijzer, dan kies je welke); de overige 49 staan per categorie als groep *Digigids – …* in de
+  keuzelijst. De foto's worden rechtstreeks van digigids.stowa.nl getoond (alleen met internet); criteria en
+  bijschriften zitten in de app en werken offline. De klasse komt in detail, rapport en Excel-export.
+  Opnieuw ophalen: `python3 scripts/digigids.py /gids/<categorie>`.
 - **Soort inspectie**: schouw, najaars- en voorjaarsinspectie, dagelijkse inspectie, bestuursschouw, gericht
   technische inspectie, droogte- en storminspectie.
 - **Resultaat**: detail en rapport met kaart (object + GPS-punten van de waarnemingen), waarnemingen als kaarten met
@@ -309,7 +312,7 @@ js/pakketten.js       werkpakketten en rondes: voortgang, toewijzing en objectfi
 js/pakketexcel.js     Excel-sjabloon (keuzelijsten, controles, beveiliging) en import met controle
 js/resultatenexcel.js inspectieresultaten naar Excel (resultaten, gebreken, maatregelen, foto's)
 js/stowa.js           STOWA-systematiek waterkeringen: zones, 61 inspectiewijzers, keuzelijsten, urgentie
-js/digigids.js        Digigids-schadebeelden steenbekledingen: klassen, criteria, voorbeeldfoto's
+js/digigids.js        Digigids: 100 schadebeelden (6 categorieën) met klassen, criteria en voorbeeldfoto's
 js/gisimport.js       GIS inladen: splitsen per geometrie, instellingen raden, controles, bestaande laag bijwerken
 js/bvc.js             boomveiligheidscontrole volgens protocol RWS, SUF-BVC, RD-coördinaten
 js/ecologie.js        flora- en fauna-vrijgave (veldcheck) volgens Gedragscode Soortenbescherming RWS

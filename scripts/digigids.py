@@ -3,8 +3,8 @@
 
 Gebruik:  python3 scripts/digigids.py /gids/steenbekledingen > digigids.json
 
-Per schadebeeld: element, naam, omschrijving en per klasse (Goed, Redelijk, Matig, Slecht) het criterium
-en de paden van de voorbeeldfoto's. js/digigids.js is hieruit samengesteld; de koppeling met de
+Per schadebeeld: element, naam, omschrijving en per klasse (Goed, Redelijk, Matig, Slecht) het criterium,
+de paden van de voorbeeldfoto's en hun bijschriften (alt-teksten). js/digigids.js is hieruit samengesteld; de koppeling met de
 STOWA-inspectiewijzers (veld "wijzer") is daar met de hand gelegd.
 """
 import html
@@ -45,6 +45,8 @@ def main(start):
             'klasse': tekst(m.group(1)),
             'criterium': tekst(' '.join(re.findall(r'<p[^>]*>(.*?)</p>', m.group(2), re.S))),
             'fotos': sorted(set(re.findall(r'(/sites/default/files/styles/large_43/public/[^"\'?\s]+)', m.group(2)))),
+            # Sommige schadebeelden hebben geen criteriumtekst; dan staat de omschrijving alleen bij de foto's.
+            'fotoOmschrijving': sorted({tekst(x) for x in re.findall(r'alt="([^"]*)"', m.group(2)) if tekst(x)}),
         } for m in re.finditer(r'<h2[^>]*>(.*?)</h2>(.*?)(?=<h2|$)', na, re.S)]
         if not any(k['klasse'] in ('Goed', 'Redelijk', 'Matig', 'Slecht') for k in klassen):
             continue  # overzichtspagina, geen schadebeeld
