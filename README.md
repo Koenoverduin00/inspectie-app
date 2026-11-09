@@ -39,6 +39,52 @@ werksoort Groenonderhoud) of *Schouw kunstwerken 2027* (schouw/inspectie).
 - De kaartbibliotheek (Leaflet) wordt meegeleverd, zodat de objecten ook zonder bereik op de kaart staan; alleen de
   achtergrondkaart heeft internet nodig.
 
+## Flora- en fauna-vrijgave (veldcheck)
+
+Eigen tegel op de telefoon. Gebaseerd op de **Gedragscode Soortenbescherming Rijkswaterstaat 2025–2029**
+(Omgevingswet; Bal art. 11.45, 11.53 en 11.59), waarin de *veldcheck* de controle is direct voorafgaand aan de
+werkzaamheden op de actuele situatie van beschermde soorten en broedgevallen.
+
+- **Gebied en werkzaamheden**: één of meer objecten/GIS-vlakken (of alle objecten van een werkpakket), geplande
+  werkzaamheden, activiteit volgens de gedragscode (B&O hfst. 4 of kleinschalige RI hfst. 5) en uitvoeringsperiode.
+- **EWP**: kenmerk en versie van het ecologisch werkprotocol; zonder door RWS geaccepteerd EWP kan niet worden
+  afgerond (werkproces stap 9). Ook vast te leggen: EWP aanwezig op locatie.
+- **Deskundigheid**: ecologisch deskundige (≥ 3 jaar ervaring met de soorten, gebiedskennis, kennis Ow) of een
+  medewerker met minimaal certificaat flora en fauna niveau 2 onder aansturing van een deskundige.
+- **Controles** (zorgvuldig handelen, tabel 4.2 en 4.13–4.16): bronnen/NDFF, broedgevallen en jaarrond beschermde
+  nesten, verblijfplaatsen, kwetsbare periode, markering, verstoringsvrije afstand, werkrichting, fasering, maaihoogte.
+- **Waarnemingen**: soortgroep, soort, type (nest, hol, verblijfplaats, groeiplaats …), beschermingsregime, aantal,
+  verstoringsvrije afstand, markering, GPS-locatie en foto's.
+- **Besluit**: vrijgegeven, onder voorwaarden of niet vrijgegeven, met geldigheid (t/m) en eventuele begeleiding.
+  Bij waargenomen nesten, holen of verblijfplaatsen is "zonder voorwaarden" niet mogelijk.
+- **Logboek** voor begeleiding, bijzonderheden, onverwacht aangetroffen soorten en afwijkingen (stap 10);
+  archiveren minimaal 2 jaar na afloop. CSV-export voor rapportage en NDFF-aanlevering.
+- Bij een **werkpakket** kun je "flora- en fauna-vrijgave vereist" aanzetten: uitvoerders zien per object of er een
+  geldige vrijgave is en het werkformulier waarschuwt als die ontbreekt (inclusief de voorwaarden).
+
+## Boomveiligheidscontrole (BVC)
+
+Onder de tegel *Schouw & inspectie* (keuze 🌳 Boomveiligheid). Gebaseerd op het **Boomveiligheidsprotocol
+Rijkswaterstaat** (Loo Plan, 8 februari 2017, definitief) en het CROW **Standaard Uitwisselingsformaat (SUF-BVC)**.
+
+- **Opnamekenmerken (bijlage 2/4)**: KEY, RD-coördinaten, eigenaar, boomsoort (naamlijst RWS, bijlage 8), plantjaar,
+  omgevingsrisicoklasse (ORK), controlefrequentie, controleur, datum, boomveiligheidsklasse (BVK), niet aangetroffen,
+  gesloten beplanting (met aantal bomen), opmerking en fotonummer.
+- **Boomgebreken (bijlage 3)** met type, plaats (kroon, stam, stamvoet, maaiveld) en gevolg (takbreuk, stambreuk,
+  instabiliteit); hinderlijke takken en wortelopdruk worden als bruikbaarheid (geen boomveiligheid) aangeduid.
+- **Conclusie**: BVK *geen gebreken / attentieboom / risicoboom / risico- en attentieboom*; de controlefrequentie
+  volgt automatisch uit tabel 1 en 2 (6-jaarlijks, 3-jaarlijks of jaarlijks) en bepaalt de volgende controle.
+- **Maatregelen**: boom verwijderen, veiligheidssnoei, nader onderzoek, boomband verwijderen, opdruk verharding
+  verhelpen; urgentie *acuut (48 uur)* of *binnen 3 maanden*. Te vellen bomen moeten gemarkeerd zijn (oranje streep).
+  BVC-maatregelen verschijnen in het maatregelenoverzicht, de taken en bij werkzaamheden.
+- **Controles**: kwalificatie controleur (ETW, ETT, gecertificeerd boomveiligheidscontroleur of gelijkwaardig),
+  methode (VTA/IBA/SIA), waarschuwing buiten de controleperiode juli–november, hint bijzondere boom (> 40 / > 90 cm dbh),
+  melding bij beschermde soorten in de boom (koppeling naar een flora- en fauna-vrijgave).
+- **Nieuwe boom inmeten** met GPS (protocol: max. ca. 3 m afwijking); basisgegevens worden bij de boom bewaard en
+  bij elke controle geverifieerd.
+- **Rapport** per boom (bijlage 5) en **SUF-BVC export** (boom, boomgebreken, maatregelen) per project of werkpakket;
+  bij een BVC-werkpakket een samenvatting per klasse en maatregel.
+
 ## Eigen formuliervelden per project
 
 Via **Projecten → Formuliervelden** stelt een beheerder per project extra regels in voor *werkzaamheden*,
@@ -133,7 +179,8 @@ veld zonder bereik kunt inspecteren. Ben je ingelogd, dan worden wijzigingen aut
    [`supabase/schema.sql`](supabase/schema.sql), vervang onderaan `jouw@email.nl` door je eigen e-mailadres en klik *Run*.
    Haal in stap 5 van het script de `--` weg voor de `insert`-regel en vul je eigen adres in.
    Voer daarna in volgorde [`002_werkzaamheden.sql`](supabase/002_werkzaamheden.sql) en
-   [`003_projecten_gis_taken.sql`](supabase/003_projecten_gis_taken.sql) en [`004_werkpakketten.sql`](supabase/004_werkpakketten.sql)
+   [`003_projecten_gis_taken.sql`](supabase/003_projecten_gis_taken.sql), [`004_werkpakketten.sql`](supabase/004_werkpakketten.sql) en
+   [`005_vrijgaven.sql`](supabase/005_vrijgaven.sql)
    uit (alle scripts zijn veilig opnieuw uit te voeren).
    Alleen e-mailadressen in de tabel `teamleden` hebben toegang tot de gegevens; collega's voeg je later toe met
    `insert into public.teamleden (email) values ('collega@bedrijf.nl');`.
@@ -162,6 +209,8 @@ js/gis.js             GIS inlezen (GeoJSON, Shapefile, GeoPackage), RD→WGS84, 
 js/taken.js           taken samenstellen en sorteren op urgentie en locatie
 js/velden.js          eigen formuliervelden: zichtbaarheid, controle en weergave
 js/pakketten.js       werkpakketten: voortgang, toewijzing en objectfilters
+js/bvc.js             boomveiligheidscontrole volgens protocol RWS, SUF-BVC, RD-coördinaten
+js/ecologie.js        flora- en fauna-vrijgave (veldcheck) volgens Gedragscode Soortenbescherming RWS
 vendor/               shpjs, sql.js en Leaflet, lokaal meegeleverd zodat import en kaart ook offline werken
 js/config.js          Supabase-URL en publishable key
 js/nen2767.js         conditieberekening en planning (pure functies)

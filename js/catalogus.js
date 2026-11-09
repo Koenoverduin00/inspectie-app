@@ -4,7 +4,7 @@ export const OBJECTTYPEN = [
   'Brug (vast)', 'Brug (beweegbaar)', 'Viaduct', 'Fietsbrug / voetgangersbrug', 'Tunnel / onderdoorgang',
   'Duiker', 'Sluis', 'Gemaal', 'Stuw', 'Kademuur / damwand', 'Steiger', 'Geluidsscherm',
   'Keermuur', 'Wegvak', 'Fietspad', 'Riolering', 'Dijk / kering', 'Portaal / bewegwijzering',
-  'Groenvak', 'Verhardingsvak', 'Watergang / oever', 'Speelplek', 'Overig',
+  'Groenvak', 'Verhardingsvak', 'Watergang / oever', 'Speelplek', 'Boom', 'Gesloten beplanting', 'Overig',
 ];
 
 export const MATERIALEN = [
@@ -14,7 +14,7 @@ export const MATERIALEN = [
 
 export const INSPECTIESOORTEN = [
   'Visuele inspectie', 'Conditiemeting NEN 2767', 'Schouw', 'Nadere / specialistische inspectie',
-  'Inspectie na incident / calamiteit', 'Oplevering', 'Duikinspectie',
+  'Inspectie na incident / calamiteit', 'Oplevering', 'Duikinspectie', 'Boomveiligheidscontrole',
 ];
 
 export const BOUWDELEN = [

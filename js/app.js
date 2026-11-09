@@ -13,6 +13,8 @@ import { demoData } from './demo.js';
 import * as sync from './sync.js';
 import * as gis from './gis.js';
 import * as velden from './velden.js';
+import * as eco from './ecologie.js';
+import * as BV from './bvc.js';
 import {
   PAKKETSTATUS, OVERSLAAN_REDENEN, overslaanId, voortgang as pakketVoortgang, voorMij as pakketVoorMij, filterObjecten,
 } from './pakketten.js';
@@ -44,6 +46,17 @@ const ROUTES = [
   [/^\/m\/inspectie\/nieuw$/, 'm-inspectie', (_, q) => inspectieFormulier(null, q.get('object'), { mobiel: true, taakId: q.get('taak'), pakketId: q.get('pakket') })],
   [/^\/m\/inspectie\/([^/]+)$/, 'm-inspectie', (id) => inspectieFormulier(id, null, { mobiel: true })],
   [/^\/m\/account$/, 'm-account', mobielAccount],
+  [/^\/m\/vrijgave$/, 'm-vrijgave', () => objectKiezer('vrijgave')],
+  [/^\/m\/vrijgave\/nieuw$/, 'm-vrijgave', (_, q) => vrijgaveFormulier(null, q, { mobiel: true })],
+  [/^\/m\/vrijgave\/([^/]+)\/bewerken$/, 'm-vrijgave', (id, q) => vrijgaveFormulier(id, q, { mobiel: true })],
+  [/^\/m\/vrijgave\/([^/]+)$/, 'm-vrijgave', (id) => vrijgaveDetail(id, { mobiel: true })],
+  [/^\/m\/bvc$/, 'm-inspectie', () => objectKiezer('bvc')],
+  [/^\/m\/bvc\/nieuw$/, 'm-inspectie', (_, q) => bvcFormulier(null, q.get('object'), { mobiel: true, taakId: q.get('taak'), pakketId: q.get('pakket') })],
+  [/^\/bvc\/nieuw$/, 'inspecties', (_, q) => bvcFormulier(null, q.get('object'), { taakId: q.get('taak'), pakketId: q.get('pakket') })],
+  [/^\/vrijgaven$/, 'vrijgaven', vrijgavenLijst],
+  [/^\/vrijgaven\/nieuw$/, 'vrijgaven', (_, q) => vrijgaveFormulier(null, q)],
+  [/^\/vrijgaven\/([^/]+)\/bewerken$/, 'vrijgaven', (id, q) => vrijgaveFormulier(id, q)],
+  [/^\/vrijgaven\/([^/]+)$/, 'vrijgaven', (id) => vrijgaveDetail(id)],
   [/^\/werkzaamheden$/, 'werkzaamheden', werkzaamhedenLijst],
   [/^\/werkzaamheden\/nieuw$/, 'werkzaamheden', (_, q) => werkFormulier(null, q.get('object'), { taakId: q.get('taak'), maatregel: q.get('maatregel'), pakketId: q.get('pakket') })],
   [/^\/werkzaamheden\/([^/]+)\/bewerken$/, 'werkzaamheden', (id) => werkFormulier(id)],
@@ -148,6 +161,12 @@ function objectStatus(object, inspecties) {
   const laatste = inspecties
     .filter((i) => i.objectId === object.id && i.status === 'afgerond')
     .sort((a, b) => String(b.datum).localeCompare(String(a.datum)))[0];
+  const bvk = laatste?.bvc && !laatste.bvc.niet ? laatste.bvc.bvk : null;
+  if (laatste?.bvc) {
+    // Bomen: oordeel is de boomveiligheidsklasse; frequentie volgt uit het protocol.
+    const volgende = laatste.bvc.volgendeControle || volgendeInspectie(laatste.datum, object.inspectieInterval);
+    return { laatste, conditie: null, bvk, volgende, planning: laatste.bvc.niet ? 'geen' : planningStatus(volgende, vandaag()) };
+  }
   const periodiek = Number(object.inspectieInterval) > 0;
   if (!laatste) return { laatste: null, conditie: null, volgende: null, planning: periodiek ? 'nooit' : 'geen' };
   if (!periodiek) return { laatste, conditie: inspectieScore(laatste), volgende: null, planning: 'geen' };
@@ -158,7 +177,7 @@ function objectStatus(object, inspecties) {
 function alleMaatregelen(inspecties, objectMap) {
   const lijst = [];
   for (const insp of inspecties) {
-    for (const g of insp.gebreken ?? []) {
+    for (const g of [...(insp.gebreken ?? []), ...(insp.bvc?.maatregelen ?? [])]) {
       if (!g.maatregel && !g.urgentie) continue;
       lijst.push({ gebrek: g, inspectie: insp, object: objectMap.get(insp.objectId) });
     }
@@ -317,7 +336,7 @@ async function dashboard() {
           ${inspecties.slice(0, 6).map((i) => `
             <tr class="klikbaar" data-href="#/inspecties/${esc(i.id)}">
               <td>${datumNL(i.datum)}</td><td>${objectNaam(objectMap.get(i.objectId))}</td>
-              <td>${i.status === 'afgerond' ? scoreLabel(inspectieScore(i)) : statusLabel(i.status)}</td>
+              <td>${i.status === 'afgerond' ? inspectieOordeel(i) : statusLabel(i.status)}</td>
             </tr>`).join('')}
         </tbody></table></div>` : '<p class="leeg">Nog geen inspecties uitgevoerd.</p>'}
       </section>
@@ -338,7 +357,7 @@ async function dashboard() {
         <thead><tr><th>Object</th><th class="verberg-mobiel">Type</th><th>Conditie</th><th>Laatste</th><th>Volgende</th><th>Status</th></tr></thead>
         <tbody>${planning.map(({ o, s }) => `
           <tr class="klikbaar" data-href="#/objecten/${esc(o.id)}">
-            <td>${objectNaam(o)}</td><td class="verberg-mobiel">${esc(o.type)}</td><td>${scoreLabel(s.conditie)}</td>
+            <td>${objectNaam(o)}</td><td class="verberg-mobiel">${esc(o.type)}</td><td>${oordeelLabel(s)}</td>
             <td>${datumNL(s.laatste?.datum)}</td><td>${s.volgende ? datumNL(s.volgende) : 'Z.s.m.'}</td><td>${planningLabel(s.planning)}</td>
           </tr>`).join('')}</tbody>
       </table></div>
@@ -397,7 +416,7 @@ async function objectenLijst() {
       const s = status.get(o.id);
       return `<tr class="klikbaar" data-href="#/objecten/${esc(o.id)}">
         <td><strong>${esc(o.code)}</strong></td><td>${esc(o.naam)}</td><td class="verberg-mobiel">${esc(o.type)}</td>
-        <td class="verberg-mobiel">${esc(o.bouwjaar || '–')}</td><td>${scoreLabel(s.conditie)}</td>
+        <td class="verberg-mobiel">${esc(o.bouwjaar || '–')}</td><td>${oordeelLabel(s)}</td>
         <td class="verberg-mobiel">${datumNL(s.laatste?.datum)}</td><td>${planningLabel(s.planning)}</td></tr>`;
     }).join('') : `<tr><td colspan="7" class="leeg">${objecten.length ? 'Geen objecten gevonden met deze filters.' : 'Nog geen objecten. <a href="#/objecten/nieuw">Registreer het eerste object</a>.'}</td></tr>`;
   };
@@ -440,6 +459,7 @@ async function objectDetail(id) {
       <div class="knoppen">
         <a class="knop" href="#/objecten/${esc(id)}/bewerken">Bewerken</a>
         <button class="knop gevaar" id="verwijder">Verwijderen</button>
+        ${/^Boom|beplanting/i.test(o.type ?? '') ? `<a class="knop" href="#/bvc/nieuw?object=${esc(id)}">🌳 BVC</a>` : ''}
         <a class="knop" href="#/taken/nieuw?object=${esc(id)}">+ Taak</a>
         <a class="knop" href="#/werkzaamheden/nieuw?object=${esc(id)}">+ Werkzaamheid</a>
         <a class="knop primair" href="#/inspecties/nieuw?object=${esc(id)}">+ Nieuwe inspectie</a>
@@ -470,6 +490,7 @@ async function objectDetail(id) {
           <dt>Interval</dt><dd>${Number(o.inspectieInterval) > 0 ? `${esc(o.inspectieInterval)} jaar` : 'Geen periodieke inspectie'}</dd>
           <dt>Volgende inspectie</dt><dd>${s.volgende ? datumNL(s.volgende) : s.planning === 'geen' ? '–' : 'Zo spoedig mogelijk'}</dd>
           <dt>Planning</dt><dd>${planningLabel(s.planning)}</dd>
+          <dt>Flora & fauna</dt><dd>${vrijgaveLabel(await vrijgaveVoor(id))} <a href="#/vrijgaven/nieuw?object=${esc(id)}">+ vrijgave</a></dd>
           <dt>Open maatregelen</dt><dd>${maatregelenOpen.length} (${euro(maatregelenOpen.reduce((t, m) => t + (Number(m.gebrek.kostenraming) || 0), 0))})</dd>
         </dl>
       </section>
@@ -481,7 +502,7 @@ async function objectDetail(id) {
         <tbody>${eigen.map((i) => `
           <tr class="klikbaar" data-href="#/inspecties/${esc(i.id)}">
             <td>${datumNL(i.datum)}</td><td>${esc(i.soort)}</td><td class="verberg-mobiel">${esc(i.inspecteur)}</td>
-            <td>${i.gebreken?.length ?? 0}</td><td>${scoreLabel(inspectieScore(i))}</td><td>${statusLabel(i.status)}</td>
+            <td>${i.gebreken?.length ?? 0}</td><td>${inspectieOordeel(i)}</td><td>${statusLabel(i.status)}</td>
           </tr>`).join('')}</tbody></table></div>` : '<p class="leeg">Er zijn nog geen inspecties voor dit object.</p>'}
     </section>
     <section class="kaart">
@@ -636,7 +657,9 @@ async function inspectiesLijst() {
   app.innerHTML = `
     <div class="paginakop">
       <div><h1>Inspecties</h1><p>${inspecties.length} inspecties geregistreerd.</p></div>
-      <div class="knoppen"><a class="knop primair" href="#/inspecties/nieuw">+ Nieuwe inspectie</a></div>
+      <div class="knoppen"><button class="knop" id="suf" title="Standaard Uitwisselingsformaat boomveiligheidscontrole (CROW)">SUF-BVC export</button>
+        <a class="knop" href="#/bvc/nieuw">🌳 + Boomveiligheidscontrole</a>
+        <a class="knop primair" href="#/inspecties/nieuw">+ Nieuwe inspectie</a></div>
     </div>
     <div class="filters">
       <input type="search" id="zoek" placeholder="Zoek op object, inspecteur…" aria-label="Zoeken">
@@ -649,6 +672,7 @@ async function inspectiesLijst() {
       <thead><tr><th>Datum</th><th>Object</th><th class="verberg-mobiel">Soort</th><th class="verberg-mobiel">Inspecteur</th><th>Gebreken</th><th>Conditie</th><th>Status</th></tr></thead>
       <tbody id="rijen"></tbody></table></div></div>`;
 
+  app.querySelector('#suf').onclick = () => exporteerSuf(undefined, 'project');
   const filters = ['zoek', 'soort', 'status', 'jaar'].map((id) => app.querySelector(`#${id}`));
   const toon = () => {
     const [zoek, soort, status, jaar] = filters.map((f) => f.value);
@@ -664,7 +688,7 @@ async function inspectiesLijst() {
       <tr class="klikbaar" data-href="#/inspecties/${esc(i.id)}">
         <td>${datumNL(i.datum)}</td><td>${objectNaam(objectMap.get(i.objectId))}</td>
         <td class="verberg-mobiel">${esc(i.soort)}</td><td class="verberg-mobiel">${esc(i.inspecteur)}</td>
-        <td>${i.gebreken?.length ?? 0}</td><td>${scoreLabel(inspectieScore(i))}</td><td>${statusLabel(i.status)}</td>
+        <td>${i.gebreken?.length ?? 0}</td><td>${inspectieOordeel(i)}</td><td>${statusLabel(i.status)}</td>
       </tr>`).join('') : `<tr><td colspan="7" class="leeg">${inspecties.length ? 'Geen inspecties gevonden met deze filters.' : 'Nog geen inspecties. <a href="#/inspecties/nieuw">Start de eerste inspectie</a>.'}</td></tr>`;
   };
   filters.forEach((f) => f.addEventListener('input', toon));
@@ -689,6 +713,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     app.innerHTML = leegKaart('Inspectie niet gevonden.', `<a class="knop" href="${mobiel ? '#/' : '#/inspecties'}">Terug</a>`);
     return;
   }
+  if (bestaand?.bvc) return bvcFormulier(id, null, { mobiel, taakId, pakketId });
   if (!objecten.length) {
     app.innerHTML = leegKaart(mobiel
       ? 'Er zijn nog geen objecten. Richt de objecten eerst in via de website op de pc.'
@@ -727,7 +752,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
   const veldDatum = `<div class="veld"><label for="f-datum" class="vereist">Datum</label>
       <input id="f-datum" name="datum" type="date" required value="${esc(staat.datum)}"></div>`;
   const veldSoort = `<div class="veld"><label for="f-soort">Soort</label>
-      <select id="f-soort" name="soort">${INSPECTIESOORTEN.map((s) => optie(s, s, staat.soort)).join('')}</select></div>`;
+      <select id="f-soort" name="soort">${INSPECTIESOORTEN.filter((s) => s !== BV.BVC_SOORT).map((s) => optie(s, s, staat.soort)).join('')}</select></div>`;
   const veldInspecteur = `<div class="veld"><label for="f-inspecteur">Inspecteur</label>
       <input id="f-inspecteur" name="inspecteur" value="${esc(staat.inspecteur)}" maxlength="100"></div>`;
   const veldWeer = `<div class="veld"><label for="f-weer">Weersomstandigheden</label>
@@ -985,6 +1010,7 @@ async function inspectieDetail(id) {
     app.innerHTML = leegKaart('Inspectie niet gevonden.', '<a class="knop" href="#/inspecties">Terug</a>');
     return;
   }
+  if (i.bvc) return bvcDetail(i);
   const o = await db.haal('objecten', i.objectId);
   const gebrekBlokken = await Promise.all((i.gebreken ?? []).map(async (g, n) => `
     <div class="gebrek" style="border-left-color:${CONDITIES[gebrekScore(g)].kleur}">
@@ -1055,6 +1081,7 @@ async function inspectieRapport(id) {
     app.innerHTML = leegKaart('Inspectie niet gevonden.', '<a class="knop" href="#/inspecties">Terug</a>');
     return;
   }
+  if (i.bvc) return bvcDetail(i, { rapport: true });
   const o = (await db.haal('objecten', i.objectId)) ?? {};
   const score = inspectieScore(i);
   const organisatie = instelling.lees('organisatie');
@@ -1143,7 +1170,7 @@ async function maatregelen() {
         <td><a href="#/objecten/${esc(o?.id ?? '')}">${objectNaam(o)}</a></td>
         <td><a href="#/inspecties/${esc(i.id)}">${esc(g.bouwdeel)} – ${esc(g.gebrek)}</a><br><small>${datumNL(i.datum)}</small></td>
         <td class="verberg-mobiel">${esc(g.maatregel || '–')}</td>
-        <td>${scoreLabel(gebrekScore(g))}</td><td>${euro(g.kostenraming)}</td>
+        <td>${g.bvcMaatregel ? bvkLabel(i.bvc?.bvk) : scoreLabel(gebrekScore(g))}</td><td>${euro(g.kostenraming)}</td>
         <td><button class="knop klein" data-wissel="${n}">${g.maatregelStatus === 'uitgevoerd' ? 'Heropenen' : '✓ Uitgevoerd'}</button></td>
       </tr>`).join('') : '<tr><td colspan="7" class="leeg">Geen maatregelen gevonden.</td></tr>';
   };
@@ -1211,7 +1238,13 @@ async function mobielStart() {
       href: `#/m/werk/${w.id}`, icoon: '🛠️', titel: w.soort || 'Werkzaamheid', object: objectMap.get(w.objectId), tijd: w.gewijzigd,
     })),
     ...inspecties.filter((i) => i.datum === dag && i.status === 'afgerond').map((i) => ({
-      href: `#/m/inspectie/${i.id}`, icoon: '🔍', titel: `${i.soort} · ${i.gebreken?.length ?? 0} gebrek(en)`, object: objectMap.get(i.objectId), tijd: i.gewijzigd,
+      href: `#/m/inspectie/${i.id}`, icoon: i.bvc ? '🌳' : '🔍',
+      titel: i.bvc ? `Boomveiligheid · ${i.bvc.niet ? 'niet aangetroffen' : BV.BVK[i.bvc.bvk]?.kort ?? ''}` : `${i.soort} · ${i.gebreken?.length ?? 0} gebrek(en)`,
+      object: objectMap.get(i.objectId), tijd: i.gewijzigd,
+    })),
+    ...(await inProject('vrijgaven')).filter((v) => v.datum === dag).map((v) => ({
+      href: `#/m/vrijgave/${v.id}`, icoon: '🌿', titel: `Vrijgave · ${eco.BESLUIT[v.besluit]?.label ?? 'concept'}`,
+      object: objectMap.get(v.objectIds?.[0]), tijd: v.gewijzigd,
     })),
   ].sort((a, b) => String(b.tijd).localeCompare(String(a.tijd)));
 
@@ -1230,7 +1263,11 @@ async function mobielStart() {
       </a>
       <a class="mtegel" href="#/m/inspectie">
         <span class="micoon">🔍</span>
-        <span><strong>Schouw &amp; inspectie</strong><small>Gebreken vastleggen met foto's en conditie</small></span>
+        <span><strong>Schouw &amp; inspectie</strong><small>Gebreken vastleggen en boomveiligheidscontrole</small></span>
+      </a>
+      <a class="mtegel" href="#/m/vrijgave">
+        <span class="micoon">🌿</span>
+        <span><strong>Flora &amp; fauna vrijgave</strong><small>Ecologische veldcheck vóór de werkzaamheden</small></span>
       </a>
       ${concepten.length ? `<h2>Verder gaan</h2><ul class="mlijst">${concepten.slice(0, 5).map((i) => regel({
     href: `#/m/inspectie/${i.id}`, icoon: '📝', titel: `Concept ${i.soort.toLowerCase()} · ${datumNL(i.datum)}`, object: objectMap.get(i.objectId),
@@ -1266,28 +1303,38 @@ async function objectKiezer(doel) {
   const objecten = (await inProject('objecten'))
     .filter((o) => o.status !== 'Gesloopt')
     .sort((a, b) => String(a.code).localeCompare(String(b.code), 'nl', { numeric: true }));
-  const titel = doel === 'werk' ? 'Registratie werkzaamheden' : 'Schouw & inspectie';
+  const titel = { werk: 'Registratie werkzaamheden', inspectie: 'Schouw & inspectie', bvc: 'Boomveiligheidscontrole', vrijgave: 'Flora & fauna vrijgave' }[doel];
+  const vrijgaven = doel === 'vrijgave' || doel === 'werk' ? await inProject('vrijgaven') : [];
+  const bomen = objecten.filter((o) => /^Boom|beplanting/i.test(o.type ?? ''));
+  const kandidaten = doel === 'bvc' && bomen.length ? bomen : objecten;
+  const keuzeSoort = doel === 'inspectie' || doel === 'bvc' ? `<div class="segment soortkeuze" role="tablist">
+      <a href="#/m/inspectie" class="${doel === 'inspectie' ? 'actief' : ''}">🔍 Schouw / inspectie</a>
+      <a href="#/m/bvc" class="${doel === 'bvc' ? 'actief' : ''}">🌳 Boomveiligheid</a></div>` : '';
   app.innerHTML = `
     <div class="mkop"><a href="#/" class="mterug" aria-label="Terug">←</a>
-      <div><small>${titel}</small><h1>Kies een object</h1></div></div>
+      <div><small>${titel}</small><h1>${doel === 'bvc' ? 'Kies een boom' : 'Kies een object'}</h1></div></div>
+    ${keuzeSoort}
+    ${doel === 'bvc' ? '<button class="knop mgroot" id="nieuweboom" type="button">＋ Nieuwe boom op mijn locatie</button>' : ''}
     ${objecten.length ? `
     <div class="mzoek">
       <input type="search" id="zoek" placeholder="Zoek op code, naam of locatie" autocomplete="off" aria-label="Zoeken">
       <button class="knop" id="dichtbij" type="button">📍 Dichtbij</button>
     </div>
     <ul class="mlijst" id="lijst"></ul>` : leegKaart('Er zijn nog geen objecten. Richt de objecten eerst in via de website op de pc.')}`;
+  app.querySelector('#nieuweboom')?.addEventListener('click', nieuweBoomHier);
   if (!objecten.length) return;
 
   const zoek = app.querySelector('#zoek');
   const toon = () => {
     const q = zoek.value.trim().toLowerCase();
-    const lijst = objecten.filter((o) => !q || `${o.code} ${o.naam} ${o.locatie} ${o.type}`.toLowerCase().includes(q));
+    const lijst = kandidaten.filter((o) => !q || `${o.code} ${o.naam} ${o.locatie} ${o.type}`.toLowerCase().includes(q));
     const metAfstand = lijst.map((o) => ({ o, afstand: laatstePositie ? gis.afstandTot(laatstePositie, objectGeometrie(o)) : null }));
     if (laatstePositie) metAfstand.sort((a, b) => (a.afstand ?? Infinity) - (b.afstand ?? Infinity));
     const MAX = 100;
     app.querySelector('#lijst').innerHTML = metAfstand.length ? metAfstand.slice(0, MAX).map(({ o, afstand }) => `
       <li><a href="#/m/${doel}/nieuw?object=${encodeURIComponent(o.id)}">
-        <span><strong>${esc(o.code)} – ${esc(o.naam)}</strong><small>${esc([o.type, o.locatie].filter(Boolean).join(' · '))}</small></span>
+        <span><strong>${esc(o.code)} – ${esc(o.naam)}</strong><small>${esc([o.type, o.boomsoort ? soortNaam(o.boomsoort) : o.locatie].filter(Boolean).join(' · '))}</small>
+          ${vrijgaven.length || doel === 'vrijgave' ? `<small>${vrijgaveLabel(eco.vrijgaveVoorObject(vrijgaven, o.id, vandaag()))}</small>` : ''}</span>
         ${afstand != null ? `<span class="mafstand">${afstand === 0 ? '📍 hier' : afstandTekst(afstand)}</span>` : '<span class="mpijl">›</span>'}
       </a></li>`).join('') + (metAfstand.length > MAX ? `<li class="mleeg">+ ${metAfstand.length - MAX} meer – zoek of gebruik 📍 Dichtbij.</li>` : '')
       : '<li class="mleeg">Geen objecten gevonden.</li>';
@@ -1479,7 +1526,7 @@ async function gekoppeldeMaatregelen(w) {
   const inspecties = await inProject('inspecties');
   const lijst = [];
   for (const i of inspecties) {
-    for (const g of i.gebreken ?? []) if (sleutels.has(`${i.id}:${g.id}`)) lijst.push({ gebrek: g, inspectie: i });
+    for (const g of [...(i.gebreken ?? []), ...(i.bvc?.maatregelen ?? [])]) if (sleutels.has(`${i.id}:${g.id}`)) lijst.push({ gebrek: g, inspectie: i });
   }
   return lijst;
 }
@@ -1490,7 +1537,7 @@ async function werkMaatregelenBij(werkId, datum, aanzetten, uitzetten) {
   const nu = new Date().toISOString();
   for (const insp of inspecties) {
     let gewijzigd = false;
-    for (const g of insp.gebreken ?? []) {
+    for (const g of [...(insp.gebreken ?? []), ...(insp.bvc?.maatregelen ?? [])]) {
       const sleutel = `${insp.id}:${g.id}`;
       if (aanzetten.has(sleutel) && (g.maatregelStatus !== 'uitgevoerd' || g.werkzaamheidId !== werkId)) {
         Object.assign(g, { maatregelStatus: 'uitgevoerd', uitgevoerdOp: datum, werkzaamheidId: werkId });
@@ -1538,6 +1585,19 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
   const pakket = w.werkpakketId ? await db.haal('werkpakketten', w.werkpakketId) : null;
   if (pakket && !bestaand && pakket.werksoort) w.soort = pakket.werksoort;
   const pakketTerug = pakket ? (mobiel ? `#/m/pakket/${pakket.id}` : `#/werkpakketten/${pakket.id}`) : null;
+  const vrijgavenProject = await inProject('vrijgaven');
+  const vrijgaveBanner = (oid) => {
+    if (!oid) return '';
+    const vg = eco.vrijgaveVoorObject(vrijgavenProject, oid, vandaag());
+    const g = vg ? eco.geldigheid(vg, vandaag()) : null;
+    if (!vg && !pakket?.vrijgaveVereist) return '';
+    if (g === 'geldig') {
+      return `<div class="kaart mhier">🌿 <strong>Flora & fauna:</strong> ${vrijgaveLabel(vg)}${vg.voorwaarden ? `<br><small><strong>Voorwaarden:</strong> ${esc(vg.voorwaarden)}</small>` : ''}</div>`;
+    }
+    return `<div class="kaart waarschuwingskaart">⚠️ <strong>Geen geldige flora- en fauna-vrijgave</strong> ${vrijgaveLabel(vg)}
+      <br><small>Start de werkzaamheden pas na een veldcheck door de ecologisch deskundige.</small>
+      <a href="${mobiel ? '#/m/vrijgave/nieuw' : '#/vrijgaven/nieuw'}?object=${encodeURIComponent(oid)}">Vrijgave aanvragen →</a></div>`;
+  };
   const pakketBanner = pakket ? `<div class="kaart mhier">📦 <strong>Werkpakket:</strong> ${esc(pakket.naam)}${pakket.omschrijving ? `<br><small>${esc(pakket.omschrijving)}</small>` : ''}</div>` : '';
   const maatregelInfo = maatregel ? (() => {
     const [iid, gid] = maatregel.split(':');
@@ -1575,7 +1635,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
       <div><small>${bestaand ? 'Werkzaamheid bewerken' : 'Registratie werkzaamheden'}</small>
       <h1>${object ? `${esc(object.code)} – ${esc(object.naam)}` : 'Kies een object'}</h1></div></div>
     <form id="form" novalidate class="mform">
-      ${taakBanner}${pakketBanner}
+      ${taakBanner}${pakketBanner}<div id="vrijgave-banner">${vrijgaveBanner(w.objectId)}</div>
       <section class="kaart"><div class="velden">${velden}</div></section>
       <section class="kaart" id="extra-blok" hidden><h2>Extra gegevens</h2><div class="extra-velden"></div></section>
       <section class="kaart" id="maatregelen-blok"></section>
@@ -1584,6 +1644,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     <div class="paginakop"><div><p><a href="${terug}">← Terug</a></p>
       <h1>${bestaand ? 'Werkzaamheid bewerken' : 'Werkzaamheid registreren'}</h1></div></div>
     <form id="form" novalidate>
+      <div id="vrijgave-banner">${vrijgaveBanner(w.objectId)}</div>
       <section class="kaart"><div class="velden">${velden}</div></section>
       <section class="kaart" id="extra-blok" hidden><h2>Extra gegevens</h2><div class="extra-velden"></div></section>
       <section class="kaart" id="maatregelen-blok"></section>
@@ -1633,6 +1694,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     if (e.target.name === 'objectId') {
       gekozen.clear();
       toonMaatregelen();
+      app.querySelector('#vrijgave-banner').innerHTML = vrijgaveBanner(e.target.value);
     }
     const k = e.target.dataset?.maatregel;
     if (k) {
@@ -1880,7 +1942,7 @@ async function projectFormulier(id) {
   app.querySelector('#verwijder')?.addEventListener('click', async () => {
     const naam = prompt(`Hiermee verwijder je het project met álle objecten, GIS-lagen, inspecties, werkzaamheden, taken en foto's.\n\nTyp de projectnaam "${p.naam}" om te bevestigen:`);
     if (naam !== p.naam) return;
-    for (const store of ['fotos', 'overgeslagen', 'werkpakketten', 'taken', 'werkzaamheden', 'inspecties', 'objecten', 'lagen']) {
+    for (const store of ['fotos', 'vrijgaven', 'overgeslagen', 'werkpakketten', 'taken', 'werkzaamheden', 'inspecties', 'objecten', 'lagen']) {
       const ids = (await db.alle(store)).filter((r) => r.projectId === p.id).map((r) => r.id);
       await db.verwijderVeel(store, ids);
     }
@@ -2212,7 +2274,7 @@ async function tekenGisKaart(el, { groepen, status, takenPerObject }) {
     const s = status.get(o.id);
     const n = takenPerObject.get(o.id) ?? 0;
     return `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br><small>${esc(o.type || '')}${o.geometrie ? ` · ${geometrieInfo(o)}` : ''}</small><br>
-      ${scoreLabel(s.conditie)} ${planningLabel(s.planning)}<br>${n ? `<strong>${n}</strong> open taak/taken<br>` : ''}
+      ${oordeelLabel(s)} ${planningLabel(s.planning)}<br>${n ? `<strong>${n}</strong> open taak/taken<br>` : ''}
       <a href="#/objecten/${esc(o.id)}">Object</a> · <a href="#/taken/nieuw?object=${esc(o.id)}">+ Taak</a> · <a href="#/inspecties/nieuw?object=${esc(o.id)}">+ Inspectie</a>`;
   };
   const kaartlagen = new Map();
@@ -2817,6 +2879,7 @@ function periodeTekst(p) {
 
 function pakketHref(p, objectId, mobiel) {
   const q = new URLSearchParams({ object: objectId, pakket: p.id });
+  if (p.soort === 'inspectie' && p.inspectiesoort === BV.BVC_SOORT) return `${mobiel ? '#/m/bvc' : '#/bvc'}/nieuw?${q}`;
   if (p.soort === 'inspectie') return `${mobiel ? '#/m/inspectie' : '#/inspecties'}/nieuw?${q}`;
   return `${mobiel ? '#/m/werk' : '#/werkzaamheden'}/nieuw?${q}`;
 }
@@ -2977,6 +3040,8 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
           <div class="veld breed"><label>Uitvoerders</label>
             ${leden.length ? `<div class="chips">${leden.map((l) => `<label class="chip"><input type="checkbox" name="toegewezen" value="${esc(l)}" ${p.toegewezen?.includes(l) ? 'checked' : ''}><span>${esc(l)}</span></label>`).join('')}</div>
             <small>Niets aangevinkt = iedereen in het project.</small>` : '<small>Voeg projectleden toe bij het project om uitvoerders te kunnen kiezen. Nu: iedereen in het project.</small>'}</div>
+          <div class="veld breed"><label class="vink"><input type="checkbox" name="vrijgaveVereist" ${p.vrijgaveVereist ? 'checked' : ''}>
+            <span><strong>Flora- en fauna-vrijgave vereist</strong><small>Uitvoerders zien per object of er een geldige ecologische vrijgave is.</small></span></label></div>
           <div class="veld breed"><label for="f-omschrijving">Instructie voor de uitvoerder</label>
             <textarea id="f-omschrijving" name="omschrijving" maxlength="2000">${esc(p.omschrijving)}</textarea></div>
         </div>
@@ -3094,6 +3159,7 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
       werksoort: d.soort === 'werk' ? d.werksoort : '', inspectiesoort: d.soort === 'inspectie' ? d.inspectiesoort : '',
       status: d.status, start: d.start, eind: d.eind, omschrijving: d.omschrijving,
       toegewezen: [...form.querySelectorAll('input[name=toegewezen]:checked')].map((c) => c.value),
+      vrijgaveVereist: form.elements.vrijgaveVereist.checked,
       objecten: objecten.filter((o) => gekozen.has(o.id)).map((o) => o.id), // vaste volgorde (op code)
       aangemaakt: (id ? bron.aangemaakt : null) ?? nu, gewijzigd: nu,
     };
@@ -3121,6 +3187,7 @@ async function pakketDetail(id) {
   const objecten = (p.objecten ?? []).map((oid) => g.objectMap.get(oid)).filter(Boolean);
   const statusVan = (oid) => (v.gedaan.has(oid) ? 'gedaan' : v.overgeslagen.has(oid) ? 'overgeslagen' : 'open');
   const regHref = (r) => (p.soort === 'inspectie' ? `#/inspecties/${esc(r.id)}` : `#/werkzaamheden/${esc(r.id)}`);
+  const vrijgavenProject = p.vrijgaveVereist ? await inProject('vrijgaven') : [];
   app.innerHTML = `
     <div class="paginakop">
       <div><p><a href="#/werkpakketten">← Werkpakketten</a></p><h1>${esc(p.naam)}</h1>
@@ -3130,12 +3197,15 @@ async function pakketDetail(id) {
           <a class="knop" href="#/werkpakketten/nieuw?kopie=${esc(id)}" title="Kopie voor de volgende ronde">🔁 Herhalen</a>
           ${p.status !== 'actief' ? '<button class="knop primair" id="activeer">▶ Actief maken</button>' : '<button class="knop" id="afronden">✓ Afronden</button>'}` : ''}
         <button class="knop" id="export">CSV</button>
+        ${p.inspectiesoort === BV.BVC_SOORT ? '<button class="knop" id="suf">SUF-BVC</button>' : ''}
+        ${p.vrijgaveVereist ? `<a class="knop" href="#/vrijgaven/nieuw?pakket=${esc(id)}">🌿 Vrijgave</a>` : ''}
         ${magBeheren() ? '<button class="knop gevaar" id="verwijder">Verwijderen</button>' : ''}
       </div>
     </div>
     <section class="kaart">${voortgangBalk(v, { groot: true })}
       ${p.toegewezen?.length ? `<p style="margin:.5rem 0 0"><small>👤 ${p.toegewezen.map(esc).join(', ')}</small></p>` : ''}
       ${p.omschrijving ? `<p style="white-space:pre-wrap;margin:.5rem 0 0">${esc(p.omschrijving)}</p>` : ''}</section>
+    ${p.inspectiesoort === BV.BVC_SOORT ? bvcSamenvatting(g.inspecties.filter((i) => i.werkpakketId === p.id)) : ''}
     <div class="kaartindeling">
       <div id="pakketkaart" class="kaart"><p class="leeg">Kaart laden…</p></div>
       <aside class="kaart lagenpaneel"><h2>Legenda</h2><div class="legenda">
@@ -3150,7 +3220,7 @@ async function pakketDetail(id) {
     const r = v.gedaan.get(o.id);
     const ov = v.overgeslagen.get(o.id);
     return `<tr>
-          <td><a href="#/objecten/${esc(o.id)}"><strong>${esc(o.code)}</strong></a></td><td>${esc(o.naam)}</td>
+          <td><a href="#/objecten/${esc(o.id)}"><strong>${esc(o.code)}</strong></a></td><td>${esc(o.naam)}${p.vrijgaveVereist ? `<br>${vrijgaveLabel(eco.vrijgaveVoorObject(vrijgavenProject, o.id, vandaag()))}` : ''}</td>
           <td><span class="label-status ${st === 'gedaan' ? 'afgerond' : st === 'open' ? 'binnenkort' : ''}">${{ open: 'Open', gedaan: 'Gedaan', overgeslagen: 'Overgeslagen' }[st]}</span></td>
           <td>${r ? `<a href="${regHref(r)}">${datumNL(r.datum)}</a> · ${esc(r.uitvoerder || r.inspecteur || '')}` : ov ? `${datumNL(ov.op)} · ${esc(ov.door)}` : '–'}</td>
           <td class="verberg-mobiel">${ov ? `${esc(ov.reden)}${ov.toelichting ? `: ${esc(ov.toelichting)}` : ''}` : r ? esc(r.omschrijving || r.samenvatting || '') : ''}</td>
@@ -3184,6 +3254,7 @@ async function pakketDetail(id) {
     await db.verwijder('werkpakketten', p.id);
     ga('#/werkpakketten');
   });
+  app.querySelector('#suf')?.addEventListener('click', () => exporteerSuf((i) => i.werkpakketId === p.id, p.naam));
   app.querySelector('#export').onclick = () => {
     const rijen = [['Code', 'Naam', 'Type', 'Status', 'Datum', 'Door', 'Reden / omschrijving']];
     for (const o of objecten) {
@@ -3234,6 +3305,7 @@ async function mobielPakket(id) {
     ${open.length ? `<div class="knoppen mpakketknoppen">
       <button class="knop primair" id="volgende" type="button">📍 Volgende dichtbij</button>
       <button class="knop" id="locatie" type="button">↻ Locatie</button></div>` : '<div class="kaart mhier">🎉 Alle objecten zijn gedaan.</div>'}
+    ${p.vrijgaveVereist && open.length ? `<a class="knop mgroot" href="#/m/vrijgave/nieuw?pakket=${esc(p.id)}">🌿 Flora & fauna vrijgave voor dit pakket</a>` : ''}
     <div id="pakketkaart" class="mkaart"><p class="leeg">Kaart laden…</p></div>
     <h2 class="mlijstkop">Nog te doen (${open.length})</h2>
     <ul class="mlijst" id="open-lijst"></ul>
@@ -3244,6 +3316,8 @@ async function mobielPakket(id) {
       <li><div class="mregel"><span class="micoon klein">⏭</span><span><strong>${esc(o.code)} – ${esc(o.naam)}</strong><small>${esc(v.overgeslagen.get(o.id).reden)}</small></span>
         <button class="knop klein" data-terug="${esc(o.id)}">Terugzetten</button></div></li>`).join('')}</ul></details>` : ''}`;
 
+  const vrijgavenProject = p.vrijgaveVereist ? await inProject('vrijgaven') : [];
+  const vrijgaveChip = (o) => (p.vrijgaveVereist ? `<small>${vrijgaveLabel(eco.vrijgaveVoorObject(vrijgavenProject, o.id, vandaag()))}</small>` : '');
   const tekenLijst = () => {
     const metAfstand = open.map((o) => ({ o, afstand: laatstePositie ? gis.afstandTot(laatstePositie, objectGeometrie(o)) : null }));
     if (laatstePositie) metAfstand.sort((a, b) => (a.afstand ?? Infinity) - (b.afstand ?? Infinity));
@@ -3252,7 +3326,7 @@ async function mobielPakket(id) {
     el.innerHTML = metAfstand.length ? metAfstand.map(({ o, afstand }) => `
       <li><div class="mregel">
         <a href="${pakketHref(p, o.id, true)}" class="mregel-link"><span><strong>${esc(o.code)} – ${esc(o.naam)}</strong>
-          <small>${esc(o.type || '')}${afstand != null ? ` · ${afstand === 0 ? '📍 hier' : afstandTekst(afstand)}` : ''}</small></span></a>
+          <small>${esc(o.type || '')}${afstand != null ? ` · ${afstand === 0 ? '📍 hier' : afstandTekst(afstand)}` : ''}</small>${vrijgaveChip(o)}</span></a>
         <button class="knop klein" data-overslaan="${esc(o.id)}" aria-label="${esc(o.code)} overslaan">⏭</button>
         <a class="knop klein primair" href="${pakketHref(p, o.id, true)}">▶</a></div></li>`).join('') : '';
     return metAfstand;
@@ -3285,6 +3359,844 @@ async function mobielPakket(id) {
     }
   };
   app.querySelectorAll('#pakketkaart, #open-lijst, .mklapper').forEach((el) => el.addEventListener('click', klik));
+}
+
+// ---------------------------------------------------------------------------
+// Gedeelde hulpmiddelen voor BVC en flora & fauna
+// ---------------------------------------------------------------------------
+function bvkLabel(bvk) {
+  const k = BV.BVK[bvk];
+  return k ? `<span class="score" style="background:${k.kleur}">🌳 ${esc(k.kort)}</span>` : '<span class="label-status">Geen</span>';
+}
+
+/** Conditie (NEN 2767) of, bij bomen, de boomveiligheidsklasse. */
+function oordeelLabel(s) {
+  return s?.bvk ? bvkLabel(s.bvk) : scoreLabel(s?.conditie);
+}
+
+function inspectieOordeel(i) {
+  if (!i.bvc) return scoreLabel(inspectieScore(i));
+  return i.bvc.niet ? '<span class="label-status">Niet aangetroffen</span>' : bvkLabel(i.bvc.bvk);
+}
+
+const segment = (naam, waarde, opties, attr = '') => `<div class="segment" role="radiogroup">${opties.map(([k, l]) => `
+  <label><input type="radio" name="${esc(naam)}" value="${esc(k)}" ${String(waarde) === String(k) ? 'checked' : ''} ${attr}><span>${esc(l)}</span></label>`).join('')}</div>`;
+
+function fotoRij(fotos, sleutel) {
+  return `<div class="fotos">${fotos.map((f, n) => `<div class="foto"><img src="${esc(f.data)}" alt="Foto ${n + 1}" data-lichtbak>
+    <button type="button" data-foto-weg="${esc(sleutel)}:${n}" aria-label="Foto verwijderen">×</button></div>`).join('')}
+    <label class="knop fotoknop">📷 Foto<input type="file" accept="image/*" capture="environment" multiple data-foto-bij="${esc(sleutel)}"></label></div>`;
+}
+
+async function bewaarFotoLijsten(lijsten, origineel, meta) {
+  const alle = lijsten.flat();
+  await db.bewaarVeel('fotos', alle.filter((f) => !origineel.has(f.id)).map((f) => ({ id: f.id, data: f.data, ...meta })));
+  const blijven = new Set(alle.map((f) => f.id));
+  for (const fid of origineel) if (!blijven.has(fid)) await db.verwijder('fotos', fid);
+}
+
+function nuTijd() {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function rdTekst(o) {
+  const lat = parseFloat(o?.lat); const lng = parseFloat(o?.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return '–';
+  const [x, y] = BV.wgs84NaarRd(lng, lat);
+  return `X ${x.toFixed(2)} · Y ${y.toFixed(2)} (RD)`;
+}
+
+function soortNaam(latijn) {
+  const s = BV.BOOMSOORTEN.find(([w]) => w === latijn);
+  return s ? `${s[0]} – ${s[1]}` : (latijn || '–');
+}
+
+// ---------------------------------------------------------------------------
+// Boomveiligheidscontrole (Boomveiligheidsprotocol Rijkswaterstaat)
+// ---------------------------------------------------------------------------
+async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakketId = null } = {}) {
+  const objecten = await inProject('objecten');
+  const bestaand = id ? await db.haal('inspecties', id) : null;
+  if (id && !bestaand) {
+    app.innerHTML = leegKaart('Controle niet gevonden.', '<a class="knop" href="#/inspecties">Terug</a>');
+    return;
+  }
+  const object = objecten.find((o) => o.id === (bestaand?.objectId ?? objectId));
+  if (!object && !mobiel) {
+    // Op de pc eerst een boom kiezen.
+    const bomen = objecten.filter((o) => /Boom|beplanting/i.test(o.type ?? ''));
+    app.innerHTML = `<div class="paginakop"><div><p><a href="#/inspecties">← Inspecties</a></p><h1>Boomveiligheidscontrole</h1></div></div>
+      <div class="kaart"><div class="veld"><label for="kies">Boom of gesloten beplanting</label><select id="kies"><option value="">– kies –</option>
+      ${(bomen.length ? bomen : objecten).map((o) => optie(o.id, `${o.code} – ${o.naam}`)).join('')}</select></div></div>`;
+    app.querySelector('#kies').onchange = (e) => { if (e.target.value) ga(`#/bvc/nieuw?object=${encodeURIComponent(e.target.value)}`); };
+    return;
+  }
+  if (!object) {
+    app.innerHTML = leegKaart('Object niet gevonden.', '<a class="knop" href="#/m/bvc">Terug</a>');
+    return;
+  }
+  const naam = instelling.lees('inspecteur');
+  const b0 = bestaand?.bvc ?? {};
+  const staat = {
+    datum: bestaand?.datum ?? vandaag(),
+    inspecteur: bestaand?.inspecteur ?? naam,
+    status: bestaand?.status ?? 'concept',
+    werkpakketId: bestaand?.werkpakketId ?? pakketId ?? '',
+    fotos: await laadFotos(bestaand?.fotoIds),
+    bvc: {
+      soort: object.boomsoort ?? '', plantjaar: object.plantjaar ?? '', plantjaarSchatting: false, dbh: object.dbh ?? '',
+      bijzonder: Boolean(object.bijzonder), ork: object.ork ?? '', gb: Boolean(object.gb), aantalBomen: object.aantalBomen ?? '',
+      niet: false, eigenaar: object.beheerder ?? '', kwalificatie: instelling.lees('bvcKwalificatie'), certificaat: instelling.lees('bvcCertificaat'),
+      methode: instelling.lees('bvcMethode', 'VTA'), prikstok: false, klophamer: false, bvk: '', gemarkeerd: false,
+      beschermdeSoorten: false, opmerking: '', fotonummer: '',
+      ...b0,
+      gebreken: await Promise.all((b0.gebreken ?? []).map(async (g) => ({ ...g, fotos: await laadFotos(g.fotoIds) }))),
+      maatregelen: (b0.maatregelen ?? []).map((m) => ({ ...m })),
+    },
+  };
+  const origineel = new Set([...(bestaand?.fotoIds ?? []), ...(b0.gebreken ?? []).flatMap((g) => g.fotoIds ?? [])]);
+  const pakket = staat.werkpakketId ? await db.haal('werkpakketten', staat.werkpakketId) : null;
+  const taak = taakId ? await db.haal('taken', taakId) : null;
+  const terug = pakket ? (mobiel ? `#/m/pakket/${esc(pakket.id)}` : `#/werkpakketten/${esc(pakket.id)}`)
+    : mobiel ? '#/m/bvc' : bestaand ? `#/inspecties/${esc(id)}` : `#/objecten/${esc(object.id)}`;
+  const b = staat.bvc;
+  const gebrekOpties = Object.entries(BV.GEBREKEN).map(([type, lijst]) => `<optgroup label="${esc(type)}">${lijst.map((g) => `<option>${esc(g)}</option>`).join('')}</optgroup>`).join('');
+
+  const kop = mobiel
+    ? `<div class="mkop"><a href="${terug}" class="mterug" aria-label="Terug">←</a>
+        <div><small>🌳 Boomveiligheidscontrole</small><h1>${esc(object.code)} – ${esc(object.naam)}</h1></div></div>`
+    : `<div class="paginakop"><div><p><a href="${terug}">← Terug</a></p><h1>Boomveiligheidscontrole</h1><p>${objectNaam(object)} · ${rdTekst(object)}</p></div></div>`;
+
+  app.innerHTML = `${kop}
+    <form id="form" novalidate class="${mobiel ? 'mform' : ''}">
+      ${taak ? `<div class="kaart mhier">📋 <strong>Taak:</strong> ${esc(taak.titel)}</div>` : ''}
+      ${pakket ? `<div class="kaart mhier">📦 <strong>Werkpakket:</strong> ${esc(pakket.naam)}</div>` : ''}
+      <section class="kaart">
+        <h2>Controle</h2>
+        <div class="velden">
+          <div class="veld"><label for="f-datum" class="vereist">Datum (DATUM)</label><input id="f-datum" name="datum" type="date" value="${esc(staat.datum)}"></div>
+          <div class="veld"><label for="f-inspecteur" class="vereist">Controleur (INSP)</label><input id="f-inspecteur" name="inspecteur" value="${esc(staat.inspecteur)}"></div>
+          <div class="veld"><label for="b-kwal" class="vereist">Kwalificatie</label><select id="b-kwal" data-b="kwalificatie"><option value="">– kies –</option>
+            ${BV.KWALIFICATIES.map((k) => optie(k, k, b.kwalificatie)).join('')}</select></div>
+          <div class="veld"><label for="b-cert">Certificaatnummer</label><input id="b-cert" data-b="certificaat" value="${esc(b.certificaat)}"></div>
+          <div class="veld"><label for="b-methode">Methode</label><select id="b-methode" data-b="methode">${BV.METHODEN.map((m) => optie(m, m, b.methode)).join('')}</select></div>
+          <div class="veld"><label>Hulpmiddelen</label><div class="chips">
+            <label class="chip"><input type="checkbox" data-b="prikstok" ${b.prikstok ? 'checked' : ''}><span>Prikstok</span></label>
+            <label class="chip"><input type="checkbox" data-b="klophamer" ${b.klophamer ? 'checked' : ''}><span>Klophamer</span></label></div></div>
+        </div>
+        <p id="periode" class="label-status binnenkort" style="white-space:normal;margin-top:.75rem" hidden>Het protocol schrijft controle in de periode juli t/m november voor (§ 6.1).</p>
+        <label class="vink" style="margin-top:.75rem"><input type="checkbox" data-b="niet" ${b.niet ? 'checked' : ''}><span><strong>Boom niet aangetroffen (NIET)</strong><small>Bijv. gekapt of verdwenen; verder hoeft niets ingevuld te worden.</small></span></label>
+      </section>
+      <div id="bvc-inhoud">
+      <section class="kaart">
+        <h2>Basisgegevens boom</h2>
+        <div class="velden">
+          <div class="veld breed"><label for="b-soort" class="vereist">Boomsoort (SOORT)</label>
+            <input id="b-soort" data-b="soort" list="boomsoorten" value="${esc(b.soort)}" placeholder="Typ Latijnse of Nederlandse naam" autocomplete="off">
+            <datalist id="boomsoorten">${BV.BOOMSOORTEN.map(([w, n]) => `<option value="${esc(w)}">${esc(n)}</option>`).join('')}</datalist>
+            <small id="soortnaam">${esc(soortNaam(b.soort))}</small></div>
+          <div class="veld"><label for="b-jaar">Plantjaar (JAAR)</label><input id="b-jaar" data-b="plantjaar" type="number" min="1700" max="2100" inputmode="numeric" value="${esc(b.plantjaar)}">
+            <label class="vink" style="margin-top:.35rem;padding:.4rem .6rem"><input type="checkbox" data-b="plantjaarSchatting" ${b.plantjaarSchatting ? 'checked' : ''}><span>Schatting</span></label></div>
+          <div class="veld"><label for="b-dbh">Stamdiameter (cm, dbh)</label><input id="b-dbh" data-b="dbh" type="number" min="0" max="500" inputmode="numeric" value="${esc(b.dbh)}">
+            <small id="bijzonder-hint"></small></div>
+          <div class="veld breed"><label class="vereist">Omgevingsrisicoklasse (ORK)</label>
+            ${segment('ork', b.ork, Object.keys(BV.ORK).map((k) => [k, k]), 'data-b="ork"')}<small id="ork-uitleg">${esc(BV.ORK[b.ork]?.uitleg ?? '')}</small></div>
+          <div class="veld"><label for="b-eig">Eigenaar (EIG)</label><input id="b-eig" data-b="eigenaar" value="${esc(b.eigenaar)}"></div>
+          <div class="veld"><label>&nbsp;</label><label class="vink"><input type="checkbox" data-b="bijzonder" ${b.bijzonder ? 'checked' : ''}><span>Bijzondere boom (bijlage 7)</span></label></div>
+          <div class="veld"><label>&nbsp;</label><label class="vink"><input type="checkbox" data-b="gb" ${b.gb ? 'checked' : ''}><span>Gesloten beplanting (GB)</span></label></div>
+          <div class="veld" id="aantal-veld" ${b.gb ? '' : 'hidden'}><label for="b-aantal" class="vereist">Aantal bomen</label><input id="b-aantal" data-b="aantalBomen" type="number" min="1" value="${esc(b.aantalBomen)}"></div>
+        </div>
+      </section>
+      <section>
+        <div class="mtussen"><h2>Boomgebreken</h2><button type="button" class="knop" id="gebrek-plus">＋ Gebrek</button></div>
+        <p class="hulptekst">Alleen afwijkingen die binnen 3 jaar tot stam- of takbreuk of instabiliteit kunnen leiden (§ 6.3.1). Dood hout vanaf 4 cm diameter of takken langer dan 100 cm.</p>
+        <div id="gebreken"></div>
+      </section>
+      <section class="kaart">
+        <h2>Conclusie</h2>
+        <div class="veld"><label class="vereist">Boomveiligheidsklasse (BVK)</label>
+          ${segment('bvk', b.bvk, Object.entries(BV.BVK).map(([k, v]) => [k, v.kort]), 'data-b="bvk"')}</div>
+        <div id="conclusie" class="conclusie"></div>
+      </section>
+      <section>
+        <div class="mtussen"><h2>Maatregelen</h2><button type="button" class="knop" id="maatregel-plus">＋ Maatregel</button></div>
+        <p class="hulptekst">Uitvoeren binnen 3 maanden na oplevering; acute gebreken binnen 48 uur na signalering (§ 6.3.4). Geen levensverlengende ingrepen, behalve bij bijzondere bomen (§ 6.3.2).</p>
+        <div id="maatregelen"></div>
+        <label class="vink" id="gemarkeerd-veld" hidden><input type="checkbox" data-b="gemarkeerd" ${b.gemarkeerd ? 'checked' : ''}>
+          <span><strong>Te vellen boom gemarkeerd met oranje streep (blesverf)</strong><small>Verplicht bij "Boom verwijderen".</small></span></label>
+      </section>
+      <section class="kaart">
+        <h2>Overig</h2>
+        <label class="vink"><input type="checkbox" data-b="beschermdeSoorten" ${b.beschermdeSoorten ? 'checked' : ''}>
+          <span><strong>Beschermde soorten in de boom</strong><small>Bijv. vleermuizen of een jaarrond beschermd nest. Dan wordt afgeweken van de standaardmaatregelen en is een ecologisch deskundige nodig (§ 6.3.2).</small></span></label>
+        <p id="soorten-waarschuwing" class="label-status verlopen" style="white-space:normal;margin-top:.5rem" ${b.beschermdeSoorten ? '' : 'hidden'}>
+          Schakel een ecologisch deskundige in voordat maatregelen worden uitgevoerd. <a href="${mobiel ? '#/m/vrijgave/nieuw' : '#/vrijgaven/nieuw'}?object=${esc(object.id)}">Flora- en fauna-vrijgave aanmaken →</a></p>
+        <div class="velden" style="margin-top:.75rem">
+          <div class="veld breed"><label for="b-opm">Opmerkingen (OPMERK)</label><textarea id="b-opm" data-b="opmerking" maxlength="255">${esc(b.opmerking)}</textarea></div>
+          <div class="veld"><label for="b-foto">Fotonummer (FOTO)</label><input id="b-foto" data-b="fotonummer" maxlength="60" value="${esc(b.fotonummer)}"></div>
+          <div class="veld breed"><label>Foto's van de boom</label><div id="algemene-fotos"></div></div>
+        </div>
+      </section>
+      </div>
+      <div class="${mobiel ? 'mvoet' : 'formvoet kaart'}">
+        ${mobiel ? '' : `<a class="knop" href="${terug}">Annuleren</a>`}
+        <button class="knop" type="submit" data-status="concept">Concept</button>
+        <button class="knop primair" type="submit" data-status="afgerond">✓ Afronden</button>
+      </div>
+    </form>`;
+
+  const form = app.querySelector('#form');
+  const $ = (s) => app.querySelector(s);
+  const fotoLijst = (k) => (k === 'alg' ? staat.fotos : b.gebreken[Number(k.slice(1))].fotos);
+
+  const tekenGebreken = () => {
+    $('#gebreken').innerHTML = b.gebreken.length ? b.gebreken.map((g, i) => `
+      <div class="gebrek" style="border-left-color:${BV.BVK.risico.kleur}">
+        <div class="gebrek-kop"><h3 style="margin:0">Gebrek ${i + 1}${g.omschrijving ? ` · <small>${esc(BV.gebrekType(g.omschrijving))}</small>` : ''}</h3>
+          <button type="button" class="knop klein gevaar" data-gebrek-weg="${i}" aria-label="Gebrek verwijderen">🗑</button></div>
+        <div class="velden">
+          <div class="veld breed"><label class="vereist">Gebrek</label><select data-g="${i}" data-veld="omschrijving"><option value="">– kies –</option>
+            ${gebrekOpties.replace(`<option>${esc(g.omschrijving)}</option>`, `<option selected>${esc(g.omschrijving)}</option>`)}</select>
+            ${BV.BRUIKBAARHEID.includes(g.omschrijving) ? '<small>Bruikbaarheid van de weg, geen boomveiligheid (§ 6.3.2): hoort bij regulier onderhoud.</small>' : ''}</div>
+          <div class="veld breed"><label class="vereist">Plaats</label>${segment(`plaats-${i}`, g.plaats, BV.PLAATS.map((p) => [p, p]), `data-g="${i}" data-veld="plaats"`)}</div>
+          <div class="veld breed"><label class="vereist">Gevolg</label>${segment(`gevolg-${i}`, g.gevolg, BV.GEVOLG.map((p) => [p, p]), `data-g="${i}" data-veld="gevolg"`)}</div>
+          <div class="veld breed"><label>Toelichting</label><input data-g="${i}" data-veld="toelichting" value="${esc(g.toelichting ?? '')}" maxlength="200"></div>
+          <div class="veld breed"><label>Foto's</label>${fotoRij(g.fotos, `g${i}`)}</div>
+        </div></div>`).join('') : '<p class="mleeg">Geen gebreken vastgelegd.</p>';
+  };
+  const tekenMaatregelen = () => {
+    $('#maatregelen').innerHTML = b.maatregelen.length ? b.maatregelen.map((m, i) => `
+      <div class="gebrek" style="border-left-color:${m.termijn === 'acuut' ? '#8b1a1a' : '#e07b00'}">
+        <div class="gebrek-kop"><h3 style="margin:0">Maatregel ${i + 1}</h3>
+          <button type="button" class="knop klein gevaar" data-maatregel-weg="${i}" aria-label="Maatregel verwijderen">🗑</button></div>
+        <div class="velden">
+          <div class="veld"><label class="vereist">Maatregel</label><select data-m="${i}" data-veld="bvcMaatregel"><option value="">– kies –</option>
+            ${BV.MAATREGELEN.map((x) => optie(x, x, m.bvcMaatregel)).join('')}</select></div>
+          <div class="veld"><label class="vereist">Urgentie</label>${segment(`termijn-${i}`, m.termijn, Object.entries(BV.URGENTIE).map(([k, v]) => [k, v.label]), `data-m="${i}" data-veld="termijn"`)}</div>
+          <div class="veld breed"><small>Uiterlijk uitvoeren: <strong data-uiterlijk="${i}">${m.termijn ? datumNL(BV.uitvoerenVoor(m.termijn, $('#f-datum')?.value || staat.datum)) : '–'}</strong></small></div>
+        </div></div>`).join('') : '<p class="mleeg">Geen maatregelen.</p>';
+    $('#gemarkeerd-veld').hidden = !b.maatregelen.some((m) => m.bvcMaatregel === 'Boom verwijderen');
+  };
+  const tekenAlgemeen = () => { $('#algemene-fotos').innerHTML = fotoRij(staat.fotos, 'alg'); };
+  const tekenConclusie = () => {
+    const datum = $('#f-datum').value || staat.datum;
+    const jaren = BV.frequentie(b.bvk, b.ork);
+    $('#conclusie').innerHTML = b.bvk && b.ork
+      ? `<p>${bvkLabel(b.bvk)} · ORK <strong>${esc(b.ork)}</strong></p>
+         <p>Controlefrequentie: <strong>${BV.CONTROLEFREQUENTIE[jaren]}</strong> · volgende controle uiterlijk <strong>${datumNL(volgendeInspectie(datum, jaren))}</strong>
+         ${b.bvk === 'risico' ? '<br><small>Na uitvoering van de maatregel wordt het een boom zonder gebreken; frequentie volgens ORK.</small>' : ''}</p>`
+      : '<p class="mleeg">Kies ORK en BVK om de controlefrequentie te bepalen.</p>';
+    $('#ork-uitleg').textContent = BV.ORK[b.ork]?.uitleg ?? '';
+    $('#periode').hidden = !datum || BV.inControleperiode(datum);
+    $('#bijzonder-hint').textContent = BV.bijzondereBoomHint(b.dbh);
+    $('#soortnaam').textContent = soortNaam(b.soort);
+    $('#aantal-veld').hidden = !b.gb;
+    $('#bvc-inhoud').hidden = Boolean(b.niet);
+    $('#soorten-waarschuwing').hidden = !b.beschermdeSoorten;
+  };
+  tekenGebreken(); tekenMaatregelen(); tekenAlgemeen(); tekenConclusie();
+
+  form.addEventListener('input', (e) => {
+    formulierGewijzigd = true;
+    const el = e.target;
+    const waarde = el.type === 'checkbox' ? el.checked : el.value;
+    if (el.dataset.b) b[el.dataset.b] = waarde;
+    if (el.dataset.g !== undefined) {
+      b.gebreken[Number(el.dataset.g)][el.dataset.veld] = waarde;
+      if (el.dataset.veld === 'omschrijving') tekenGebreken();
+    }
+    if (el.dataset.m !== undefined) {
+      b.maatregelen[Number(el.dataset.m)][el.dataset.veld] = waarde;
+      tekenMaatregelen();
+    }
+    if (el.name === 'datum') tekenMaatregelen();
+    tekenConclusie();
+  });
+  form.addEventListener('change', async (e) => {
+    const k = e.target.dataset.fotoBij;
+    if (!k || !e.target.files?.length) return;
+    try {
+      for (const f of [...e.target.files]) fotoLijst(k).push({ id: nieuwId(), data: await verkleinFoto(f) });
+    } catch (fout) { melding(fout.message, 'fout'); }
+    if (k === 'alg') tekenAlgemeen(); else tekenGebreken();
+  });
+  form.addEventListener('click', (e) => {
+    const fw = e.target.closest('[data-foto-weg]');
+    if (fw) {
+      const [k, n] = fw.dataset.fotoWeg.split(':');
+      fotoLijst(k).splice(Number(n), 1);
+      if (k === 'alg') tekenAlgemeen(); else tekenGebreken();
+      return;
+    }
+    const gw = e.target.closest('[data-gebrek-weg]');
+    if (gw) { b.gebreken.splice(Number(gw.dataset.gebrekWeg), 1); tekenGebreken(); tekenConclusie(); return; }
+    const mw = e.target.closest('[data-maatregel-weg]');
+    if (mw) { b.maatregelen.splice(Number(mw.dataset.maatregelWeg), 1); tekenMaatregelen(); }
+  });
+  $('#gebrek-plus').onclick = () => {
+    b.gebreken.push({ id: nieuwId(), omschrijving: '', plaats: '', gevolg: '', toelichting: '', fotos: [] });
+    tekenGebreken();
+    $('#gebreken').lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  $('#maatregel-plus').onclick = () => {
+    b.maatregelen.push({ id: nieuwId(), bvcMaatregel: '', termijn: '', maatregelStatus: 'open' });
+    tekenMaatregelen();
+  };
+
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const status = e.submitter?.dataset.status ?? 'concept';
+    const datum = $('#f-datum').value;
+    const inspecteur = $('#f-inspecteur').value.trim();
+    if (!datum) return melding('Vul de datum in.', 'fout');
+    if (status === 'afgerond') {
+      const fouten = BV.controleer({ ...b, controleur: inspecteur });
+      if (fouten.length) return melding(`${fouten[0]}${fouten.length > 1 ? ` (en ${fouten.length - 1} meer)` : ''}`, 'fout');
+    }
+    const inspectieId = id ?? nieuwId();
+    const nu = new Date().toISOString();
+    const pid = bestaand?.projectId ?? projectId();
+    await bewaarFotoLijsten([staat.fotos, ...b.gebreken.map((g) => g.fotos)], origineel, { inspectieId, projectId: pid, datum: nu });
+    const jaren = BV.frequentie(b.bvk, b.ork);
+    const eersteGebrek = b.gebreken.find((g) => g.omschrijving)?.omschrijving ?? 'Boomveiligheid';
+    const bvcData = {
+      ...b,
+      controleur: inspecteur,
+      gebreken: b.gebreken.map(({ fotos, ...g }) => ({ ...g, type: BV.gebrekType(g.omschrijving), fotoIds: fotos.map((f) => f.id) })),
+      // Maatregelen zijn ook zichtbaar in het maatregelenoverzicht, de taken en bij werkzaamheden.
+      maatregelen: b.niet ? [] : b.maatregelen.map((m) => ({
+        ...m, bouwdeel: 'Boom', gebrek: eersteGebrek, maatregel: m.bvcMaatregel,
+        urgentie: m.termijn === 'acuut' ? 'direct' : '3maanden', uitvoerenVoor: BV.uitvoerenVoor(m.termijn, datum),
+        maatregelStatus: m.maatregelStatus ?? 'open',
+      })),
+      frequentieJaren: jaren,
+      volgendeControle: b.niet ? '' : volgendeInspectie(datum, jaren),
+    };
+    await db.bewaar('inspecties', {
+      ...(bestaand ?? {}), id: inspectieId, projectId: pid, objectId: object.id, werkpakketId: staat.werkpakketId,
+      soort: BV.BVC_SOORT, datum, inspecteur, status, weer: '', samenvatting: b.opmerking, fotoIds: staat.fotos.map((f) => f.id),
+      gebreken: [], bvc: bvcData, aangemaakt: bestaand?.aangemaakt ?? nu, gewijzigd: nu,
+    });
+    if (status === 'afgerond') {
+      // Basisgegevens horen bij de boom en worden bij elke controle geverifieerd (§ 6.2).
+      const o = await db.haal('objecten', object.id);
+      await db.bewaar('objecten', {
+        ...o, type: o.type && o.type !== 'Overig' ? o.type : (b.gb ? 'Gesloten beplanting' : 'Boom'),
+        boomsoort: b.soort, plantjaar: b.plantjaar, dbh: b.dbh, bijzonder: b.bijzonder, ork: b.ork, gb: b.gb, aantalBomen: b.aantalBomen,
+        beheerder: b.eigenaar || o.beheerder, inspectieInterval: b.niet ? o.inspectieInterval : jaren,
+        status: b.niet ? 'Niet aangetroffen' : (o.status === 'Niet aangetroffen' ? 'In gebruik' : o.status), gewijzigd: nu,
+      });
+      await rondTaakAf(taakId, inspectieId);
+    }
+    instelling.schrijf('inspecteur', inspecteur);
+    instelling.schrijf('bvcKwalificatie', b.kwalificatie);
+    instelling.schrijf('bvcCertificaat', b.certificaat);
+    instelling.schrijf('bvcMethode', b.methode);
+    formulierGewijzigd = false;
+    melding(status === 'afgerond' ? 'Boomveiligheidscontrole afgerond' : 'Concept opgeslagen');
+    ga(pakket ? (mobiel ? `#/m/pakket/${pakket.id}` : `#/werkpakketten/${pakket.id}`) : (mobiel ? '#/m/bvc' : `#/inspecties/${inspectieId}`));
+  };
+}
+
+async function bvcInhoud(i, o) {
+  const b = i.bvc ?? {};
+  const gebreken = await Promise.all((b.gebreken ?? []).map(async (g) => `<tr><td>${esc(g.omschrijving)}</td><td>${esc(g.type || BV.gebrekType(g.omschrijving))}</td>
+    <td>${esc(g.plaats)}</td><td>${esc(g.gevolg)}</td><td>${esc(g.toelichting ?? '')}${g.fotoIds?.length ? await fotosHtml(g.fotoIds) : ''}</td></tr>`));
+  return `
+    <div class="raster-2">
+      <section class="kaart"><h2>Basisgegevens</h2><dl class="gegevens">
+        <dt>KEY</dt><dd><small>${esc(o?.id ?? '')}</small></dd>
+        <dt>Coördinaten</dt><dd>${rdTekst(o)}</dd>
+        <dt>Boomsoort</dt><dd>${esc(soortNaam(b.soort))}</dd>
+        <dt>Plantjaar</dt><dd>${esc(b.plantjaar || '–')}${b.plantjaarSchatting ? ' (schatting)' : ''}</dd>
+        ${b.dbh ? `<dt>Stamdiameter</dt><dd>${esc(b.dbh)} cm${b.bijzonder ? ' · bijzondere boom' : ''}</dd>` : ''}
+        <dt>ORK</dt><dd>${esc(b.ork || '–')}</dd>
+        <dt>Eigenaar</dt><dd>${esc(b.eigenaar || '–')}</dd>
+        ${b.gb ? `<dt>Gesloten beplanting</dt><dd>Ja, ${esc(b.aantalBomen)} bomen</dd>` : ''}
+      </dl></section>
+      <section class="kaart"><h2>Controle</h2><dl class="gegevens">
+        <dt>Datum</dt><dd>${datumNL(i.datum)}${BV.inControleperiode(i.datum) ? '' : ' <span class="label-status binnenkort">buiten juli–november</span>'}</dd>
+        <dt>Controleur</dt><dd>${esc(i.inspecteur || '–')}</dd>
+        <dt>Kwalificatie</dt><dd>${esc(b.kwalificatie || '–')}${b.certificaat ? ` · nr. ${esc(b.certificaat)}` : ''}</dd>
+        <dt>Methode</dt><dd>${esc(b.methode || '–')}${b.prikstok || b.klophamer ? ` · ${[b.prikstok && 'prikstok', b.klophamer && 'klophamer'].filter(Boolean).join(', ')}` : ''}</dd>
+        <dt>Oordeel</dt><dd>${inspectieOordeel(i)}</dd>
+        ${b.niet ? '' : `<dt>Frequentie</dt><dd>${BV.CONTROLEFREQUENTIE[b.frequentieJaren ?? BV.frequentie(b.bvk, b.ork)] ?? '–'}</dd>
+        <dt>Volgende controle</dt><dd>${datumNL(b.volgendeControle)}</dd>`}
+      </dl></section>
+    </div>
+    ${b.niet ? '' : `
+    <section class="kaart"><h2>Boomgebreken</h2>${gebreken.length ? `<div class="tabelhouder"><table>
+      <thead><tr><th>Gebrek</th><th>Type</th><th>Plaats</th><th>Gevolg</th><th>Toelichting</th></tr></thead><tbody>${gebreken.join('')}</tbody></table></div>`
+    : '<p class="leeg">Geen boomgebreken.</p>'}</section>
+    <section class="kaart"><h2>Boomveiligheidsmaatregelen</h2>${(b.maatregelen ?? []).length ? `<div class="tabelhouder"><table>
+      <thead><tr><th>Maatregel</th><th>Urgentie</th><th>Uiterlijk</th><th>Status</th></tr></thead><tbody>
+      ${b.maatregelen.map((m) => `<tr><td>${esc(m.bvcMaatregel)}</td><td>${esc(BV.URGENTIE[m.termijn]?.label ?? '')}</td><td>${datumNL(m.uitvoerenVoor)}</td>
+        <td>${m.maatregelStatus === 'uitgevoerd' ? '<span class="label-status uitgevoerd">Uitgevoerd</span>' : '<span class="label-status binnenkort">Open</span>'}</td></tr>`).join('')}
+      </tbody></table></div>${b.maatregelen.some((m) => m.bvcMaatregel === 'Boom verwijderen') ? `<p><small>Gemarkeerd met oranje streep: ${b.gemarkeerd ? 'ja' : 'nee'}</small></p>` : ''}`
+    : '<p class="leeg">Geen maatregelen.</p>'}</section>`}
+    ${b.beschermdeSoorten ? '<div class="kaart mhier">🦇 Beschermde soorten in de boom: maatregelen alleen na afstemming met een ecologisch deskundige.</div>' : ''}
+    ${b.opmerking || i.fotoIds?.length ? `<section class="kaart"><h2>Opmerkingen en foto's</h2>${b.opmerking ? `<p style="white-space:pre-wrap">${esc(b.opmerking)}</p>` : ''}
+      ${b.fotonummer ? `<p><small>Fotonummer: ${esc(b.fotonummer)}</small></p>` : ''}${await fotosHtml(i.fotoIds)}</section>` : ''}`;
+}
+
+async function bvcDetail(i, { rapport = false } = {}) {
+  const o = await db.haal('objecten', i.objectId);
+  const organisatie = instelling.lees('organisatie');
+  const inhoud = await bvcInhoud(i, o);
+  if (rapport) {
+    app.innerHTML = `
+      <div class="paginakop geen-print"><p><a href="#/inspecties/${esc(i.id)}">← Terug</a></p>
+        <button class="knop primair" onclick="window.print()">Afdrukken / opslaan als PDF</button></div>
+      <article class="rapport">
+        <div class="rapport-kop"><div><small>${esc(organisatie || 'Rapportage boomveiligheid')}</small>
+          <h1 style="margin:.25rem 0">Boomveiligheidscontrole ${esc(o?.code ?? '')}</h1>
+          <div>${esc(o?.naam ?? '')} · ${datumNL(i.datum)} · ${esc(i.inspecteur || '')}</div></div>
+          <div style="text-align:right"><small>Boomveiligheidsklasse</small><br>${inspectieOordeel(i)}</div></div>
+        <p><small>Uitgevoerd volgens het Boomveiligheidsprotocol Rijkswaterstaat (2017); gegevens conform SUF-BVC. Werkwijze: ${esc(i.bvc?.methode || '–')}.</small></p>
+        ${inhoud}
+        <p style="margin-top:2rem">Bijlage: certificaat controleur ${esc(i.bvc?.kwalificatie || '')} ${i.bvc?.certificaat ? `nr. ${esc(i.bvc.certificaat)}` : ''}</p>
+      </article>`;
+    return;
+  }
+  app.innerHTML = `
+    <div class="paginakop">
+      <div><p><a href="${o ? `#/objecten/${esc(o.id)}` : '#/inspecties'}">← ${o ? esc(o.code) : 'Inspecties'}</a></p>
+        <h1>🌳 Boomveiligheidscontrole · ${datumNL(i.datum)}</h1><p>${objectNaam(o)} · ${statusLabel(i.status)}</p></div>
+      <div class="knoppen">
+        <a class="knop" href="#/inspecties/${esc(i.id)}/rapport">Rapport</a>
+        <a class="knop" href="#/inspecties/${esc(i.id)}/bewerken">Bewerken</a>
+        <button class="knop gevaar" id="verwijder">Verwijderen</button>
+      </div>
+    </div>${inhoud}`;
+  app.querySelector('#verwijder').onclick = async () => {
+    if (!confirm('Deze boomveiligheidscontrole inclusief foto\'s verwijderen?')) return;
+    await verwijderInspectieData(i);
+    ga(o ? `#/objecten/${o.id}` : '#/inspecties');
+  };
+}
+
+/** SUF-BVC export: laatste afgeronde controle per boom, als drie CSV-bestanden. */
+async function exporteerSuf(filter = () => true, naam = 'project') {
+  const [inspecties, objecten] = await Promise.all([inProject('inspecties'), inProject('objecten')]);
+  const objectMap = new Map(objecten.map((o) => [o.id, o]));
+  const laatste = new Map();
+  for (const i of inspecties.filter((x) => x.bvc && x.status === 'afgerond' && filter(x))) {
+    const eerder = laatste.get(i.objectId);
+    if (!eerder || String(i.datum) > String(eerder.datum)) laatste.set(i.objectId, i);
+  }
+  const lijst = [...laatste.values()].map((i) => ({ object: objectMap.get(i.objectId), inspectie: i })).filter((x) => x.object);
+  if (!lijst.length) return melding('Nog geen afgeronde boomveiligheidscontroles.', 'fout');
+  const { bomen, gebreken, maatregelen } = BV.sufRijen(lijst);
+  const basis = `SUF-BVC-${naam.replace(/[^\w-]+/g, '_')}-${vandaag()}`;
+  download(`${basis}-boom.csv`, csv(bomen), 'text/csv;charset=utf-8');
+  setTimeout(() => download(`${basis}-boomgebreken.csv`, csv(gebreken), 'text/csv;charset=utf-8'), 300);
+  setTimeout(() => download(`${basis}-maatregelen.csv`, csv(maatregelen), 'text/csv;charset=utf-8'), 600);
+  melding(`SUF-BVC: ${lijst.length} bomen geëxporteerd (3 bestanden)`);
+}
+
+/** Samenvatting voor de rapportage (bijlage 5): aantallen per klasse en maatregel. */
+function bvcSamenvatting(inspecties) {
+  const bvc = inspecties.filter((i) => i.bvc && i.status === 'afgerond');
+  if (!bvc.length) return '';
+  const tel = (f) => bvc.reduce((m, i) => { const k = f(i); if (k) m[k] = (m[k] ?? 0) + 1; return m; }, {});
+  const perBvk = tel((i) => (i.bvc.niet ? 'Niet aangetroffen' : BV.BVK[i.bvc.bvk]?.label));
+  const perOrk = tel((i) => (i.bvc.niet ? null : `ORK ${i.bvc.ork}`));
+  const maatregelen = {};
+  let acuut = 0;
+  for (const i of bvc) for (const m of i.bvc.maatregelen ?? []) { maatregelen[m.bvcMaatregel] = (maatregelen[m.bvcMaatregel] ?? 0) + 1; if (m.termijn === 'acuut') acuut += 1; }
+  const regel = (o) => Object.entries(o).map(([k, n]) => `<li>${esc(k)}: <strong>${n}</strong></li>`).join('');
+  return `<section class="kaart"><h2>🌳 Samenvatting boomveiligheid</h2><div class="raster">
+    <div><h3>${bvc.length} gecontroleerd</h3><ul>${regel(perBvk)}</ul></div>
+    <div><h3>Omgevingsrisicoklasse</h3><ul>${regel(perOrk)}</ul></div>
+    <div><h3>Maatregelen</h3><ul>${regel(maatregelen) || '<li>Geen</li>'}${acuut ? `<li class="label-status verlopen">${acuut} acuut (48 uur)</li>` : ''}</ul></div></div></section>`;
+}
+
+// Nieuwe boom inmeten met GPS (protocol § 5.3: max. ca. 3 meter afwijking)
+async function nieuweBoomHier() {
+  if (!navigator.geolocation) return melding('Locatiebepaling wordt niet ondersteund.', 'fout');
+  melding('Locatie bepalen…');
+  navigator.geolocation.getCurrentPosition(async (pos) => {
+    const objecten = await inProject('objecten');
+    const nrs = objecten.map((o) => Number(String(o.code).match(/^BM-(\d+)$/)?.[1])).filter(Number.isFinite);
+    const code = `BM-${String((nrs.length ? Math.max(...nrs) : 0) + 1).padStart(4, '0')}`;
+    const nu = new Date().toISOString();
+    const o = {
+      id: nieuwId(), projectId: projectId(), code, naam: `Boom ${code}`, type: 'Boom', status: 'In gebruik',
+      lat: Number(pos.coords.latitude.toFixed(7)), lng: Number(pos.coords.longitude.toFixed(7)), inspectieInterval: 1,
+      nauwkeurigheid: Math.round(pos.coords.accuracy), aangemaakt: nu, gewijzigd: nu,
+    };
+    await db.bewaar('objecten', o);
+    melding(pos.coords.accuracy > 3 ? `${code} ingemeten (± ${Math.round(pos.coords.accuracy)} m; protocol vraagt max. ca. 3 m)` : `${code} ingemeten (± ${Math.round(pos.coords.accuracy)} m)`,
+      pos.coords.accuracy > 3 ? 'fout' : 'ok');
+    ga(`#/m/bvc/nieuw?object=${encodeURIComponent(o.id)}`);
+  }, (fout) => melding(`Locatie niet beschikbaar: ${fout.message}`, 'fout'), { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+}
+
+// ---------------------------------------------------------------------------
+// Flora- en fauna-vrijgave (veldcheck, Gedragscode Soortenbescherming RWS 2025–2029)
+// ---------------------------------------------------------------------------
+const VRIJGAVE_STATUS = {
+  geldig: { label: 'Geldig', klasse: 'afgerond' },
+  verlopen: { label: 'Verlopen', klasse: 'verlopen' },
+  toekomst: { label: 'Nog niet geldig', klasse: 'binnenkort' },
+  afgewezen: { label: 'Niet vrijgegeven', klasse: 'verlopen' },
+  concept: { label: 'Concept', klasse: 'concept' },
+};
+
+function vrijgaveLabel(v, datum = vandaag()) {
+  if (!v) return '<span class="label-status verlopen">🌿 Geen vrijgave</span>';
+  const g = eco.geldigheid(v, datum);
+  const s = VRIJGAVE_STATUS[g];
+  const extra = g === 'geldig' ? `${v.besluit === 'voorwaarden' ? ' · voorwaarden' : ''} t/m ${datumNL(v.geldigTot)}` : '';
+  return `<span class="label-status ${s.klasse}">🌿 ${s.label}${extra}</span>`;
+}
+
+async function vrijgaveVoor(objectId) {
+  return eco.vrijgaveVoorObject(await inProject('vrijgaven'), objectId, vandaag());
+}
+
+async function vrijgaveFormulier(id, q = new URLSearchParams(), { mobiel = false } = {}) {
+  const objecten = (await inProject('objecten')).sort((a, b) => String(a.code).localeCompare(String(b.code), 'nl', { numeric: true }));
+  const objectMap = new Map(objecten.map((o) => [o.id, o]));
+  const bestaand = id ? await db.haal('vrijgaven', id) : null;
+  if (id && !bestaand) {
+    app.innerHTML = leegKaart('Vrijgave niet gevonden.', `<a class="knop" href="${mobiel ? '#/' : '#/vrijgaven'}">Terug</a>`);
+    return;
+  }
+  const pakketId = bestaand?.werkpakketId ?? q.get('pakket');
+  const pakket = pakketId ? await db.haal('werkpakketten', pakketId) : null;
+  const beginObjecten = bestaand?.objectIds ?? (q.get('object') ? [q.get('object')] : pakket ? [...(pakket.objecten ?? [])] : []);
+  const v = bestaand ? structuredClone(bestaand) : {
+    objectIds: beginObjecten.filter((x) => objectMap.has(x)), werkpakketId: pakketId ?? '',
+    werkzaamheid: pakket?.werksoort ?? '', activiteit: '', routeGedragscode: true, ewpKenmerk: '', ewpDatum: '', ewpGeaccepteerd: false, ewpOpLocatie: false,
+    uitvoeringVan: pakket?.start ?? '', uitvoeringTot: pakket?.eind ?? '', datum: vandaag(), starttijd: nuTijd(), eindtijd: '', weer: '', temperatuur: '',
+    deskundige: instelling.lees('inspecteur'), organisatie: instelling.lees('organisatie'), deskundigheid: instelling.lees('ecoDeskundigheid'), aansturing: '',
+    controles: {}, waarnemingen: [], geenWaarnemingen: false, besluit: '', voorwaarden: '', geldigTot: '', begeleiding: false, begeleidingToelichting: '',
+    ndff: false, verklaring: false, fotoIds: [], logboek: [], status: 'concept',
+  };
+  const fotos = await laadFotos(v.fotoIds);
+  for (const w of v.waarnemingen) w.fotos = await laadFotos(w.fotoIds);
+  const origineel = new Set([...(bestaand?.fotoIds ?? []), ...(bestaand?.waarnemingen ?? []).flatMap((w) => w.fotoIds ?? [])]);
+  const terug = pakket ? (mobiel ? `#/m/pakket/${esc(pakket.id)}` : `#/werkpakketten/${esc(pakket.id)}`) : mobiel ? '#/' : bestaand ? `#/vrijgaven/${esc(id)}` : '#/vrijgaven';
+  const rijen = (lijst) => lijst.map((x) => optie(x, x, v.activiteit)).join('');
+
+  app.innerHTML = `
+    ${mobiel ? `<div class="mkop"><a href="${terug}" class="mterug" aria-label="Terug">←</a>
+      <div><small>🌿 Flora & fauna vrijgave</small><h1>Veldcheck</h1></div></div>`
+    : `<div class="paginakop"><div><p><a href="${terug}">← Terug</a></p><h1>Flora- en fauna-vrijgave (veldcheck)</h1>
+      <p>Controle direct voorafgaand aan de werkzaamheden op de actuele situatie van beschermde soorten en broedgevallen, volgens de Gedragscode Soortenbescherming Rijkswaterstaat 2025–2029.</p></div></div>`}
+    <form id="form" novalidate class="${mobiel ? 'mform' : ''}">
+      ${pakket ? `<div class="kaart mhier">📦 <strong>Werkpakket:</strong> ${esc(pakket.naam)}</div>` : ''}
+      <section class="kaart">
+        <h2>Gebied en werkzaamheden</h2>
+        <div id="objecten"></div>
+        <div class="velden" style="margin-top:.75rem">
+          <div class="veld breed"><label for="v-werk" class="vereist">Geplande werkzaamheden</label>
+            <input id="v-werk" data-v="werkzaamheid" list="werksoorten" value="${esc(v.werkzaamheid)}" placeholder="bijv. Maaien bermen en taluds">
+            <datalist id="werksoorten">${WERKSOORTEN.map((s) => `<option value="${esc(s)}">`).join('')}</datalist></div>
+          <div class="veld breed"><label for="v-act" class="vereist">Activiteit volgens de gedragscode</label>
+            <select id="v-act" data-v="activiteit"><option value="">– kies –</option>
+              <optgroup label="Beheer en Onderhoud (hfst. 4)">${rijen(eco.ACTIVITEITEN_BO)}</optgroup>
+              <optgroup label="Kleinschalige Ruimtelijke Ingrepen (hfst. 5)">${rijen(eco.ACTIVITEITEN_RI)}</optgroup></select></div>
+          <div class="veld"><label for="v-van">Uitvoering vanaf</label><input id="v-van" data-v="uitvoeringVan" type="date" value="${esc(v.uitvoeringVan)}"></div>
+          <div class="veld"><label for="v-tot">Uitvoering tot</label><input id="v-tot" data-v="uitvoeringTot" type="date" value="${esc(v.uitvoeringTot)}"></div>
+        </div>
+        <label class="vink" style="margin-top:.75rem"><input type="checkbox" data-v="routeGedragscode" ${v.routeGedragscode ? 'checked' : ''}>
+          <span><strong>Werken volgens de Gedragscode (met ecologisch werkprotocol)</strong><small>Uit als negatieve effecten op beschermde soorten geheel zijn uitgesloten (alleen zorgplicht), of bij werken met een omgevingsvergunning.</small></span></label>
+        <div class="velden" id="ewp" style="margin-top:.75rem">
+          <div class="veld"><label for="v-ewp" class="vereist">Kenmerk EWP</label><input id="v-ewp" data-v="ewpKenmerk" value="${esc(v.ewpKenmerk)}"></div>
+          <div class="veld"><label for="v-ewpd">Versie / datum EWP</label><input id="v-ewpd" data-v="ewpDatum" value="${esc(v.ewpDatum)}"></div>
+          <div class="veld breed"><div class="chips">
+            <label class="chip"><input type="checkbox" data-v="ewpGeaccepteerd" ${v.ewpGeaccepteerd ? 'checked' : ''}><span>EWP door RWS geaccepteerd (stap 9)</span></label>
+            <label class="chip"><input type="checkbox" data-v="ewpOpLocatie" ${v.ewpOpLocatie ? 'checked' : ''}><span>EWP aanwezig op locatie</span></label></div></div>
+        </div>
+      </section>
+      <section class="kaart">
+        <h2>Veldcheck</h2>
+        <div class="velden">
+          <div class="veld"><label for="v-datum" class="vereist">Datum</label><input id="v-datum" data-v="datum" type="date" value="${esc(v.datum)}"></div>
+          <div class="veld"><label for="v-start">Start</label><input id="v-start" data-v="starttijd" type="time" value="${esc(v.starttijd)}"></div>
+          <div class="veld"><label for="v-eind">Einde</label><input id="v-eind" data-v="eindtijd" type="time" value="${esc(v.eindtijd)}"></div>
+          <div class="veld"><label for="v-weer">Weer</label><select id="v-weer" data-v="weer"><option value="">–</option>${WEER.map((w) => optie(w, w, v.weer)).join('')}</select></div>
+          <div class="veld"><label for="v-temp">Temperatuur (°C)</label><input id="v-temp" data-v="temperatuur" type="number" inputmode="decimal" value="${esc(v.temperatuur)}"></div>
+          <div class="veld"><label for="v-desk" class="vereist">Ecologisch deskundige</label><input id="v-desk" data-v="deskundige" value="${esc(v.deskundige)}"></div>
+          <div class="veld"><label for="v-org">Organisatie</label><input id="v-org" data-v="organisatie" value="${esc(v.organisatie)}"></div>
+          <div class="veld breed"><label class="vereist">Deskundigheid</label>
+            <div class="vinklijst">${Object.entries(eco.DESKUNDIGHEID).map(([k, l]) => `<label class="vink"><input type="radio" name="deskundigheid" value="${k}" data-v="deskundigheid" ${v.deskundigheid === k ? 'checked' : ''}><span>${esc(l)}</span></label>`).join('')}</div></div>
+          <div class="veld breed" id="aansturing" ${v.deskundigheid === 'gedelegeerd' ? '' : 'hidden'}><label for="v-aan" class="vereist">Onder aansturing van (ecologisch deskundige)</label>
+            <input id="v-aan" data-v="aansturing" value="${esc(v.aansturing)}"></div>
+        </div>
+      </section>
+      <section class="kaart">
+        <h2>Controles</h2>
+        <p class="hulptekst">Zorgvuldig handelen volgens de algemene maatregelen B&O (tabel 4.2) en de maatregelen voor vogels (tabel 4.13–4.16).</p>
+        <div class="controles">${eco.CONTROLES.map((c) => `<div class="controleregel"><span>${esc(c.tekst)}</span>
+          ${segment(`c-${c.id}`, v.controles[c.id] ?? '', [['ja', 'Ja'], ['nee', 'Nee'], ['nvt', 'N.v.t.']], `data-c="${c.id}"`)}</div>`).join('')}</div>
+      </section>
+      <section>
+        <div class="mtussen"><h2>Waarnemingen</h2><button type="button" class="knop" id="waarneming-plus">＋ Waarneming</button></div>
+        <div id="waarnemingen"></div>
+        <label class="vink" id="geen-waarnemingen"><input type="checkbox" data-v="geenWaarnemingen" ${v.geenWaarnemingen ? 'checked' : ''}>
+          <span><strong>Geen beschermde soorten of broedgevallen aangetroffen</strong></span></label>
+      </section>
+      <section class="kaart">
+        <h2>Besluit</h2>
+        ${segment('besluit', v.besluit, Object.entries(eco.BESLUIT).map(([k, x]) => [k, x.label]), 'data-v="besluit"')}
+        <div class="velden" style="margin-top:.75rem">
+          <div class="veld breed" id="voorwaarden-veld"><label for="v-voorw">Voorwaarden / maatregelen voor de uitvoerder</label>
+            <textarea id="v-voorw" data-v="voorwaarden" placeholder="bijv. zone van 25 m rond nest (markering) ontzien; van binnen naar buiten maaien; maaihoogte min. 10 cm">${esc(v.voorwaarden)}</textarea></div>
+          <div class="veld"><label for="v-geldig" class="vereist">Geldig t/m</label><input id="v-geldig" data-v="geldigTot" type="date" value="${esc(v.geldigTot)}">
+            <small>De gedragscode noemt geen vaste termijn; houd die kort, zeker in het broedseizoen.</small></div>
+          <div class="veld"><label>&nbsp;</label><label class="vink"><input type="checkbox" data-v="begeleiding" ${v.begeleiding ? 'checked' : ''}><span>Ecologische begeleiding tijdens uitvoering nodig</span></label></div>
+          <div class="veld breed" id="begeleiding-veld" ${v.begeleiding ? '' : 'hidden'}><label for="v-beg">Wanneer / hoe begeleiden</label>
+            <input id="v-beg" data-v="begeleidingToelichting" value="${esc(v.begeleidingToelichting)}"></div>
+          <div class="veld breed"><label>Overzichtsfoto's</label><div id="algemene-fotos"></div></div>
+        </div>
+        <label class="vink"><input type="checkbox" data-v="ndff" ${v.ndff ? 'checked' : ''}><span>Waarnemingen worden doorgegeven aan de NDFF (stap 14)</span></label>
+        <label class="vink" style="margin-top:.5rem"><input type="checkbox" data-v="verklaring" ${v.verklaring ? 'checked' : ''}>
+          <span><strong>Verklaring</strong><small>Ik verklaar dat deze veldcheck naar waarheid is uitgevoerd conform het ecologisch werkprotocol en de Gedragscode Soortenbescherming Rijkswaterstaat 2025–2029.</small></span></label>
+      </section>
+      <div class="${mobiel ? 'mvoet' : 'formvoet kaart'}">
+        ${mobiel ? '' : `<a class="knop" href="${terug}">Annuleren</a>`}
+        <button class="knop" type="submit" data-status="concept">Concept</button>
+        <button class="knop primair" type="submit" data-status="afgerond">✓ Afronden</button>
+      </div>
+    </form>`;
+
+  const form = app.querySelector('#form');
+  const $ = (s) => app.querySelector(s);
+  const tekenObjecten = () => {
+    const keuze = objecten.filter((o) => !v.objectIds.includes(o.id));
+    $('#objecten').innerHTML = `<label class="vereist" style="font-weight:600;font-size:.9rem">Objecten / GIS-vlakken (${v.objectIds.length})</label>
+      <ul class="objectchips">${v.objectIds.map((oid) => `<li>${objectNaam(objectMap.get(oid))}<button type="button" data-object-weg="${esc(oid)}" aria-label="Verwijderen">×</button></li>`).join('')}</ul>
+      <select id="object-plus" aria-label="Object toevoegen"><option value="">＋ Object toevoegen…</option>${keuze.map((o) => optie(o.id, `${o.code} – ${o.naam}`)).join('')}</select>`;
+  };
+  const tekenWaarnemingen = () => {
+    $('#waarnemingen').innerHTML = v.waarnemingen.map((w, i) => `
+      <div class="gebrek" style="border-left-color:#33a02c">
+        <div class="gebrek-kop"><h3 style="margin:0">Waarneming ${i + 1}</h3>
+          <button type="button" class="knop klein gevaar" data-w-weg="${i}" aria-label="Verwijderen">🗑</button></div>
+        <div class="velden">
+          <div class="veld"><label class="vereist">Soortgroep</label><select data-w="${i}" data-veld="soortgroep"><option value="">– kies –</option>${eco.SOORTGROEPEN.map((s) => optie(s, s, w.soortgroep)).join('')}</select></div>
+          <div class="veld"><label class="vereist">Soort</label><input data-w="${i}" data-veld="soort" value="${esc(w.soort)}" placeholder="bijv. Wilde eend"></div>
+          <div class="veld breed"><label class="vereist">Wat is waargenomen</label><select data-w="${i}" data-veld="type"><option value="">– kies –</option>${eco.WAARNEMINGTYPEN.map((s) => optie(s, s, w.type)).join('')}</select></div>
+          <div class="veld"><label>Aantal</label><input data-w="${i}" data-veld="aantal" type="number" min="1" inputmode="numeric" value="${esc(w.aantal ?? '')}"></div>
+          <div class="veld"><label>Bescherming</label><select data-w="${i}" data-veld="bescherming"><option value="">–</option>${eco.BESCHERMING.map((s) => optie(s, s, w.bescherming)).join('')}</select></div>
+          <div class="veld"><label>Verstoringsvrije afstand (m)</label><input data-w="${i}" data-veld="afstand" type="number" min="0" inputmode="numeric" value="${esc(w.afstand ?? '')}"></div>
+          <div class="veld"><label>&nbsp;</label><label class="vink"><input type="checkbox" data-w="${i}" data-veld="gemarkeerd" ${w.gemarkeerd ? 'checked' : ''}><span>Gemarkeerd in het veld</span></label></div>
+          <div class="veld breed"><label>Locatie</label><div class="knoppen"><button type="button" class="knop" data-w-gps="${i}">📍 Huidige locatie</button>
+            <small>${w.lat ? `${Number(w.lat).toFixed(6)}, ${Number(w.lng).toFixed(6)}${w.nauwkeurigheid ? ` (± ${w.nauwkeurigheid} m)` : ''}` : 'Nog niet vastgelegd'}</small></div></div>
+          <div class="veld breed"><label>Toelichting</label><input data-w="${i}" data-veld="toelichting" value="${esc(w.toelichting ?? '')}"></div>
+          <div class="veld breed"><label>Foto's</label>${fotoRij(w.fotos, `w${i}`)}</div>
+        </div></div>`).join('');
+    $('#geen-waarnemingen').hidden = v.waarnemingen.length > 0;
+  };
+  const tekenAlgemeen = () => { $('#algemene-fotos').innerHTML = fotoRij(fotos, 'alg'); };
+  const zichtbaarheid = () => {
+    $('#ewp').hidden = !v.routeGedragscode;
+    $('#aansturing').hidden = v.deskundigheid !== 'gedelegeerd';
+    $('#voorwaarden-veld').hidden = v.besluit === 'vrij' || !v.besluit;
+    $('#begeleiding-veld').hidden = !v.begeleiding;
+  };
+  tekenObjecten(); tekenWaarnemingen(); tekenAlgemeen(); zichtbaarheid();
+  const fotoLijst = (k) => (k === 'alg' ? fotos : v.waarnemingen[Number(k.slice(1))].fotos);
+
+  form.addEventListener('input', (e) => {
+    formulierGewijzigd = true;
+    const el = e.target;
+    const waarde = el.type === 'checkbox' ? el.checked : el.value;
+    if (el.dataset.v) v[el.dataset.v] = waarde;
+    if (el.dataset.c) v.controles[el.dataset.c] = waarde;
+    if (el.dataset.w !== undefined) v.waarnemingen[Number(el.dataset.w)][el.dataset.veld] = waarde;
+    zichtbaarheid();
+  });
+  form.addEventListener('change', async (e) => {
+    if (e.target.id === 'object-plus' && e.target.value) {
+      v.objectIds.push(e.target.value);
+      tekenObjecten();
+      return;
+    }
+    const k = e.target.dataset.fotoBij;
+    if (!k || !e.target.files?.length) return;
+    try {
+      for (const f of [...e.target.files]) fotoLijst(k).push({ id: nieuwId(), data: await verkleinFoto(f) });
+    } catch (fout) { melding(fout.message, 'fout'); }
+    if (k === 'alg') tekenAlgemeen(); else tekenWaarnemingen();
+  });
+  form.addEventListener('click', (e) => {
+    const ow = e.target.closest('[data-object-weg]');
+    if (ow) { v.objectIds = v.objectIds.filter((x) => x !== ow.dataset.objectWeg); tekenObjecten(); return; }
+    const fw = e.target.closest('[data-foto-weg]');
+    if (fw) {
+      const [k, n] = fw.dataset.fotoWeg.split(':');
+      fotoLijst(k).splice(Number(n), 1);
+      if (k === 'alg') tekenAlgemeen(); else tekenWaarnemingen();
+      return;
+    }
+    const ww = e.target.closest('[data-w-weg]');
+    if (ww) { v.waarnemingen.splice(Number(ww.dataset.wWeg), 1); tekenWaarnemingen(); return; }
+    const gps = e.target.closest('[data-w-gps]');
+    if (gps) {
+      navigator.geolocation?.getCurrentPosition((pos) => {
+        Object.assign(v.waarnemingen[Number(gps.dataset.wGps)], {
+          lat: pos.coords.latitude, lng: pos.coords.longitude, nauwkeurigheid: Math.round(pos.coords.accuracy),
+        });
+        tekenWaarnemingen();
+      }, (fout) => melding(`Locatie niet beschikbaar: ${fout.message}`, 'fout'), { enableHighAccuracy: true, timeout: 15000 });
+    }
+  });
+  $('#waarneming-plus').onclick = () => {
+    v.waarnemingen.push({ id: nieuwId(), soortgroep: '', soort: '', type: '', aantal: '', bescherming: '', afstand: '', gemarkeerd: false, toelichting: '', fotos: [] });
+    v.geenWaarnemingen = false;
+    tekenWaarnemingen();
+    $('#waarnemingen').lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const status = e.submitter?.dataset.status ?? 'concept';
+    if (!v.objectIds.length) return melding('Kies minstens één object of GIS-vlak.', 'fout');
+    if (status === 'afgerond') {
+      const fouten = eco.controleer(v);
+      if (!v.waarnemingen.length && !v.geenWaarnemingen) fouten.unshift('Leg waarnemingen vast of vink aan dat er geen beschermde soorten zijn aangetroffen.');
+      if (fouten.length) return melding(`${fouten[0]}${fouten.length > 1 ? ` (en ${fouten.length - 1} meer)` : ''}`, 'fout');
+    }
+    const vid = id ?? nieuwId();
+    const nu = new Date().toISOString();
+    const pid = bestaand?.projectId ?? projectId();
+    await bewaarFotoLijsten([fotos, ...v.waarnemingen.map((w) => w.fotos)], origineel, { vrijgaveId: vid, projectId: pid, datum: nu });
+    await db.bewaar('vrijgaven', {
+      ...v, id: vid, projectId: pid, status, fotoIds: fotos.map((f) => f.id),
+      waarnemingen: v.waarnemingen.map(({ fotos: f, ...w }) => ({ ...w, fotoIds: f.map((x) => x.id) })),
+      aangemaakt: bestaand?.aangemaakt ?? nu, gewijzigd: nu,
+    });
+    instelling.schrijf('ecoDeskundigheid', v.deskundigheid);
+    if (v.deskundige) instelling.schrijf('inspecteur', v.deskundige);
+    formulierGewijzigd = false;
+    melding(status === 'afgerond' ? `Vrijgave afgerond: ${eco.BESLUIT[v.besluit].label}` : 'Concept opgeslagen');
+    ga(pakket ? (mobiel ? `#/m/pakket/${pakket.id}` : `#/werkpakketten/${pakket.id}`) : (mobiel ? `#/m/vrijgave/${vid}` : `#/vrijgaven/${vid}`));
+  };
+}
+
+async function vrijgaveDetail(id, { mobiel = false } = {}) {
+  const v = await db.haal('vrijgaven', id);
+  if (!v) {
+    app.innerHTML = leegKaart('Vrijgave niet gevonden.', `<a class="knop" href="${mobiel ? '#/' : '#/vrijgaven'}">Terug</a>`);
+    return;
+  }
+  const objecten = await inProject('objecten');
+  const objectMap = new Map(objecten.map((o) => [o.id, o]));
+  const besluit = eco.BESLUIT[v.besluit];
+  const controleTekst = { ja: '✓ Ja', nee: '✗ Nee', nvt: 'N.v.t.' };
+  const waarnemingen = await Promise.all((v.waarnemingen ?? []).map(async (w) => `<tr>
+    <td>${esc(w.soortgroep)}</td><td><strong>${esc(w.soort)}</strong>${w.aantal ? ` (${esc(w.aantal)})` : ''}</td><td>${esc(w.type)}</td><td>${esc(w.bescherming || '–')}</td>
+    <td>${w.afstand ? `${esc(w.afstand)} m` : '–'}${w.gemarkeerd ? ' · gemarkeerd' : ''}</td>
+    <td>${w.lat ? `${Number(w.lat).toFixed(5)}, ${Number(w.lng).toFixed(5)}` : '–'}</td><td>${esc(w.toelichting ?? '')}${w.fotoIds?.length ? await fotosHtml(w.fotoIds) : ''}</td></tr>`));
+  const bewerk = mobiel ? `#/m/vrijgave/${esc(id)}/bewerken` : `#/vrijgaven/${esc(id)}/bewerken`;
+  app.innerHTML = `
+    ${mobiel ? `<div class="mkop"><a href="#/" class="mterug" aria-label="Terug">←</a><div><small>🌿 Flora & fauna vrijgave</small><h1>${datumNL(v.datum)} · ${esc(v.werkzaamheid || '')}</h1></div></div>`
+    : `<div class="paginakop"><div><p><a href="#/vrijgaven">← Flora & fauna</a></p><h1>Flora- en fauna-vrijgave · ${datumNL(v.datum)}</h1>
+      <p>${esc(v.werkzaamheid || '')} · ${esc(v.activiteit || '')}</p></div>
+      <div class="knoppen geen-print"><button class="knop" onclick="window.print()">Afdrukken / PDF</button><a class="knop" href="${bewerk}">Bewerken</a>
+        <button class="knop gevaar" id="verwijder">Verwijderen</button></div></div>`}
+    <section class="kaart besluitkaart" style="border-left:8px solid ${besluit?.kleur ?? '#8a96a3'}">
+      <div class="pakketkop"><h2 style="margin:0">${esc(besluit?.label ?? 'Nog geen besluit')}</h2>${vrijgaveLabel(v)}</div>
+      ${v.voorwaarden ? `<p style="white-space:pre-wrap;margin:.5rem 0 0"><strong>Voorwaarden:</strong> ${esc(v.voorwaarden)}</p>` : ''}
+      <p style="margin:.5rem 0 0">Geldig t/m <strong>${datumNL(v.geldigTot)}</strong>${v.begeleiding ? ` · ecologische begeleiding nodig${v.begeleidingToelichting ? `: ${esc(v.begeleidingToelichting)}` : ''}` : ''}</p>
+      ${mobiel ? `<div class="knoppen" style="margin-top:.75rem"><a class="knop" href="${bewerk}">Bewerken</a></div>` : ''}
+    </section>
+    <div class="raster-2">
+      <section class="kaart"><h2>Gebied en werkzaamheden</h2><dl class="gegevens">
+        <dt>Objecten</dt><dd>${(v.objectIds ?? []).map((o) => objectNaam(objectMap.get(o))).join('<br>')}</dd>
+        <dt>Werkzaamheden</dt><dd>${esc(v.werkzaamheid || '–')}</dd><dt>Activiteit</dt><dd>${esc(v.activiteit || '–')}</dd>
+        <dt>Uitvoering</dt><dd>${datumNL(v.uitvoeringVan)} – ${datumNL(v.uitvoeringTot)}</dd>
+        <dt>Route</dt><dd>${v.routeGedragscode ? `Gedragscode · EWP ${esc(v.ewpKenmerk || '–')} ${esc(v.ewpDatum || '')} · ${v.ewpGeaccepteerd ? 'geaccepteerd' : 'niet geaccepteerd'} · ${v.ewpOpLocatie ? 'op locatie' : 'niet op locatie'}` : 'Zorgplicht / vergunning'}</dd>
+      </dl></section>
+      <section class="kaart"><h2>Veldcheck</h2><dl class="gegevens">
+        <dt>Datum en tijd</dt><dd>${datumNL(v.datum)} ${esc(v.starttijd || '')}${v.eindtijd ? `–${esc(v.eindtijd)}` : ''}</dd>
+        <dt>Weer</dt><dd>${esc(v.weer || '–')}${v.temperatuur !== '' && v.temperatuur != null ? ` · ${esc(v.temperatuur)} °C` : ''}</dd>
+        <dt>Deskundige</dt><dd>${esc(v.deskundige || '–')}${v.organisatie ? ` · ${esc(v.organisatie)}` : ''}</dd>
+        <dt>Deskundigheid</dt><dd>${esc(eco.DESKUNDIGHEID[v.deskundigheid] ?? '–')}${v.aansturing ? `<br>Onder aansturing van ${esc(v.aansturing)}` : ''}</dd>
+        <dt>NDFF</dt><dd>${v.ndff ? 'Wordt doorgegeven' : '–'}</dd>
+        <dt>Verklaring</dt><dd>${v.verklaring ? '✓ Afgegeven' : '–'}</dd>
+      </dl></section>
+    </div>
+    <section class="kaart"><h2>Controles</h2><div class="tabelhouder"><table><tbody>
+      ${eco.CONTROLES.map((c) => `<tr><td>${esc(c.tekst)}</td><td>${controleTekst[v.controles?.[c.id]] ?? '–'}</td></tr>`).join('')}</tbody></table></div></section>
+    <section class="kaart"><h2>Waarnemingen</h2>${waarnemingen.length ? `<div class="tabelhouder"><table>
+      <thead><tr><th>Groep</th><th>Soort</th><th>Waarneming</th><th>Bescherming</th><th>Afstand</th><th>Locatie</th><th>Toelichting</th></tr></thead>
+      <tbody>${waarnemingen.join('')}</tbody></table></div>` : '<p class="leeg">Geen beschermde soorten of broedgevallen aangetroffen.</p>'}
+      ${v.fotoIds?.length ? await fotosHtml(v.fotoIds) : ''}</section>
+    <section class="kaart"><h2>Logboek</h2>
+      <p class="hulptekst">Begeleiding, bijzonderheden en afwijkingen tijdens de uitvoering (werkproces stap 10). Bewaren tot minimaal 2 jaar na afloop.</p>
+      ${(v.logboek ?? []).length ? `<ul class="logboek">${v.logboek.map((l) => `<li><small>${datumNL(l.datum)} ${esc(l.tijd ?? '')} · ${esc(l.door ?? '')}</small>
+        <strong>${esc(l.soort)}</strong><span>${esc(l.tekst)}</span></li>`).join('')}</ul>` : '<p class="mleeg">Nog geen logboekregels.</p>'}
+      <form id="logform" class="velden geen-print" novalidate style="margin-top:.75rem">
+        <div class="veld"><label for="l-soort">Soort</label><select id="l-soort">${eco.LOGBOEKSOORTEN.map((s) => optie(s, s)).join('')}</select></div>
+        <div class="veld breed"><label for="l-tekst">Omschrijving</label><textarea id="l-tekst" style="min-height:60px"></textarea></div>
+        <div class="veld"><button class="knop primair" type="submit">＋ Toevoegen aan logboek</button></div>
+      </form>
+      <p class="hulptekst geen-print">Bij een onverwacht aangetroffen soort of mogelijke overtreding van de Ow: werk stilleggen, de ecologisch deskundige raadplegen en de contractmanager RWS informeren.</p>
+    </section>`;
+
+  app.querySelector('#logform').onsubmit = async (e) => {
+    e.preventDefault();
+    const tekst = app.querySelector('#l-tekst').value.trim();
+    if (!tekst) return melding('Vul een omschrijving in.', 'fout');
+    const actueel = await db.haal('vrijgaven', id);
+    actueel.logboek = [...(actueel.logboek ?? []), {
+      id: nieuwId(), datum: vandaag(), tijd: nuTijd(), soort: app.querySelector('#l-soort').value, tekst,
+      door: sync.sessie()?.gebruiker?.email || instelling.lees('inspecteur') || '',
+    }];
+    actueel.gewijzigd = new Date().toISOString();
+    await db.bewaar('vrijgaven', actueel);
+    melding('Toegevoegd aan logboek');
+    router();
+  };
+  app.querySelector('#verwijder')?.addEventListener('click', async () => {
+    if (!confirm('Deze vrijgave verwijderen? Het logboek hoort minimaal 2 jaar bewaard te blijven.')) return;
+    for (const fid of [...(v.fotoIds ?? []), ...(v.waarnemingen ?? []).flatMap((w) => w.fotoIds ?? [])]) await db.verwijder('fotos', fid);
+    await db.verwijder('vrijgaven', id);
+    ga('#/vrijgaven');
+  });
+}
+
+async function vrijgavenLijst() {
+  const [vrijgaven, objecten] = await Promise.all([inProject('vrijgaven'), inProject('objecten')]);
+  const objectMap = new Map(objecten.map((o) => [o.id, o]));
+  vrijgaven.sort((a, b) => String(b.datum).localeCompare(String(a.datum)));
+  app.innerHTML = `
+    <div class="paginakop">
+      <div><h1>Flora & fauna</h1><p>Ecologische vrijgaven (veldchecks) volgens de Gedragscode Soortenbescherming Rijkswaterstaat 2025–2029.</p></div>
+      <div class="knoppen"><button class="knop" id="export">CSV exporteren</button><a class="knop primair" href="#/vrijgaven/nieuw">+ Nieuwe vrijgave</a></div>
+    </div>
+    <div class="filters"><select id="filter" aria-label="Status"><option value="">Alle</option>${Object.entries(VRIJGAVE_STATUS).map(([k, s]) => optie(k, s.label)).join('')}</select></div>
+    <div class="kaart" style="padding:0"><div class="tabelhouder"><table>
+      <thead><tr><th>Datum</th><th>Objecten</th><th>Werkzaamheden</th><th class="verberg-mobiel">Deskundige</th><th>Waarnemingen</th><th>Status</th></tr></thead>
+      <tbody id="rijen"></tbody></table></div></div>`;
+  const toon = () => {
+    const f = app.querySelector('#filter').value;
+    const rijen = vrijgaven.filter((v) => !f || eco.geldigheid(v, vandaag()) === f);
+    app.querySelector('#rijen').innerHTML = rijen.length ? rijen.map((v) => `
+      <tr class="klikbaar" data-href="#/vrijgaven/${esc(v.id)}"><td>${datumNL(v.datum)}</td>
+        <td>${(v.objectIds ?? []).slice(0, 3).map((o) => esc(objectMap.get(o)?.code ?? '?')).join(', ')}${(v.objectIds ?? []).length > 3 ? ` +${v.objectIds.length - 3}` : ''}</td>
+        <td>${esc(v.werkzaamheid || '–')}</td><td class="verberg-mobiel">${esc(v.deskundige || '–')}</td><td>${(v.waarnemingen ?? []).length}</td><td>${vrijgaveLabel(v)}</td></tr>`).join('')
+      : '<tr><td colspan="6" class="leeg">Nog geen vrijgaven.</td></tr>';
+  };
+  app.querySelector('#filter').onchange = toon;
+  toon();
+  app.querySelector('#export').onclick = () => {
+    const rijen = [['Datum', 'Objecten', 'Werkzaamheden', 'Activiteit', 'EWP', 'Deskundige', 'Besluit', 'Voorwaarden', 'Geldig t/m', 'Status',
+      'Soortgroep', 'Soort', 'Waarneming', 'Bescherming', 'Aantal', 'Afstand (m)', 'Breedtegraad', 'Lengtegraad']];
+    for (const v of vrijgaven) {
+      const basis = [v.datum, (v.objectIds ?? []).map((o) => objectMap.get(o)?.code).join(', '), v.werkzaamheid, v.activiteit, v.ewpKenmerk, v.deskundige,
+        eco.BESLUIT[v.besluit]?.label ?? '', v.voorwaarden, v.geldigTot, VRIJGAVE_STATUS[eco.geldigheid(v, vandaag())].label];
+      if (!(v.waarnemingen ?? []).length) rijen.push(basis);
+      for (const w of v.waarnemingen ?? []) rijen.push([...basis, w.soortgroep, w.soort, w.type, w.bescherming, w.aantal, w.afstand, w.lat ?? '', w.lng ?? '']);
+    }
+    download(`flora-fauna-vrijgaven-${vandaag()}.csv`, csv(rijen), 'text/csv;charset=utf-8');
+  };
 }
 
 // ---------------------------------------------------------------------------

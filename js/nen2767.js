@@ -34,6 +34,7 @@ export const OMVANG_KLASSEN = [
 
 export const URGENTIES = [
   { id: 'direct', label: 'Direct (veiligheid)', rang: 1 },
+  { id: '3maanden', label: 'Binnen 3 maanden', rang: 2 },
   { id: '1jaar', label: 'Binnen 1 jaar', rang: 2 },
   { id: '3jaar', label: 'Binnen 3 jaar', rang: 3 },
   { id: '5jaar', label: 'Binnen 5 jaar', rang: 4 },

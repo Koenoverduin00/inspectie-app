@@ -1,9 +1,9 @@
 // Service worker: maakt de app offline bruikbaar in het veld.
-const CACHE = 'inspectie-app-v9';
+const CACHE = 'inspectie-app-v10';
 const BESTANDEN = [
   './', 'index.html', 'manifest.webmanifest', 'css/styles.css', 'icons/icon.svg',
   'js/app.js', 'js/db.js', 'js/nen2767.js', 'js/utils.js', 'js/catalogus.js', 'js/demo.js',
-  'js/sync.js', 'js/config.js', 'js/gis.js', 'js/taken.js', 'js/velden.js', 'js/pakketten.js',
+  'js/sync.js', 'js/config.js', 'js/gis.js', 'js/taken.js', 'js/velden.js', 'js/pakketten.js', 'js/bvc.js', 'js/ecologie.js',
   'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css',
   'vendor/shpjs/shp.min.js', 'vendor/sqljs/sql-wasm.js', 'vendor/sqljs/sql-wasm.wasm',
 ];

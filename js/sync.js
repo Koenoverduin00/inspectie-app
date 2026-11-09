@@ -5,7 +5,7 @@
 import * as db from './db.js';
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
 
-const TABELLEN = ['projecten', 'lagen', 'objecten', 'inspecties', 'werkzaamheden', 'taken', 'werkpakketten', 'overgeslagen'];
+const TABELLEN = ['projecten', 'lagen', 'objecten', 'inspecties', 'werkzaamheden', 'taken', 'werkpakketten', 'overgeslagen', 'vrijgaven'];
 const BUCKET = 'fotos';
 const OVERLAP_MS = 60_000; // haal iets terug in de tijd opnieuw op i.v.m. gelijktijdige transacties
 const PAGINA = 500;
@@ -189,7 +189,7 @@ export function rol() {
 // ---------------------------------------------------------------------------
 // Versturen (lokale wachtrij → server)
 // ---------------------------------------------------------------------------
-const VOLGORDE = ['fotos', 'projecten', 'lagen', 'objecten', 'werkpakketten', 'inspecties', 'werkzaamheden', 'taken', 'overgeslagen'];
+const VOLGORDE = ['fotos', 'projecten', 'lagen', 'objecten', 'werkpakketten', 'inspecties', 'werkzaamheden', 'taken', 'overgeslagen', 'vrijgaven'];
 const BATCH = 200;
 
 async function verstuur() {
@@ -302,7 +302,10 @@ async function haalOp() {
 }
 
 const tijd = (v) => Date.parse(v ?? '') || 0;
-const fotoIdsVan = (r) => [...(r?.fotoIds ?? []), ...(r?.extraFotoIds ?? []), ...(r?.gebreken ?? []).flatMap((g) => g.fotoIds ?? [])];
+const fotoIdsVan = (r) => [
+  ...(r?.fotoIds ?? []), ...(r?.extraFotoIds ?? []), ...(r?.gebreken ?? []).flatMap((g) => g.fotoIds ?? []),
+  ...(r?.bvc?.gebreken ?? []).flatMap((g) => g.fotoIds ?? []), ...(r?.waarnemingen ?? []).flatMap((w) => w.fotoIds ?? []),
+];
 
 async function verwerkRij(tabel, rij) {
   const lokaal = await db.haal(tabel, rij.id);
@@ -326,7 +329,7 @@ async function verwerkRij(tabel, rij) {
 async function haalOntbrekendeFotosOp() {
   const aanwezig = new Set(await db.sync.fotoIds());
   const nodig = new Map(); // fotoId → projectId
-  const records = [...await db.alle('inspecties'), ...await db.alle('werkzaamheden'), ...await db.alle('taken')];
+  const records = [...await db.alle('inspecties'), ...await db.alle('werkzaamheden'), ...await db.alle('taken'), ...await db.alle('vrijgaven')];
   for (const record of records) {
     for (const id of fotoIdsVan(record)) if (!aanwezig.has(id)) nodig.set(id, record.projectId ?? null);
   }

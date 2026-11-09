@@ -8,7 +8,7 @@ export const PRIORITEITEN = [
   { id: 'laag', label: 'Laag', rang: 4 },
 ];
 
-const MAATREGEL_RANG = { direct: 1, '1jaar': 2, '3jaar': 3, '5jaar': 4, monitoren: 5 };
+const MAATREGEL_RANG = { direct: 1, '3maanden': 2, '1jaar': 2, '3jaar': 3, '5jaar': 4, monitoren: 5 };
 const PLANNING_RANG = { verlopen: 2, nooit: 3, binnenkort: 3 };
 
 // Eén urgentiestap "weegt" evenveel als zoveel meter extra lopen of rijden.
@@ -60,7 +60,7 @@ export function takenLijst({ objecten, inspecties, taken, planning, vandaag, ik 
     if (insp.status !== 'afgerond') continue;
     const object = objectMap.get(insp.objectId);
     if (!object) continue;
-    for (const g of insp.gebreken ?? []) {
+    for (const g of [...(insp.gebreken ?? []), ...(insp.bvc?.maatregelen ?? [])]) {
       if (g.maatregelStatus === 'uitgevoerd' || (!g.maatregel && !g.urgentie)) continue;
       const sleutel = `${insp.id}:${g.id}`;
       if (handmatigeMaatregel.has(sleutel)) continue;
