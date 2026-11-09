@@ -515,3 +515,47 @@ body.modus-mobiel .onderbalk { grid-template-columns: repeat(5, 1fr); }
 .importmeldingen { margin: .5rem 0 0; padding-left: 1.2rem; max-height: 22rem; overflow: auto; }
 .importmeldingen li { margin: .15rem 0; }
 .gebrek.ronde .velden { margin-top: .25rem; }
+
+/* Inspectieresultaten: kaartje, oordeel, gebreken en foto's */
+.detailkop { align-items: stretch; }
+.objectkaartje { height: 260px; border-radius: 10px; overflow: hidden; border: 1px solid var(--rand); background: #fff; }
+.objectkaartje .leeg { padding: 1rem; }
+.locatieblok h2 { margin-bottom: .5rem; }
+.locatieregel { display: flex; justify-content: space-between; gap: .75rem; flex-wrap: wrap; margin: .5rem 0 0; color: var(--tekst-zacht); }
+.oordeelblok { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; padding: .75rem 1rem; margin: -.25rem 0 1rem;
+  border-radius: 10px; background: color-mix(in srgb, var(--gk) 10%, transparent); border-left: 5px solid var(--gk); }
+.oordeelblok > div { display: flex; flex-direction: column; gap: .3rem; }
+.oordeelblok small { color: var(--tekst-zacht); }
+.oordeelblok p { margin: 0; flex: 1; min-width: 12rem; }
+.gebrekbalk { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .5rem; margin: 0 0 1rem; }
+.gebrekbalk .gb-aantal { margin-right: .5rem; font-weight: 600; }
+.gebrekbalk .gb-rest { color: var(--tekst-zacht); margin-left: auto; }
+.gebrekkaart { background: var(--vlak); border: 1px solid var(--rand); border-top: 4px solid var(--gk); border-radius: var(--radius);
+  padding: 1rem 1.1rem; margin-bottom: 1rem; break-inside: avoid; }
+.gebrekkaart header { display: flex; align-items: flex-start; gap: .75rem; }
+.gk-nr { flex: none; width: 2rem; height: 2rem; border-radius: 50%; display: grid; place-items: center; font-weight: 700;
+  background: var(--gk); color: #fff; }
+.gk-titel { flex: 1; min-width: 0; }
+.gk-titel h3 { margin: 0; font-size: 1.05rem; }
+.gk-titel small { color: var(--tekst-zacht); }
+.kenmerken { display: flex; flex-wrap: wrap; gap: .5rem; margin: .85rem 0 0; }
+.kenmerk { display: flex; flex-direction: column; gap: .1rem; padding: .4rem .7rem; border-radius: 8px; background: var(--achtergrond); border: 1px solid var(--rand); font-weight: 600; }
+.kenmerk small { font-weight: 400; color: var(--tekst-zacht); font-size: .75rem; text-transform: uppercase; letter-spacing: .03em; }
+.gk-tekst { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .75rem 1.5rem; margin-top: .85rem; }
+.gk-tekst h4 { margin: 0 0 .2rem; font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; color: var(--tekst-zacht); }
+.gk-tekst p { margin: 0; white-space: pre-wrap; }
+.galerij { margin-top: .85rem; }
+.galerij-titel { font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; color: var(--tekst-zacht); margin-bottom: .4rem; }
+.galerij-titel span { display: inline-block; min-width: 1.4rem; padding: 0 .35rem; border-radius: 99px; background: var(--rand); color: var(--tekst); text-align: center; }
+.galerij-raster { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: .5rem; }
+.galerij figure { position: relative; margin: 0; aspect-ratio: 4 / 3; border-radius: 10px; overflow: hidden; border: 1px solid var(--rand); background: var(--achtergrond); }
+.galerij img { width: 100%; height: 100%; object-fit: cover; display: block; cursor: zoom-in; transition: transform .15s; }
+.galerij img:hover { transform: scale(1.03); }
+.galerij figcaption { position: absolute; left: .35rem; bottom: .35rem; padding: 0 .4rem; border-radius: 6px; font-size: .75rem; background: rgba(0,0,0,.55); color: #fff; }
+.rapport-kaart .locatieblok { padding: 0; border: 0; box-shadow: none; margin: 1rem 0; }
+@media print {
+  .objectkaartje { height: 220px; }
+  .gebrekkaart { box-shadow: none; }
+  .galerij-raster { grid-template-columns: repeat(4, 1fr); }
+  .galerij img:hover { transform: none; }
+}

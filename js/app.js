@@ -20,6 +20,7 @@ import {
   rondesVan, rondeView, rondeVanId, pakketStatus, totaalVoortgang, STANDAARD_RONDE,
 } from './pakketten.js';
 import * as PX from './pakketexcel.js';
+import * as RX from './resultatenexcel.js';
 import { takenLijst, sorteerTaken, objectGeometrie, PRIORITEITEN } from './taken.js';
 
 const app = document.getElementById('app');
@@ -230,6 +231,110 @@ async function fotosHtml(ids, { verwijderbaar = false } = {}) {
   return `<div class="fotos">${fotos.map((f) => `
     <div class="foto"><img src="${esc(f.data)}" alt="Inspectiefoto" loading="lazy" data-lichtbak>
     ${verwijderbaar ? `<button type="button" data-foto-weg="${esc(f.id)}" aria-label="Foto verwijderen">×</button>` : ''}</div>`).join('')}</div>`;
+}
+
+/** Fotogalerij voor detail- en rapportpagina's: grotere tegels met nummer, klik = vergroten. */
+async function fotoGalerij(ids, { titel = '' } = {}) {
+  if (!ids?.length) return '';
+  const fotos = (await Promise.all(ids.map((id) => db.haal('fotos', id)))).filter(Boolean);
+  if (!fotos.length) return '';
+  return `<div class="galerij">${titel ? `<div class="galerij-titel">${esc(titel)} <span>${fotos.length}</span></div>` : ''}
+    <div class="galerij-raster">${fotos.map((f, n) => `<figure><img src="${esc(f.data)}" alt="${esc(titel || 'Foto')} ${n + 1}" loading="lazy" data-lichtbak>
+      <figcaption>${n + 1}</figcaption></figure>`).join('')}</div></div>`;
+}
+
+/** Kaartje met de ligging van één object, met de rest van de laag lichtgrijs als context. */
+async function tekenObjectKaartje(el, o, kleur = '#e07b00') {
+  if (!el) return;
+  const geo = o ? objectGeometrie(o) : null;
+  if (!geo) {
+    el.innerHTML = '<p class="leeg">Geen locatie bekend voor dit object.</p>';
+    return;
+  }
+  let L;
+  try {
+    L = await laadLeaflet();
+  } catch (fout) {
+    if (el.isConnected) el.innerHTML = `<p class="leeg">${esc(fout.message)}</p>`;
+    return;
+  }
+  if (!el.isConnected) return;
+  el.innerHTML = '';
+  const map = L.map(el, { zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false, scrollWheelZoom: false });
+  voegAchtergrondToe(L, map);
+  const ander = o.laagId ? (await inProject('objecten')).filter((x) => x.laagId === o.laagId && x.id !== o.id).slice(0, 3000) : [];
+  const context = L.geoJSON({ type: 'FeatureCollection', features: ander.map((x) => ({ type: 'Feature', geometry: objectGeometrie(x), properties: {} })).filter((f) => f.geometry) }, {
+    style: { color: '#6b7785', weight: 1, fillColor: '#9aa5b1', fillOpacity: 0.15, interactive: false },
+    pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 4, color: '#6b7785', weight: 1, fillColor: '#9aa5b1', fillOpacity: 0.5, interactive: false }),
+  });
+  const laag = L.geoJSON({ type: 'Feature', geometry: geo, properties: {} }, {
+    style: { color: kleur, weight: 4, fillColor: kleur, fillOpacity: 0.35 },
+    pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 10, color: '#fff', weight: 3, fillColor: kleur, fillOpacity: 1 }),
+  });
+  const b = laag.getBounds();
+  if (geo.type === 'Point') map.setView(b.getCenter(), 18, { animate: false });
+  else map.fitBounds(b, { padding: [30, 30], maxZoom: 19, animate: false });
+  context.addTo(map);
+  laag.addTo(map).bindTooltip(`${o.code ?? ''}`, { permanent: false });
+}
+
+/** Locatieblok: kaartje + coördinaten + navigatielink. */
+function locatieBlok(o) {
+  const geo = o ? objectGeometrie(o) : null;
+  const c = geo ? gis.middelpunt(geo) : null;
+  const rd = c ? BV.wgs84NaarRd(c[0], c[1]) : null;
+  return `<section class="kaart locatieblok"><h2>Locatie</h2>
+    <div id="objectkaartje" class="objectkaartje"><p class="leeg">Kaart laden…</p></div>
+    ${c ? `<p class="locatieregel"><small>${esc(o.locatie ? `${o.locatie} · ` : '')}RD X ${rd[0].toFixed(1)} · Y ${rd[1].toFixed(1)} · ${c[1].toFixed(6)}, ${c[0].toFixed(6)}</small>
+      <a class="geen-print" href="https://www.google.com/maps/search/?api=1&query=${c[1].toFixed(6)},${c[0].toFixed(6)}" target="_blank" rel="noopener">Navigeren ↗</a></p>` : ''}</section>`;
+}
+
+const kenmerk = (label, waarde) => (waarde === '' || waarde === null || waarde === undefined ? ''
+  : `<span class="kenmerk"><small>${esc(label)}</small>${waarde}</span>`);
+
+/** Eén NEN 2767-gebrek als overzichtelijke kaart. */
+async function nenGebrekKaart(g, n) {
+  const s = gebrekScore(g);
+  return `<article class="gebrekkaart" style="--gk:${CONDITIES[s]?.kleur ?? '#9aa5b1'}">
+    <header><span class="gk-nr">${n + 1}</span>
+      <div class="gk-titel"><h3>${esc(g.bouwdeel || 'Bouwdeel onbekend')} – ${esc(g.gebrek || 'gebrek')}</h3>${g.locatie ? `<small>📍 ${esc(g.locatie)}</small>` : ''}</div>
+      ${scoreLabel(s)}</header>
+    <div class="kenmerken">
+      ${kenmerk('Ernst', esc(ERNST[g.ernst]?.label ?? '–'))}
+      ${kenmerk('Intensiteit', esc(INTENSITEIT[g.intensiteit] ?? '–'))}
+      ${kenmerk('Omvang', g.omvang === '' || g.omvang == null ? '–' : `${esc(g.omvang)}% · ${esc(OMVANG_KLASSEN[omvangKlasse(g.omvang) - 1].label)}`)}
+      ${g.urgentie ? kenmerk('Urgentie', urgentieLabel(g.urgentie)) : ''}
+      ${g.kostenraming !== '' && g.kostenraming != null ? kenmerk('Raming', euro(g.kostenraming)) : ''}
+      ${g.maatregel || g.urgentie ? kenmerk('Maatregel', g.maatregelStatus === 'uitgevoerd' ? '<span class="label-status uitgevoerd">Uitgevoerd</span>' : '<span class="label-status binnenkort">Open</span>') : ''}
+      ${g.conditieHandmatig ? kenmerk('Conditie', 'handmatig') : ''}
+    </div>
+    ${g.toelichting || g.maatregel ? `<div class="gk-tekst">
+      ${g.toelichting ? `<div><h4>Waarneming</h4><p>${esc(g.toelichting)}</p></div>` : ''}
+      ${g.maatregel ? `<div><h4>Maatregel</h4><p>${esc(g.maatregel)}</p></div>` : ''}</div>` : ''}
+    ${await fotoGalerij(g.fotoIds, { titel: "Foto's" })}
+  </article>`;
+}
+
+/** Eén boomgebrek (BVC) als kaart. */
+async function bvcGebrekKaart(g, n) {
+  return `<article class="gebrekkaart" style="--gk:#d1452f">
+    <header><span class="gk-nr">${n + 1}</span>
+      <div class="gk-titel"><h3>${esc(g.omschrijving || 'Gebrek')}</h3><small>${esc(g.type || BV.gebrekType(g.omschrijving))}</small></div></header>
+    <div class="kenmerken">${kenmerk('Plaats', esc(g.plaats || '–'))}${kenmerk('Mogelijk gevolg', esc(g.gevolg || '–'))}</div>
+    ${g.toelichting ? `<div class="gk-tekst"><div><h4>Toelichting</h4><p>${esc(g.toelichting)}</p></div></div>` : ''}
+    ${await fotoGalerij(g.fotoIds, { titel: "Foto's" })}
+  </article>`;
+}
+
+/** Kort overzicht boven de gebreken: aantal per conditie en totale raming. */
+function gebrekSamenvatting(gebreken) {
+  if (!gebreken.length) return '';
+  const per = {};
+  for (const g of gebreken) { const s = gebrekScore(g); per[s] = (per[s] ?? 0) + 1; }
+  const raming = gebreken.reduce((t, g) => t + (Number(g.kostenraming) || 0), 0);
+  const open = gebreken.filter((g) => (g.maatregel || g.urgentie) && g.maatregelStatus !== 'uitgevoerd').length;
+  return `<div class="gebrekbalk">${Object.keys(per).sort((a, b) => b - a).map((s) => `${scoreLabel(Number(s))}<span class="gb-aantal">× ${per[s]}</span>`).join('')}
+    <span class="gb-rest">${open} open maatregel${open === 1 ? '' : 'en'}${raming ? ` · raming ${euro(raming)}` : ''}</span></div>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -659,7 +764,8 @@ async function inspectiesLijst() {
   app.innerHTML = `
     <div class="paginakop">
       <div><h1>Inspecties</h1><p>${inspecties.length} inspecties geregistreerd.</p></div>
-      <div class="knoppen"><button class="knop" id="suf" title="Standaard Uitwisselingsformaat boomveiligheidscontrole (CROW)">SUF-BVC export</button>
+      <div class="knoppen"><button class="knop" id="resultaten-xls" title="De inspecties die nu gefilterd zijn, met gebreken en maatregelen">📊 Excel</button>
+        <button class="knop" id="suf" title="Standaard Uitwisselingsformaat boomveiligheidscontrole (CROW)">SUF-BVC export</button>
         <a class="knop" href="#/bvc/nieuw">🌳 + Boomveiligheidscontrole</a>
         <a class="knop primair" href="#/inspecties/nieuw">+ Nieuwe inspectie</a></div>
     </div>
@@ -676,6 +782,15 @@ async function inspectiesLijst() {
 
   app.querySelector('#suf').onclick = () => exporteerSuf(undefined, 'project');
   const filters = ['zoek', 'soort', 'status', 'jaar'].map((id) => app.querySelector(`#${id}`));
+  let zichtbaar = [];
+  app.querySelector('#resultaten-xls').onclick = () => {
+    const [zoek, soort, status, jaar] = filters.map((f) => f.value);
+    const filter = [zoek && `zoek "${zoek}"`, soort, status, jaar].filter(Boolean).join(' · ') || 'alle inspecties';
+    exporteerResultaten({
+      lijst: zichtbaar.map((i) => ({ object: objectMap.get(i.objectId) ?? { code: '?', naam: 'Onbekend object' }, inspectie: i, status: i.status })),
+      titel: `Inspecties – ${filter}`, filter, bestandsnaam: `inspecties-${soort || 'alle'}${jaar ? `-${jaar}` : ''}`,
+    });
+  };
   const toon = () => {
     const [zoek, soort, status, jaar] = filters.map((f) => f.value);
     const rijen = inspecties.filter((i) => {
@@ -686,6 +801,7 @@ async function inspectiesLijst() {
       if (jaar && !String(i.datum).startsWith(jaar)) return false;
       return true;
     });
+    zichtbaar = rijen;
     app.querySelector('#rijen').innerHTML = rijen.length ? rijen.map((i) => `
       <tr class="klikbaar" data-href="#/inspecties/${esc(i.id)}">
         <td>${datumNL(i.datum)}</td><td>${objectNaam(objectMap.get(i.objectId))}</td>
@@ -1015,55 +1131,47 @@ async function inspectieDetail(id) {
   }
   if (i.bvc) return bvcDetail(i);
   const o = await db.haal('objecten', i.objectId);
-  const gebrekBlokken = await Promise.all((i.gebreken ?? []).map(async (g, n) => `
-    <div class="gebrek" style="border-left-color:${CONDITIES[gebrekScore(g)].kleur}">
-      <div class="gebrek-kop"><h3 style="margin:0">${n + 1}. ${esc(g.bouwdeel || 'Bouwdeel onbekend')} – ${esc(g.gebrek || 'gebrek')}</h3>${scoreLabel(gebrekScore(g))}</div>
-      <dl class="gegevens">
-        ${g.locatie ? `<dt>Plaats</dt><dd>${esc(g.locatie)}</dd>` : ''}
-        <dt>Ernst / intensiteit</dt><dd>${esc(ERNST[g.ernst]?.label ?? '–')} · ${esc(INTENSITEIT[g.intensiteit] ?? '–')}</dd>
-        <dt>Omvang</dt><dd>${g.omvang === '' || g.omvang == null ? '–' : `${esc(g.omvang)}% · ${OMVANG_KLASSEN[omvangKlasse(g.omvang) - 1].label}`}</dd>
-        ${g.conditieHandmatig ? '<dt>Conditie</dt><dd>Handmatig vastgesteld</dd>' : ''}
-        ${g.toelichting ? `<dt>Waarneming</dt><dd style="white-space:pre-wrap">${esc(g.toelichting)}</dd>` : ''}
-        ${g.maatregel ? `<dt>Maatregel</dt><dd style="white-space:pre-wrap">${esc(g.maatregel)}</dd>` : ''}
-        ${g.urgentie ? `<dt>Urgentie</dt><dd>${urgentieLabel(g.urgentie)} ${g.maatregelStatus === 'uitgevoerd' ? '<span class="label-status uitgevoerd">Uitgevoerd</span>' : ''}</dd>` : ''}
-        ${g.kostenraming !== '' && g.kostenraming != null ? `<dt>Kostenraming</dt><dd>${euro(g.kostenraming)}</dd>` : ''}
-      </dl>
-      ${await fotosHtml(g.fotoIds)}
-    </div>`));
+  const gebreken = i.gebreken ?? [];
+  const score = inspectieScore(i);
+  const pakket = i.werkpakketId ? await laadPakketView(i.werkpakketId, i.rondeId) : null;
+  const gebrekKaarten = await Promise.all(gebreken.map((g, n) => nenGebrekKaart(g, n)));
 
   app.innerHTML = `
     <div class="paginakop">
       <div><p><a href="${o ? `#/objecten/${esc(o.id)}` : '#/inspecties'}">← ${o ? esc(o.code) : 'Inspecties'}</a></p>
-        <h1>${esc(i.soort)} · ${datumNL(i.datum)}</h1><p>${objectNaam(o)}</p></div>
+        <h1>${esc(i.soort)} · ${datumNL(i.datum)}</h1><p>${objectNaam(o)}${o?.type ? ` · ${esc(o.type)}` : ''}</p></div>
       <div class="knoppen">
         <a class="knop" href="#/inspecties/${esc(id)}/rapport">Rapport</a>
         <a class="knop" href="#/inspecties/${esc(id)}/bewerken">Bewerken</a>
         <button class="knop gevaar" id="verwijder">Verwijderen</button>
       </div>
     </div>
-    <div class="raster-2">
+    <div class="raster-2 detailkop">
       <section class="kaart">
-        <h2>Gegevens</h2>
+        <div class="oordeelblok" style="--gk:${CONDITIES[score]?.kleur ?? '#9aa5b1'}">
+          <div><small>Conditie (NEN 2767)</small>${scoreLabel(score, true)}</div>
+          <p>${score ? esc(CONDITIES[score].omschrijving) : 'Geen gebreken vastgelegd'}.</p>
+        </div>
         <dl class="gegevens">
           <dt>Status</dt><dd>${statusLabel(i.status)}</dd>
           <dt>Datum</dt><dd>${datumNL(i.datum)}</dd>
           <dt>Inspecteur</dt><dd>${esc(i.inspecteur || '–')}</dd>
-          <dt>Weer</dt><dd>${esc(i.weer || '–')}</dd>
-          <dt>Gebreken</dt><dd>${i.gebreken?.length ?? 0}</dd>
+          ${i.weer ? `<dt>Weer</dt><dd>${esc(i.weer)}</dd>` : ''}
+          <dt>Gebreken</dt><dd>${gebreken.length}</dd>
+          ${o?.inspectieInterval ? `<dt>Volgende inspectie</dt><dd>${datumNL(volgendeInspectie(i.datum, o.inspectieInterval))}</dd>` : ''}
+          ${pakket ? `<dt>Werkpakket</dt><dd><a href="${pakketPagina(pakket, false)}">📦 ${esc(pakket.naam)}</a></dd>` : ''}
         </dl>
       </section>
-      <section class="kaart">
-        <h2>Conditie</h2>
-        <p>${scoreLabel(inspectieScore(i), true)}</p>
-        <p>${esc(CONDITIES[inspectieScore(i)].omschrijving)}.</p>
-      </section>
+      ${locatieBlok(o)}
     </div>
     ${i.samenvatting || i.fotoIds?.length ? `<section class="kaart"><h2>Samenvatting</h2>
-      ${i.samenvatting ? `<p style="white-space:pre-wrap">${esc(i.samenvatting)}</p>` : ''}${await fotosHtml(i.fotoIds)}</section>` : ''}
+      ${i.samenvatting ? `<p style="white-space:pre-wrap">${esc(i.samenvatting)}</p>` : ''}${await fotoGalerij(i.fotoIds, { titel: "Foto's" })}</section>` : ''}
     ${await extraDetailHtml(i, 'inspectie')}
-    <h2>Gebreken</h2>
-    ${gebrekBlokken.join('') || leegKaart('Geen gebreken geconstateerd.')}`;
+    <div class="mtussen"><h2>Gebreken${gebreken.length ? ` (${gebreken.length})` : ''}</h2></div>
+    ${gebrekSamenvatting(gebreken)}
+    ${gebrekKaarten.join('') || leegKaart('Geen gebreken geconstateerd.')}`;
 
+  tekenObjectKaartje(app.querySelector('#objectkaartje'), o, CONDITIES[score]?.kleur ?? '#0b4f6c');
   app.querySelector('#verwijder').onclick = async () => {
     if (!confirm('Deze inspectie inclusief foto\'s definitief verwijderen?')) return;
     await verwijderInspectieData(i);
@@ -1089,13 +1197,7 @@ async function inspectieRapport(id) {
   const score = inspectieScore(i);
   const organisatie = instelling.lees('organisatie');
   const gebreken = i.gebreken ?? [];
-  const details = await Promise.all(gebreken.map(async (g, n) => `
-    <div class="gebrek" style="border-left-color:${CONDITIES[gebrekScore(g)].kleur}">
-      <div class="gebrek-kop"><h3 style="margin:0">${n + 1}. ${esc(g.bouwdeel)} – ${esc(g.gebrek)}${g.locatie ? ` (${esc(g.locatie)})` : ''}</h3>${scoreLabel(gebrekScore(g))}</div>
-      ${g.toelichting ? `<p style="white-space:pre-wrap;margin:.25rem 0"><strong>Waarneming:</strong> ${esc(g.toelichting)}</p>` : ''}
-      ${g.maatregel ? `<p style="white-space:pre-wrap;margin:.25rem 0"><strong>Advies:</strong> ${esc(g.maatregel)}</p>` : ''}
-      ${await fotosHtml(g.fotoIds)}
-    </div>`));
+  const details = await Promise.all(gebreken.map((g, n) => nenGebrekKaart(g, n)));
 
   app.innerHTML = `
     <div class="paginakop geen-print">
@@ -1119,8 +1221,9 @@ async function inspectieRapport(id) {
           <dt>Weer</dt><dd>${esc(i.weer || '–')}</dd><dt>Status</dt><dd>${i.status === 'afgerond' ? 'Afgerond' : 'Concept'}</dd>
           <dt>Volgende inspectie</dt><dd>${datumNL(volgendeInspectie(i.datum, o.inspectieInterval))}</dd></dl></div>
       </div>
+      <div class="rapport-kaart">${locatieBlok(o)}</div>
       ${i.samenvatting ? `<h2 style="margin-top:1rem">Samenvatting</h2><p style="white-space:pre-wrap">${esc(i.samenvatting)}</p>` : ''}
-      ${await fotosHtml(i.fotoIds)}
+      ${await fotoGalerij(i.fotoIds, { titel: "Foto's" })}
       <div class="rapport-extra">${await extraDetailHtml(i, 'inspectie')}</div>
       <h2 style="margin-top:1rem">Overzicht gebreken en maatregelen</h2>
       ${gebreken.length ? `<div class="tabelhouder"><table>
@@ -1138,6 +1241,7 @@ async function inspectieRapport(id) {
         <div>Datum rapport: ${datumNL(vandaag())}</div>
       </div>
     </article>`;
+  tekenObjectKaartje(app.querySelector('#objectkaartje'), o.id ? o : null, CONDITIES[score]?.kleur ?? '#0b4f6c');
 }
 
 // ---------------------------------------------------------------------------
@@ -3420,7 +3524,7 @@ async function pakketDetail(id, q = new URLSearchParams()) {
   }).join('')}</tbody></table></div>
     </section>
     <div class="mtussen"><h2>R${ronde.nummer} ${esc(ronde.naam)} <small style="font-weight:400">· ${pakketSoortTekst(p)}</small></h2>
-      <div class="knoppen"><button class="knop" id="export">CSV</button>${p.inspectiesoort === BV.BVC_SOORT && p.soort === 'inspectie' ? '<button class="knop" id="suf">SUF-BVC</button>' : ''}</div></div>
+      <div class="knoppen">${p.soort === 'inspectie' ? '<button class="knop" id="resultaten-xls">📊 Resultaten naar Excel</button>' : ''}<button class="knop" id="export">CSV</button>${p.inspectiesoort === BV.BVC_SOORT && p.soort === 'inspectie' ? '<button class="knop" id="suf">SUF-BVC</button>' : ''}</div></div>
     <section class="kaart">${voortgangBalk(v, { groot: true })}</section>
     ${p.inspectiesoort === BV.BVC_SOORT ? bvcSamenvatting(g.inspecties.filter((i) => i.werkpakketId === p.id && (i.rondeId || STANDAARD_RONDE) === (p.rondeId || STANDAARD_RONDE))) : ''}
     <div class="kaartindeling">
@@ -3474,6 +3578,11 @@ async function pakketDetail(id, q = new URLSearchParams()) {
     ga('#/werkpakketten');
   });
   app.querySelector('#suf')?.addEventListener('click', () => exporteerSuf((i) => i.werkpakketId === p.id && (i.rondeId || STANDAARD_RONDE) === (p.rondeId || STANDAARD_RONDE), p.naam));
+  app.querySelector('#resultaten-xls')?.addEventListener('click', () => exporteerResultaten({
+    lijst: rondeResultaten(p, g), titel: `${pr.code ? `${pr.code} · ` : ''}${pr.naam} – R${ronde.nummer} ${ronde.naam}`,
+    onderdeel: `Werkpakket ${pr.code || pr.naam}, ronde R${ronde.nummer} (${pakketSoortTekst(p).replace(/<[^>]+>/g, '')})`,
+    bestandsnaam: `resultaten-${pr.code || pr.naam}-R${ronde.nummer}`,
+  }));
   app.querySelector('#export').onclick = () => {
     const rijen = [['Code', 'Naam', 'Type', 'Status', 'Datum', 'Door', 'Reden / omschrijving']];
     for (const o of objecten) {
@@ -3484,6 +3593,66 @@ async function pakketDetail(id, q = new URLSearchParams()) {
     }
     download(`werkpakket-${p.naam.replace(/[^\w-]+/g, '_')}-${vandaag()}.csv`, csv(rijen), 'text/csv;charset=utf-8');
   };
+}
+
+// --- Resultaten van inspecties naar Excel ---------------------------------------
+/** Vraagt of foto's mee moeten en maakt het bestand. lijst: [{ object, inspectie, status, reden }] */
+async function exporteerResultaten({ lijst, titel, onderdeel = '', filter = '', bestandsnaam }) {
+  if (!lijst.length) return melding('Er is niets om te exporteren.', 'fout');
+  const aantalFotos = lijst.reduce((t, { inspectie: i }) => t + (i ? [...(i.fotoIds ?? []), ...(i.gebreken ?? []).flatMap((g) => g.fotoIds ?? []), ...(i.bvc?.gebreken ?? []).flatMap((g) => g.fotoIds ?? [])].length : 0), 0);
+  const d = document.createElement('dialog');
+  d.className = 'dialoog';
+  d.innerHTML = `<form method="dialog">
+    <h2>📊 Resultaten naar Excel</h2>
+    <p>${esc(titel)}<br><small>${lijst.length} regels · bladen: Overzicht, Resultaten, Gebreken, Maatregelen</small></p>
+    <label class="vink"><input type="checkbox" id="x-fotos" ${aantalFotos && aantalFotos <= 400 ? 'checked' : ''} ${aantalFotos ? '' : 'disabled'}>
+      <span><strong>Foto's opnemen (${aantalFotos})</strong><small>Extra blad met de foto's per object; het bestand wordt groter.</small></span></label>
+    <div class="knoppen" style="margin-top:1rem"><button class="knop" value="nee">Annuleren</button><button class="knop primair" value="ja" id="x-maak">Excel maken</button></div>
+  </form>`;
+  document.body.append(d);
+  d.showModal();
+  const keuze = await new Promise((ok) => d.addEventListener('close', () => ok(d.returnValue), { once: true }));
+  const metFotos = d.querySelector('#x-fotos').checked;
+  d.remove();
+  if (keuze !== 'ja') return;
+  try {
+    melding('Excel-bestand wordt gemaakt…');
+    const [ExcelJS, lagen, project] = await Promise.all([PX.laadExcelJS(), inProject('lagen'), actiefProject()]);
+    const defs = (project?.velden ?? []).filter((x) => x.formulier === 'inspectie');
+    const r = RX.resultaatRijen({
+      lijst,
+      laagNaam: new Map(lagen.map((l) => [l.id, l.naam])),
+      extra: (i) => extraWeergave(i, defs).filter(({ d: x }) => x.type !== 'foto').map(({ d: x, v }) => [x.label, velden.toonWaarde(x, v, datumNL)]),
+    });
+    let fotoData = null;
+    if (metFotos) {
+      const ids = [...new Set(r.fotos.map((f) => f.fotoId))];
+      fotoData = new Map((await Promise.all(ids.map((fid) => db.haal('fotos', fid)))).filter(Boolean).map((f) => [f.id, f.data]));
+    }
+    const wb = RX.maakWerkboek(ExcelJS, r, { titel, project: project?.naam ?? '', onderdeel, filter, fotoData });
+    download(`${bestandsnaam.replace(/[^\w-]+/g, '_')}-${vandaag()}.xlsx`, await wb.xlsx.writeBuffer(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    melding(`Excel gemaakt: ${r.resultaten.length} regels, ${r.gebreken.length} gebreken`);
+  } catch (e) {
+    console.error(e);
+    melding(`Excel maken mislukt: ${e.message}`, 'fout');
+  }
+}
+
+/** Per object van een ronde: de laatste inspectie uit die ronde (afgerond gaat voor concept). */
+function rondeResultaten(view, g) {
+  const v = g.rondeVoortgang.get(`${view.id}:${view.rondeId}`);
+  const zelfde = (i) => i.werkpakketId === view.id && (i.rondeId || STANDAARD_RONDE) === (view.rondeId || STANDAARD_RONDE);
+  const per = new Map();
+  for (const i of g.inspecties.filter(zelfde)) {
+    const e = per.get(i.objectId);
+    const beter = !e || (i.status === 'afgerond' && e.status !== 'afgerond') || (i.status === e.status && String(i.datum) > String(e.datum));
+    if (beter) per.set(i.objectId, i);
+  }
+  return view.objecten.map((oid) => g.objectMap.get(oid)).filter(Boolean).map((object) => {
+    const inspectie = per.get(object.id) ?? null;
+    const over = v.overgeslagen.get(object.id);
+    return { object, inspectie, status: inspectie ? inspectie.status : over ? 'overgeslagen' : 'open', reden: over?.reden ?? '' };
+  });
 }
 
 // --- Excel: sjabloon, export en inladen ----------------------------------------
@@ -4084,13 +4253,17 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
 
 async function bvcInhoud(i, o) {
   const b = i.bvc ?? {};
-  const gebreken = await Promise.all((b.gebreken ?? []).map(async (g) => `<tr><td>${esc(g.omschrijving)}</td><td>${esc(g.type || BV.gebrekType(g.omschrijving))}</td>
-    <td>${esc(g.plaats)}</td><td>${esc(g.gevolg)}</td><td>${esc(g.toelichting ?? '')}${g.fotoIds?.length ? await fotosHtml(g.fotoIds) : ''}</td></tr>`));
+  const gebreken = await Promise.all((b.gebreken ?? []).map((g, n) => bvcGebrekKaart(g, n)));
+  const kleur = b.niet ? '#9aa5b1' : (BV.BVK[b.bvk]?.kleur ?? '#9aa5b1');
   return `
-    <div class="raster-2">
-      <section class="kaart"><h2>Basisgegevens</h2><dl class="gegevens">
-        <dt>KEY</dt><dd><small>${esc(o?.id ?? '')}</small></dd>
-        <dt>Coördinaten</dt><dd>${rdTekst(o)}</dd>
+    <div class="raster-2 detailkop">
+      <section class="kaart">
+        <div class="oordeelblok" style="--gk:${kleur}">
+          <div><small>Boomveiligheidsklasse</small>${inspectieOordeel(i)}</div>
+          <p>${b.niet ? 'Boom niet aangetroffen.' : `${(b.gebreken ?? []).length} gebrek${(b.gebreken ?? []).length === 1 ? '' : 'en'} · ${(b.maatregelen ?? []).length} maatregel${(b.maatregelen ?? []).length === 1 ? '' : 'en'}`}</p>
+        </div>
+        <h2>Basisgegevens</h2><dl class="gegevens">
+        <dt>Object</dt><dd>${esc(o?.code ?? '–')}${o?.naam && o.naam !== o.code ? ` · ${esc(o.naam)}` : ''}</dd>
         <dt>Boomsoort</dt><dd>${esc(soortNaam(b.soort))}</dd>
         <dt>Plantjaar</dt><dd>${esc(b.plantjaar || '–')}${b.plantjaarSchatting ? ' (schatting)' : ''}</dd>
         ${b.dbh ? `<dt>Stamdiameter</dt><dd>${esc(b.dbh)} cm${b.bijzonder ? ' · bijzondere boom' : ''}</dd>` : ''}
@@ -4098,6 +4271,9 @@ async function bvcInhoud(i, o) {
         <dt>Eigenaar</dt><dd>${esc(b.eigenaar || '–')}</dd>
         ${b.gb ? `<dt>Gesloten beplanting</dt><dd>Ja, ${esc(b.aantalBomen)} bomen</dd>` : ''}
       </dl></section>
+      ${locatieBlok(o)}
+    </div>
+    <div class="raster-2">
       <section class="kaart"><h2>Controle</h2><dl class="gegevens">
         <dt>Datum</dt><dd>${datumNL(i.datum)}${BV.inControleperiode(i.datum) ? '' : ' <span class="label-status binnenkort">buiten juli–november</span>'}</dd>
         <dt>Controleur</dt><dd>${esc(i.inspecteur || '–')}</dd>
@@ -4107,20 +4283,18 @@ async function bvcInhoud(i, o) {
         ${b.niet ? '' : `<dt>Frequentie</dt><dd>${BV.CONTROLEFREQUENTIE[b.frequentieJaren ?? BV.frequentie(b.bvk, b.ork)] ?? '–'}</dd>
         <dt>Volgende controle</dt><dd>${datumNL(b.volgendeControle)}</dd>`}
       </dl></section>
-    </div>
     ${b.niet ? '' : `
-    <section class="kaart"><h2>Boomgebreken</h2>${gebreken.length ? `<div class="tabelhouder"><table>
-      <thead><tr><th>Gebrek</th><th>Type</th><th>Plaats</th><th>Gevolg</th><th>Toelichting</th></tr></thead><tbody>${gebreken.join('')}</tbody></table></div>`
-    : '<p class="leeg">Geen boomgebreken.</p>'}</section>
     <section class="kaart"><h2>Boomveiligheidsmaatregelen</h2>${(b.maatregelen ?? []).length ? `<div class="tabelhouder"><table>
       <thead><tr><th>Maatregel</th><th>Urgentie</th><th>Uiterlijk</th><th>Status</th></tr></thead><tbody>
       ${b.maatregelen.map((m) => `<tr><td>${esc(m.bvcMaatregel)}</td><td>${esc(BV.URGENTIE[m.termijn]?.label ?? '')}</td><td>${datumNL(m.uitvoerenVoor)}</td>
         <td>${m.maatregelStatus === 'uitgevoerd' ? '<span class="label-status uitgevoerd">Uitgevoerd</span>' : '<span class="label-status binnenkort">Open</span>'}</td></tr>`).join('')}
       </tbody></table></div>${b.maatregelen.some((m) => m.bvcMaatregel === 'Boom verwijderen') ? `<p><small>Gemarkeerd met oranje streep: ${b.gemarkeerd ? 'ja' : 'nee'}</small></p>` : ''}`
     : '<p class="leeg">Geen maatregelen.</p>'}</section>`}
+    </div>
+    ${b.niet ? '' : `<h2>Boomgebreken${gebreken.length ? ` (${gebreken.length})` : ''}</h2>${gebreken.join('') || leegKaart('Geen boomgebreken.')}`}
     ${b.beschermdeSoorten ? '<div class="kaart mhier">🦇 Beschermde soorten in de boom: maatregelen alleen na afstemming met een ecologisch deskundige.</div>' : ''}
     ${b.opmerking || i.fotoIds?.length ? `<section class="kaart"><h2>Opmerkingen en foto's</h2>${b.opmerking ? `<p style="white-space:pre-wrap">${esc(b.opmerking)}</p>` : ''}
-      ${b.fotonummer ? `<p><small>Fotonummer: ${esc(b.fotonummer)}</small></p>` : ''}${await fotosHtml(i.fotoIds)}</section>` : ''}`;
+      ${b.fotonummer ? `<p><small>Fotonummer: ${esc(b.fotonummer)}</small></p>` : ''}${await fotoGalerij(i.fotoIds, { titel: "Foto's" })}</section>` : ''}`;
 }
 
 async function bvcDetail(i, { rapport = false } = {}) {
@@ -4140,6 +4314,7 @@ async function bvcDetail(i, { rapport = false } = {}) {
         ${inhoud}
         <p style="margin-top:2rem">Bijlage: certificaat controleur ${esc(i.bvc?.kwalificatie || '')} ${i.bvc?.certificaat ? `nr. ${esc(i.bvc.certificaat)}` : ''}</p>
       </article>`;
+    tekenObjectKaartje(app.querySelector('#objectkaartje'), o, i.bvc?.niet ? '#9aa5b1' : (BV.BVK[i.bvc?.bvk]?.kleur ?? '#0b4f6c'));
     return;
   }
   app.innerHTML = `
@@ -4152,6 +4327,7 @@ async function bvcDetail(i, { rapport = false } = {}) {
         <button class="knop gevaar" id="verwijder">Verwijderen</button>
       </div>
     </div>${inhoud}`;
+  tekenObjectKaartje(app.querySelector('#objectkaartje'), o, i.bvc?.niet ? '#9aa5b1' : (BV.BVK[i.bvc?.bvk]?.kleur ?? '#0b4f6c'));
   app.querySelector('#verwijder').onclick = async () => {
     if (!confirm('Deze boomveiligheidscontrole inclusief foto\'s verwijderen?')) return;
     await verwijderInspectieData(i);

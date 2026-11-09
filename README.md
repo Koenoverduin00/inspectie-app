@@ -68,6 +68,18 @@ gevraagd wordt:
 - De kaartbibliotheek (Leaflet) wordt meegeleverd, zodat de objecten ook zonder bereik op de kaart staan; alleen de
   achtergrondkaart heeft internet nodig.
 
+### Resultaten van inspecties bekijken en exporteren
+
+- **Inspectie openen** – oordeel bovenaan (conditie of boomveiligheidsklasse), een **kaartje** met de ligging van
+  het object (overige objecten van de laag lichtgrijs), coördinaten en een navigatielink. Gebreken staan als
+  overzichtelijke kaarten met kenmerken (ernst, intensiteit, omvang, urgentie, raming), waarneming en maatregel
+  naast elkaar, en de foto's per gebrek in een galerij (klik = vergroten).
+- **📊 Resultaten naar Excel** – vanuit een ronde van een werkpakket (bijv. *R1 van de bomeninspectie*: álle
+  objecten van die ronde, ook open en overgeslagen) of vanuit *Inspecties* (de inspecties die je gefilterd hebt).
+  Bladen: *Overzicht* (aantallen), *Resultaten* (één regel per object met oordeel in kleur, datum, inspecteur,
+  maatregelen, volgende inspectie, BVC-gegevens, eigen velden, RD- en GPS-coördinaten), *Gebreken*, *Maatregelen*
+  en optioneel *Foto's* (miniaturen per object en gebrek).
+
 ## Flora- en fauna-vrijgave (veldcheck)
 
 Eigen tegel op de telefoon. Gebaseerd op de **Gedragscode Soortenbescherming Rijkswaterstaat 2025–2029**
@@ -250,6 +262,7 @@ js/taken.js           taken samenstellen en sorteren op urgentie en locatie
 js/velden.js          eigen formuliervelden: zichtbaarheid, controle en weergave
 js/pakketten.js       werkpakketten en rondes: voortgang, toewijzing en objectfilters
 js/pakketexcel.js     Excel-sjabloon (keuzelijsten, controles, beveiliging) en import met controle
+js/resultatenexcel.js inspectieresultaten naar Excel (resultaten, gebreken, maatregelen, foto's)
 js/bvc.js             boomveiligheidscontrole volgens protocol RWS, SUF-BVC, RD-coördinaten
 js/ecologie.js        flora- en fauna-vrijgave (veldcheck) volgens Gedragscode Soortenbescherming RWS
 vendor/               shpjs, sql.js, Leaflet en ExcelJS, lokaal meegeleverd zodat import en kaart ook offline werken
