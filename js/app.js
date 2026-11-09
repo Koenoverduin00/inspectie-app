@@ -1296,6 +1296,7 @@ async function toonMijnPakketten(el) {
 let laatstePositie = null;
 
 function afstandTekst(m) {
+  if (m < 5) return '📍 hier';
   return m < 1000 ? `${Math.round(m / 10) * 10} m` : `${(m / 1000).toFixed(m < 10000 ? 1 : 0).replace('.', ',')} km`;
 }
 
@@ -2012,10 +2013,12 @@ function toonImportInstellingen(lagen, bestandsnaam) {
       soorten[s] = (soorten[s] ?? 0) + 1;
     }
     const raad = (re) => vs.find((v) => re.test(v)) ?? '';
-    const codeGok = raad(/^(code|id|objectcode|nummer|nr|identificatie|vak_?id|objectnummer)$/i);
+    const codeGok = raad(/^(code|id|objectcode|nummer|nr|identificatie|vak_?id|objectnummer|boomnummer|boom_?nr|boom_?id|boomcode|vaknr|vaknummer|vakcode|key|guid)$/i);
     const naamGok = raad(/^(naam|name|omschrijving|titel|label|straatnaam|straat|openbareruimtenaam)$/i);
     const typeGok = [
-      [/groen|gras|gazon|heester|boom|bomen|beplanting/i, 'Groenvak'],
+      [/singel|houtwal|bosplantsoen|^bos|gesloten|struweel|hakhout/i, 'Gesloten beplanting'],
+      [/boom|bomen|tree/i, 'Boom'],
+      [/groen|gras|gazon|heester|beplanting/i, 'Groenvak'],
       [/weg|verhard|klinker|asfalt|trottoir|stoep/i, 'Verhardingsvak'],
       [/fiets/i, 'Fietspad'],
       [/water|sloot|gracht|oever|vijver/i, 'Watergang / oever'],
@@ -2099,7 +2102,8 @@ async function importeerLaag(laag, instellingen, bestandsnaam, voortgang) {
     const naam = instellingen.naamveld ? String(f.properties[instellingen.naamveld] ?? '').trim() : '';
     const punt = gis.middelpunt(f.geometry);
     return {
-      id: nieuwId(), projectId: pid, laagId, code, naam: naam || `${instellingen.naam} ${nummer}`, type: instellingen.type,
+      id: nieuwId(), projectId: pid, laagId, code, type: instellingen.type,
+      naam: naam || (instellingen.type === 'Boom' ? `${gisBoomNaam(f.properties) || 'Boom'} ${code}` : `${instellingen.naam} ${nummer}`),
       status: 'In gebruik', geometrie: f.geometry, kenmerken: f.properties,
       lat: punt ? punt[1] : '', lng: punt ? punt[0] : '',
       inspectieInterval: instellingen.interval ? Number(instellingen.interval) : '',
@@ -2869,7 +2873,8 @@ function pakketStatusLabel(status) {
 }
 
 function pakketSoortTekst(p) {
-  return p.soort === 'inspectie' ? `🔍 ${esc(p.inspectiesoort || 'Schouw / inspectie')}` : `🛠️ ${esc(p.werksoort || 'Werkzaamheid')}`;
+  if (p.soort === 'inspectie') return `${p.inspectiesoort === BV.BVC_SOORT ? '🌳' : '🔍'} ${esc(p.inspectiesoort || 'Schouw / inspectie')}`;
+  return `🛠️ ${esc(p.werksoort || 'Werkzaamheid')}`;
 }
 
 function periodeTekst(p) {
@@ -3031,7 +3036,8 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
           <div class="veld" id="werksoort-veld"><label for="f-werksoort">Werksoort</label><select id="f-werksoort" name="werksoort">
             <option value="">– vrij te kiezen –</option>${WERKSOORTEN.map((s) => optie(s, s, p.werksoort)).join('')}</select></div>
           <div class="veld" id="inspectiesoort-veld"><label for="f-inspectiesoort">Soort inspectie</label><select id="f-inspectiesoort" name="inspectiesoort">
-            ${INSPECTIESOORTEN.map((s) => optie(s, s, p.inspectiesoort)).join('')}</select></div>
+            ${INSPECTIESOORTEN.map((s) => optie(s, s, p.inspectiesoort)).join('')}</select>
+            <small>Kies "${BV.BVC_SOORT}" voor een bomeninspectie: uitvoerders openen dan het BVC-formulier volgens het RWS-protocol.</small></div>
           <div class="veld"><label for="f-status">Status</label><select id="f-status" name="status">
             ${Object.entries(PAKKETSTATUS).map(([k, v]) => optie(k, v, p.status)).join('')}</select>
             <small>Alleen actieve pakketten verschijnen bij de uitvoerders.</small></div>
@@ -3407,6 +3413,32 @@ function rdTekst(o) {
   return `X ${x.toFixed(2)} · Y ${y.toFixed(2)} (RD)`;
 }
 
+// Kenmerken uit een ingeladen GIS-laag gebruiken als voorinvulling van de BVC.
+function gisKenmerk(o, re) {
+  const k = Object.keys(o?.kenmerken ?? {}).find((x) => re.test(x));
+  const v = k ? o.kenmerken[k] : '';
+  return v === null || v === undefined ? '' : String(v).trim();
+}
+
+function gisBoomNaam(kenmerken) {
+  const latijn = gisBoomsoort({ kenmerken });
+  return BV.BOOMSOORTEN.find(([w]) => w === latijn)?.[1].replace(/\s*\(.*\)$/, '') ?? latijn;
+}
+
+function gisBoomsoort(o) {
+  const ruw = gisKenmerk(o, /^(boomsoort|soort|soortnaam|latijnse_?naam|wetenschappelijke_?naam|species|taxon|boomsoort_?lat)$/i);
+  if (!ruw) return '';
+  const laag = ruw.toLowerCase();
+  // Latijnse naam of Nederlandse naam uit de RWS-naamlijst herkennen.
+  const hit = BV.BOOMSOORTEN.find(([w, n]) => w.toLowerCase() === laag || n.toLowerCase() === laag || n.toLowerCase().startsWith(`${laag} (`));
+  return hit ? hit[0] : ruw;
+}
+
+function gisOrk(o) {
+  const v = gisKenmerk(o, /^(ork|omgevingsrisico(klasse)?|risicoklasse)$/i).toLowerCase();
+  return { geen: 'Geen', laag: 'Laag', midden: 'Midden', hoog: 'Hoog' }[v] ?? '';
+}
+
 function soortNaam(latijn) {
   const s = BV.BOOMSOORTEN.find(([w]) => w === latijn);
   return s ? `${s[0]} – ${s[1]}` : (latijn || '–');
@@ -3445,8 +3477,11 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
     werkpakketId: bestaand?.werkpakketId ?? pakketId ?? '',
     fotos: await laadFotos(bestaand?.fotoIds),
     bvc: {
-      soort: object.boomsoort ?? '', plantjaar: object.plantjaar ?? '', plantjaarSchatting: false, dbh: object.dbh ?? '',
-      bijzonder: Boolean(object.bijzonder), ork: object.ork ?? '', gb: Boolean(object.gb), aantalBomen: object.aantalBomen ?? '',
+      // Basisgegevens: eerst wat al bij de boom staat, anders uit de kenmerken van het GIS-bestand.
+      soort: object.boomsoort || gisBoomsoort(object), plantjaar: object.plantjaar || gisKenmerk(object, /^(plantjaar|aanlegjaar|jaar_?aanleg|plant_?jaar|jaar)$/i),
+      plantjaarSchatting: false, dbh: object.dbh || gisKenmerk(object, /^(dbh|diameter|stamdiameter|stamdiam|diam|stam_?diameter)$/i),
+      bijzonder: Boolean(object.bijzonder), ork: object.ork || gisOrk(object), gb: Boolean(object.gb ?? object.type === 'Gesloten beplanting'),
+      aantalBomen: object.aantalBomen || gisKenmerk(object, /^(aantal|aantal_?bomen)$/i),
       niet: false, eigenaar: object.beheerder ?? '', kwalificatie: instelling.lees('bvcKwalificatie'), certificaat: instelling.lees('bvcCertificaat'),
       methode: instelling.lees('bvcMethode', 'VTA'), prikstok: false, klophamer: false, bvk: '', gemarkeerd: false,
       beschermdeSoorten: false, opmerking: '', fotonummer: '',
@@ -3494,7 +3529,7 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
         <div class="velden">
           <div class="veld breed"><label for="b-soort" class="vereist">Boomsoort (SOORT)</label>
             <input id="b-soort" data-b="soort" list="boomsoorten" value="${esc(b.soort)}" placeholder="Typ Latijnse of Nederlandse naam" autocomplete="off">
-            <datalist id="boomsoorten">${BV.BOOMSOORTEN.map(([w, n]) => `<option value="${esc(w)}">${esc(n)}</option>`).join('')}</datalist>
+            <datalist id="boomsoorten">${BV.GB_SOORTEN.map((g) => `<option value="${esc(g)}">gesloten beplanting</option>`).join('')}${BV.BOOMSOORTEN.map(([w, n]) => `<option value="${esc(w)}">${esc(n)}</option>`).join('')}</datalist>
             <small id="soortnaam">${esc(soortNaam(b.soort))}</small></div>
           <div class="veld"><label for="b-jaar">Plantjaar (JAAR)</label><input id="b-jaar" data-b="plantjaar" type="number" min="1700" max="2100" inputmode="numeric" value="${esc(b.plantjaar)}">
             <label class="vink" style="margin-top:.35rem;padding:.4rem .6rem"><input type="checkbox" data-b="plantjaarSchatting" ${b.plantjaarSchatting ? 'checked' : ''}><span>Schatting</span></label></div>

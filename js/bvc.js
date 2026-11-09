@@ -69,6 +69,9 @@ export const URGENTIE = {
 export const KWALIFICATIES = ['ETW (European Tree Worker)', 'ETT (European Tree Technician)', 'Gecertificeerd boomveiligheidscontroleur', 'Gelijkwaardig'];
 export const METHODEN = ['VTA', 'IBA', 'SIA', 'Anders'];
 
+// Bijlage 2 – soort bij gesloten beplanting zonder uniforme boomsoort
+export const GB_SOORTEN = ['Loofboomsoorten', 'Naaldboomsoorten', 'Gemengd loof en naald'];
+
 // Bijlage 8 – naamlijst boomsoorten in areaal Rijkswaterstaat [wetenschappelijk, Nederlands]
 export const BOOMSOORTEN = [
   ["Acer campestre", "Spaanse aak (incl. cultivars)"],

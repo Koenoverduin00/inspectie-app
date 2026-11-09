@@ -80,6 +80,12 @@ Rijkswaterstaat** (Loo Plan, 8 februari 2017, definitief) en het CROW **Standaar
 - **Controles**: kwalificatie controleur (ETW, ETT, gecertificeerd boomveiligheidscontroleur of gelijkwaardig),
   methode (VTA/IBA/SIA), waarschuwing buiten de controleperiode juli–november, hint bijzondere boom (> 40 / > 90 cm dbh),
   melding bij beschermde soorten in de boom (koppeling naar een flora- en fauna-vrijgave).
+- **Als werkpakket**: kies bij een werkpakket *Schouw / inspectie* → *Boomveiligheidscontrole* en stel het samen uit
+  de ingeladen GIS-lagen (bomen als punten, gesloten beplantingen als vlakken). Uitvoerders openen vanuit het pakket
+  direct het BVC-formulier; de voortgang (bijv. 12/80), de samenvatting en de SUF-export per pakket volgen vanzelf.
+  Bij het inladen worden laagnamen als *bomen* en *singels/houtwallen* herkend als *Boom* of *Gesloten beplanting*,
+  kolommen als *boomnummer* als code, en kenmerken als *boomsoort* (Latijn of Nederlands), *plantjaar*,
+  *diameter*, *ORK* en *aantal* gebruikt als voorinvulling van de controle.
 - **Nieuwe boom inmeten** met GPS (protocol: max. ca. 3 m afwijking); basisgegevens worden bij de boom bewaard en
   bij elke controle geverifieerd.
 - **Rapport** per boom (bijlage 5) en **SUF-BVC export** (boom, boomgebreken, maatregelen) per project of werkpakket;
