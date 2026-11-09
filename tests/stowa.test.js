@@ -28,17 +28,19 @@ test('keuzelijsten uit bijlage D', () => {
 
 test('urgentie, controle en koppeling met maatregelen en taken', () => {
   const w = [
-    { id: 'a', aard: 'schadebeeld', zone: 'binnentalud', wijzer: 8, urgentieKleur: 'rood', fotoIds: ['f'], maatregelStatus: 'open' },
-    { id: 'b', aard: 'handhaving', zone: 'kruin', omschrijving: 'Opslag op de kruin', urgentieKleur: 'oranje', maatregelStatus: 'open' },
-    { id: 'c', aard: 'schadebeeld', zone: 'kruin', wijzer: 7, urgentieKleur: 'groen', maatregelStatus: 'open' },
+    { id: 'a', aard: 'schadebeeld', zone: 'binnentalud', wijzer: 8, urgentieKleur: 'rood', fotoIds: ['f'], maatregelStatus: 'open', lat: 52.1, lng: 5.1 },
+    { id: 'b', aard: 'handhaving', zone: 'kruin', omschrijving: 'Opslag op de kruin', urgentieKleur: 'oranje', maatregelStatus: 'open', lat: 52.1, lng: 5.1 },
+    { id: 'c', aard: 'schadebeeld', zone: 'kruin', wijzer: 7, urgentieKleur: 'groen', maatregelStatus: 'open', lat: 52.1, lng: 5.1 },
   ].map(ST.alsGebrek);
   assert.equal(ST.zwaarste(w), 'rood');
   assert.deepEqual(w.map((x) => x.urgentie), ['direct', '3maanden', ''], 'groen zonder maatregel = geen maatregel');
-  assert.equal(w[0].bouwdeel, 'Grasbekleding · binnentalud');
+  assert.equal(w[0].bouwdeel, 'Gras · binnentalud', 'element volgens de catalogus (Digigids)');
+  assert.equal(w[0].groep, 'Grasbekledingen');
   assert.equal(w[1].gebrek, 'Opslag op de kruin');
   assert.deepEqual(ST.controleer({ kering: 'rivierdijk', waarnemingen: w }), []);
   const fout = ST.controleer({ kering: '', waarnemingen: [{ aard: 'schadebeeld', urgentieKleur: 'rood' }] });
-  assert.equal(fout.length, 4, 'kering, zone, schadebeeld, foto bij rood');
+  assert.equal(fout.length, 5, 'kering, zone, schadebeeld, foto bij rood, puntlocatie');
+  assert.ok(fout.some((f) => /locatie als punt/.test(f)));
 
   const insp = { id: 'i', objectId: 'o', status: 'afgerond', datum: '2027-03-01', gebreken: [], stowa: { kering: 'rivierdijk', waarnemingen: w } };
   const taken = takenLijst({ objecten: [{ id: 'o', code: 'DV-1' }], inspecties: [insp], taken: [], planning: new Map(), vandaag: '2027-03-02' });
@@ -50,4 +52,20 @@ test('urgentie, controle en koppeling met maatregelen en taken', () => {
   assert.equal(r.resultaten[0].waarden[kop.indexOf('Rood')], 1);
   assert.equal(r.gebreken.length, 3);
   assert.equal(r.maatregelen.length, 2);
+});
+
+test('soorten inspectie en catalogus elementgroep → element → schadebeeld', () => {
+  assert.deepEqual(ST.INSPECTIEMOMENTEN, ['Voorjaarsinspectie', 'Najaarsinspectie', 'Droogte-inspectie', 'Storm-inspectie', 'Hoogwaterinspectie']);
+  assert.equal(ST.ELEMENTGROEPEN.length, 6);
+  assert.equal(ST.SCHADEBEELDEN.length, 125, '100 Digigids + 25 inspectiewijzers zonder Digigids');
+  assert.ok(ST.SCHADEBEELDEN.every((s) => ST.ELEMENTGROEPEN.includes(s.groep) && s.element && s.naam));
+  assert.equal(new Set(ST.SCHADEBEELDEN.map((s) => s.sleutel)).size, 125, 'unieke sleutels');
+  const elk = new Set(ST.SCHADEBEELDEN.map((s) => s.wijzer).filter(Boolean));
+  assert.equal(elk.size, 61, 'elke inspectiewijzer is te kiezen');
+  assert.deepEqual(ST.elementenVan('Steenbekledingen'), ['Breuksteen in schanskorven', 'Steenbestorting', 'Zuilen of blokken']);
+  assert.ok(ST.schadebeeldenVan('Steenbekledingen', 'Zuilen of blokken').some((s) => s.sleutel === 'w:20'));
+  // Oudere waarnemingen (alleen wijzer of oud Digigids-id) krijgen een sleutel.
+  assert.equal(ST.sleutelVan({ wijzer: 22 }), 'dg:steenbekledingen/zuilen-blokken/losse-gekamde-stenen');
+  assert.equal(ST.sleutelVan({ wijzer: 20 }), 'w:20');
+  assert.equal(ST.sleutelVan({ digigids: 'zuilen-blokken/gaten' }), 'dg:steenbekledingen/zuilen-blokken/gaten');
 });

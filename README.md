@@ -130,6 +130,14 @@ operationeel deel* (STOWA VIW 2008-02).
   schadebeeld (de **61 inspectiewijzers** in 7 categorieën: oevers, gras-, steen- en asfaltbekleding, wegen, overig,
   duinen) → kenmerken. Bij een zone staan de passende schadebeelden bovenaan; de kenmerken per schadebeeld hebben
   de keuzelijsten uit bijlage D (bijv. breedte < 25 / 25-50 / 50-100 / > 100 cm, oorzaak graverij, zand meevoerend).
+- **Schadebeeld kiezen in stappen**: elementgroep (grasbekledingen, steenbekledingen, asfaltbekledingen, bijzondere
+  constructies, niet-waterkerende elementen, duinen) → element (bijv. zuilen of blokken) → schadebeeld. Daarin zitten
+  alle Digigids-schadebeelden én de inspectiewijzers zonder Digigids-tegenhanger (125 in totaal). Na de keuze klapt
+  het in tot één regel (groep › element › schadebeeld) met *Wijzig*.
+- **Elk gebrek is een punt**: tik op het kaartje bij de waarneming (punt is versleepbaar) of gebruik *Mijn
+  GPS-locatie*. Zonder punt kan een inspectie niet worden afgerond. Het resultaat toont alle punten genummerd op de
+  kaart, met daaronder een overzichtstabel (elementgroep › element, schadebeeld, zone, Digigids-klasse, urgentie);
+  de Excel-export bevat per gebrek RD- en GPS-coördinaten.
 - **Per waarneming**: categorie schadebeeld of handhaving, **urgentie groen / oranje / rood** (geen directe actie /
   actie binnen 3 maanden / direct gevaar voor het kerend vermogen), locatie (tekst + GPS), toelichting, maatregel en
   type maatregel (monitoren / verbeteren / reconstrueren), overzichts- en detailfoto's. Rood vraagt een foto en
@@ -144,8 +152,7 @@ operationeel deel* (STOWA VIW 2008-02).
   keuzelijst. De foto's worden rechtstreeks van digigids.stowa.nl getoond (alleen met internet); criteria en
   bijschriften zitten in de app en werken offline. De klasse komt in detail, rapport en Excel-export.
   Opnieuw ophalen: `python3 scripts/digigids.py /gids/<categorie>`.
-- **Soort inspectie**: schouw, najaars- en voorjaarsinspectie, dagelijkse inspectie, bestuursschouw, gericht
-  technische inspectie, droogte- en storminspectie.
+- **Soort inspectie**: voorjaarsinspectie, najaarsinspectie, droogte-inspectie, storminspectie en hoogwaterinspectie.
 - **Resultaat**: detail en rapport met kaart (object + GPS-punten van de waarnemingen), waarnemingen als kaarten met
   kenmerken en foto's. Oranje en rood (en groen met maatregel) komen in *Maatregelen*, *Taken* en kunnen aan
   werkzaamheden gekoppeld worden; de Excel-export heeft per inspectie de aantallen rood/oranje/groen en per

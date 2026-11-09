@@ -9,11 +9,8 @@ import * as DG from './digigids.js';
 
 export const STOWA_SOORT = 'Inspectie waterkering (STOWA)';
 
-/** Typen inspecties (operationeel deel, tabel 4). */
-export const INSPECTIEMOMENTEN = [
-  'Schouw', 'Najaarsinspectie', 'Voorjaarsinspectie', 'Dagelijkse inspectie', 'Bestuursschouw',
-  'Gericht technische inspectie', 'Droogte-inspectie', 'Storm-inspectie',
-];
+/** Soorten inspectie die wij uitvoeren (periodiek en bijzonder, vgl. operationeel deel § 3.5). */
+export const INSPECTIEMOMENTEN = ['Voorjaarsinspectie', 'Najaarsinspectie', 'Droogte-inspectie', 'Storm-inspectie', 'Hoogwaterinspectie'];
 
 /** Niveau 1 en 2: type kering met zones van buiten naar binnen (bijlage C). */
 export const KERINGEN = {
@@ -172,6 +169,49 @@ export const URGENTIE = {
 /** Classificatie van maatregelen in toenemende ernst (operationeel deel, voetnoot 7). */
 export const MAATREGELSOORTEN = ['Monitoren', 'Verbeteren', 'Reconstrueren'];
 
+// ---------------------------------------------------------------------------
+// Eén catalogus voor het kiezen: elementgroep → element → schadebeeld.
+// Elementgroepen en elementen volgen de Digigids; inspectiewijzers zonder Digigids-tegenhanger staan bij het
+// passende element. Een schadebeeld heeft een sleutel: "dg:<digigids-id>" of "w:<wijzernummer>".
+// ---------------------------------------------------------------------------
+export const ELEMENTGROEPEN = DG.CATEGORIEEN;
+const PLAATS_WIJZER = {
+  2: ['Bijzondere constructies', 'Damwand of beschoeiing'], 12: ['Grasbekledingen', 'Gras'], 16: ['Bijzondere constructies', 'Opsluitbanden'],
+  18: ['Steenbekledingen', 'Zuilen of blokken', 'Afslag (ook strandhoofd)'], 20: ['Steenbekledingen', 'Zuilen of blokken'],
+  21: ['Steenbekledingen', 'Zuilen of blokken'], 23: ['Steenbekledingen', 'Zuilen of blokken'], 25: ['Steenbekledingen', 'Zuilen of blokken'],
+  28: ['Steenbekledingen', 'Steenbestorting'], 29: ['Steenbekledingen', 'Steenbestorting'], 30: ['Steenbekledingen', 'Steenbestorting'],
+  31: ['Asfaltbekledingen', 'Vol en zat gepenetreerde breuksteen'], 32: ['Asfaltbekledingen', 'Vol en zat gepenetreerde breuksteen'],
+  33: ['Asfaltbekledingen', 'Vol en zat gepenetreerde breuksteen'], 37: ['Asfaltbekledingen', 'Asfaltbeton'], 38: ['Asfaltbekledingen', 'Asfaltbeton'],
+  43: ['Niet waterkerende elementen', 'Wegen'], 44: ['Niet waterkerende elementen', 'Wegen'], 45: ['Niet waterkerende elementen', 'Wegen'],
+  46: ['Niet waterkerende elementen', 'Wegen'], 47: ['Niet waterkerende elementen', 'Wegen'],
+  50: ['Niet waterkerende elementen', 'Kabels en leidingen'], 51: ['Niet waterkerende elementen', 'Kabels en leidingen'],
+  58: ['Duinen', 'Duinovergangen'], 60: ['Duinen', 'Stuifschermen'],
+};
+const hoofd = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+export const SCHADEBEELDEN = (() => {
+  const lijst = DG.SCHADEBEELDEN.map((d) => ({ sleutel: `dg:${d.id}`, groep: d.categorie, element: d.element, naam: d.naam, wijzer: d.wijzer, digigids: d.id }));
+  const gedekt = new Set(lijst.map((x) => x.wijzer).filter((x) => x !== null));
+  for (const w of WIJZERS) {
+    if (gedekt.has(w.nr)) continue;
+    const [groep, element, naam] = PLAATS_WIJZER[w.nr] ?? ['Bijzondere constructies', w.element];
+    lijst.push({ sleutel: `w:${w.nr}`, groep, element, naam: naam ?? hoofd(w.schadebeeld), wijzer: w.nr, digigids: null });
+  }
+  return lijst;
+})();
+export const schadebeeldItem = (sleutel) => SCHADEBEELDEN.find((x) => x.sleutel === sleutel) ?? null;
+const nl = (a, b) => a.localeCompare(b, 'nl');
+export const elementenVan = (groep) => [...new Set(SCHADEBEELDEN.filter((x) => x.groep === groep).map((x) => x.element))].sort(nl);
+export const schadebeeldenVan = (groep, element) => SCHADEBEELDEN.filter((x) => x.groep === groep && x.element === element).sort((a, b) => nl(a.naam, b.naam));
+
+/** Sleutel van de keuze van een (ook oudere) waarneming. */
+export function sleutelVan(w) {
+  if (w?.sb && schadebeeldItem(w.sb)) return w.sb;
+  const dg = w?.digigids ? DG.schadebeeld(w.digigids) : null;
+  if (dg) return `dg:${dg.id}`;
+  if (w?.wijzer) return schadebeeldItem(`w:${w.wijzer}`)?.sleutel ?? SCHADEBEELDEN.find((x) => String(x.wijzer) === String(w.wijzer))?.sleutel ?? '';
+  return '';
+}
+
 /** Zwaarste urgentie van een inspectie ('' = geen waarnemingen). */
 export function zwaarste(waarnemingen = []) {
   return waarnemingen.reduce((z, w) => ((URGENTIE[w.urgentieKleur]?.rang ?? 0) > (URGENTIE[z]?.rang ?? 0) ? w.urgentieKleur : z), '');
@@ -186,6 +226,7 @@ export function controleer(s) {
     if (!w.zone) f.push(`${n}: kies de zone.`);
     if (w.aard === 'handhaving' ? !String(w.omschrijving ?? '').trim() : !(w.wijzer || w.digigids)) f.push(`${n}: ${w.aard === 'handhaving' ? 'omschrijf de handhavingszaak' : 'kies het schadebeeld'}.`);
     if (!w.urgentieKleur) f.push(`${n}: kies de urgentie (groen, oranje of rood).`);
+    if (!(Number.isFinite(Number(w.lat)) && Number.isFinite(Number(w.lng)) && w.lat !== '' && w.lat != null)) f.push(`${n}: zet de locatie als punt op de kaart (of gebruik GPS).`);
     if (w.urgentieKleur === 'rood' && !(w.fotos?.length || w.fotoIds?.length)) f.push(`${n}: maak bij urgentie rood een foto.`);
   });
   return f;
@@ -193,12 +234,12 @@ export function controleer(s) {
 
 /** Waarneming in de vorm die maatregelenoverzicht, taken en werkzaamheden gebruiken. */
 export function alsGebrek(w) {
-  const wz = wijzer(w.wijzer);
-  const dg = !wz && w.digigids ? DG.schadebeeld(w.digigids) : null;
+  const it = w.aard === 'handhaving' ? null : schadebeeldItem(sleutelVan(w));
   return {
     ...w,
-    bouwdeel: [wz?.element ?? dg?.element ?? (w.aard === 'handhaving' ? 'Handhaving' : ''), w.zone].filter(Boolean).join(' · '),
-    gebrek: w.aard === 'handhaving' ? (w.omschrijving ?? '') : (wz?.schadebeeld ?? dg?.naam ?? ''),
+    groep: it?.groep ?? '',
+    bouwdeel: [it?.element ?? (w.aard === 'handhaving' ? 'Handhaving' : ''), w.zone].filter(Boolean).join(' · '),
+    gebrek: w.aard === 'handhaving' ? (w.omschrijving ?? '') : (it?.naam ?? ''),
     urgentie: w.maatregel || w.urgentieKleur !== 'groen' ? (URGENTIE[w.urgentieKleur]?.nen ?? '') : '',
   };
 }
@@ -206,6 +247,8 @@ export function alsGebrek(w) {
 /** Naam van het schadebeeld van een waarneming (inspectiewijzer of Digigids). */
 export function schadebeeldNaam(w) {
   if (w.aard === 'handhaving') return `Handhaving: ${w.omschrijving ?? ''}`;
+  const it = schadebeeldItem(sleutelVan(w));
+  if (it) return `${it.element}: ${it.naam}`;
   const wz = wijzer(w.wijzer);
   if (wz) return wz.naam;
   const dg = w.digigids ? DG.schadebeeld(w.digigids) : null;

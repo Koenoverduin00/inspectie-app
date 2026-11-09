@@ -639,7 +639,8 @@ details.waarneming > summary > span { display: flex; align-items: center; gap: .
 .dg-klassen { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: .5rem; margin-top: .4rem; }
 .dg-klasse { display: flex; flex-direction: column; gap: .3rem; padding: .6rem .7rem; border: 2px solid var(--rand); border-top: 5px solid var(--dk);
   border-radius: 10px; cursor: pointer; background: var(--vlak); }
-.dg-klasse input { position: absolute; opacity: 0; pointer-events: none; }
+.dg-klasse { position: relative; }
+.dg-klasse input { position: absolute; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .dg-klasse strong { color: var(--dk); }
 .dg-klasse span { font-size: .88rem; line-height: 1.35; }
 .dg-klasse.gekozen, .dg-klasse:has(input:checked) { border-color: var(--dk); background: color-mix(in srgb, var(--dk) 9%, var(--vlak)); }
@@ -648,3 +649,34 @@ details.waarneming > summary > span { display: flex; align-items: center; gap: .
 .digigids .bron { color: var(--tekst-zacht); font-size: .75rem; }
 
 .dg-klasse .dg-beeld { font-style: italic; color: var(--tekst-zacht); }
+
+/* STOWA: stapsgewijze keuze en puntlocatie */
+.keuzetegels { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: .4rem; }
+.keuzetegel { display: flex; align-items: center; gap: .5rem; padding: .65rem .7rem; border: 2px solid var(--rand); border-radius: 10px;
+  background: var(--vlak); color: var(--tekst); font: inherit; font-weight: 600; text-align: left; cursor: pointer; min-height: 48px; }
+.keuzetegel span { font-size: 1.3rem; }
+.keuzechips, .keuzeknoppen { display: flex; flex-wrap: wrap; gap: .4rem; }
+.keuzechip, .keuzeknop { display: inline-flex; align-items: center; gap: .4rem; padding: .5rem .8rem; border: 2px solid var(--rand); border-radius: 99px;
+  background: var(--vlak); color: var(--tekst); font: inherit; cursor: pointer; min-height: 44px; text-align: left; }
+.keuzechip small { background: var(--achtergrond); border-radius: 99px; padding: 0 .4rem; color: var(--tekst-zacht); }
+.keuzeknop { border-radius: 10px; flex-direction: column; align-items: flex-start; gap: .1rem; }
+.keuzeknop small { color: var(--tekst-zacht); font-size: .75rem; }
+.keuzetegel.gekozen, .keuzechip.gekozen, .keuzeknop.gekozen { border-color: var(--primair); background: var(--primair-licht); }
+.keuzepad { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .55rem .7rem; border-radius: 10px;
+  background: var(--primair-licht); border: 1px solid color-mix(in srgb, var(--primair) 30%, transparent); }
+.keuzepad span { overflow-wrap: anywhere; }
+.keuzepad small { display: block; color: var(--tekst-zacht); }
+.wkaart { height: 240px; border-radius: 10px; overflow: hidden; border: 1px solid var(--rand); background: #fff; margin-bottom: .4rem; cursor: crosshair; }
+.wkaartveld.ontbreekt .wkaart { border: 2px dashed #d1452f; }
+.gk-nr.klein { width: 1.6rem; height: 1.6rem; font-size: .8rem; background: var(--gk); }
+.waarnemingtabel td { vertical-align: middle; }
+/* Type waterkering: 7 keuzes netjes over meerdere regels */
+.segment:has(input[name=kering]) { flex-wrap: wrap; }
+.segment:has(input[name=kering]) label { flex: 1 1 calc(33% - .5rem); min-width: 7.5rem; }
+.keuzetegels { grid-template-columns: repeat(auto-fill, minmax(185px, 1fr)); }
+.keuzetegel { overflow-wrap: anywhere; hyphens: auto; line-height: 1.2; }
+@media (max-width: 600px) {
+  .keuzetegels { grid-template-columns: 1fr 1fr; }
+  .keuzetegel { font-size: .92rem; padding: .55rem .6rem; }
+  .dg-klassen { grid-template-columns: 1fr 1fr; }
+}

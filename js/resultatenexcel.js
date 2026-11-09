@@ -21,6 +21,14 @@ function coordinaten(o) {
   return { lat: +lat.toFixed(7), lng: +lng.toFixed(7), x: +x.toFixed(2), y: +y.toFixed(2) };
 }
 
+/** RD en WGS84 van een puntlocatie (waarneming). */
+function puntCoord(w) {
+  const lat = Number(w?.lat); const lng = Number(w?.lng);
+  if (!w?.lat || !Number.isFinite(lat) || !Number.isFinite(lng)) return ['', '', '', ''];
+  const [x, y] = BV.wgs84NaarRd(lng, lat);
+  return [+x.toFixed(2), +y.toFixed(2), +lat.toFixed(7), +lng.toFixed(7)];
+}
+
 const datum = (iso) => (/^\d{4}-\d{2}-\d{2}/.test(iso ?? '') ? new Date(`${String(iso).slice(0, 10)}T00:00:00Z`) : null);
 const getal = (v) => (v === '' || v === null || v === undefined || !Number.isFinite(Number(v)) ? '' : Number(v));
 
@@ -125,7 +133,8 @@ export function resultaatRijen({ lijst, laagNaam = new Map(), extra = () => [] }
           waarden: [o.code, o.naam, datum(i.datum), n + 1, [w.zone, w.locatie].filter(Boolean).join(' · '),
             ST.schadebeeldNaam(w), wz ? `${ST.CATEGORIEEN[wz.categorie]} (wijzer ${wz.nr})` : (w.digigids ? 'Digigids' : ''), w.digigidsKlasse ? `Digigids: ${w.digigidsKlasse}` : '',
             '', '', '', ST.URGENTIE[w.urgentieKleur]?.label ?? '', [kenm, w.toelichting].filter(Boolean).join(' — '), w.maatregel ?? '',
-            [w.maatregelSoort, w.urgentie ? URGENTIES.find((u) => u.id === w.urgentie)?.label : ''].filter(Boolean).join(' · '), (w.fotoIds ?? []).length || ''],
+            [w.maatregelSoort, w.urgentie ? URGENTIES.find((u) => u.id === w.urgentie)?.label : ''].filter(Boolean).join(' · '), (w.fotoIds ?? []).length || '',
+            ...puntCoord(w)],
           kleur: ST.URGENTIE[w.urgentieKleur]?.kleur ?? '',
         });
         if (w.maatregel || w.urgentie) {
@@ -167,6 +176,7 @@ export function resultaatRijen({ lijst, laagNaam = new Map(), extra = () => [] }
 export const GEBREK_KOLOMMEN = [
   ['Objectcode', 14], ['Naam', 26], ['Datum', 12, 'datum'], ['Nr', 5], ['Bouwdeel / plaats', 24], ['Gebrek', 28], ['Type', 16], ['Gevolg / Digigids-klasse', 16],
   ['Ernst', 10], ['Intensiteit', 14], ['Omvang (%)', 10], ['Conditie / urgentie', 11], ['Waarneming / toelichting', 44], ['Maatregel', 34], ['Urgentie', 16], ["Foto's", 8],
+  ['X (RD)', 12], ['Y (RD)', 12], ['Breedtegraad', 12], ['Lengtegraad', 12],
 ];
 export const MAATREGEL_KOLOMMEN = [
   ['Objectcode', 14], ['Naam', 26], ['Datum inspectie', 13, 'datum'], ['Maatregel', 40], ['Urgentie', 18], ['Uitvoeren vóór', 13, 'datum'], ['Raming (€)', 12, 'euro'], ['Status', 12],

@@ -4193,7 +4193,7 @@ function stowaLabel(kleur, { leeg = 'Geen waarnemingen' } = {}) {
 
 /** Digigids-beoordeling: per klasse het criterium en voorbeeldfoto's; tik de klasse die past. */
 function digigidsBlok(w, i) {
-  const opties = w.wijzer ? DG.bijWijzer(w.wijzer) : (w.digigids ? [DG.schadebeeld(w.digigids)].filter(Boolean) : []);
+  const opties = w.digigids ? [DG.schadebeeld(w.digigids)].filter(Boolean) : [];
   if (!opties.length) return '';
   const dg = opties.find((x) => x.id === w.digigids) ?? opties[0];
   return `<div class="veld breed digigids">
@@ -4209,6 +4209,12 @@ function digigidsBlok(w, i) {
     <small class="bron">Criteria en foto's: Digigids (STOWA en Rijkswaterstaat).</small>
   </div>`;
 }
+
+const puntBron = (w) => (w.locatieBron === 'gps' ? `(GPS${w.nauwkeurigheid ? ` ± ${w.nauwkeurigheid} m` : ''})` : '(op de kaart gezet)');
+
+const GROEP_ICOON = {
+  Grasbekledingen: '🌱', Steenbekledingen: '🧱', Asfaltbekledingen: '⬛', 'Bijzondere constructies': '🏗️', 'Niet waterkerende elementen': '🚧', Duinen: '🏖️',
+};
 
 const ZONE_NAAM = (z) => (z ? z.charAt(0).toUpperCase() + z.slice(1) : '');
 
@@ -4240,8 +4246,8 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
     rondeId: bestaand?.rondeId ?? rondeId ?? '',
     fotos: await laadFotos(bestaand?.fotoIds),
     kering: s0.kering ?? object.stowaKering ?? instelling.lees('stowaKering', ''),
-    moment: s0.moment ?? instelling.lees('stowaMoment', 'Schouw'),
-    waarnemingen: await Promise.all((s0.waarnemingen ?? []).map(async (w) => ({ ...w, kenmerken: { ...(w.kenmerken ?? {}) }, fotos: await laadFotos(w.fotoIds) }))),
+    moment: s0.moment ?? (ST.INSPECTIEMOMENTEN.includes(instelling.lees('stowaMoment')) ? instelling.lees('stowaMoment') : ST.INSPECTIEMOMENTEN[0]),
+    waarnemingen: await Promise.all((s0.waarnemingen ?? []).map(async (w) => ({ ...w, sb: ST.sleutelVan(w), kenmerken: { ...(w.kenmerken ?? {}) }, fotos: await laadFotos(w.fotoIds) }))),
   };
   const origineel = new Set([...(bestaand?.fotoIds ?? []), ...(s0.waarnemingen ?? []).flatMap((w) => w.fotoIds ?? [])]);
   const pakket = await laadPakketView(staat.werkpakketId, staat.rondeId);
@@ -4263,7 +4269,8 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
         <div class="velden">
           <div class="veld"><label for="f-datum" class="vereist">Datum</label><input id="f-datum" name="datum" type="date" value="${esc(staat.datum)}"></div>
           <div class="veld"><label for="f-inspecteur" class="vereist">Inspecteur</label><input id="f-inspecteur" name="inspecteur" value="${esc(staat.inspecteur)}" maxlength="100"></div>
-          <div class="veld"><label for="f-moment">Soort inspectie</label><select id="f-moment" data-s="moment">${ST.INSPECTIEMOMENTEN.map((m) => optie(m, m, staat.moment)).join('')}</select></div>
+          <div class="veld"><label for="f-moment" class="vereist">Soort inspectie</label><select id="f-moment" data-s="moment">
+            ${[...ST.INSPECTIEMOMENTEN, ...(staat.moment && !ST.INSPECTIEMOMENTEN.includes(staat.moment) ? [staat.moment] : [])].map((m) => optie(m, m, staat.moment)).join('')}</select></div>
           <div class="veld"><label for="f-weer">Weer</label><select id="f-weer" data-s="weer"><option value="">–</option>${WEER.map((w) => optie(w, w, staat.weer)).join('')}</select></div>
           <div class="veld breed"><label class="vereist">Type waterkering</label>
             ${segment('kering', staat.kering, Object.entries(ST.KERINGEN).map(([k, v]) => [k, v.label]), 'data-s="kering"')}</div>
@@ -4271,7 +4278,7 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
       </section>
       <section>
         <div class="mtussen"><h2>Waarnemingen</h2><button type="button" class="knop" id="w-plus">＋ Waarneming</button></div>
-        <p class="hulptekst">Per waarneming: zone → schadebeeld (inspectiewijzer) → kenmerken → urgentie. Geen schade gezien? Dan rond je de inspectie af zonder waarnemingen.</p>
+        <p class="hulptekst">Per gebrek: zone → elementgroep → element → schadebeeld → punt op de kaart → urgentie. Geen schade gezien? Dan rond je de inspectie af zonder waarnemingen.</p>
         <div id="waarnemingen"></div>
       </section>
       <section class="kaart">
@@ -4292,73 +4299,137 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
   const $ = (q) => app.querySelector(q);
   const W = staat.waarnemingen;
   const fotoLijst = (k) => (k === 'alg' ? staat.fotos : W[Number(k.slice(1))].fotos);
-  const nieuw = () => ({ id: nieuwId(), aard: 'schadebeeld', zone: '', wijzer: '', kenmerken: {}, urgentieKleur: '', omschrijving: '', locatie: '', toelichting: '', maatregel: '', maatregelSoort: '', maatregelStatus: 'open', fotos: [] });
+  const nieuw = () => ({ id: nieuwId(), aard: 'schadebeeld', zone: W.at(-1)?.zone ?? '', sb: '', groepKeuze: W.at(-1)?.groepKeuze ?? '', elementKeuze: '', wijzer: '', kenmerken: {}, urgentieKleur: '', omschrijving: '', locatie: '', toelichting: '', maatregel: '', maatregelSoort: '', maatregelStatus: 'open', fotos: [] });
 
-  const wijzerOpties = (w) => {
-    const passend = ST.wijzersVoorZone(w.zone);
-    const rest = ST.WIJZERS.filter((x) => !passend.includes(x));
-    const groep = (lijst) => Object.entries(ST.CATEGORIEEN).map(([c, naam]) => {
-      const l = lijst.filter((x) => x.categorie === Number(c));
-      return l.length ? `<optgroup label="${esc(naam)}">${l.map((x) => optie(x.nr, `${x.naam}  (${x.nr})`, w.wijzer)).join('')}</optgroup>` : '';
-    }).join('');
-    const keuze = w.digigids && !w.wijzer ? `dg:${w.digigids}` : String(w.wijzer ?? '');
-    const dg = DG.zonderWijzer();
-    return `<option value="">– kies schadebeeld –</option>${groep(passend).replace(/ selected/g, '')}${w.zone && rest.length ? `<optgroup label="── Andere zones ──"></optgroup>${groep(rest).replace(/ selected/g, '')}` : ''}
-      ${DG.CATEGORIEEN.map((cat) => {
-    const l = dg.filter((x) => x.categorie === cat);
-    return l.length ? `<optgroup label="Digigids – ${esc(cat)}">${l.map((x) => optie(`dg:${x.id}`, `${x.element}: ${x.naam}`, keuze)).join('')}</optgroup>` : '';
-  }).join('')}`
-      .replace(`value="${keuze}"`, `value="${keuze}" selected`);
+  // Keuze in drie stappen: elementgroep → element → schadebeeld (ingeklapt zodra gekozen).
+  const keuzeBlok = (w, i) => {
+    const it = ST.schadebeeldItem(w.sb);
+    if (it && !w.wijzigen) {
+      return `<div class="veld breed"><label class="vereist">Schadebeeld</label>
+        <div class="keuzepad"><span>${GROEP_ICOON[it.groep] ?? ''} ${esc(it.groep)} › ${esc(it.element)} › <strong>${esc(it.naam)}</strong>
+          <small>${it.wijzer ? `inspectiewijzer ${it.wijzer}` : ''}${it.wijzer && it.digigids ? ' · ' : ''}${it.digigids ? 'Digigids' : ''}</small></span>
+          <button type="button" class="knop klein" data-w-wijzig="${i}">Wijzig</button></div></div>`;
+    }
+    const groep = w.groepKeuze || it?.groep || '';
+    const element = w.elementKeuze || (it?.groep === groep ? it.element : '');
+    return `<div class="veld breed"><label class="vereist">1. Elementgroep</label>
+        <div class="keuzetegels">${ST.ELEMENTGROEPEN.map((g) => `<button type="button" class="keuzetegel ${g === groep ? 'gekozen' : ''}" data-w-groep="${i}" data-waarde="${esc(g)}">
+          <span>${GROEP_ICOON[g] ?? ''}</span>${esc(g)}</button>`).join('')}</div></div>
+      ${groep ? `<div class="veld breed"><label class="vereist">2. Element</label>
+        <div class="keuzechips">${ST.elementenVan(groep).map((e) => `<button type="button" class="keuzechip ${e === element ? 'gekozen' : ''}" data-w-element="${i}" data-waarde="${esc(e)}">${esc(e)}
+          <small>${ST.schadebeeldenVan(groep, e).length}</small></button>`).join('')}</div></div>` : ''}
+      ${groep && element ? `<div class="veld breed"><label class="vereist">3. Schadebeeld</label>
+        <div class="keuzeknoppen">${ST.schadebeeldenVan(groep, element).map((s) => `<button type="button" class="keuzeknop ${s.sleutel === w.sb ? 'gekozen' : ''}" data-w-sb="${i}" data-waarde="${esc(s.sleutel)}">
+          ${esc(s.naam)}<small>${s.digigids ? 'Digigids' : `inspectiewijzer ${s.wijzer}`}</small></button>`).join('')}</div></div>` : ''}`;
+  };
+
+  // Kaartjes per waarneming: tik = punt zetten, punt is versleepbaar. Worden bij elk hertekenen opnieuw gemaakt.
+  let wKaarten = [];
+  const objGeo = objectGeometrie(object);
+  const tekenWKaarten = async () => {
+    const vakken = [...app.querySelectorAll('[data-w-kaart]')];
+    if (!vakken.length) return;
+    const L = await laadLeaflet().catch(() => null);
+    if (!L) return;
+    for (const vak of vakken) {
+      if (!vak.isConnected || vak.dataset.klaar) continue;
+      vak.dataset.klaar = '1';
+      const i = Number(vak.dataset.wKaart);
+      const w = W[i];
+      const map = L.map(vak, { zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false, scrollWheelZoom: false });
+      wKaarten.push(map);
+      voegAchtergrondToe(L, map);
+      const omtrek = objGeo ? L.geoJSON({ type: 'Feature', geometry: objGeo, properties: {} }, {
+        style: { color: '#0b4f6c', weight: 2, fillOpacity: 0.08, interactive: false },
+        pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 6, color: '#0b4f6c', weight: 2, fillOpacity: 0.2, interactive: false }),
+      }) : null;
+      // Andere waarnemingen als kleine stippen, ter oriëntatie.
+      W.forEach((x, j) => {
+        if (j !== i && x.lat) L.circleMarker([x.lat, x.lng], { radius: 6, color: '#fff', weight: 2, fillColor: ST.URGENTIE[x.urgentieKleur]?.kleur ?? '#555', fillOpacity: 0.8, interactive: false }).bindTooltip(`${j + 1}`, { permanent: true, direction: 'center', className: 'puntlabel' }).addTo(map);
+      });
+      const vorige = [...W].reverse().find((x) => x.lat && x !== w);
+      if (w.lat) map.setView([w.lat, w.lng], 19, { animate: false });
+      else if (vorige) map.setView([vorige.lat, vorige.lng], 18, { animate: false });
+      else if (omtrek?.getBounds().isValid()) map.fitBounds(omtrek.getBounds(), { padding: [20, 20], maxZoom: 18, animate: false });
+      else map.setView([52.1, 5.1], 8, { animate: false });
+      omtrek?.addTo(map);
+      let punt = null;
+      const zet = (lat, lng, bron) => {
+        Object.assign(w, { lat: Number(lat.toFixed(7)), lng: Number(lng.toFixed(7)), locatieBron: bron });
+        if (bron === 'kaart') w.nauwkeurigheid = '';
+        formulierGewijzigd = true;
+        if (!punt) {
+          punt = L.marker([w.lat, w.lng], { draggable: true, autoPan: true }).addTo(map);
+          punt.on('dragend', () => { const p = punt.getLatLng(); zet(p.lat, p.lng, 'kaart'); });
+        } else punt.setLatLng([w.lat, w.lng]);
+        const t = app.querySelector(`[data-w-coord="${i}"]`);
+        if (t) t.textContent = `📍 ${w.lat.toFixed(6)}, ${w.lng.toFixed(6)} ${puntBron(w)}`;
+        vak.closest('.wkaartveld')?.classList.remove('ontbreekt');
+      };
+      if (w.lat) zet(w.lat, w.lng, w.locatieBron ?? 'kaart');
+      map.on('click', (e) => zet(e.latlng.lat, e.latlng.lng, 'kaart'));
+      vak.zetPunt = zet;
+      vak.kaart = map;
+    }
   };
 
   const tekenW = () => {
+    wKaarten.forEach((m) => m.remove());
+    wKaarten = [];
     const zones = ST.KERINGEN[staat.kering]?.zones ?? [];
     $('#waarnemingen').innerHTML = W.length ? W.map((w, i) => {
-      const wz = ST.wijzer(w.wijzer);
+      const it = ST.schadebeeldItem(w.sb);
+      const wz = it?.wijzer ? ST.wijzer(it.wijzer) : null;
       const u = ST.URGENTIE[w.urgentieKleur];
-      const titel = w.aard === 'handhaving' ? (w.omschrijving || 'Handhaving') : (wz?.naam ?? 'Nieuwe waarneming');
+      const titel = w.aard === 'handhaving' ? (w.omschrijving || 'Handhaving') : (it ? `${it.element}: ${it.naam}` : 'Nieuwe waarneming');
       return `<details class="gebrek waarneming" style="border-left-color:${u?.kleur ?? 'var(--rand)'}" ${open.has(i) ? 'open' : ''} data-w-blok="${i}">
         <summary class="gebrek-kop"><h3 style="margin:0">${i + 1}. ${esc(titel)}</h3>
-          <span>${w.zone ? `<small>${esc(ZONE_NAAM(w.zone))}</small> ` : ''}${stowaLabel(w.urgentieKleur, { leeg: 'urgentie?' })}</span></summary>
-        <div class="velden">
+          <span>${w.lat ? '📍' : '<small class="il-let-op" style="width:auto">geen locatie</small>'} ${w.zone ? `<small>${esc(ZONE_NAAM(w.zone))}</small> ` : ''}${stowaLabel(w.urgentieKleur, { leeg: 'urgentie?' })}</span></summary>
+        ${open.has(i) ? `<div class="velden">
           <div class="veld breed"><label>Categorie</label>${segment(`aard-${i}`, w.aard, [['schadebeeld', '● Schadebeeld'], ['handhaving', '▲ Handhaving']], `data-w="${i}" data-veld="aard"`)}</div>
           <div class="veld"><label class="vereist">Zone</label><select data-w="${i}" data-veld="zone"><option value="">– kies zone –</option>
             ${zones.map((z) => optie(z, ZONE_NAAM(z), w.zone)).join('')}${w.zone && !zones.includes(w.zone) ? optie(w.zone, ZONE_NAAM(w.zone), w.zone) : ''}</select>
             ${zones.length ? '' : '<small>Kies eerst het type waterkering.</small>'}</div>
           ${w.aard === 'handhaving'
     ? `<div class="veld breed"><label class="vereist">Omschrijving handhavingszaak</label><input data-w="${i}" data-veld="omschrijving" value="${esc(w.omschrijving)}" maxlength="200" placeholder="bijv. niet-vergunde steiger, opslag op de kruin"></div>`
-    : `<div class="veld breed"><label class="vereist">Element en schadebeeld (inspectiewijzer)</label><select data-w="${i}" data-veld="schadebeeld">${wijzerOpties(w)}</select>
-            ${wz ? `<small>${esc(ST.CATEGORIEEN[wz.categorie])} · komt voor bij: ${esc(wz.zones.join(', '))}</small>` : ''}</div>
-          ${wz && wz.kenmerken.length ? `<div class="veld breed"><label>Kenmerken schade</label><div class="kenmerkvelden">${wz.kenmerken.map((k) => {
+    : `${keuzeBlok(w, i)}
+          ${it && !w.wijzigen && wz && wz.kenmerken.length ? `<div class="veld breed"><label>Kenmerken schade</label><div class="kenmerkvelden">${wz.kenmerken.map((k) => {
     const lijst = ST.keuzelijst(wz.nr, k);
     const v = w.kenmerken[k] ?? '';
     return `<label><small>${esc(k)}</small>${lijst
       ? `<select data-w="${i}" data-kenmerk="${esc(k)}"><option value="">–</option>${lijst.map((x) => optie(x, x, v)).join('')}</select>`
       : `<input data-w="${i}" data-kenmerk="${esc(k)}" value="${esc(v)}" maxlength="80">`}</label>`;
   }).join('')}</div></div>` : ''}
-          ${digigidsBlok(w, i)}`}
+          ${it && !w.wijzigen ? digigidsBlok(w, i) : ''}`}
+          <div class="veld breed wkaartveld ${w.lat ? '' : 'ontbreekt'}"><label class="vereist">Locatie (punt)</label>
+            <div class="wkaart" data-w-kaart="${i}"></div>
+            <div class="locatieveld">
+              <button type="button" class="knop" data-gps="${i}">📍 Mijn GPS-locatie</button>
+              <input data-w="${i}" data-veld="locatie" value="${esc(w.locatie)}" maxlength="120" placeholder="Omschrijving, bijv. dijkpaal 12 + 40 m"></div>
+            <small data-w-coord="${i}">${w.lat ? `📍 ${Number(w.lat).toFixed(6)}, ${Number(w.lng).toFixed(6)} ${puntBron(w)}` : 'Tik op de kaart waar het gebrek zit, of gebruik je GPS-locatie. Het punt is daarna te verslepen.'}</small></div>
           <div class="veld breed"><label class="vereist">Urgentie</label>
             ${segment(`urg-${i}`, w.urgentieKleur, Object.entries(ST.URGENTIE).map(([k, x]) => [k, x.label]), `data-w="${i}" data-veld="urgentieKleur" class="stowa-urgentie"`)}
             <small>${u ? esc(u.uitleg) : 'Groen = geen directe actie · Oranje = binnen 3 maanden · Rood = direct gevaar kerend vermogen'}</small>
             ${w.urgentieKleur === 'rood' ? '<p class="label-status verlopen" style="white-space:normal;margin-top:.35rem">⚠ Direct melden aan de beheerder en een foto maken.</p>' : ''}</div>
-          <div class="veld breed"><label>Locatie</label><div class="locatieveld">
-            <input data-w="${i}" data-veld="locatie" value="${esc(w.locatie)}" maxlength="120" placeholder="bijv. dijkpaal 12 + 40 m">
-            <button type="button" class="knop" data-gps="${i}">📍 ${w.lat ? 'Opnieuw' : 'GPS'}</button></div>
-            ${w.lat ? `<small>${Number(w.lat).toFixed(6)}, ${Number(w.lng).toFixed(6)}${w.nauwkeurigheid ? ` (± ${w.nauwkeurigheid} m)` : ''}</small>` : ''}</div>
           <div class="veld breed"><label>Toelichting</label><textarea data-w="${i}" data-veld="toelichting" maxlength="1000" placeholder="Wat zie je, oorzaak, ontwikkeling">${esc(w.toelichting)}</textarea></div>
           <div class="veld"><label>Maatregel</label><input data-w="${i}" data-veld="maatregel" value="${esc(w.maatregel)}" maxlength="200"></div>
           <div class="veld"><label>Type maatregel</label><select data-w="${i}" data-veld="maatregelSoort"><option value="">–</option>${ST.MAATREGELSOORTEN.map((m) => optie(m, m, w.maatregelSoort)).join('')}</select></div>
           <div class="veld breed"><label>Foto's (overzicht en detail)</label>${fotoRij(w.fotos, `w${i}`)}</div>
           <div class="veld breed"><button type="button" class="knop klein gevaar" data-w-weg="${i}">🗑 Waarneming verwijderen</button></div>
-        </div></details>`;
+        </div>` : ''}</details>`;
     }).join('') : '<p class="mleeg">Nog geen waarnemingen.</p>';
+    tekenWKaarten();
   };
   const tekenAlg = () => { $('#algemene-fotos').innerHTML = fotoRij(staat.fotos, 'alg'); };
   tekenW(); tekenAlg();
 
   form.addEventListener('toggle', (e) => {
     const i = e.target.dataset?.wBlok;
-    if (i !== undefined) { if (e.target.open) open.add(Number(i)); else open.delete(Number(i)); }
+    if (i === undefined) return;
+    const nu = e.target.open;
+    if (nu === open.has(Number(i))) return;
+    if (nu) open.add(Number(i)); else open.delete(Number(i));
+    tekenW();
   }, true);
   form.addEventListener('input', (e) => {
     formulierGewijzigd = true;
@@ -4372,19 +4443,6 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
     const w = W[Number(el.dataset.w)];
     if (el.dataset.kenmerk) { w.kenmerken[el.dataset.kenmerk] = el.value; return; }
     const veld = el.dataset.veld;
-    if (veld === 'schadebeeld') {
-      // Inspectiewijzer of (zonder wijzer) een Digigids-schadebeeld; bij een wijzer de bijbehorende Digigids-beoordeling.
-      const v = el.value;
-      w.wijzer = v.startsWith('dg:') ? '' : (v ? Number(v) : '');
-      w.digigids = v.startsWith('dg:') ? v.slice(3) : (DG.bijWijzer(w.wijzer)[0]?.id ?? '');
-      w.digigidsKlasse = '';
-      // Kenmerken van het vorige schadebeeld horen er niet meer bij.
-      const wz = ST.wijzer(w.wijzer);
-      w.kenmerken = Object.fromEntries(Object.entries(w.kenmerken).filter(([k]) => wz?.kenmerken.includes(k)));
-      tekenW();
-      return;
-    }
-    if (veld === 'digigids') w.digigidsKlasse = '';
     w[veld] = el.value;
     if (['aard', 'zone', 'urgentieKleur', 'digigids', 'digigidsKlasse'].includes(veld)) tekenW();
   });
@@ -4406,6 +4464,27 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
       if (k === 'alg') tekenAlg(); else tekenW();
       return;
     }
+    const kg = e.target.closest('[data-w-groep]');
+    if (kg) { const w = W[Number(kg.dataset.wGroep)]; w.groepKeuze = kg.dataset.waarde; w.elementKeuze = ''; tekenW(); return; }
+    const ke = e.target.closest('[data-w-element]');
+    if (ke) { const w = W[Number(ke.dataset.wElement)]; w.elementKeuze = ke.dataset.waarde; tekenW(); return; }
+    const ks = e.target.closest('[data-w-sb]');
+    if (ks) {
+      const w = W[Number(ks.dataset.wSb)];
+      const it = ST.schadebeeldItem(ks.dataset.waarde);
+      if (w.sb !== it.sleutel) {
+        // Kenmerken en Digigids-klasse van het vorige schadebeeld horen er niet meer bij.
+        const wz = it.wijzer ? ST.wijzer(it.wijzer) : null;
+        w.kenmerken = Object.fromEntries(Object.entries(w.kenmerken).filter(([k]) => wz?.kenmerken.includes(k)));
+        w.digigidsKlasse = '';
+      }
+      Object.assign(w, { sb: it.sleutel, wijzer: it.wijzer ?? '', digigids: it.digigids ?? '', groepKeuze: it.groep, elementKeuze: it.element, wijzigen: false });
+      formulierGewijzigd = true;
+      tekenW();
+      return;
+    }
+    const kw = e.target.closest('[data-w-wijzig]');
+    if (kw) { W[Number(kw.dataset.wWijzig)].wijzigen = true; tekenW(); return; }
     const ww = e.target.closest('[data-w-weg]');
     if (ww && confirm('Deze waarneming verwijderen?')) {
       W.splice(Number(ww.dataset.wWeg), 1);
@@ -4418,9 +4497,18 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
       if (!navigator.geolocation) { melding('Locatiebepaling wordt niet ondersteund.', 'fout'); return; }
       gps.disabled = true;
       navigator.geolocation.getCurrentPosition((pos) => {
-        Object.assign(W[Number(gps.dataset.gps)], { lat: Number(pos.coords.latitude.toFixed(7)), lng: Number(pos.coords.longitude.toFixed(7)), nauwkeurigheid: Math.round(pos.coords.accuracy) });
+        const i = Number(gps.dataset.gps);
+        W[i].nauwkeurigheid = Math.round(pos.coords.accuracy);
+        const vak = app.querySelector(`[data-w-kaart="${i}"]`);
+        if (vak?.zetPunt) {
+          vak.zetPunt(pos.coords.latitude, pos.coords.longitude, 'gps');
+          vak.kaart.setView([pos.coords.latitude, pos.coords.longitude], 19, { animate: false });
+        } else {
+          Object.assign(W[i], { lat: Number(pos.coords.latitude.toFixed(7)), lng: Number(pos.coords.longitude.toFixed(7)), locatieBron: 'gps' });
+          tekenW();
+        }
+        gps.disabled = false;
         formulierGewijzigd = true;
-        tekenW();
       }, (fout) => { gps.disabled = false; melding(`Locatie niet beschikbaar: ${fout.message}`, 'fout'); }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 });
     }
   });
@@ -4452,7 +4540,7 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
     const nu = new Date().toISOString();
     const pid = bestaand?.projectId ?? projectId();
     await bewaarFotoLijsten([staat.fotos, ...W.map((w) => w.fotos)], origineel, { inspectieId, projectId: pid, datum: nu });
-    const waarnemingen = W.map(({ fotos, ...w }) => ST.alsGebrek({ ...w, fotoIds: fotos.map((f) => f.id) }));
+    const waarnemingen = W.map(({ fotos, groepKeuze, elementKeuze, wijzigen, ...w }) => ST.alsGebrek({ ...w, fotoIds: fotos.map((f) => f.id) }));
     await db.bewaar('inspecties', {
       ...(bestaand ?? {}), id: inspectieId, projectId: pid, objectId: object.id,
       werkpakketId: staat.werkpakketId, rondeId: staat.werkpakketId ? staat.rondeId : '',
@@ -4483,10 +4571,12 @@ async function stowaWaarnemingKaart(w, n) {
   const wz = ST.wijzer(w.wijzer);
   const u = ST.URGENTIE[w.urgentieKleur];
   const kenm = Object.entries(w.kenmerken ?? {}).filter(([, v]) => v !== '' && v != null);
-  return `<article class="gebrekkaart" style="--gk:${u?.kleur ?? '#9aa5b1'}">
+  const it = w.aard === 'handhaving' ? null : ST.schadebeeldItem(ST.sleutelVan(w));
+  return `<article class="gebrekkaart" id="waarneming-${n + 1}" style="--gk:${u?.kleur ?? '#9aa5b1'}">
     <header><span class="gk-nr">${n + 1}</span>
       <div class="gk-titel"><h3>${esc(ST.schadebeeldNaam(w))}</h3>
-        <small>${[ZONE_NAAM(w.zone), wz ? `inspectiewijzer ${wz.nr} · ${ST.CATEGORIEEN[wz.categorie]}` : '', w.locatie ? `📍 ${w.locatie}` : ''].filter(Boolean).map(esc).join(' · ')}</small></div>
+        <small>${[it?.groep, ZONE_NAAM(w.zone), wz ? `inspectiewijzer ${wz.nr}` : '', w.locatie ? `📍 ${w.locatie}` : '',
+    w.lat ? `${Number(w.lat).toFixed(6)}, ${Number(w.lng).toFixed(6)}` : 'geen locatie'].filter(Boolean).map(esc).join(' · ')}</small></div>
       ${stowaLabel(w.urgentieKleur)}</header>
     <div class="kenmerken">
       ${w.digigidsKlasse ? kenmerk('Digigids', `<span style="color:${DG.KLASSE_KLEUR[w.digigidsKlasse]}">● ${esc(w.digigidsKlasse)}</span>`) : ''}
@@ -4533,6 +4623,17 @@ async function stowaInhoud(i, o) {
     ${i.samenvatting || i.fotoIds?.length ? `<section class="kaart"><h2>Samenvatting</h2>
       ${i.samenvatting ? `<p style="white-space:pre-wrap">${esc(i.samenvatting)}</p>` : ''}${await fotoGalerij(i.fotoIds, { titel: "Foto's" })}</section>` : ''}
     <h2>Waarnemingen${W.length ? ` (${W.length})` : ''}</h2>
+    ${W.length ? `<section class="kaart" style="padding:0"><div class="tabelhouder"><table class="waarnemingtabel">
+      <thead><tr><th>#</th><th>Elementgroep › element</th><th>Schadebeeld</th><th class="verberg-mobiel">Zone</th><th class="verberg-mobiel">Digigids</th><th>Urgentie</th></tr></thead>
+      <tbody>${W.map((w, n) => {
+    const it = w.aard === 'handhaving' ? null : ST.schadebeeldItem(ST.sleutelVan(w));
+    return `<tr class="klikbaar" data-naar="waarneming-${n + 1}"><td><span class="gk-nr klein" style="--gk:${ST.URGENTIE[w.urgentieKleur]?.kleur ?? '#9aa5b1'}">${n + 1}</span></td>
+          <td>${it ? `${GROEP_ICOON[it.groep] ?? ''} ${esc(it.groep)} › ${esc(it.element)}` : '▲ Handhaving'}</td>
+          <td>${esc(it?.naam ?? w.omschrijving ?? '')}${w.lat ? '' : ' <small class="il-let-op" style="width:auto">geen locatie</small>'}</td>
+          <td class="verberg-mobiel">${esc(ZONE_NAAM(w.zone))}</td>
+          <td class="verberg-mobiel">${w.digigidsKlasse ? `<span style="color:${DG.KLASSE_KLEUR[w.digigidsKlasse]};font-weight:600">● ${esc(w.digigidsKlasse)}</span>` : '–'}</td>
+          <td>${stowaLabel(w.urgentieKleur)}</td></tr>`;
+  }).join('')}</tbody></table></div></section>` : ''}
     ${kaarten.join('') || leegKaart('Geen waarnemingen: geen schade of handhavingszaken gezien.')}`;
 }
 
@@ -4576,6 +4677,9 @@ async function stowaDetail(i, { rapport = false } = {}) {
       ga(o ? `#/objecten/${o.id}` : '#/inspecties');
     };
   }
+  app.querySelectorAll('tr[data-naar]').forEach((r) => {
+    r.onclick = () => document.getElementById(r.dataset.naar)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
   tekenObjectKaartje(app.querySelector('#objectkaartje'), o, kleur, stowaKaartPunten(i));
 }
 

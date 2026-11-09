@@ -23,7 +23,7 @@ test('Digigids: alle 6 categorieën, 100 schadebeelden met 4 klassen', () => {
 });
 
 test('waarneming met alleen een Digigids-schadebeeld', () => {
-  const w = ST.alsGebrek({ id: 'x', aard: 'schadebeeld', zone: 'buitentalud', wijzer: '', digigids: 'steenbekledingen/zuilen-blokken/drijf-zwerfvuil', digigidsKlasse: 'Matig', urgentieKleur: 'oranje' });
+  const w = ST.alsGebrek({ id: 'x', aard: 'schadebeeld', zone: 'buitentalud', wijzer: '', digigids: 'steenbekledingen/zuilen-blokken/drijf-zwerfvuil', digigidsKlasse: 'Matig', urgentieKleur: 'oranje', lat: 52.1, lng: 5.1 });
   assert.deepEqual(ST.controleer({ kering: 'zeedijk', waarnemingen: [w] }), []);
   assert.equal(w.bouwdeel, 'Zuilen of blokken · buitentalud');
   assert.equal(w.gebrek, 'Drijf- of zwerfvuil');
