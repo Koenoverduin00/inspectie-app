@@ -52,6 +52,8 @@ export function controleerFeatures(features) {
 const CODE_HINT = /^(code|id|objectcode|objectid|object_id|nummer|nr|identificatie|vak_?id|objectnummer|boomnummer|boom_?nr|boom_?id|boomcode|vaknr|vaknummer|vakcode|guid|uuid|fid|gid|key|beheercode|elementnr|element_?id)$/i;
 const NAAM_HINT = /^(naam|name|omschrijving|titel|label|straatnaam|straat|openbareruimtenaam|objectnaam|locatie|benaming)$/i;
 const NIET_ALS_CODE = /^(fid|gid|objectid|ogc_fid|ogr_fid)$/i; // technische nummers alleen als niets beters bestaat
+const TYPE_HINT = /^(type|objecttype|object_?type|objectsoort|soort_?object|beheertype|beheer_?type|categorie|category|klasse|class|elementtype|element_?type|element_?soort|typering|subtype|soort|type_?object|functie)$/i;
+export const VAST_TYPE = '__vast__';
 
 const TYPE_UIT_NAAM = [
   [/singel|houtwal|bosplantsoen|^bos|gesloten|struweel|hakhout/i, 'Gesloten beplanting'],
@@ -81,15 +83,47 @@ export function raadInstellingen(laag, { objecttypen = [], kleuren = [] } = {}) 
   const score = (k) => (CODE_HINT.test(k.v) ? 2 : 0) + (NIET_ALS_CODE.test(k.v) ? -1.5 : 0) + (/code|nr|nummer/i.test(k.v) ? 1 : 0);
   const codeveld = kandidaten.sort((a, b) => score(b) - score(a))[0]?.v ?? '';
   const naamveld = velden.find((v) => NAAM_HINT.test(v) && uniekheid(v).gevuld >= 0.5) ?? '';
+  // Objecttype komt uit een kolom. Alleen een kolom met een herkenbare naam en een beperkt aantal
+  // verschillende waarden wordt voorgeselecteerd; anders moet de gebruiker zelf kiezen.
+  const categorisch = (v) => {
+    const w = waarden(v);
+    const n = new Set(w.map((x) => x.toLowerCase())).size;
+    return w.length / (features.length || 1) >= 0.5 && n >= 1 && n <= Math.max(12, Math.ceil(w.length * 0.5));
+  };
+  const typeveld = velden.find((v) => TYPE_HINT.test(v) && categorisch(v)) ?? '';
   let type = TYPE_UIT_NAAM.find(([re]) => re.test(laag.bronLaag ?? laag.naam) || re.test(laag.naam))?.[1] ?? '';
   if (type && objecttypen.length && !objecttypen.includes(type)) type = '';
   if (!type) type = 'Overig';
+  // Zonder kolommen valt er niets te kiezen: dan een vast type op basis van de laagnaam.
+  const vastType = velden.length ? '' : type;
   const letters = String(laag.bronLaag ?? laag.naam).replace(/[^A-Za-z]/g, '');
   const voorvoegsel = (letters.slice(0, 2) || 'GV').toUpperCase() + (laag.soort && laag.naam !== laag.bronLaag ? laag.soort[0].toUpperCase() : '');
   return {
-    naam: String(laag.naam).replace(/[_]+/g, ' ').trim().slice(0, 80) || 'Laag', type, codeveld, naamveld, voorvoegsel,
+    naam: String(laag.naam).replace(/[_]+/g, ' ').trim().slice(0, 80) || 'Laag', typeveld, vastType, type, codeveld, naamveld, voorvoegsel,
     kleur: kleuren.length ? kleuren[Math.abs(hash(laag.naam)) % kleuren.length] : '#1f78b4', interval: '', velden,
   };
+}
+
+/** Is het objecttype bepaald (een kolom, of bewust een vast type)? */
+export const typeGekozen = (inst) => Boolean(inst.typeveld || inst.vastType);
+
+/** Objecttype van één feature: waarde uit de gekozen kolom, gelijkgetrokken met de bekende typen. */
+export function typeVan(props, inst, objecttypen = []) {
+  if (!inst.typeveld) return inst.vastType || 'Overig';
+  const v = String(props?.[inst.typeveld] ?? '').replace(/\s+/g, ' ').trim();
+  if (!v) return 'Overig';
+  return objecttypen.find((t) => t.toLowerCase() === v.toLowerCase()) ?? v;
+}
+
+/** Waarden van een kolom met hun aantal, meest voorkomend eerst. */
+export function kolomWaarden(features, veld, max = 8) {
+  const tel = new Map();
+  for (const f of features) {
+    const v = String(f.properties?.[veld] ?? '').trim() || '(leeg)';
+    tel.set(v, (tel.get(v) ?? 0) + 1);
+  }
+  const lijst = [...tel.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'nl'));
+  return { waarden: lijst.slice(0, max), aantal: lijst.length };
 }
 
 function hash(s) {

@@ -668,7 +668,7 @@ async function objectFormulier(id) {
     <input id="f-${naam}" name="${naam}" type="${type}" value="${esc(o[naam])}" ${attrs}>${hulp ? `<small>${hulp}</small>` : ''}</div>`;
   const keuze = (naam, label, opties) => `
     <div class="veld"><label for="f-${naam}">${label}</label>
-    <select id="f-${naam}" name="${naam}"><option value="">– kies –</option>${opties.map((x) => optie(x, x, o[naam])).join('')}</select></div>`;
+    <select id="f-${naam}" name="${naam}"><option value="">– kies –</option>${[...(o[naam] && !opties.includes(o[naam]) ? [o[naam]] : []), ...opties].map((x) => optie(x, x, o[naam])).join('')}</select></div>`;
 
   app.innerHTML = `
     <div class="paginakop"><div>
@@ -2139,7 +2139,9 @@ async function toonImportVoorstel(kandidaten, fouten, { doel = null } = {}) {
     inst.kleur = LAAGKLEUREN[(lagen.length + n) % LAAGKLEUREN.length];
     let gevonden = IMP.vindBestaandeLaag(laag, inst, { lagen, objecten, bestandsnaam: k.bestand });
     if (doel) gevonden = (!doel.soort || doel.soort === laag.soort) ? { laag: doel, reden: 'gekozen laag', overlap: gevonden?.overlap ?? 0 } : null;
-    if (gevonden) Object.assign(inst, { codeveld: gevonden.laag.codeveld ?? inst.codeveld, naamveld: gevonden.laag.naamveld ?? inst.naamveld, naam: gevonden.laag.naam, kleur: gevonden.laag.kleur ?? inst.kleur, type: objecten.find((o) => o.laagId === gevonden.laag.id)?.type ?? inst.type });
+    if (gevonden) Object.assign(inst, { codeveld: gevonden.laag.codeveld ?? inst.codeveld, naamveld: gevonden.laag.naamveld ?? inst.naamveld, naam: gevonden.laag.naam, kleur: gevonden.laag.kleur ?? inst.kleur });
+    if (gevonden && gevonden.laag.typeveld !== undefined) Object.assign(inst, { typeveld: gevonden.laag.typeveld, vastType: gevonden.laag.vastType ?? '' });
+    else if (gevonden && !inst.typeveld) inst.vastType = objecten.find((o) => o.laagId === gevonden.laag.id)?.type ?? '';
     return {
       n, laag, inst, controle: c, gevonden, doelId: gevonden?.laag.id ?? '',
       actie: !laag.features.length ? 'overslaan' : gevonden ? 'bijwerken' : (doel ? 'overslaan' : 'nieuw'),
@@ -2147,6 +2149,25 @@ async function toonImportVoorstel(kandidaten, fouten, { doel = null } = {}) {
   });
   const plan = (v) => (v.actie === 'bijwerken' && v.doelId
     ? IMP.planBijwerken(v.laag.features, v.inst, objecten.filter((o) => o.laagId === v.doelId), metHistorie) : null);
+
+  const typeKeuze = (v) => {
+    const vs = v.inst.velden;
+    const gekozen = IMP.typeGekozen(v.inst);
+    const keuze = v.inst.typeveld || (v.inst.vastType ? IMP.VAST_TYPE : '');
+    const w = v.inst.typeveld ? IMP.kolomWaarden(v.laag.features, v.inst.typeveld) : null;
+    return `<div class="il-type ${gekozen ? '' : 'ontbreekt'}">
+      <label>Objecttype uit kolom
+        <select data-veld="typekeuze" aria-label="Kolom met het objecttype">
+          ${gekozen ? '' : '<option value="" selected>– kies de kolom met het objecttype –</option>'}
+          ${vs.map((x) => optie(x, x, keuze)).join('')}
+          ${optie(IMP.VAST_TYPE, vs.length ? 'Geen kolom: één vast type voor de hele laag' : 'Vast type (dit bestand heeft geen kolommen)', keuze)}
+        </select></label>
+      ${keuze === IMP.VAST_TYPE ? `<select data-veld="vastType" aria-label="Vast objecttype">${optie('', '– kies type –', v.inst.vastType)}${OBJECTTYPEN.map((t) => optie(t, t, v.inst.vastType)).join('')}</select>` : ''}
+      ${w ? `<div class="il-waarden">${w.waarden.map(([x, n]) => `<span>${esc(IMP.typeVan({ t: x === '(leeg)' ? '' : x }, { typeveld: 't' }, OBJECTTYPEN))} <small>${n}</small></span>`).join('')}${w.aantal > w.waarden.length ? `<span>+${w.aantal - w.waarden.length} andere</span>` : ''}
+        ${w.aantal > 30 ? '<small class="il-let-op">Veel verschillende waarden – is dit wel de typekolom?</small>' : ''}</div>` : ''}
+      ${gekozen ? '' : '<small class="il-let-op">Verplicht: geef aan in welke kolom het objecttype staat.</small>'}
+    </div>`;
+  };
 
   const regel = (v) => {
     const p = plan(v);
@@ -2179,9 +2200,9 @@ async function toonImportVoorstel(kandidaten, fouten, { doel = null } = {}) {
     p.behouden.length ? `<span class="label-status">${p.behouden.length} vervallen maar met historie: blijven als los object</span>` : '',
   ].join('')}</div>` : ''}</div>` : ''}
       ${meldingen.length ? `<ul class="il-meldingen">${meldingen.map((m) => `<li>⚠ ${esc(m)}</li>`).join('')}</ul>` : ''}
-      ${v.actie !== 'overslaan' ? `<details class="il-meer"><summary>Instellingen <small>${esc(v.inst.type)} · code: ${esc(v.inst.codeveld || `automatisch (${v.inst.voorvoegsel}-001…)`)}${v.inst.naamveld ? ` · naam: ${esc(v.inst.naamveld)}` : ''}</small></summary>
+      ${v.actie !== 'overslaan' ? typeKeuze(v) : ''}
+      ${v.actie !== 'overslaan' ? `<details class="il-meer"><summary>Instellingen <small>code: ${esc(v.inst.codeveld || `automatisch (${v.inst.voorvoegsel}-001…)`)}${v.inst.naamveld ? ` · naam: ${esc(v.inst.naamveld)}` : ''}</small></summary>
         <div class="velden">
-          <div class="veld"><label>Objecttype</label><select data-veld="type">${OBJECTTYPEN.map((t) => optie(t, t, v.inst.type)).join('')}</select></div>
           <div class="veld"><label>Objectcode uit kolom</label><select data-veld="codeveld">${optie('', '— automatisch nummeren —', v.inst.codeveld)}${vs.map((x) => optie(x, x, v.inst.codeveld)).join('')}</select>
             <small>Alleen kolommen met unieke waarden zijn zinvol; dubbele codes krijgen -2, -3.</small></div>
           <div class="veld"><label>Naam uit kolom</label><select data-veld="naamveld">${optie('', '— laagnaam + nummer —', v.inst.naamveld)}${vs.map((x) => optie(x, x, v.inst.naamveld)).join('')}</select></div>
@@ -2198,6 +2219,7 @@ async function toonImportVoorstel(kandidaten, fouten, { doel = null } = {}) {
   const teken = () => {
     const actief = voorstel.filter((v) => v.actie !== 'overslaan');
     const totaal = actief.reduce((t, v) => t + v.laag.features.length, 0);
+    const zonderType = actief.filter((v) => !IMP.typeGekozen(v.inst)).length;
     el.innerHTML = `
       ${fouten.length ? `<section class="kaart waarschuwing"><h2>Niet gelezen</h2><ul class="importmeldingen">${fouten.map((f) => `<li>${esc(f)}</li>`).join('')}</ul></section>` : ''}
       ${voorstel.length ? `<div class="importindeling">
@@ -2205,7 +2227,8 @@ async function toonImportVoorstel(kandidaten, fouten, { doel = null } = {}) {
           <h2>${voorstel.length} laag/lagen gevonden</h2>
           <div id="importlagen">${voorstel.map(regel).join('')}</div>
           <div class="formvoet"><a class="knop" href="#/kaart">Annuleren</a>
-            <button class="knop primair" id="inladen" ${actief.length ? '' : 'disabled'}>${actief.length ? `${actief.length} laag/lagen inladen (${totaal.toLocaleString('nl-NL')} objecten)` : 'Niets geselecteerd'}</button></div>
+            <button class="knop primair" id="inladen" ${actief.length && !zonderType ? '' : 'disabled'}>${!actief.length ? 'Niets geselecteerd'
+    : zonderType ? `Kies eerst de typekolom (${zonderType} laag/lagen)` : `${actief.length} laag/lagen inladen (${totaal.toLocaleString('nl-NL')} objecten)`}</button></div>
           <p id="voortgang" class="hulptekst"></p>
         </section>
         <section class="kaart importkaart"><div id="voorbeeldkaart"><p class="leeg">Kaart laden…</p></div></section>
@@ -2222,8 +2245,12 @@ async function toonImportVoorstel(kandidaten, fouten, { doel = null } = {}) {
         if (v.actie === 'bijwerken' && !v.doelId) v.doelId = lagen.find((l) => !l.soort || l.soort === v.laag.soort)?.id ?? '';
         if (v.actie === 'bijwerken' && !v.doelId) v.actie = 'nieuw';
       } else if (veld === 'doelId') v.doelId = e.target.value;
-      else v.inst[veld] = e.target.value;
-      if (['actie', 'doelId', 'codeveld'].includes(veld)) teken();
+      else if (veld === 'typekeuze') {
+        const vast = e.target.value === IMP.VAST_TYPE;
+        v.inst.typeveld = vast ? '' : e.target.value;
+        v.inst.vastType = vast ? (v.inst.vastType || v.inst.type || '') : '';
+      } else v.inst[veld] = e.target.value;
+      if (['actie', 'doelId', 'codeveld', 'typekeuze', 'vastType'].includes(veld)) teken();
       else if (veld === 'kleur') tekenVoorbeeld();
     });
     // Naamvelden groeien mee met de tekst, zodat lange laagnamen leesbaar blijven (Enter = geen nieuwe regel).
@@ -2266,6 +2293,7 @@ async function toonImportVoorstel(kandidaten, fouten, { doel = null } = {}) {
     const actief = voorstel.filter((v) => v.actie !== 'overslaan');
     for (const v of actief) {
       if (!String(v.inst.naam).trim()) return melding('Geef elke laag een naam.', 'fout');
+      if (!IMP.typeGekozen(v.inst)) return melding(`Kies bij "${v.inst.naam}" de kolom met het objecttype.`, 'fout');
       if (v.actie === 'bijwerken' && !v.doelId) return melding(`Kies welke laag "${v.inst.naam}" bijwerkt.`, 'fout');
     }
     const doelen = actief.filter((v) => v.actie === 'bijwerken').map((v) => v.doelId);
@@ -2304,10 +2332,11 @@ function nieuwObjectUitFeature(f, i, inst, { pid, laagId, nu, uniek, breedte }) 
   const bronCode = inst.codeveld ? String(f.properties[inst.codeveld] ?? '').trim() : '';
   const code = uniek(bronCode || `${inst.voorvoegsel || 'GV'}-${nummer}`);
   const naam = inst.naamveld ? String(f.properties[inst.naamveld] ?? '').trim() : '';
+  const type = IMP.typeVan(f.properties, inst, OBJECTTYPEN);
   const punt = gis.middelpunt(f.geometry);
   return {
-    id: nieuwId(), projectId: pid, laagId, code, bronCode, type: inst.type,
-    naam: naam || (inst.type === 'Boom' ? `${gisBoomNaam(f.properties) || 'Boom'} ${code}` : `${inst.naam} ${nummer}`),
+    id: nieuwId(), projectId: pid, laagId, code, bronCode, type,
+    naam: naam || (type === 'Boom' ? `${gisBoomNaam(f.properties) || 'Boom'} ${code}` : `${inst.naam} ${nummer}`),
     status: 'In gebruik', geometrie: f.geometry, kenmerken: f.properties,
     lat: punt ? punt[1] : '', lng: punt ? punt[0] : '',
     inspectieInterval: inst.interval ? Number(inst.interval) : '',
@@ -2343,7 +2372,7 @@ async function importeerLaag(laag, inst, bestandsnaam, voortgang) {
     await db.bewaar('lagen', {
       id: laagId, projectId: pid, naam: inst.naam, bron: bestandsnaam, bronLaag: laag.bronLaag ?? laag.naam, kleur: inst.kleur,
       soort: laag.soort ?? gis.soortGeometrie(laag.features[0].geometry), aantal: objecten.length, velden: gis.velden(laag.features),
-      codeveld: inst.codeveld, naamveld: inst.naamveld, aangemaakt: nu, gewijzigd: nu,
+      codeveld: inst.codeveld, naamveld: inst.naamveld, typeveld: inst.typeveld, vastType: inst.vastType, aangemaakt: nu, gewijzigd: nu,
     });
   } catch (fout) {
     await db.verwijderVeel('objecten', opgeslagen).catch(() => {});
@@ -2361,19 +2390,22 @@ async function werkLaagBij(laag, nieuw, inst, bestandsnaam, plan, voortgang) {
     const punt = gis.middelpunt(f.geometry);
     const naam = inst.naamveld ? String(f.properties[inst.naamveld] ?? '').trim() : '';
     return {
-      ...o, geometrie: f.geometry, kenmerken: f.properties, lat: punt ? punt[1] : o.lat, lng: punt ? punt[0] : o.lng,
+      ...o, type: IMP.typeVan(f.properties, inst, OBJECTTYPEN), geometrie: f.geometry, kenmerken: f.properties, lat: punt ? punt[1] : o.lat, lng: punt ? punt[0] : o.lng,
       bronCode: inst.codeveld ? String(f.properties[inst.codeveld] ?? '').trim() : (o.bronCode ?? ''), ...(naam ? { naam } : {}), gewijzigd: nu,
     };
   });
+  // Ongewijzigde objecten krijgen wel het type uit de (eventueel nieuw gekozen) typekolom.
+  const typeAnders = plan.gelijk.filter(({ object: o, feature: f }) => o.type !== IMP.typeVan(f.properties, inst, OBJECTTYPEN))
+    .map(({ object: o, feature: f }) => ({ ...o, type: IMP.typeVan(f.properties, inst, OBJECTTYPEN), gewijzigd: nu }));
   const nieuweObjecten = plan.nieuw.map((f, i) => nieuwObjectUitFeature(f, start + i, inst, ctx));
   voortgang(`${laag.naam}: bijwerken…`);
-  await db.bewaarVeel('objecten', [...bij, ...nieuweObjecten]);
+  await db.bewaarVeel('objecten', [...bij, ...typeAnders, ...nieuweObjecten]);
   await db.bewaarVeel('objecten', plan.behouden.map((o) => ({ ...o, laagId: '', gewijzigd: nu })));
   await db.verwijderVeel('objecten', plan.verwijderen.map((o) => o.id));
   const aantal = plan.gelijk.length + bij.length + nieuweObjecten.length;
   await db.bewaar('lagen', {
     ...laag, bron: bestandsnaam, bronLaag: nieuw.bronLaag ?? nieuw.naam, soort: laag.soort ?? nieuw.soort, aantal,
-    velden: gis.velden(nieuw.features), codeveld: inst.codeveld, naamveld: inst.naamveld, kleur: inst.kleur || laag.kleur, gewijzigd: nu,
+    velden: gis.velden(nieuw.features), codeveld: inst.codeveld, naamveld: inst.naamveld, typeveld: inst.typeveld, vastType: inst.vastType, kleur: inst.kleur || laag.kleur, gewijzigd: nu,
   });
   return [`${bij.length} bijgewerkt`, `${nieuweObjecten.length} nieuw`, plan.verwijderen.length ? `${plan.verwijderen.length} verwijderd` : '', plan.behouden.length ? `${plan.behouden.length} los gemaakt` : ''].filter(Boolean).join(', ');
 }

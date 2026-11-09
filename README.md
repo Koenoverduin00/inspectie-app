@@ -15,8 +15,13 @@ ook **offline in het veld**, synchroniseert tussen pc en telefoon, en is te inst
   werkpakketten, inspecties en taken koppel je daarna aan die objecten. Sleep één of meer bestanden in het vak:
   GeoPackage (.gpkg, **alle lagen tegelijk**), Shapefile (.zip) of GeoJSON. De app doet de rest:
   - een laag met vlakken, lijnen én punten wordt automatisch gesplitst in drie lagen;
-  - coördinatenstelsel (RD New, WGS84, Web Mercator), objecttype, codekolom (een kolom met unieke waarden; anders
-    automatisch nummeren) en naamkolom worden herkend; aanpassen kan onder *Instellingen*, maar is zelden nodig;
+  - **objecttype uit een kolom (verplicht)**: per laag kies je de kolom waarin het type staat (bijv. `beheertype`);
+    elk object krijgt de waarde uit die kolom, met de gevonden waarden en aantallen als controle. Een herkenbare
+    kolom (type, objecttype, beheertype, categorie, soort…) is al voorgeselecteerd. Heeft het bestand geen
+    typekolom, dan kies je bewust *Geen kolom: één vast type* (voorgevuld op basis van de laagnaam). Zolang een
+    laag geen typekolom heeft, kan er niet worden ingeladen. Bij bijwerken wordt de gekozen kolom onthouden;
+  - coördinatenstelsel (RD New, WGS84, Web Mercator), codekolom (een kolom met unieke waarden; anders automatisch
+    nummeren) en naamkolom worden herkend; aanpassen kan onder *Instellingen*, maar is zelden nodig;
   - features zonder geometrie of met ongeldige coördinaten worden overgeslagen en gemeld; ligt de data buiten
     Nederland, dan krijg je een waarschuwing; vooraf zie je alles op een voorbeeldkaart;
   - **een al ingeladen laag wordt herkend** (zelfde bestand, of ≥ 50% dezelfde codes/geometrieën) en standaard

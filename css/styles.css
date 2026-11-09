@@ -609,3 +609,13 @@ body.modus-mobiel .onderbalk { grid-template-columns: repeat(5, 1fr); }
 .il-meer .velden { margin-top: .6rem; }
 table.klein { font-size: .8rem; }
 table.klein td, table.klein th { white-space: nowrap; max-width: 12rem; overflow: hidden; text-overflow: ellipsis; }
+
+/* GIS inladen: verplichte typekolom */
+.il-type { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; margin-top: .6rem; padding: .5rem .6rem; border-radius: 8px; background: var(--achtergrond); border: 1px solid transparent; }
+.il-type.ontbreekt { border-color: #d1452f; background: color-mix(in srgb, #d1452f 7%, transparent); }
+.il-type label { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; font-weight: 600; min-width: 0; }
+.il-type select { min-width: 0; max-width: 100%; font-weight: 400; }
+.il-waarden { display: flex; flex-wrap: wrap; gap: .3rem; width: 100%; }
+.il-waarden span { padding: .1rem .5rem; border-radius: 99px; background: var(--vlak); border: 1px solid var(--rand); font-size: .85rem; overflow-wrap: anywhere; }
+.il-waarden span small { color: var(--tekst-zacht); }
+.il-let-op { color: #a12a1d; width: 100%; }

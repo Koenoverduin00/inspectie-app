@@ -63,3 +63,24 @@ test('al ingeladen laag herkennen en bijwerken zonder koppelingen te verliezen',
   assert.equal(zonder.gelijk.length, 1);
   assert.notEqual(geometrieSleutel(vlak(5, 52).geometry), geometrieSleutel(vlak(5.0000011, 52).geometry));
 });
+
+test('objecttype komt uit een kolom', async () => {
+  const { typeVan, typeGekozen, kolomWaarden, VAST_TYPE } = await import('../js/gisimport.js');
+  const features = Array.from({ length: 20 }, (_, i) => vlak(5 + i / 1000, 52, { vakcode: `V${i}`, beheertype: i % 3 ? 'gazon' : 'Heesters', omschrijving: `Vak nummer ${i}` }));
+  const inst = raadInstellingen({ naam: 'vakken', soort: 'vlak', features });
+  assert.equal(inst.typeveld, 'beheertype', 'herkenbare, categorische kolom wordt voorgeselecteerd');
+  assert.ok(typeGekozen(inst));
+  assert.equal(typeVan({ beheertype: 'groenvak' }, { typeveld: 'beheertype' }, ['Groenvak']), 'Groenvak', 'gelijkgetrokken met bekende typen');
+  assert.equal(typeVan({ beheertype: ' Gazon  noord ' }, { typeveld: 'beheertype' }, ['Groenvak']), 'Gazon noord', 'eigen waarde blijft');
+  assert.equal(typeVan({}, { typeveld: 'beheertype' }), 'Overig');
+  assert.equal(typeVan({}, { typeveld: '', vastType: 'Boom' }), 'Boom');
+  assert.deepEqual(kolomWaarden(features, 'beheertype').waarden, [['gazon', 13], ['Heesters', 7]]);
+
+  const geenHint = raadInstellingen({ naam: 'x', features: [punt(5, 52, { boomsoort: 'Eik' }), punt(5, 52, { boomsoort: 'Linde' })] });
+  assert.equal(geenHint.typeveld, '', 'geen herkenbare kolom: gebruiker moet kiezen');
+  assert.ok(!typeGekozen(geenHint));
+  const zonderKolommen = raadInstellingen({ naam: 'bomen', features: [punt(5, 52)] }, { objecttypen: ['Boom', 'Overig'] });
+  assert.equal(zonderKolommen.vastType, 'Boom', 'zonder kolommen: vast type uit de laagnaam');
+  assert.ok(typeGekozen(zonderKolommen));
+  assert.equal(VAST_TYPE, '__vast__');
+});
