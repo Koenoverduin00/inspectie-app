@@ -11,11 +11,20 @@ ook **offline in het veld**, synchroniseert tussen pc en telefoon, en is te inst
 - **Toegang per project** – *beheerders* (tabel `teamleden` in Supabase) maken projecten aan en zien alles.
   *Projectleden* (e-mailadressen in de ledenlijst van een project) zien alleen hun eigen projecten. Dit wordt in de
   database afgedwongen met Row Level Security, ook voor foto's.
-- **GIS-lagen inladen** (dashboard of *Kaart & GIS*) – GeoJSON, Shapefile (.zip met .shp/.dbf/.prj) en GeoPackage
-  (.gpkg). RD New (EPSG:28992) en Web Mercator worden automatisch omgerekend naar WGS84 (± 0,3 m t.o.v. proj4).
-  **Elk vlak, elke lijn of elk punt wordt een object** met de oorspronkelijke kenmerken; inspecties, werkzaamheden en
-  taken koppel je dus direct aan het GIS-vlak. Kies bij het inladen de kolom voor code en naam, het objecttype en
-  eventueel een inspectie-interval.
+- **GIS inladen – één keer, daarna bijwerken** (*Kaart & GIS* → *GIS inladen*). Het areaal laad je eenmalig in;
+  werkpakketten, inspecties en taken koppel je daarna aan die objecten. Sleep één of meer bestanden in het vak:
+  GeoPackage (.gpkg, **alle lagen tegelijk**), Shapefile (.zip) of GeoJSON. De app doet de rest:
+  - een laag met vlakken, lijnen én punten wordt automatisch gesplitst in drie lagen;
+  - coördinatenstelsel (RD New, WGS84, Web Mercator), objecttype, codekolom (een kolom met unieke waarden; anders
+    automatisch nummeren) en naamkolom worden herkend; aanpassen kan onder *Instellingen*, maar is zelden nodig;
+  - features zonder geometrie of met ongeldige coördinaten worden overgeslagen en gemeld; ligt de data buiten
+    Nederland, dan krijg je een waarschuwing; vooraf zie je alles op een voorbeeldkaart;
+  - **een al ingeladen laag wordt herkend** (zelfde bestand, of ≥ 50% dezelfde codes/geometrieën) en standaard
+    *bijgewerkt* in plaats van dubbel ingeladen: ongewijzigd / bijgewerkt / nieuw / vervallen. Objecten behouden hun
+    id, dus gekoppelde inspecties, werk en werkpakketten blijven intact; vervallen objecten met historie worden
+    nooit verwijderd maar los gemaakt;
+  - een laag wordt pas opgeslagen als al zijn objecten er zijn (geen halve lagen bij een fout).
+  Per laag op de kaart: **↻** = nieuwere versie van het bestand inladen, **🗑** = verwijderen.
 - **Taken** komen uit drie bronnen: zelf geplande taken (met prioriteit, deadline en toewijzing aan een projectlid),
   openstaande maatregelen uit inspecties, en de inspectieplanning (verlopen / nooit / binnenkort).
 - **Logisch nu** (telefoon) – taken gesorteerd op urgentie én afstand tot je huidige locatie; sta je in een vlak, dan
@@ -263,6 +272,7 @@ js/velden.js          eigen formuliervelden: zichtbaarheid, controle en weergave
 js/pakketten.js       werkpakketten en rondes: voortgang, toewijzing en objectfilters
 js/pakketexcel.js     Excel-sjabloon (keuzelijsten, controles, beveiliging) en import met controle
 js/resultatenexcel.js inspectieresultaten naar Excel (resultaten, gebreken, maatregelen, foto's)
+js/gisimport.js       GIS inladen: splitsen per geometrie, instellingen raden, controles, bestaande laag bijwerken
 js/bvc.js             boomveiligheidscontrole volgens protocol RWS, SUF-BVC, RD-coördinaten
 js/ecologie.js        flora- en fauna-vrijgave (veldcheck) volgens Gedragscode Soortenbescherming RWS
 vendor/               shpjs, sql.js, Leaflet en ExcelJS, lokaal meegeleverd zodat import en kaart ook offline werken

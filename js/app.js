@@ -21,6 +21,7 @@ import {
 } from './pakketten.js';
 import * as PX from './pakketexcel.js';
 import * as RX from './resultatenexcel.js';
+import * as IMP from './gisimport.js';
 import { takenLijst, sorteerTaken, objectGeometrie, PRIORITEITEN } from './taken.js';
 
 const app = document.getElementById('app');
@@ -393,7 +394,6 @@ async function dashboard() {
     <div class="paginakop">
       ${kop}
       <div class="knoppen">
-        ${magBeheren() ? '<a class="knop" href="#/gis/importeren">🗺️ GIS-laag inladen</a>' : ''}
         <a class="knop" href="#/taken/nieuw">+ Taak</a>
         <a class="knop" href="#/objecten/nieuw">+ Object</a>
         <a class="knop" href="#/werkzaamheden/nieuw">+ Werkzaamheid</a>
@@ -2076,159 +2076,306 @@ function geometrieInfo(o) {
   return 'Punt';
 }
 
-async function gisImport() {
+// Inladen in één stap: bestand(en) kiezen → de app herkent lagen, soorten, kolommen en eerder
+// ingeladen lagen → controleren op de kaart → één knop. Instellingen zijn optioneel (inklapbaar).
+async function gisImport(_, q = new URLSearchParams()) {
   if (!magBeheren()) {
     app.innerHTML = leegKaart('Alleen beheerders kunnen GIS-lagen inladen.', '<a class="knop" href="#/kaart">Terug</a>');
     return;
   }
-  const project = await actiefProject();
+  const [project, bestaandeLagen] = await Promise.all([actiefProject(), inProject('lagen')]);
+  const doel = q.get('laag') ? bestaandeLagen.find((l) => l.id === q.get('laag')) : null;
   app.innerHTML = `
-    <div class="paginakop"><div><p><a href="#/kaart">← Kaart &amp; GIS</a></p><h1>GIS-laag inladen</h1>
-      <p>In project <strong>${esc(project.naam)}</strong>. Elk vlak, elke lijn of elk punt wordt een object waaraan je
-      inspecties, werkzaamheden en taken koppelt.</p></div></div>
-    <section class="kaart">
-      <h2>1. Bestand kiezen</h2>
-      <label class="knop primair fotoknop">📂 Bestand kiezen<input type="file" id="bestand" accept=".geojson,.json,.zip,.gpkg"></label>
-      <p><small>GeoJSON (.geojson), Shapefile (.zip met .shp, .dbf en .prj) of GeoPackage (.gpkg).
-      Coördinaten in RD New (EPSG:28992), WGS84 of Web Mercator worden automatisch omgerekend.</small></p>
-      <p id="status"></p>
-    </section>
+    <div class="paginakop"><div><p><a href="#/kaart">← Kaart &amp; GIS</a></p>
+      <h1>${doel ? `Laag bijwerken: ${esc(doel.naam)}` : 'GIS inladen'}</h1>
+      <p class="breekbaar">${doel
+    ? 'Kies het nieuwe bestand. Gekoppelde inspecties, werkzaamheden en werkpakketten blijven behouden.'
+    : `Het areaal van <strong>${esc(project.naam)}</strong> laad je één keer in; werkpakketten en taken koppel je daarna aan deze objecten.
+      Een nieuwere versie van hetzelfde bestand wordt herkend en bijgewerkt.`}</p></div></div>
+    <label class="kaart dropzone" id="dropzone">
+      <input type="file" id="bestand" accept=".geojson,.json,.zip,.gpkg" multiple>
+      <span class="dz-icoon">🗺️</span>
+      <strong>Sleep GIS-bestanden hierheen of klik om te kiezen</strong>
+      <small>GeoPackage (.gpkg, alle lagen tegelijk), Shapefile (.zip) of GeoJSON. RD, WGS84 en Web Mercator worden automatisch herkend.</small>
+    </label>
     <div id="stap2"></div>`;
-  const statusEl = app.querySelector('#status');
-  app.querySelector('#bestand').onchange = async (e) => {
-    const bestand = e.target.files?.[0];
-    if (!bestand) return;
-    statusEl.textContent = `${bestand.name} lezen…`;
-    app.querySelector('#stap2').innerHTML = '';
-    try {
-      const lagen = await gis.leesBestand(bestand);
-      statusEl.innerHTML = `✓ <strong>${esc(bestand.name)}</strong> gelezen: ${lagen.length} laag/lagen.`;
-      toonImportInstellingen(lagen, bestand.name);
-    } catch (fout) {
-      console.error(fout);
-      statusEl.innerHTML = `<span class="label-status verlopen" style="white-space:normal">${esc(fout.message)}</span>`;
+  const zone = app.querySelector('#dropzone');
+  const verwerk = async (bestanden) => {
+    if (!bestanden?.length) return;
+    const el = app.querySelector('#stap2');
+    el.innerHTML = `<section class="kaart"><p>⏳ ${bestanden.length === 1 ? esc(bestanden[0].name) : `${bestanden.length} bestanden`} lezen…</p></section>`;
+    const kandidaten = [];
+    const fouten = [];
+    for (const b of bestanden) {
+      try {
+        for (const laag of IMP.splitsOpGeometrie(await gis.leesBestand(b))) kandidaten.push({ ...laag, bestand: b.name });
+      } catch (fout) {
+        console.error(fout);
+        fouten.push(`${b.name}: ${fout.message}`);
+      }
     }
+    toonImportVoorstel(kandidaten, fouten, { doel });
   };
+  app.querySelector('#bestand').onchange = (e) => verwerk([...(e.target.files ?? [])]);
+  zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('erover'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('erover'));
+  zone.addEventListener('drop', (e) => { e.preventDefault(); zone.classList.remove('erover'); verwerk([...(e.dataTransfer?.files ?? [])]); });
 }
 
-function toonImportInstellingen(lagen, bestandsnaam) {
+const ACTIE_TEKST = { nieuw: 'Nieuwe laag', bijwerken: 'Bestaande laag bijwerken', overslaan: 'Niet inladen' };
+
+async function toonImportVoorstel(kandidaten, fouten, { doel = null } = {}) {
   const el = app.querySelector('#stap2');
-  let laag = lagen[0];
-  const teken = () => {
-    const vs = gis.velden(laag.features);
-    const soorten = {};
-    for (const f of laag.features) {
-      const s = gis.soortGeometrie(f.geometry);
-      soorten[s] = (soorten[s] ?? 0) + 1;
-    }
-    const raad = (re) => vs.find((v) => re.test(v)) ?? '';
-    const codeGok = raad(/^(code|id|objectcode|nummer|nr|identificatie|vak_?id|objectnummer|boomnummer|boom_?nr|boom_?id|boomcode|vaknr|vaknummer|vakcode|key|guid)$/i);
-    const naamGok = raad(/^(naam|name|omschrijving|titel|label|straatnaam|straat|openbareruimtenaam)$/i);
-    const typeGok = [
-      [/singel|houtwal|bosplantsoen|^bos|gesloten|struweel|hakhout/i, 'Gesloten beplanting'],
-      [/boom|bomen|tree/i, 'Boom'],
-      [/groen|gras|gazon|heester|beplanting/i, 'Groenvak'],
-      [/weg|verhard|klinker|asfalt|trottoir|stoep/i, 'Verhardingsvak'],
-      [/fiets/i, 'Fietspad'],
-      [/water|sloot|gracht|oever|vijver/i, 'Watergang / oever'],
-      [/brug|viaduct/i, 'Brug (vast)'],
-      [/riool|put/i, 'Riolering'],
-      [/speel/i, 'Speelplek'],
-    ].find(([re]) => re.test(laag.naam))?.[1] ?? 'Overig';
-    const voorvoegsel = laag.naam.replace(/[^A-Za-z]/g, '').slice(0, 2).toUpperCase() || 'GV';
-    el.innerHTML = `
-      <section class="kaart">
-        <h2>2. Controleren</h2>
-        ${lagen.length > 1 ? `<div class="veld" style="max-width:420px;margin-bottom:1rem"><label for="f-laag">Laag in dit bestand</label>
-          <select id="f-laag">${lagen.map((l, i) => optie(i, `${l.naam} (${l.features.length})`, lagen.indexOf(laag))).join('')}</select></div>` : ''}
-        <dl class="gegevens">
-          <dt>Objecten</dt><dd>${laag.features.length.toLocaleString('nl-NL')}</dd>
-          <dt>Geometrie</dt><dd>${Object.entries(soorten).map(([s, n]) => `${n} × ${s}`).join(', ')}</dd>
-          <dt>Coördinaten</dt><dd>${esc(gis.CRS_NAAM[laag.crs])}${laag.crs !== 'wgs84' ? ' → omgerekend naar WGS84' : ''}</dd>
-          <dt>Kenmerken</dt><dd>${vs.length ? vs.map(esc).join(', ') : 'geen'}</dd>
-        </dl>
-        ${laag.features.length > 20000 ? '<p class="label-status binnenkort" style="white-space:normal">Let op: dit is een grote laag. Inladen en synchroniseren kan even duren; overweeg de laag op te splitsen.</p>' : ''}
-        ${vs.length ? `<div class="tabelhouder" style="margin-top:1rem"><table>
-          <thead><tr>${vs.slice(0, 8).map((v) => `<th>${esc(v)}</th>`).join('')}</tr></thead>
-          <tbody>${laag.features.slice(0, 5).map((f) => `<tr>${vs.slice(0, 8).map((v) => `<td>${esc(f.properties[v])}</td>`).join('')}</tr>`).join('')}</tbody>
-        </table></div>` : ''}
-      </section>
-      <form class="kaart" id="importform" novalidate>
-        <h2>3. Instellingen</h2>
-        <div class="velden">
-          <div class="veld"><label for="f-naam" class="vereist">Naam van de laag</label><input id="f-naam" name="naam" required value="${esc(laag.naam)}"></div>
-          <div class="veld"><label for="f-type">Objecttype</label><select id="f-type" name="type">
-            ${OBJECTTYPEN.map((t) => optie(t, t, typeGok)).join('')}</select></div>
-          <div class="veld"><label for="f-code">Objectcode uit kolom</label><select id="f-code" name="codeveld">
-            ${optie('', '— automatisch nummeren —', codeGok)}${vs.map((v) => optie(v, v, codeGok)).join('')}</select></div>
-          <div class="veld"><label for="f-voorvoegsel">Voorvoegsel bij nummeren</label><input id="f-voorvoegsel" name="voorvoegsel" maxlength="10" value="${esc(voorvoegsel)}"></div>
-          <div class="veld"><label for="f-naamveld">Naam uit kolom</label><select id="f-naamveld" name="naamveld">
-            ${optie('', '— laagnaam + nummer —', naamGok)}${vs.map((v) => optie(v, v, naamGok)).join('')}</select></div>
-          <div class="veld"><label for="f-interval">Inspectie-interval (jaren)</label>
-            <input id="f-interval" name="interval" type="number" min="0.5" max="20" step="0.5" placeholder="leeg = geen planning">
-            <small>Vul in als elk object periodiek geïnspecteerd moet worden; er ontstaan dan automatisch taken.</small></div>
-          <div class="veld"><label for="f-kleur">Kleur op de kaart</label><input id="f-kleur" name="kleur" type="color" value="${LAAGKLEUREN[Math.floor(Math.random() * LAAGKLEUREN.length)]}"></div>
-        </div>
-        <div class="formvoet"><a class="knop" href="#/kaart">Annuleren</a><button class="knop primair" type="submit">Laag inladen</button></div>
-        <p id="voortgang"></p>
-      </form>`;
-    el.querySelector('#f-laag')?.addEventListener('change', (e) => { laag = lagen[Number(e.target.value)]; teken(); });
-    el.querySelector('#importform').onsubmit = async (e) => {
-      e.preventDefault();
-      const d = formulierData(e.target);
-      if (!d.naam) return melding('Geef de laag een naam.', 'fout');
-      const knop = e.target.querySelector('button[type=submit]');
-      knop.disabled = true;
-      try {
-        const n = await importeerLaag(laag, d, bestandsnaam, (tekst) => { el.querySelector('#voortgang').textContent = tekst; });
-        melding(`${n} objecten ingeladen`);
-        ga('#/kaart');
-      } catch (fout) {
-        knop.disabled = false;
-        melding(`Inladen mislukt: ${fout.message}`, 'fout');
-      }
+  // Niet verversen door synchronisatie zolang de gebruiker het voorstel bekijkt.
+  formulierGewijzigd = kandidaten.length > 0;
+  const [lagen, objecten, inspecties, werk, taken] = await Promise.all([
+    inProject('lagen'), inProject('objecten'), inProject('inspecties'), inProject('werkzaamheden'), inProject('taken')]);
+  const metHistorie = new Set([...inspecties, ...werk, ...taken].map((r) => r.objectId));
+  // Per laag: controleren, instellingen raden en bestaande laag zoeken.
+  const voorstel = kandidaten.map((k, n) => {
+    const c = IMP.controleerFeatures(k.features);
+    const laag = { ...k, features: c.features };
+    const inst = IMP.raadInstellingen(laag, { objecttypen: OBJECTTYPEN, kleuren: LAAGKLEUREN });
+    inst.kleur = LAAGKLEUREN[(lagen.length + n) % LAAGKLEUREN.length];
+    let gevonden = IMP.vindBestaandeLaag(laag, inst, { lagen, objecten, bestandsnaam: k.bestand });
+    if (doel) gevonden = (!doel.soort || doel.soort === laag.soort) ? { laag: doel, reden: 'gekozen laag', overlap: gevonden?.overlap ?? 0 } : null;
+    if (gevonden) Object.assign(inst, { codeveld: gevonden.laag.codeveld ?? inst.codeveld, naamveld: gevonden.laag.naamveld ?? inst.naamveld, naam: gevonden.laag.naam, kleur: gevonden.laag.kleur ?? inst.kleur, type: objecten.find((o) => o.laagId === gevonden.laag.id)?.type ?? inst.type });
+    return {
+      n, laag, inst, controle: c, gevonden, doelId: gevonden?.laag.id ?? '',
+      actie: !laag.features.length ? 'overslaan' : gevonden ? 'bijwerken' : (doel ? 'overslaan' : 'nieuw'),
     };
+  });
+  const plan = (v) => (v.actie === 'bijwerken' && v.doelId
+    ? IMP.planBijwerken(v.laag.features, v.inst, objecten.filter((o) => o.laagId === v.doelId), metHistorie) : null);
+
+  const regel = (v) => {
+    const p = plan(v);
+    const crs = v.laag.crs !== 'wgs84' ? `${gis.CRS_NAAM[v.laag.crs]} → omgerekend` : gis.CRS_NAAM[v.laag.crs];
+    const meldingen = [
+      v.laag.overgeslagen ? `${v.laag.overgeslagen} zonder geometrie overgeslagen` : '',
+      v.controle.ongeldig ? `${v.controle.ongeldig} met ongeldige coördinaten overgeslagen` : '',
+      v.controle.buitenNl ? `${v.controle.buitenNl} liggen buiten Nederland – klopt het coördinatenstelsel?` : '',
+      v.laag.features.length > 20000 ? 'grote laag: inladen en synchroniseren duurt even' : '',
+    ].filter(Boolean);
+    const vs = v.inst.velden;
+    return `<article class="importlaag ${v.actie === 'overslaan' ? 'uit' : ''}" data-n="${v.n}">
+      <div class="il-kop">
+        <span class="kleurvak groot" style="background:${esc(v.inst.kleur)}"></span>
+        <div class="il-titel">
+          <textarea class="il-naam" data-veld="naam" rows="1" maxlength="80" aria-label="Naam van de laag" ${v.actie === 'bijwerken' ? 'readonly' : ''}>${esc(v.inst.naam)}</textarea>
+          <small class="breekbaar">${v.laag.features.length.toLocaleString('nl-NL')} ${IMP.SOORT_MEERVOUD[v.laag.soort] ?? 'objecten'} · ${esc(v.laag.bestand)}${v.laag.bronLaag && v.laag.bronLaag !== v.laag.naam ? ` › ${esc(v.laag.bronLaag)}` : ''} · ${esc(crs)}</small>
+        </div>
+        <select data-veld="actie" aria-label="Wat doen met deze laag">
+          ${optie('nieuw', ACTIE_TEKST.nieuw, v.actie)}${lagen.length ? optie('bijwerken', ACTIE_TEKST.bijwerken, v.actie) : ''}${optie('overslaan', ACTIE_TEKST.overslaan, v.actie)}</select>
+      </div>
+      ${v.actie === 'bijwerken' ? `<div class="il-bijwerken">
+        <label>Laag <select data-veld="doelId">${lagen.filter((l) => !l.soort || l.soort === v.laag.soort).map((l) => optie(l.id, l.naam, v.doelId)).join('')}</select></label>
+        ${v.gevonden && v.gevonden.laag.id === v.doelId ? `<small>herkend: ${esc(v.gevonden.reden)}</small>` : ''}
+        ${p ? `<div class="il-plan">${[
+    p.gelijk.length ? `<span class="label-status afgerond">${p.gelijk.length} ongewijzigd</span>` : '',
+    p.bijwerken.length ? `<span class="label-status binnenkort">${p.bijwerken.length} bijgewerkt</span>` : '',
+    p.nieuw.length ? `<span class="label-status gepland">+${p.nieuw.length} nieuw</span>` : '',
+    p.verwijderen.length ? `<span class="label-status verlopen">−${p.verwijderen.length} vervallen</span>` : '',
+    p.behouden.length ? `<span class="label-status">${p.behouden.length} vervallen maar met historie: blijven als los object</span>` : '',
+  ].join('')}</div>` : ''}</div>` : ''}
+      ${meldingen.length ? `<ul class="il-meldingen">${meldingen.map((m) => `<li>⚠ ${esc(m)}</li>`).join('')}</ul>` : ''}
+      ${v.actie !== 'overslaan' ? `<details class="il-meer"><summary>Instellingen <small>${esc(v.inst.type)} · code: ${esc(v.inst.codeveld || `automatisch (${v.inst.voorvoegsel}-001…)`)}${v.inst.naamveld ? ` · naam: ${esc(v.inst.naamveld)}` : ''}</small></summary>
+        <div class="velden">
+          <div class="veld"><label>Objecttype</label><select data-veld="type">${OBJECTTYPEN.map((t) => optie(t, t, v.inst.type)).join('')}</select></div>
+          <div class="veld"><label>Objectcode uit kolom</label><select data-veld="codeveld">${optie('', '— automatisch nummeren —', v.inst.codeveld)}${vs.map((x) => optie(x, x, v.inst.codeveld)).join('')}</select>
+            <small>Alleen kolommen met unieke waarden zijn zinvol; dubbele codes krijgen -2, -3.</small></div>
+          <div class="veld"><label>Naam uit kolom</label><select data-veld="naamveld">${optie('', '— laagnaam + nummer —', v.inst.naamveld)}${vs.map((x) => optie(x, x, v.inst.naamveld)).join('')}</select></div>
+          <div class="veld"><label>Voorvoegsel bij nummeren</label><input data-veld="voorvoegsel" maxlength="10" value="${esc(v.inst.voorvoegsel)}"></div>
+          <div class="veld"><label>Inspectie-interval (jaren)</label><input data-veld="interval" type="number" min="0.5" max="20" step="0.5" value="${esc(v.inst.interval)}" placeholder="leeg = geen planning"></div>
+          <div class="veld"><label>Kleur</label><input data-veld="kleur" type="color" value="${esc(v.inst.kleur)}"></div>
+        </div>
+        ${vs.length ? `<div class="tabelhouder"><table class="klein"><thead><tr>${vs.slice(0, 8).map((x) => `<th>${esc(x)}</th>`).join('')}</tr></thead>
+          <tbody>${v.laag.features.slice(0, 3).map((f) => `<tr>${vs.slice(0, 8).map((x) => `<td>${esc(f.properties[x])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : ''}
+      </details>` : ''}
+    </article>`;
+  };
+
+  const teken = () => {
+    const actief = voorstel.filter((v) => v.actie !== 'overslaan');
+    const totaal = actief.reduce((t, v) => t + v.laag.features.length, 0);
+    el.innerHTML = `
+      ${fouten.length ? `<section class="kaart waarschuwing"><h2>Niet gelezen</h2><ul class="importmeldingen">${fouten.map((f) => `<li>${esc(f)}</li>`).join('')}</ul></section>` : ''}
+      ${voorstel.length ? `<div class="importindeling">
+        <section class="kaart">
+          <h2>${voorstel.length} laag/lagen gevonden</h2>
+          <div id="importlagen">${voorstel.map(regel).join('')}</div>
+          <div class="formvoet"><a class="knop" href="#/kaart">Annuleren</a>
+            <button class="knop primair" id="inladen" ${actief.length ? '' : 'disabled'}>${actief.length ? `${actief.length} laag/lagen inladen (${totaal.toLocaleString('nl-NL')} objecten)` : 'Niets geselecteerd'}</button></div>
+          <p id="voortgang" class="hulptekst"></p>
+        </section>
+        <section class="kaart importkaart"><div id="voorbeeldkaart"><p class="leeg">Kaart laden…</p></div></section>
+      </div>` : ''}`;
+    tekenVoorbeeld();
+    const lijst = el.querySelector('#importlagen');
+    lijst?.addEventListener('change', (e) => {
+      const kaart = e.target.closest('[data-n]');
+      const veld = e.target.dataset.veld;
+      if (!kaart || !veld) return;
+      const v = voorstel[Number(kaart.dataset.n)];
+      if (veld === 'actie') {
+        v.actie = e.target.value;
+        if (v.actie === 'bijwerken' && !v.doelId) v.doelId = lagen.find((l) => !l.soort || l.soort === v.laag.soort)?.id ?? '';
+        if (v.actie === 'bijwerken' && !v.doelId) v.actie = 'nieuw';
+      } else if (veld === 'doelId') v.doelId = e.target.value;
+      else v.inst[veld] = e.target.value;
+      if (['actie', 'doelId', 'codeveld'].includes(veld)) teken();
+      else if (veld === 'kleur') tekenVoorbeeld();
+    });
+    // Naamvelden groeien mee met de tekst, zodat lange laagnamen leesbaar blijven (Enter = geen nieuwe regel).
+    const pasAan = (t) => { t.style.height = 'auto'; t.style.height = `${t.scrollHeight}px`; };
+    lijst?.querySelectorAll('textarea.il-naam').forEach(pasAan);
+    lijst?.addEventListener('keydown', (e) => { if (e.target.matches('textarea.il-naam') && e.key === 'Enter') e.preventDefault(); });
+    lijst?.addEventListener('input', (e) => {
+      const kaart = e.target.closest('[data-n]');
+      if (kaart && e.target.dataset.veld === 'naam') {
+        e.target.value = e.target.value.replace(/\s*\n\s*/g, ' ');
+        voorstel[Number(kaart.dataset.n)].inst.naam = e.target.value;
+        pasAan(e.target);
+      }
+    });
+    el.querySelector('#inladen')?.addEventListener('click', inladen);
+  };
+
+  let voorbeeld = null;
+  const tekenVoorbeeld = async () => {
+    const vak = el.querySelector('#voorbeeldkaart');
+    if (!vak) return;
+    const L = await laadLeaflet().catch(() => null);
+    if (!L || !vak.isConnected) return;
+    voorbeeld?.remove();
+    vak.innerHTML = '';
+    voorbeeld = L.map(vak, { preferCanvas: true, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
+    voegAchtergrondToe(L, voorbeeld);
+    const lagenOpKaart = voorstel.filter((v) => v.actie !== 'overslaan' && v.laag.features.length).map((v) => L.geoJSON(
+      { type: 'FeatureCollection', features: v.laag.features.slice(0, 20000).map((f) => ({ type: 'Feature', geometry: f.geometry, properties: {} })) },
+      { style: { color: v.inst.kleur, weight: 2, fillColor: v.inst.kleur, fillOpacity: 0.35 }, pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 5, color: '#fff', weight: 1, fillColor: v.inst.kleur, fillOpacity: 1 }) },
+    ));
+    const grenzen = lagenOpKaart.map((l) => l.getBounds()).filter((b) => b.isValid());
+    if (grenzen.length) voorbeeld.fitBounds(grenzen.reduce((t, b) => t.extend(b), L.latLngBounds(grenzen[0].getSouthWest(), grenzen[0].getNorthEast())), { padding: [20, 20], maxZoom: 18, animate: false });
+    else voorbeeld.setView([52.1, 5.1], 7, { animate: false });
+    lagenOpKaart.forEach((l) => l.addTo(voorbeeld));
+  };
+
+  const inladen = async (e) => {
+    const knop = e.target;
+    const actief = voorstel.filter((v) => v.actie !== 'overslaan');
+    for (const v of actief) {
+      if (!String(v.inst.naam).trim()) return melding('Geef elke laag een naam.', 'fout');
+      if (v.actie === 'bijwerken' && !v.doelId) return melding(`Kies welke laag "${v.inst.naam}" bijwerkt.`, 'fout');
+    }
+    const doelen = actief.filter((v) => v.actie === 'bijwerken').map((v) => v.doelId);
+    if (new Set(doelen).size !== doelen.length) return melding('Twee lagen uit het bestand werken dezelfde laag bij. Kies voor één ervan "Nieuwe laag".', 'fout');
+    const vervalt = actief.reduce((t, v) => t + (plan(v)?.verwijderen.length ?? 0), 0);
+    if (vervalt && !confirm(`${vervalt} objecten staan niet meer in het nieuwe bestand en worden verwijderd (ze hebben geen inspecties, werk of taken). Doorgaan?`)) return;
+    knop.disabled = true;
+    const voortgang = (t) => { const p = el.querySelector('#voortgang'); if (p) p.textContent = t; };
+    const samenvatting = [];
+    try {
+      for (const v of actief) {
+        const inst = { ...v.inst, naam: String(v.inst.naam).trim() };
+        if (v.actie === 'nieuw') {
+          const n = await importeerLaag({ ...v.laag, naam: inst.naam }, inst, v.laag.bestand, voortgang);
+          samenvatting.push(`${inst.naam}: ${n} objecten`);
+        } else {
+          const r = await werkLaagBij(lagen.find((l) => l.id === v.doelId), v.laag, inst, v.laag.bestand, plan(v), voortgang);
+          samenvatting.push(`${inst.naam}: ${r}`);
+        }
+      }
+      formulierGewijzigd = false;
+      melding(`Ingeladen – ${samenvatting.join(' · ')}`);
+      ga('#/kaart');
+    } catch (fout) {
+      console.error(fout);
+      knop.disabled = false;
+      melding(`Inladen mislukt: ${fout.message}. Wat al klaar was staat in de lijst; probeer het opnieuw.`, 'fout');
+      voortgang('');
+    }
   };
   teken();
 }
 
-async function importeerLaag(laag, instellingen, bestandsnaam, voortgang) {
-  const pid = projectId();
-  const nu = new Date().toISOString();
+function nieuwObjectUitFeature(f, i, inst, { pid, laagId, nu, uniek, breedte }) {
+  const nummer = String(i + 1).padStart(Math.max(3, breedte), '0');
+  const bronCode = inst.codeveld ? String(f.properties[inst.codeveld] ?? '').trim() : '';
+  const code = uniek(bronCode || `${inst.voorvoegsel || 'GV'}-${nummer}`);
+  const naam = inst.naamveld ? String(f.properties[inst.naamveld] ?? '').trim() : '';
+  const punt = gis.middelpunt(f.geometry);
+  return {
+    id: nieuwId(), projectId: pid, laagId, code, bronCode, type: inst.type,
+    naam: naam || (inst.type === 'Boom' ? `${gisBoomNaam(f.properties) || 'Boom'} ${code}` : `${inst.naam} ${nummer}`),
+    status: 'In gebruik', geometrie: f.geometry, kenmerken: f.properties,
+    lat: punt ? punt[1] : '', lng: punt ? punt[0] : '',
+    inspectieInterval: inst.interval ? Number(inst.interval) : '',
+    aangemaakt: nu, gewijzigd: nu,
+  };
+}
+
+async function codeGenerator() {
   const bestaandeCodes = new Set((await inProject('objecten')).map((o) => String(o.code).toLowerCase()));
-  const laagId = nieuwId();
-  const uniek = (code) => {
+  return (code) => {
     let c = code;
     for (let n = 2; bestaandeCodes.has(c.toLowerCase()); n++) c = `${code}-${n}`;
     bestaandeCodes.add(c.toLowerCase());
     return c;
   };
-  const breedte = String(laag.features.length).length;
-  const objecten = laag.features.map((f, i) => {
-    const nummer = String(i + 1).padStart(Math.max(3, breedte), '0');
-    const ruw = instellingen.codeveld ? String(f.properties[instellingen.codeveld] ?? '').trim() : '';
-    const code = uniek(ruw || `${instellingen.voorvoegsel || 'GV'}-${nummer}`);
-    const naam = instellingen.naamveld ? String(f.properties[instellingen.naamveld] ?? '').trim() : '';
-    const punt = gis.middelpunt(f.geometry);
-    return {
-      id: nieuwId(), projectId: pid, laagId, code, type: instellingen.type,
-      naam: naam || (instellingen.type === 'Boom' ? `${gisBoomNaam(f.properties) || 'Boom'} ${code}` : `${instellingen.naam} ${nummer}`),
-      status: 'In gebruik', geometrie: f.geometry, kenmerken: f.properties,
-      lat: punt ? punt[1] : '', lng: punt ? punt[0] : '',
-      inspectieInterval: instellingen.interval ? Number(instellingen.interval) : '',
-      aangemaakt: nu, gewijzigd: nu,
-    };
-  });
-  await db.bewaar('lagen', {
-    id: laagId, projectId: pid, naam: instellingen.naam, bron: bestandsnaam, kleur: instellingen.kleur,
-    soort: gis.soortGeometrie(laag.features[0].geometry), aantal: objecten.length, velden: gis.velden(laag.features),
-    aangemaakt: nu, gewijzigd: nu,
-  });
-  for (let i = 0; i < objecten.length; i += 500) {
-    voortgang(`Opslaan… ${Math.min(i + 500, objecten.length)} van ${objecten.length}`);
-    await db.bewaarVeel('objecten', objecten.slice(i, i + 500));
+}
+
+async function importeerLaag(laag, inst, bestandsnaam, voortgang) {
+  const pid = projectId();
+  const nu = new Date().toISOString();
+  const laagId = nieuwId();
+  const ctx = { pid, laagId, nu, uniek: await codeGenerator(), breedte: String(laag.features.length).length };
+  const objecten = laag.features.map((f, i) => nieuwObjectUitFeature(f, i, inst, ctx));
+  const opgeslagen = [];
+  try {
+    for (let i = 0; i < objecten.length; i += 500) {
+      voortgang(`${inst.naam}: opslaan… ${Math.min(i + 500, objecten.length)} van ${objecten.length}`);
+      const deel = objecten.slice(i, i + 500);
+      await db.bewaarVeel('objecten', deel);
+      opgeslagen.push(...deel.map((o) => o.id));
+    }
+    // De laag pas opslaan als alle objecten er zijn: nooit een halve laag.
+    await db.bewaar('lagen', {
+      id: laagId, projectId: pid, naam: inst.naam, bron: bestandsnaam, bronLaag: laag.bronLaag ?? laag.naam, kleur: inst.kleur,
+      soort: laag.soort ?? gis.soortGeometrie(laag.features[0].geometry), aantal: objecten.length, velden: gis.velden(laag.features),
+      codeveld: inst.codeveld, naamveld: inst.naamveld, aangemaakt: nu, gewijzigd: nu,
+    });
+  } catch (fout) {
+    await db.verwijderVeel('objecten', opgeslagen).catch(() => {});
+    throw fout;
   }
   return objecten.length;
+}
+
+/** Werkt een bestaande laag bij met een nieuwere versie van het bestand. Koppelingen blijven intact. */
+async function werkLaagBij(laag, nieuw, inst, bestandsnaam, plan, voortgang) {
+  const nu = new Date().toISOString();
+  const ctx = { pid: projectId(), laagId: laag.id, nu, uniek: await codeGenerator(), breedte: String(nieuw.features.length).length };
+  const start = (await inProject('objecten')).filter((o) => o.laagId === laag.id).length;
+  const bij = plan.bijwerken.map(({ object: o, feature: f }) => {
+    const punt = gis.middelpunt(f.geometry);
+    const naam = inst.naamveld ? String(f.properties[inst.naamveld] ?? '').trim() : '';
+    return {
+      ...o, geometrie: f.geometry, kenmerken: f.properties, lat: punt ? punt[1] : o.lat, lng: punt ? punt[0] : o.lng,
+      bronCode: inst.codeveld ? String(f.properties[inst.codeveld] ?? '').trim() : (o.bronCode ?? ''), ...(naam ? { naam } : {}), gewijzigd: nu,
+    };
+  });
+  const nieuweObjecten = plan.nieuw.map((f, i) => nieuwObjectUitFeature(f, start + i, inst, ctx));
+  voortgang(`${laag.naam}: bijwerken…`);
+  await db.bewaarVeel('objecten', [...bij, ...nieuweObjecten]);
+  await db.bewaarVeel('objecten', plan.behouden.map((o) => ({ ...o, laagId: '', gewijzigd: nu })));
+  await db.verwijderVeel('objecten', plan.verwijderen.map((o) => o.id));
+  const aantal = plan.gelijk.length + bij.length + nieuweObjecten.length;
+  await db.bewaar('lagen', {
+    ...laag, bron: bestandsnaam, bronLaag: nieuw.bronLaag ?? nieuw.naam, soort: laag.soort ?? nieuw.soort, aantal,
+    velden: gis.velden(nieuw.features), codeveld: inst.codeveld, naamveld: inst.naamveld, kleur: inst.kleur || laag.kleur, gewijzigd: nu,
+  });
+  return [`${bij.length} bijgewerkt`, `${nieuweObjecten.length} nieuw`, plan.verwijderen.length ? `${plan.verwijderen.length} verwijderd` : '', plan.behouden.length ? `${plan.behouden.length} los gemaakt` : ''].filter(Boolean).join(', ');
 }
 
 async function verwijderLaag(laag) {
@@ -2363,7 +2510,7 @@ async function kaart() {
   app.innerHTML = `
     <div class="paginakop">
       <div><h1>Kaart &amp; GIS</h1><p>Areaal: ${matenTekst(totaal, opKaart.length)}${opKaart.length < objecten.length ? ` (${objecten.length - opKaart.length} objecten zonder geometrie)` : ''}.</p></div>
-      ${magBeheren() ? '<a class="knop primair" href="#/gis/importeren">🗺️ GIS-laag inladen</a>' : ''}
+      ${magBeheren() ? `<a class="knop ${lagen.length ? '' : 'primair'}" href="#/gis/importeren">🗺️ GIS inladen</a>` : ''}
     </div>
     <div class="kaartindeling">
       <div id="kaart" class="kaart"><p class="leeg">Kaart laden…</p></div>
@@ -2378,8 +2525,10 @@ async function kaart() {
           <div class="laagregel">
             <label><input type="checkbox" data-laag="${esc(g.id)}" checked>
               <span class="kleurvak" style="background:${esc(g.kleur)}"></span>
-              <span><strong>${esc(g.naam)}</strong><small>${matenTekst(areaalMaten(g.objecten), g.objecten.length)}${g.laag ? ` · ${esc(g.laag.bron)}` : ''}</small></span></label>
-            ${g.laag && magBeheren() ? `<button class="knop klein gevaar" data-laag-weg="${esc(g.id)}" aria-label="Laag verwijderen">🗑</button>` : ''}
+              <span class="laagtekst"><strong title="${esc(g.naam)}">${esc(g.naam)}</strong><small>${matenTekst(areaalMaten(g.objecten), g.objecten.length)}</small>
+                ${g.laag ? `<small title="${esc(g.laag.bron)}">📄 ${esc(g.laag.bron)}${g.laag.gewijzigd ? ` · ${datumNL(String(g.laag.gewijzigd).slice(0, 10))}` : ''}</small>` : ''}</span></label>
+            ${g.laag && magBeheren() ? `<div class="laagknoppen"><a class="knop klein" href="#/gis/importeren?laag=${esc(g.id)}" title="Nieuwere versie van het bestand inladen; koppelingen blijven">↻</a>
+              <button class="knop klein gevaar" data-laag-weg="${esc(g.id)}" aria-label="Laag verwijderen" title="Laag verwijderen">🗑</button></div>` : ''}
           </div>`).join('') : '<p class="leeg">Nog geen lagen. Laad een GIS-bestand in.</p>'}
       </aside>
     </div>`;
@@ -3719,6 +3868,7 @@ async function leesPakketExcel(bestand) {
     ...ctx, bestaand: ctx.pakketten, gedaan, verwijderOntbrekend: verwijder, projectId: projectId(), nieuwId,
   });
 
+  formulierGewijzigd = true;
   const teken = () => {
     const r = bereken();
     const regel = (m) => `<li><strong>${esc(m.blad)}${m.rij ? `, rij ${m.rij}` : ''}:</strong> ${esc(m.tekst)}</li>`;
@@ -3746,7 +3896,7 @@ async function leesPakketExcel(bestand) {
         </div>
       </section>`;
     // De voorvertoning staat op hetzelfde adres als de lijst: terug = opnieuw tekenen.
-    app.querySelectorAll('[data-xls-terug]').forEach((x) => { x.onclick = (e) => { e.preventDefault(); ga('#/werkpakketten'); }; });
+    app.querySelectorAll('[data-xls-terug]').forEach((x) => { x.onclick = (e) => { e.preventDefault(); formulierGewijzigd = false; ga('#/werkpakketten'); }; });
     app.querySelector('#xls-verwijder').onchange = (e) => { verwijder = e.target.checked; teken(); };
     app.querySelector('#xls-opslaan').onclick = async (e) => {
       e.target.disabled = true;
@@ -3757,6 +3907,7 @@ async function leesPakketExcel(bestand) {
           ...p.record, projectId: p.record.projectId ?? pid, status: pakketStatus(p.record), aangemaakt: p.record.aangemaakt ?? nu, gewijzigd: nu,
         });
       }
+      formulierGewijzigd = false;
       melding(`${r.pakketten.length} werkpakket${r.pakketten.length === 1 ? '' : 'ten'} opgeslagen`);
       ga('#/werkpakketten');
       router();

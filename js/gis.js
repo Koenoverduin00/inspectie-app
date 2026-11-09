@@ -262,6 +262,7 @@ function maakLaag(naam, features, crsTekst = '') {
     naam,
     crs,
     features: bruikbaar.map((f) => ({ geometry: naarWgs84(f.geometry, crs), properties: f.properties ?? {} })),
+    overgeslagen: features.length - bruikbaar.length,
   };
 }
 

@@ -559,3 +559,53 @@ body.modus-mobiel .onderbalk { grid-template-columns: repeat(5, 1fr); }
   .galerij-raster { grid-template-columns: repeat(4, 1fr); }
   .galerij img:hover { transform: none; }
 }
+
+/* Kaart & GIS: lange namen netjes afbreken */
+.kaartindeling { grid-template-columns: minmax(0, 1fr) minmax(260px, 320px); }
+.lagenpaneel { min-width: 0; overflow: hidden; }
+.lagenpaneel select { width: 100%; max-width: 100%; }
+.laagregel { align-items: flex-start; }
+.laagtekst { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.laagtekst strong { overflow-wrap: anywhere; line-height: 1.25; }
+.laagtekst small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.laagregel .kleurvak { margin-top: .2rem; flex: none; }
+.laagknoppen { display: flex; gap: .25rem; flex: none; }
+.legenda span { overflow-wrap: anywhere; }
+.popuptabel { table-layout: fixed; width: 100%; }
+.popuptabel th { width: 40%; }
+.popuptabel th, .popuptabel td { overflow-wrap: anywhere; }
+.leaflet-popup-content { overflow-wrap: anywhere; }
+.breekbaar { overflow-wrap: anywhere; }
+
+/* GIS inladen */
+.dropzone { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .35rem; text-align: center;
+  padding: 2rem 1rem; border: 2px dashed var(--rand); cursor: pointer; transition: border-color .15s, background .15s; position: relative; }
+.dropzone:hover, .dropzone.erover { border-color: var(--primair); background: var(--primair-licht); }
+.dropzone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.dropzone .dz-icoon { font-size: 2rem; }
+.dropzone small { color: var(--tekst-zacht); max-width: 46rem; }
+.importindeling { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 1rem; align-items: start; }
+.importkaart { position: sticky; top: 1rem; padding: .5rem; }
+#voorbeeldkaart { height: 480px; border-radius: 10px; overflow: hidden; background: #fff; }
+@media (max-width: 1000px) { .importindeling { grid-template-columns: 1fr; } .importkaart { position: static; } #voorbeeldkaart { height: 320px; } }
+.importlaag { border: 1px solid var(--rand); border-radius: var(--radius); padding: .75rem; margin-bottom: .75rem; background: var(--vlak); }
+.importlaag.uit { opacity: .55; }
+.il-kop { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.il-titel { flex: 1 1 18rem; min-width: 0; display: flex; flex-direction: column; gap: .15rem; }
+.il-naam { font-weight: 600; width: 100%; resize: none; overflow: hidden; min-height: 0; line-height: 1.3; padding: .35rem .5rem; }
+.il-naam[readonly] { border-color: transparent; background: transparent; padding-left: 0; }
+.il-titel small { color: var(--tekst-zacht); }
+.il-kop select { flex: 0 1 15rem; min-width: 0; }
+.kleurvak.groot { width: 18px; height: 18px; border-radius: 5px; flex: none; }
+.il-bijwerken { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .75rem; margin-top: .6rem; padding: .5rem .6rem; border-radius: 8px; background: var(--achtergrond); }
+.il-bijwerken label { display: flex; align-items: center; gap: .4rem; min-width: 0; }
+.il-bijwerken select { min-width: 0; max-width: 18rem; }
+.il-bijwerken small { color: var(--tekst-zacht); }
+.il-plan { display: flex; flex-wrap: wrap; gap: .3rem; width: 100%; }
+.il-meldingen { margin: .5rem 0 0; padding-left: 1.1rem; color: #8a5a00; font-size: .9rem; }
+.il-meer { margin-top: .6rem; }
+.il-meer summary { cursor: pointer; color: var(--primair); }
+.il-meer summary small { color: var(--tekst-zacht); margin-left: .35rem; }
+.il-meer .velden { margin-top: .6rem; }
+table.klein { font-size: .8rem; }
+table.klein td, table.klein th { white-space: nowrap; max-width: 12rem; overflow: hidden; text-overflow: ellipsis; }
