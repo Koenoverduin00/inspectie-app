@@ -117,6 +117,16 @@ let formulierGewijzigd = false;
 
 // Pagina's worden na elkaar opgebouwd, zodat een trage pagina nooit een nieuwere overschrijft.
 let renderKetting = Promise.resolve();
+/** Laadt de nieuwste versie: oude caches weg, service worker bijwerken, pagina opnieuw ophalen. */
+async function vernieuwApp() {
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration?.();
+    await reg?.update?.();
+    for (const k of (await caches?.keys?.()) ?? []) await caches.delete(k);
+  } catch { /* geen service worker of cache: gewoon herladen */ }
+  location.reload();
+}
+
 function router() {
   renderKetting = renderKetting.then(toonRoute, toonRoute);
   return renderKetting;
@@ -141,7 +151,11 @@ async function toonRoute() {
   });
   window.scrollTo(0, 0);
   if (!route) {
-    app.innerHTML = '<div class="kaart leeg"><h1>Pagina niet gevonden</h1><a href="#/">Naar het dashboard</a></div>';
+    // Meestal: de pagina komt uit een nieuwere versie van de app die nog niet volledig geladen is.
+    app.innerHTML = `<div class="kaart leeg"><h1>Pagina niet gevonden</h1>
+      <p>Mogelijk is er net een nieuwe versie van de app verschenen. Vernieuw de app om die te laden.</p>
+      <div class="knoppen" style="justify-content:center"><button class="knop primair" id="vernieuw">↻ App vernieuwen</button><a class="knop" href="#/">Naar het dashboard</a></div></div>`;
+    app.querySelector('#vernieuw').onclick = vernieuwApp;
     return;
   }
   const [re, , handler] = route;
