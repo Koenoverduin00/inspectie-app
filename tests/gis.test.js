@@ -122,7 +122,7 @@ test('taken: samenstellen en logisch sorteren', () => {
     { id: 't3', objectId: 'c', soort: 'werk', prioriteit: 'laag', status: 'open', toegewezenAan: 'ander@x.nl' },
   ];
   const planning = new Map([['a', { planning: 'verlopen' }], ['c', { planning: 'nooit' }], ['b', { planning: 'gepland' }]]);
-  const lijst = takenLijst({ objecten, inspecties, taken, planning, vandaag: '2026-01-01', ik: 'mij@x.nl' });
+  const lijst = takenLijst({ objecten, inspecties, taken, planning, vandaag: '2026-01-01', ik: 'mij@x.nl', alleBevindingen: true });
   assert.deepEqual(lijst.map((t) => t.id).sort(), ['maatregel:i1:g1', 'planning:c', 'taak:t1']);
 
   // Zonder locatie: urgentste eerst.
@@ -131,4 +131,22 @@ test('taken: samenstellen en logisch sorteren', () => {
   const hier = sorteerTaken(lijst, [5.005, 52.005]);
   assert.equal(hier[0].id, 'taak:t1');
   assert.equal(hier[0].afstand, 0);
+});
+
+test('bevindingen worden standaard geen taak; doorgezette taak verdwijnt als de maatregel is uitgevoerd', () => {
+  const objecten = [{ id: 'o', code: 'KW-1' }];
+  const insp = { id: 'i', objectId: 'o', status: 'afgerond', datum: '2026-01-01', gebreken: [
+    { id: 'g1', bouwdeel: 'Dek', gebrek: 'Rot', maatregel: 'Vervangen', urgentie: 'direct', maatregelStatus: 'open' },
+    { id: 'g2', bouwdeel: 'Leuning', gebrek: 'Roest', maatregel: 'Schilderen', urgentie: '1jaar', maatregelStatus: 'uitgevoerd' },
+  ] };
+  const basis = { objecten, inspecties: [insp], planning: new Map(), vandaag: '2026-02-01' };
+  assert.equal(takenLijst({ ...basis, taken: [] }).length, 0, 'standaard: geen taken uit bevindingen');
+  assert.equal(takenLijst({ ...basis, taken: [], alleBevindingen: true }).filter((t) => t.bron === 'maatregel').length, 1, 'instelling aan: open bevinding wordt taak');
+  const doorgezet = [
+    { id: 't1', objectId: 'o', soort: 'werk', titel: 'Vervangen', prioriteit: 'hoog', status: 'open', maatregel: 'i:g1' },
+    { id: 't2', objectId: 'o', soort: 'werk', titel: 'Schilderen', prioriteit: 'normaal', status: 'open', maatregel: 'i:g2' },
+  ];
+  const l = takenLijst({ ...basis, taken: doorgezet });
+  assert.deepEqual(l.map((t) => t.taakId), ['t1'], 'taak van een uitgevoerde maatregel telt niet meer');
+  assert.equal(takenLijst({ ...basis, taken: doorgezet, alleBevindingen: true }).length, 1, 'geen dubbele taak naast de doorgezette');
 });

@@ -33,15 +33,21 @@ export function objectGeometrie(o) {
  * @param {string} p.vandaag        YYYY-MM-DD
  * @param {string} [p.ik]           e-mailadres van de ingelogde gebruiker (filtert toegewezen taken)
  * @param {{ pakket: object, open: string[] }[]} [p.pakketten]  actieve werkpakketten met hun open objecten
+ * @param {boolean} [p.alleBevindingen]  elke bevinding met maatregel/urgentie is automatisch een taak (projectinstelling, standaard uit);
+ *   anders worden bevindingen pas een taak als ze vanuit de inspectie of het maatregelenoverzicht zijn doorgezet.
  */
-export function takenLijst({ objecten, inspecties, taken, planning, vandaag, ik = '', pakketten = [] }) {
+export function takenLijst({ objecten, inspecties, taken, planning, vandaag, ik = '', pakketten = [], alleBevindingen = false }) {
   const objectMap = new Map(objecten.map((o) => [o.id, o]));
   const lijst = [];
   const handmatigeInspectie = new Set();
   const handmatigeMaatregel = new Set();
+  // Een doorgezette taak is klaar zodra de bijbehorende maatregel is uitgevoerd.
+  const uitgevoerd = new Set();
+  for (const insp of inspecties) for (const g of gebrekItems(insp)) if (g.maatregelStatus === 'uitgevoerd') uitgevoerd.add(`${insp.id}:${g.id}`);
 
   for (const t of taken) {
     if (t.status === 'gereed') continue;
+    if (t.maatregel && uitgevoerd.has(t.maatregel)) continue;
     const object = objectMap.get(t.objectId);
     if (!object) continue;
     if (ik && t.toegewezenAan && t.toegewezenAan.toLowerCase() !== ik.toLowerCase()) continue;
@@ -58,7 +64,7 @@ export function takenLijst({ objecten, inspecties, taken, planning, vandaag, ik 
   }
 
   for (const insp of inspecties) {
-    if (insp.status !== 'afgerond') continue;
+    if (!alleBevindingen || insp.status !== 'afgerond') continue;
     const object = objectMap.get(insp.objectId);
     if (!object) continue;
     for (const g of gebrekItems(insp)) {

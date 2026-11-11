@@ -30,8 +30,14 @@ ook **offline in het veld**, synchroniseert tussen pc en telefoon, en is te inst
     nooit verwijderd maar los gemaakt;
   - een laag wordt pas opgeslagen als al zijn objecten er zijn (geen halve lagen bij een fout).
   Per laag op de kaart: **↻** = nieuwere versie van het bestand inladen, **🗑** = verwijderen.
-- **Taken** komen uit drie bronnen: zelf geplande taken (met prioriteit, deadline en toewijzing aan een projectlid),
-  openstaande maatregelen uit inspecties, en de inspectieplanning (verlopen / nooit / binnenkort).
+- **Taken** komen uit: zelf geplande taken (met prioriteit, deadline en toewijzing aan een projectlid), objecten in
+  actieve werkpakketrondes, en de inspectieplanning (verlopen / nooit / binnenkort).
+- **Bevindingen worden niet vanzelf een taak.** Bij een inspectie staat per gebrek (en per BVC-maatregel en
+  STOWA-waarneming) de knop **➜ Als taak**, plus **Alle open bevindingen als taak**; in het maatregelenoverzicht
+  een kolom *Taak*, een filter *nog geen taak / doorgezet* en **Zichtbare als taak**. Bij doorzetten stelt de app
+  prioriteit en deadline voor op basis van de urgentie (direct → hoog, binnen 7 dagen; 3 maanden → hoog; 1 jaar →
+  normaal, …) en kies je eventueel een uitvoerder. De taak verdwijnt zodra de maatregel is uitgevoerd.
+  Per project kan **Alle bevindingen automatisch als taak** aan (projectinstellingen); standaard staat dat uit.
 - **Logisch nu** (telefoon) – taken gesorteerd op urgentie én afstand tot je huidige locatie; sta je in een vlak, dan
   zegt de app dat en komen de taken van dat vlak bovenaan. Eén urgentiestap weegt even zwaar als 750 m afstand.
   Een taak aantikken opent direct het juiste formulier; na opslaan staat de taak op gereed.

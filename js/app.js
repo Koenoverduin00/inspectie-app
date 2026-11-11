@@ -115,6 +115,8 @@ function tabbalk(pad, groep) {
 }
 
 let formulierGewijzigd = false;
+// Luisteraars die bij één pagina horen maar aan de vaste #app hangen, worden bij een paginawissel opgeruimd.
+let paginaAbort = new AbortController();
 
 // Pagina's worden na elkaar opgebouwd, zodat een trage pagina nooit een nieuwere overschrijft.
 let renderKetting = Promise.resolve();
@@ -138,6 +140,8 @@ async function toonRoute() {
   const query = new URLSearchParams(zoek);
   const route = ROUTES.find(([re]) => re.test(pad));
   formulierGewijzigd = false;
+  paginaAbort.abort();
+  paginaAbort = new AbortController();
   const mobiel = isMobiel();
   document.body.classList.toggle('modus-mobiel', mobiel);
   document.querySelectorAll('[data-mnav]').forEach((a) => {
@@ -344,7 +348,7 @@ const kenmerk = (label, waarde) => (waarde === '' || waarde === null || waarde =
 /** Eén NEN 2767-gebrek als overzichtelijke kaart. */
 async function nenGebrekKaart(g, n) {
   const s = gebrekScore(g);
-  return `<article class="gebrekkaart" style="--gk:${CONDITIES[s]?.kleur ?? '#9aa5b1'}">
+  return `<article class="gebrekkaart" data-bevinding="${esc(String(g.id ?? ''))}" style="--gk:${CONDITIES[s]?.kleur ?? '#9aa5b1'}">
     <header><span class="gk-nr">${n + 1}</span>
       <div class="gk-titel"><h3>${esc(g.bouwdeel || 'Bouwdeel onbekend')} – ${esc(g.gebrek || 'gebrek')}</h3>${g.locatie ? `<small>📍 ${esc(g.locatie)}</small>` : ''}</div>
       ${scoreLabel(s)}</header>
@@ -429,7 +433,7 @@ async function dashboard() {
   const actievePakketten = pakketInfo.pakketten.filter((p) => p.status !== 'afgerond');
   const takenOpen = sorteerTaken(takenLijst({
     objecten, inspecties, taken: await inProject('taken'), planning: status, vandaag: vandaag(),
-    pakketten: actieveRondes(pakketInfo),
+    pakketten: actieveRondes(pakketInfo), alleBevindingen: await alleBevindingenAlsTaak(),
   }));
   const takenUrgent = takenOpen.filter((t) => t.rang <= 2).length;
   const planning = objecten
@@ -603,7 +607,7 @@ async function objectDetail(id) {
   const laag = o.laagId ? await db.haal('lagen', o.laagId) : null;
   const objectTaken = sorteerTaken(takenLijst({
     objecten: [o], inspecties: eigen, taken: (await inProject('taken')).filter((t) => t.objectId === id),
-    planning: new Map([[id, s]]), vandaag: vandaag(),
+    planning: new Map([[id, s]]), vandaag: vandaag(), alleBevindingen: await alleBevindingenAlsTaak(),
   }));
   const maatregelenOpen = alleMaatregelen(eigen, objectMap).filter((m) => m.gebrek.maatregelStatus !== 'uitgevoerd');
   const heeftLocatie = o.lat !== '' && o.lat != null && o.lng !== '' && o.lng != null;
@@ -1241,6 +1245,7 @@ async function inspectieDetail(id) {
     ${gebrekKaarten.join('') || leegKaart('Geen gebreken geconstateerd.')}`;
 
   tekenObjectKaartje(app.querySelector('#objectkaartje'), o, CONDITIES[score]?.kleur ?? '#0b4f6c');
+  bevindingKnoppen(i);
   app.querySelector('#verwijder').onclick = async () => {
     if (!confirm('Deze inspectie inclusief foto\'s definitief verwijderen?')) return;
     await verwijderInspectieData(i);
@@ -1316,6 +1321,134 @@ async function inspectieRapport(id) {
 }
 
 // ---------------------------------------------------------------------------
+// Bevindingen doorzetten als taak
+// Bevindingen (gebreken, BVC-maatregelen, STOWA-waarnemingen) worden standaard géén taak. Je zet ze door vanuit
+// de inspectie of het maatregelenoverzicht; per project kan "alle bevindingen automatisch als taak" aan.
+// ---------------------------------------------------------------------------
+const URGENTIE_PRIORITEIT = { direct: 'hoog', '3maanden': 'hoog', '1jaar': 'normaal', '3jaar': 'normaal', '5jaar': 'laag', monitoren: 'laag' };
+const URGENTIE_DAGEN = { direct: 7, '3maanden': 91, '1jaar': 365, '3jaar': 1095, '5jaar': 1826 };
+const bevindingSleutel = (insp, g) => `${insp.id}:${g.id}`;
+const alleBevindingenAlsTaak = async () => Boolean((await actiefProject())?.bevindingenAlsTaak);
+
+/** Voorstel voor de taak bij een bevinding: titel, prioriteit en deadline volgen de maatregel en urgentie. */
+function taakVoorstel(insp, g) {
+  const dagen = URGENTIE_DAGEN[g.urgentie];
+  const deadline = g.uitvoerenVoor || (dagen ? PL.isoVan(PL.dagNr(vandaag()) + dagen) : '');
+  return {
+    titel: g.maatregel || [g.bouwdeel, g.gebrek].filter(Boolean).join(' – ') || 'Bevinding uit inspectie',
+    omschrijving: [`Bevinding uit ${insp.soort ?? 'inspectie'} van ${datumNL(insp.datum)}`, g.bouwdeel && g.gebrek ? `${g.bouwdeel} – ${g.gebrek}` : '', g.toelichting ?? ''].filter(Boolean).join('\n'),
+    prioriteit: URGENTIE_PRIORITEIT[g.urgentie] ?? 'normaal', deadline,
+  };
+}
+
+/** Open taken per bevinding (sleutel inspectie:gebrek). */
+async function takenPerBevinding() {
+  const m = new Map();
+  for (const t of await inProject('taken')) if (t.maatregel) m.set(t.maatregel, t);
+  return m;
+}
+
+async function maakBevindingTaken(items, keuzes = {}) {
+  const bestaand = await takenPerBevinding();
+  const nu = new Date().toISOString();
+  const nieuw = [];
+  for (const { inspectie: insp, gebrek: g } of items) {
+    const sleutel = bevindingSleutel(insp, g);
+    if (bestaand.has(sleutel) || g.maatregelStatus === 'uitgevoerd') continue;
+    const v = taakVoorstel(insp, g);
+    nieuw.push({
+      id: nieuwId(), projectId: insp.projectId ?? projectId(), objectId: insp.objectId, soort: 'werk', status: 'open', maatregel: sleutel,
+      titel: keuzes.titel ?? v.titel, omschrijving: v.omschrijving, prioriteit: keuzes.prioriteit ?? v.prioriteit,
+      deadline: keuzes.deadline ?? v.deadline, toegewezenAan: (keuzes.toegewezenAan ?? '').toLowerCase(), aangemaakt: nu, gewijzigd: nu,
+    });
+  }
+  if (nieuw.length) await db.bewaarVeel('taken', nieuw);
+  return nieuw.length;
+}
+
+/** Dialoog om één bevinding als taak door te zetten (met voorstel voor prioriteit, deadline en uitvoerder). */
+async function bevindingTaakDialoog(insp, g) {
+  const v = taakVoorstel(insp, g);
+  const leden = (await actiefProject())?.leden ?? [];
+  const d = document.createElement('dialog');
+  d.className = 'dialoog';
+  d.innerHTML = `<form method="dialog">
+    <h2>➜ Als taak doorzetten</h2>
+    <p><small>${esc([g.bouwdeel, g.gebrek].filter(Boolean).join(' – '))}${g.urgentie ? ` · ${esc(URGENTIES.find((u) => u.id === g.urgentie)?.label ?? '')}` : ''}</small></p>
+    <div class="velden">
+      <div class="veld breed"><label for="t-titel" class="vereist">Taak</label><input id="t-titel" value="${esc(v.titel)}" maxlength="160"></div>
+      <div class="veld"><label for="t-prio">Prioriteit</label><select id="t-prio">${PRIORITEITEN.map((p) => optie(p.id, p.label, v.prioriteit)).join('')}</select></div>
+      <div class="veld"><label for="t-deadline">Uiterlijk</label><input id="t-deadline" type="date" value="${esc(v.deadline)}"></div>
+      <div class="veld breed"><label for="t-wie">Uitvoerder</label><select id="t-wie"><option value="">– iedereen in het project –</option>${leden.map((l) => optie(l, l)).join('')}</select></div>
+    </div>
+    <div class="knoppen" style="margin-top:1rem;justify-content:flex-end"><button class="knop" value="nee">Annuleren</button><button class="knop primair" value="ja">Taak maken</button></div>
+  </form>`;
+  document.body.append(d);
+  d.showModal();
+  const keuze = await new Promise((ok) => d.addEventListener('close', () => ok(d.returnValue), { once: true }));
+  const keuzes = { titel: d.querySelector('#t-titel').value.trim() || v.titel, prioriteit: d.querySelector('#t-prio').value, deadline: d.querySelector('#t-deadline').value, toegewezenAan: d.querySelector('#t-wie').value };
+  d.remove();
+  if (keuze !== 'ja') return false;
+  await maakBevindingTaken([{ inspectie: insp, gebrek: g }], keuzes);
+  melding('Taak aangemaakt – zichtbaar in de planning en bij de uitvoerders');
+  return true;
+}
+
+const taakStatusLabel = (t) => `<a class="label-status ${t.status === 'gereed' ? 'afgerond' : 'binnenkort'}" href="#/taken/${esc(t.id)}/bewerken" title="${esc(t.titel)}">📋 Taak${t.status === 'gereed' ? ' gereed' : ''}${t.deadline ? ` · ${datumNL(t.deadline)}` : ''}${t.toegewezenAan ? ` · ${esc(t.toegewezenAan.split('@')[0])}` : ''}</a>`;
+
+/** Voegt op een inspectiepagina per bevinding een taakknop toe, en bovenaan "alle open bevindingen als taak". */
+async function bevindingKnoppen(insp) {
+  if (!app.querySelector('[data-bevinding]')) return;
+  const items = ST.gebrekItems(insp);
+  const perId = new Map(items.map((g) => [String(g.id), g]));
+  const taken = await takenPerBevinding();
+  const auto = await alleBevindingenAlsTaak();
+  const teken = () => {
+    app.querySelectorAll('[data-bevinding]').forEach((el) => {
+      const g = perId.get(el.dataset.bevinding);
+      if (!g) return;
+      const t = taken.get(bevindingSleutel(insp, g));
+      const kopRij = el.tagName === 'TR' ? el.closest('table')?.querySelector('thead tr') : null;
+      if (kopRij && !kopRij.querySelector('.taak-kop')) kopRij.append(Object.assign(document.createElement('th'), { className: 'taak-kop', textContent: 'Taak' }));
+      const plek = el.querySelector('.bevinding-taak') ?? el.appendChild(Object.assign(document.createElement(el.tagName === 'TR' ? 'td' : 'div'), { className: 'bevinding-taak' }));
+      plek.innerHTML = g.maatregelStatus === 'uitgevoerd' ? '<span class="label-status uitgevoerd">Maatregel uitgevoerd</span>'
+        : t ? taakStatusLabel(t)
+          : auto && (g.maatregel || g.urgentie) ? '<small class="hulptekst">Automatisch een taak (projectinstelling)</small>'
+            : `<button type="button" class="knop klein" data-als-taak="${esc(String(g.id))}">➜ Als taak</button>`;
+    });
+    const open = items.filter((g) => g.maatregelStatus !== 'uitgevoerd' && !taken.has(bevindingSleutel(insp, g)));
+    let balk = app.querySelector('#bevinding-balk');
+    if (!balk) {
+      const kop = [...app.querySelectorAll('h2')].find((h) => /^(Gebreken|Waarnemingen|Boomveiligheidsmaatregelen)/.test(h.textContent));
+      if (!kop) return;
+      balk = Object.assign(document.createElement('div'), { id: 'bevinding-balk', className: 'bevinding-balk' });
+      kop.after(balk);
+    }
+    balk.innerHTML = open.length && !auto
+      ? `<span>${open.length} bevinding${open.length === 1 ? '' : 'en'} nog geen taak.</span><button type="button" class="knop klein" id="alle-als-taak">➜ Alle open bevindingen als taak</button>`
+      : auto ? '<span>In dit project worden alle bevindingen met een maatregel automatisch een taak.</span>' : '';
+  };
+  teken();
+  app.addEventListener('click', async (e) => {
+    if (!e.target.closest('[data-bevinding], #bevinding-balk')) return;
+    const k = e.target.closest('[data-als-taak]');
+    if (k) {
+      const g = perId.get(k.dataset.alsTaak);
+      if (await bevindingTaakDialoog(insp, g)) { (await takenPerBevinding()).forEach((t, s) => taken.set(s, t)); teken(); }
+      return;
+    }
+    if (e.target.closest('#alle-als-taak')) {
+      const open = items.filter((g) => g.maatregelStatus !== 'uitgevoerd' && !taken.has(bevindingSleutel(insp, g)));
+      if (!confirm(`${open.length} bevinding${open.length === 1 ? '' : 'en'} als taak doorzetten? Prioriteit en deadline volgen de urgentie; aanpassen kan daarna in de planning.`)) return;
+      const n = await maakBevindingTaken(open.map((g) => ({ inspectie: insp, gebrek: g })));
+      (await takenPerBevinding()).forEach((t, s) => taken.set(s, t));
+      melding(`${n} taak/taken aangemaakt`);
+      teken();
+    }
+  }, { signal: paginaAbort.signal });
+}
+
+// ---------------------------------------------------------------------------
 // Maatregelen
 // ---------------------------------------------------------------------------
 async function maatregelen() {
@@ -1323,23 +1456,27 @@ async function maatregelen() {
   const lijst = alleMaatregelen(inspecties, objectMap);
   app.innerHTML = `
     <div class="paginakop">
-      <div><h1>Maatregelen</h1><p>Onderhoudsadviezen uit alle inspecties, gesorteerd op urgentie.</p></div>
-      <button class="knop" id="export">CSV exporteren</button>
+      <div><h1>Maatregelen</h1><p>Onderhoudsadviezen uit alle inspecties, gesorteerd op urgentie. Zet een bevinding door als taak om hem in te plannen en uit te laten voeren.</p></div>
+      <div class="knoppen"><button class="knop" id="zichtbaar-als-taak">➜ Zichtbare als taak</button><button class="knop" id="export">CSV exporteren</button></div>
     </div>
     <div class="filters">
       <select id="status" aria-label="Status">${optie('open', 'Openstaand', 'open')}${optie('uitgevoerd', 'Uitgevoerd')}${optie('', 'Alle')}</select>
       <select id="urgentie" aria-label="Urgentie"><option value="">Alle urgenties</option>${URGENTIES.map((u) => optie(u.id, u.label)).join('')}</select>
+      <select id="taakf" aria-label="Taak">${optie('', 'Met en zonder taak')}${optie('zonder', 'Nog geen taak')}${optie('met', 'Doorgezet als taak')}</select>
     </div>
     <div id="totaal" class="kaart"></div>
     <div class="kaart" style="padding:0"><div class="tabelhouder"><table>
-      <thead><tr><th>Urgentie</th><th>Object</th><th>Bouwdeel / gebrek</th><th class="verberg-mobiel">Maatregel</th><th>Conditie</th><th>Raming</th><th></th></tr></thead>
+      <thead><tr><th>Urgentie</th><th>Object</th><th>Bouwdeel / gebrek</th><th class="verberg-mobiel">Maatregel</th><th>Conditie</th><th>Raming</th><th>Taak</th><th></th></tr></thead>
       <tbody id="rijen"></tbody></table></div></div>`;
 
-  const [statusF, urgentieF] = ['#status', '#urgentie'].map((s) => app.querySelector(s));
+  const [statusF, urgentieF, taakF] = ['#status', '#urgentie', '#taakf'].map((s) => app.querySelector(s));
   let zichtbaar = [];
+  let taken = await takenPerBevinding();
+  const auto = await alleBevindingenAlsTaak();
   const toon = () => {
-    zichtbaar = lijst.filter(({ gebrek: g }) => (!statusF.value || (g.maatregelStatus ?? 'open') === statusF.value)
-      && (!urgentieF.value || g.urgentie === urgentieF.value));
+    zichtbaar = lijst.filter(({ gebrek: g, inspectie: i }) => (!statusF.value || (g.maatregelStatus ?? 'open') === statusF.value)
+      && (!urgentieF.value || g.urgentie === urgentieF.value)
+      && (!taakF.value || (taakF.value === 'met') === taken.has(bevindingSleutel(i, g))));
     const totaal = zichtbaar.reduce((t, m) => t + (Number(m.gebrek.kostenraming) || 0), 0);
     app.querySelector('#totaal').innerHTML = `<strong>${zichtbaar.length}</strong> maatregelen · totale raming <strong>${euro(totaal)}</strong>`;
     app.querySelector('#rijen').innerHTML = zichtbaar.length ? zichtbaar.map(({ gebrek: g, inspectie: i, object: o }, n) => `
@@ -1349,13 +1486,31 @@ async function maatregelen() {
         <td><a href="#/inspecties/${esc(i.id)}">${esc(g.bouwdeel)} – ${esc(g.gebrek)}</a><br><small>${datumNL(i.datum)}</small></td>
         <td class="verberg-mobiel">${esc(g.maatregel || '–')}</td>
         <td>${g.urgentieKleur ? stowaLabel(g.urgentieKleur) : g.bvcMaatregel ? bvkLabel(i.bvc?.bvk) : scoreLabel(gebrekScore(g))}</td><td>${euro(g.kostenraming)}</td>
+        <td>${taken.has(bevindingSleutel(i, g)) ? taakStatusLabel(taken.get(bevindingSleutel(i, g)))
+    : g.maatregelStatus === 'uitgevoerd' ? '–' : auto ? '<small>automatisch</small>' : `<button class="knop klein" data-als-taak="${n}">➜ Als taak</button>`}</td>
         <td><button class="knop klein" data-wissel="${n}">${g.maatregelStatus === 'uitgevoerd' ? 'Heropenen' : '✓ Uitgevoerd'}</button></td>
-      </tr>`).join('') : '<tr><td colspan="7" class="leeg">Geen maatregelen gevonden.</td></tr>';
+      </tr>`).join('') : '<tr><td colspan="8" class="leeg">Geen maatregelen gevonden.</td></tr>';
   };
-  [statusF, urgentieF].forEach((f) => f.addEventListener('input', toon));
+  [statusF, urgentieF, taakF].forEach((f) => f.addEventListener('input', toon));
   toon();
+  app.querySelector('#zichtbaar-als-taak').hidden = auto;
+  app.querySelector('#zichtbaar-als-taak').onclick = async () => {
+    const open = zichtbaar.filter(({ gebrek: g, inspectie: i }) => g.maatregelStatus !== 'uitgevoerd' && !taken.has(bevindingSleutel(i, g)));
+    if (!open.length) return melding('Alle zichtbare bevindingen zijn al een taak of uitgevoerd.');
+    if (!confirm(`${open.length} bevinding${open.length === 1 ? '' : 'en'} als taak doorzetten? Prioriteit en deadline volgen de urgentie.`)) return;
+    const n = await maakBevindingTaken(open);
+    taken = await takenPerBevinding();
+    melding(`${n} taak/taken aangemaakt`);
+    toon();
+  };
 
   app.querySelector('#rijen').addEventListener('click', async (e) => {
+    const alsTaak = e.target.closest('[data-als-taak]');
+    if (alsTaak) {
+      const { gebrek, inspectie } = zichtbaar[Number(alsTaak.dataset.alsTaak)];
+      if (await bevindingTaakDialoog(inspectie, gebrek)) { taken = await takenPerBevinding(); toon(); }
+      return;
+    }
     const knop = e.target.closest('[data-wissel]');
     if (!knop) return;
     const { gebrek, inspectie } = zichtbaar[Number(knop.dataset.wissel)];
@@ -2091,6 +2246,9 @@ async function projectFormulier(id) {
           ${optie('actief', 'Actief', p.status)}${optie('afgerond', 'Afgerond', p.status)}</select></div>
         <div class="veld breed"><label for="f-omschrijving">Omschrijving</label>
           <textarea id="f-omschrijving" name="omschrijving" maxlength="2000">${esc(p.omschrijving)}</textarea></div>
+        <div class="veld breed"><label class="vink"><input type="checkbox" name="bevindingenAlsTaak" ${p.bevindingenAlsTaak ? 'checked' : ''}>
+          <span><strong>Alle bevindingen automatisch als taak</strong><small>Standaard uit: bevindingen uit inspecties worden pas een taak als je ze doorzet
+          (vanuit de inspectie of het maatregelenoverzicht). Aan: elke bevinding met een maatregel of urgentie verschijnt meteen als taak.</small></span></label></div>
         <div class="veld breed"><label for="f-leden">Projectleden (één e-mailadres per regel)</label>
           <textarea id="f-leden" name="leden" placeholder="inspecteur@bedrijf.nl">${esc((p.leden ?? []).join('\n'))}</textarea>
           <small>Projectleden zien en bewerken alleen de inhoud van dit project. Beheerders zien alle projecten.
@@ -2114,7 +2272,7 @@ async function projectFormulier(id) {
     const nu = new Date().toISOString();
     const opslaan = {
       ...p, id: bestaand?.id ?? nieuwId(), naam: d.naam, opdrachtgever: d.opdrachtgever, omschrijving: d.omschrijving,
-      status: d.status, leden, aangemaakt: p.aangemaakt ?? nu, gewijzigd: nu,
+      status: d.status, leden, bevindingenAlsTaak: form.elements.bevindingenAlsTaak.checked, aangemaakt: p.aangemaakt ?? nu, gewijzigd: nu,
     };
     await db.bewaar('projecten', opslaan);
     formulierGewijzigd = false;
@@ -2787,7 +2945,7 @@ async function alleTaken({ alleenMijn = false } = {}) {
     const pg = await pakketGegevens();
     metOpen = actieveRondes(pg);
   }
-  return { lijst: takenLijst({ objecten, inspecties, taken, planning: status, vandaag: vandaag(), ik, pakketten: metOpen }), taken, objecten };
+  return { lijst: takenLijst({ objecten, inspecties, taken, planning: status, vandaag: vandaag(), ik, pakketten: metOpen, alleBevindingen: await alleBevindingenAlsTaak() }), taken, objecten };
 }
 
 async function rondTaakAf(taakId, gekoppeldId) {
@@ -4848,7 +5006,7 @@ async function stowaWaarnemingKaart(w, n) {
   const u = ST.URGENTIE[w.urgentieKleur];
   const kenm = Object.entries(w.kenmerken ?? {}).filter(([, v]) => v !== '' && v != null);
   const it = w.aard === 'handhaving' ? null : ST.schadebeeldItem(ST.sleutelVan(w));
-  return `<article class="gebrekkaart" id="waarneming-${n + 1}" style="--gk:${u?.kleur ?? '#9aa5b1'}">
+  return `<article class="gebrekkaart" id="waarneming-${n + 1}" data-bevinding="${esc(String(w.id ?? ''))}" style="--gk:${u?.kleur ?? '#9aa5b1'}">
     <header><span class="gk-nr">${n + 1}</span>
       <div class="gk-titel"><h3>${esc(ST.schadebeeldNaam(w))}</h3>
         <small>${[it?.groep, ZONE_NAAM(w.zone), wz ? `inspectiewijzer ${wz.nr}` : '', w.locatie ? `📍 ${w.locatie}` : '',
@@ -4952,6 +5110,7 @@ async function stowaDetail(i, { rapport = false } = {}) {
       await verwijderInspectieData(i);
       ga(o ? `#/objecten/${o.id}` : '#/inspecties');
     };
+    bevindingKnoppen(i);
   }
   app.querySelectorAll('tr[data-naar]').forEach((r) => {
     r.onclick = () => document.getElementById(r.dataset.naar)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -5286,7 +5445,7 @@ async function bvcInhoud(i, o) {
     ${b.niet ? '' : `
     <section class="kaart"><h2>Boomveiligheidsmaatregelen</h2>${(b.maatregelen ?? []).length ? `<div class="tabelhouder"><table>
       <thead><tr><th>Maatregel</th><th>Urgentie</th><th>Uiterlijk</th><th>Status</th></tr></thead><tbody>
-      ${b.maatregelen.map((m) => `<tr><td>${esc(m.bvcMaatregel)}</td><td>${esc(BV.URGENTIE[m.termijn]?.label ?? '')}</td><td>${datumNL(m.uitvoerenVoor)}</td>
+      ${b.maatregelen.map((m) => `<tr data-bevinding="${esc(String(m.id ?? ''))}"><td>${esc(m.bvcMaatregel)}</td><td>${esc(BV.URGENTIE[m.termijn]?.label ?? '')}</td><td>${datumNL(m.uitvoerenVoor)}</td>
         <td>${m.maatregelStatus === 'uitgevoerd' ? '<span class="label-status uitgevoerd">Uitgevoerd</span>' : '<span class="label-status binnenkort">Open</span>'}</td></tr>`).join('')}
       </tbody></table></div>${b.maatregelen.some((m) => m.bvcMaatregel === 'Boom verwijderen') ? `<p><small>Gemarkeerd met oranje streep: ${b.gemarkeerd ? 'ja' : 'nee'}</small></p>` : ''}`
     : '<p class="leeg">Geen maatregelen.</p>'}</section>`}
@@ -5328,6 +5487,7 @@ async function bvcDetail(i, { rapport = false } = {}) {
       </div>
     </div>${inhoud}`;
   tekenObjectKaartje(app.querySelector('#objectkaartje'), o, i.bvc?.niet ? '#9aa5b1' : (BV.BVK[i.bvc?.bvk]?.kleur ?? '#0b4f6c'));
+  bevindingKnoppen(i);
   app.querySelector('#verwijder').onclick = async () => {
     if (!confirm('Deze boomveiligheidscontrole inclusief foto\'s verwijderen?')) return;
     await verwijderInspectieData(i);

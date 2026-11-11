@@ -43,7 +43,7 @@ test('urgentie, controle en koppeling met maatregelen en taken', () => {
   assert.ok(fout.some((f) => /locatie als punt/.test(f)));
 
   const insp = { id: 'i', objectId: 'o', status: 'afgerond', datum: '2027-03-01', gebreken: [], stowa: { kering: 'rivierdijk', waarnemingen: w } };
-  const taken = takenLijst({ objecten: [{ id: 'o', code: 'DV-1' }], inspecties: [insp], taken: [], planning: new Map(), vandaag: '2027-03-02' });
+  const taken = takenLijst({ objecten: [{ id: 'o', code: 'DV-1' }], inspecties: [insp], taken: [], planning: new Map(), vandaag: '2027-03-02', alleBevindingen: true });
   assert.deepEqual(taken.map((t) => [t.rang, t.maatregel]), [[1, 'i:a'], [2, 'i:b']]);
 
   const r = resultaatRijen({ lijst: [{ object: { id: 'o', code: 'DV-1', naam: 'Dijkvak 1' }, inspectie: insp, status: 'afgerond' }] });

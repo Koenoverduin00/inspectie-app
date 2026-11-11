@@ -745,3 +745,11 @@ details.waarneming > summary > span { display: flex; align-items: center; gap: .
 .planningtekst { display: flex; flex-direction: column; gap: .2rem; padding-top: .45rem; }
 .planningtekst small { color: var(--tekst-zacht); }
 @media (max-width: 700px) { .bord { --label-breedte: 150px; } }
+
+/* Bevindingen doorzetten als taak */
+.bevinding-taak { margin-top: .6rem; display: flex; justify-content: flex-end; }
+tr[data-bevinding] .bevinding-taak { margin: 0; justify-content: flex-start; }
+.bevinding-balk { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .8rem; margin: -.25rem 0 .9rem; padding: .5rem .75rem;
+  border-radius: 10px; background: var(--primair-licht); font-size: .92rem; }
+.bevinding-balk:empty { display: none; }
+a.label-status { text-decoration: none; }
