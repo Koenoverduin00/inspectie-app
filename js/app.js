@@ -24,6 +24,7 @@ import * as RX from './resultatenexcel.js';
 import * as IMP from './gisimport.js';
 import * as ST from './stowa.js';
 import * as DG from './digigids.js';
+import * as PL from './planning.js';
 import { takenLijst, sorteerTaken, objectGeometrie, PRIORITEITEN } from './taken.js';
 
 const app = document.getElementById('app');
@@ -2796,32 +2797,248 @@ async function rondTaakAf(taakId, gekoppeldId) {
   await db.bewaar('taken', { ...t, status: 'gereed', gereedOp: vandaag(), gekoppeldId, gewijzigd: new Date().toISOString() });
 }
 
-async function takenPagina() {
+// ---------------------------------------------------------------------------
+// Planningsbord: werkpakketten → rondes als balken in de tijd
+// ---------------------------------------------------------------------------
+const BORD_KLEUR = { werk: '#e07b00', inspectie: '#1f6feb' };
+
+/** Slaat een gewijzigde ronde (start/eind/status) op in het werkpakket. */
+async function bewaarRonde(pakketId, rondeId, wijziging) {
+  const p = await db.haal('werkpakketten', pakketId);
+  if (!p) return;
+  const lijst = rondesVan(p).map((r) => (r.id === rondeId ? { ...r, ...wijziging } : r));
+  await db.bewaar('werkpakketten', { ...p, rondes: lijst, status: pakketStatus({ rondes: lijst }), gewijzigd: new Date().toISOString() });
+}
+
+async function planningsbord(el, { focusPakket = '' } = {}) {
+  const beheer = magBeheren();
+  const zoom = PL.ZOOM[instelling.lees('planZoom')] ? instelling.lees('planZoom') : 'maanden';
+  let anker = instelling.lees('planAnker') || vandaag();
+  let toonAfgerond = instelling.lees('planAfgerond') === '1';
+  let filterSoort = '';
+  const vandaagNr = PL.dagNr(vandaag());
+
+  let eerste = true;
+  let houdScroll = null; // horizontale positie bewaren zolang je op dezelfde schaal en periode werkt
+  const teken = async () => {
+    const g = await pakketGegevens();
+    const b = PL.bereik(zoom, anker);
+    const vorige = el.querySelector('.bord');
+    const scrollX = houdScroll === `${zoom}:${anker}` && vorige ? vorige.scrollLeft : null;
+    const k = PL.kop(b);
+    const breedte = b.dagen * b.px;
+    const x = (n) => (n - b.begin) * b.px;
+    const pakketten = g.pakketten
+      .map((p) => ({ p, rondes: rondesVan(p).filter((r) => (toonAfgerond || r.status !== 'afgerond') && (!filterSoort || r.soort === filterSoort)) }))
+      .filter(({ rondes }) => rondes.length)
+      .sort((a, c) => {
+        const eerste = (x2) => Math.min(...x2.rondes.map((r) => PL.dagNr(r.start) ?? 1e9));
+        return eerste(a) - eerste(c) || String(a.p.code || a.p.naam).localeCompare(String(c.p.code || c.p.naam), 'nl', { numeric: true });
+      });
+    const nietGepland = pakketten.reduce((t, { rondes }) => t + rondes.filter((r) => !r.start).length, 0);
+
+    const rondeRij = (p, r) => {
+      const v = g.views.get(`${p.id}:${r.id}`);
+      const vg = g.rondeVoortgang.get(`${p.id}:${r.id}`);
+      const pos = PL.balk(r, b);
+      const kleur = BORD_KLEUR[r.soort] ?? BORD_KLEUR.werk;
+      const laat = PL.teLaat(r, vandaag());
+      const titel = `R${r.nummer} ${r.naam} · ${periodeTekst(v) || 'nog niet ingepland'} · ${vg.gedaan.size + vg.overgeslagen.size}/${vg.totaal}`;
+      return `<div class="bord-rij" data-pakket="${esc(p.id)}" data-ronde="${esc(r.id)}">
+        <div class="bord-label"><a href="${pakketPagina(v, false)}"><span class="bord-soort" style="background:${kleur}"></span>R${r.nummer} ${esc(r.naam)}</a>
+          <small>${r.soort === 'inspectie' ? esc(r.inspectiesoort || 'Inspectie') : esc(r.werksoort || 'Werkzaamheid')}</small></div>
+        <div class="bord-spoor ${beheer ? 'bewerkbaar' : ''}" style="width:${breedte}px">
+          ${pos ? `<div class="bord-balk status-${esc(r.status)} ${laat ? 'te-laat' : ''}" style="left:${pos.left}px;width:${Math.max(pos.width, 4)}px;--kleur:${kleur}" title="${esc(titel)}" tabindex="0">
+            <span class="bord-voortgang" style="width:${vg.percentage}%"></span>
+            ${beheer && !pos.afgekaptLinks ? '<span class="greep begin"></span>' : ''}<span class="bord-tekst">${r.status === 'afgerond' ? '✓ ' : ''}${esc(r.naam)} · ${vg.percentage}%</span>${beheer && !pos.afgekaptRechts ? '<span class="greep eind"></span>' : ''}
+          </div>` : r.start ? '' : `<span class="bord-leeg">${beheer ? '↔ Sleep hier om in te plannen' : 'Nog niet ingepland'}</span>`}
+        </div></div>`;
+    };
+
+    el.innerHTML = `
+      <div class="bord-balkje">
+        <div class="knoppen">
+          <button class="knop klein" data-nav-bord="-1" aria-label="Eerder">◀</button>
+          <button class="knop klein" data-nav-bord="0">Vandaag</button>
+          <button class="knop klein" data-nav-bord="1" aria-label="Later">▶</button>
+        </div>
+        <div class="segment bord-zoom">${Object.entries(PL.ZOOM).map(([kz, z]) => `<label><input type="radio" name="planzoom" value="${kz}" ${kz === zoom ? 'checked' : ''}><span>${z.label}</span></label>`).join('')}</div>
+        <select id="bord-soort" aria-label="Soort">${optie('', 'Werk en inspecties', filterSoort)}${optie('werk', 'Werkzaamheden', filterSoort)}${optie('inspectie', 'Inspecties', filterSoort)}</select>
+        <label class="bord-vink"><input type="checkbox" id="bord-afgerond" ${toonAfgerond ? 'checked' : ''}> Afgeronde rondes tonen</label>
+        <span class="bord-legenda"><i style="background:${BORD_KLEUR.werk}"></i>Werkzaamheid <i style="background:${BORD_KLEUR.inspectie}"></i>Inspectie
+          <i class="gepland"></i>Gepland <i class="telaat"></i>Te laat</span>
+      </div>
+      ${nietGepland ? `<p class="bord-melding">📌 ${nietGepland} ronde${nietGepland === 1 ? '' : 's'} nog niet ingepland${beheer ? ' – sleep in de rij over de gewenste periode, of klik in de rij.' : '.'}</p>` : ''}
+      ${pakketten.length ? `<div class="bord" style="--bord-breedte:${breedte}px">
+        <div class="bord-kop">
+          <div class="bord-label kopcel">Werkpakket / ronde</div>
+          <div class="bord-tijd" style="width:${breedte}px">
+            <div class="bord-maanden">${k.maanden.map((m) => `<span style="left:${x(m.van)}px;width:${(m.tot - m.van + 1) * b.px}px">${esc(m.label)}</span>`).join('')}</div>
+            <div class="bord-weken">${k.weken.filter((w, i) => zoom !== 'jaar' || i % 2 === 0).map((w) => `<span style="left:${x(w.van)}px">${zoom === 'weken' ? `${esc(w.label)} · ${datumNL(PL.isoVan(w.van)).replace(/ \d{4}$/, '')}` : esc(w.label)}</span>`).join('')}</div>
+          </div>
+        </div>
+        <div class="bord-lijf">
+          <div class="bord-raster" style="left:var(--label-breedte);width:${breedte}px">
+            ${k.weken.map((w) => `<i style="left:${x(w.van)}px"></i>`).join('')}
+            ${vandaagNr >= b.begin && vandaagNr <= b.eind ? `<b class="bord-vandaag" style="left:${x(vandaagNr) + b.px / 2}px" title="Vandaag"></b>` : ''}
+          </div>
+          ${pakketten.map(({ p, rondes }) => {
+    const per = rondes.map((r) => PL.periode(r)).filter(Boolean);
+    const totaal = g.voortgangen.get(p.id);
+    const som = per.length ? PL.balk({ start: PL.isoVan(Math.min(...per.map((q) => q.start))), eind: PL.isoVan(Math.max(...per.map((q) => q.eind))) }, b) : null;
+    return `<div class="bord-pakket ${focusPakket === p.id ? 'focus' : ''}" id="bord-${esc(p.id)}">
+            <div class="bord-rij pakketrij">
+              <div class="bord-label"><a href="#/werkpakketten/${esc(p.id)}"><strong>${esc(p.code ? `${p.code} · ` : '')}${esc(p.naam)}</strong></a>
+                <small>${(p.objecten ?? []).length} objecten · ${totaal.percentage}% gedaan${p.toegewezen?.length ? ` · 👤 ${p.toegewezen.length}` : ''}</small></div>
+              <div class="bord-spoor" style="width:${breedte}px">${som ? `<div class="bord-somlijn" style="left:${som.left}px;width:${som.width}px"></div>` : ''}</div>
+            </div>
+            ${rondes.map((r) => rondeRij(p, r)).join('')}
+          </div>`;
+  }).join('')}
+        </div>
+      </div>` : leegKaart('Er zijn nog geen werkpakketten om te plannen.', beheer ? '<a class="knop primair" href="#/werkpakketten/nieuw">+ Werkpakket maken</a>' : '')}`;
+
+    // Navigatie, zoom en filters
+    el.querySelectorAll('[data-nav-bord]').forEach((k2) => {
+      k2.onclick = () => {
+        const r = Number(k2.dataset.navBord);
+        anker = r === 0 ? vandaag() : PL.isoVan(PL.dagNr(anker) + r * PL.ZOOM[zoom].stap * (zoom === 'weken' ? 4 : 2));
+        instelling.schrijf('planAnker', r === 0 ? '' : anker);
+        teken();
+      };
+    });
+    el.querySelectorAll('input[name=planzoom]').forEach((i) => { i.onchange = () => { instelling.schrijf('planZoom', i.value); planningsbord(el, { focusPakket }); }; });
+    el.querySelector('#bord-soort').onchange = (e) => { filterSoort = e.target.value; teken(); };
+    el.querySelector('#bord-afgerond').onchange = (e) => { toonAfgerond = e.target.checked; instelling.schrijf('planAfgerond', toonAfgerond ? '1' : ''); teken(); };
+    if (focusPakket && eerste) el.querySelector(`#bord-${CSS.escape(focusPakket)}`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    eerste = false;
+    // Horizontaal: na een wijziging blijft het bord staan; bij een nieuwe periode of schaal naar vandaag.
+    const scroller = el.querySelector('.bord');
+    if (scroller && scrollX !== null) scroller.scrollLeft = scrollX;
+    else if (scroller && vandaagNr >= b.begin && vandaagNr <= b.eind) scroller.scrollLeft = Math.max(0, x(vandaagNr) - 200);
+    houdScroll = `${zoom}:${anker}`;
+
+    if (!beheer) {
+      el.querySelectorAll('.bord-balk').forEach((balk) => { balk.onclick = () => rondeDialoog(balk.closest('.bord-rij'), false); });
+      return;
+    }
+    // Slepen: balk verplaatsen, randen verlengen/inkorten, in een lege rij een periode trekken.
+    el.querySelectorAll('.bord-rij[data-ronde] .bord-spoor').forEach((spoor) => {
+      spoor.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        const rij = spoor.closest('.bord-rij');
+        const pakket = g.pakketten.find((p) => p.id === rij.dataset.pakket);
+        const ronde = rondesVan(pakket).find((r) => r.id === rij.dataset.ronde);
+        const balkEl = e.target.closest('.bord-balk');
+        const rect = spoor.getBoundingClientRect();
+        const dagOp = (cx) => b.begin + Math.floor((cx - rect.left) / b.px);
+        let modus;
+        let basis;
+        let tijdelijk = balkEl;
+        if (balkEl) {
+          modus = e.target.classList.contains('begin') ? 'begin' : e.target.classList.contains('eind') ? 'eind' : 'verplaats';
+          basis = PL.periode(ronde);
+        } else {
+          modus = 'teken';
+          const d = dagOp(e.clientX);
+          basis = { start: d, eind: d };
+          tijdelijk = document.createElement('div');
+          tijdelijk.className = 'bord-balk status-gepland nieuw';
+          tijdelijk.style.setProperty('--kleur', BORD_KLEUR[ronde.soort] ?? BORD_KLEUR.werk);
+          spoor.querySelector('.bord-leeg')?.remove();
+          spoor.append(tijdelijk);
+        }
+        const startX = e.clientX;
+        let nieuw = { ...basis };
+        let bewogen = false;
+        spoor.setPointerCapture(e.pointerId);
+        const zet = () => {
+          tijdelijk.style.left = `${(nieuw.start - b.begin) * b.px}px`;
+          tijdelijk.style.width = `${(nieuw.eind - nieuw.start + 1) * b.px}px`;
+          tijdelijk.dataset.periode = `${datumNL(PL.isoVan(nieuw.start))} – ${datumNL(PL.isoVan(nieuw.eind))}`;
+        };
+        if (modus === 'teken') zet();
+        const beweeg = (ev) => {
+          const delta = Math.round((ev.clientX - startX) / b.px);
+          if (Math.abs(ev.clientX - startX) > 3) bewogen = true;
+          if (modus === 'teken') {
+            const d = dagOp(ev.clientX);
+            nieuw = { start: Math.min(basis.start, d), eind: Math.max(basis.start, d) };
+          } else nieuw = PL.versleep(basis, modus, delta);
+          tijdelijk.classList.add('sleept');
+          zet();
+        };
+        const los = async () => {
+          spoor.removeEventListener('pointermove', beweeg);
+          spoor.removeEventListener('pointerup', los);
+          spoor.removeEventListener('pointercancel', los);
+          if (!bewogen && modus !== 'teken') { rondeDialoog(rij, true); return; }
+          if (!bewogen && modus === 'teken') nieuw = { start: basis.start, eind: basis.start + 6 }; // klik in lege rij: één week
+          if (modus !== 'teken' && nieuw.start === basis.start && nieuw.eind === basis.eind) return;
+          await bewaarRonde(pakket.id, ronde.id, { start: PL.isoVan(nieuw.start), eind: PL.isoVan(nieuw.eind) });
+          melding(`R${ronde.nummer} ${ronde.naam}: ${datumNL(PL.isoVan(nieuw.start))} – ${datumNL(PL.isoVan(nieuw.eind))}`);
+          teken();
+        };
+        spoor.addEventListener('pointermove', beweeg);
+        spoor.addEventListener('pointerup', los);
+        spoor.addEventListener('pointercancel', los);
+        e.preventDefault();
+      });
+    });
+    el.querySelectorAll('.bord-balk').forEach((balk) => {
+      balk.addEventListener('keydown', (e) => { if (e.key === 'Enter') rondeDialoog(balk.closest('.bord-rij'), true); });
+    });
+  };
+
+  // Dialoog: periode en status van één ronde.
+  const rondeDialoog = async (rij, bewerkbaar) => {
+    const p = await db.haal('werkpakketten', rij.dataset.pakket);
+    const r = rondesVan(p).find((x) => x.id === rij.dataset.ronde);
+    const v = rondeView(p, r);
+    const d = document.createElement('dialog');
+    d.className = 'dialoog';
+    d.innerHTML = `<form method="dialog">
+      <h2>R${r.nummer} ${esc(r.naam)}</h2>
+      <p><small>${esc(p.code ? `${p.code} · ` : '')}${esc(p.naam)} · ${pakketSoortTekst(v)}</small></p>
+      <div class="velden">
+        <div class="veld"><label for="d-start">Start</label><input type="date" id="d-start" value="${esc(r.start ?? '')}" ${bewerkbaar ? '' : 'disabled'}></div>
+        <div class="veld"><label for="d-eind">Gereed uiterlijk</label><input type="date" id="d-eind" value="${esc(r.eind ?? '')}" ${bewerkbaar ? '' : 'disabled'}></div>
+        <div class="veld breed"><label>Status</label>${bewerkbaar ? segment('d-status', r.status, Object.entries(PAKKETSTATUS)) : pakketStatusLabel(r.status)}</div>
+      </div>
+      <div class="knoppen" style="margin-top:1rem;justify-content:space-between">
+        <a class="knop" href="${pakketPagina(v, false)}">Werkpakket openen</a>
+        <span class="knoppen">${bewerkbaar && r.start ? '<button class="knop gevaar" value="wis">Uit planning halen</button>' : ''}
+          <button class="knop" value="nee">${bewerkbaar ? 'Annuleren' : 'Sluiten'}</button>${bewerkbaar ? '<button class="knop primair" value="ja">Opslaan</button>' : ''}</span>
+      </div></form>`;
+    document.body.append(d);
+    d.querySelector('a').onclick = () => d.close('nee');
+    d.showModal();
+    const keuze = await new Promise((ok) => d.addEventListener('close', () => ok(d.returnValue), { once: true }));
+    const start = d.querySelector('#d-start').value;
+    const eind = d.querySelector('#d-eind').value;
+    const status = d.querySelector('input[name=d-status]:checked')?.value ?? r.status;
+    d.remove();
+    if (keuze === 'wis') { await bewaarRonde(p.id, r.id, { start: '', eind: '' }); teken(); return; }
+    if (keuze !== 'ja') return;
+    if (start && eind && eind < start) { melding('De einddatum ligt vóór de start.', 'fout'); return; }
+    await bewaarRonde(p.id, r.id, { start, eind, status });
+    teken();
+  };
+
+  await teken();
+}
+
+async function takenPagina(_, q = new URLSearchParams()) {
   const { lijst } = await alleTaken();
   const project = await actiefProject();
   const leden = project?.leden ?? [];
   const gesorteerd = sorteerTaken(lijst);
-  const pg = await pakketGegevens();
-  // Rondes van werkpakketten in de tijd: wat loopt er en wat komt eraan.
-  const rondes = pg.pakketten.flatMap((p) => rondesVan(p).filter((r) => r.status !== 'afgerond').map((r) => ({ p, r, v: pg.views.get(`${p.id}:${r.id}`), vg: pg.rondeVoortgang.get(`${p.id}:${r.id}`) })))
-    .sort((a, b) => (a.r.status === 'actief' ? 0 : 1) - (b.r.status === 'actief' ? 0 : 1) || String(a.r.start || '9999').localeCompare(String(b.r.start || '9999')));
-  const vandaagIso = vandaag();
   app.innerHTML = `
     <div class="paginakop">
-      <div><h1>Planning</h1><p>Lopende en geplande rondes van de werkpakketten, en alle taken: zelf geplande taken, openstaande maatregelen en inspecties volgens planning.</p></div>
-      <div class="knoppen">${magBeheren() ? '<a class="knop" href="#/werkpakketten/nieuw">+ Werkpakket</a>' : ''}<a class="knop primair" href="#/taken/nieuw">+ Taak plannen</a></div>
+      <div><h1>Planning</h1><p>Plan de rondes van de werkpakketten in de tijd${magBeheren() ? ': sleep een balk om te verplaatsen, sleep de randen om korter of langer te maken, of trek in een lege rij de periode' : ''}. Daaronder alle taken.</p></div>
+      <div class="knoppen">${magBeheren() ? '<a class="knop" href="#/werkpakketten/nieuw">+ Werkpakket</a>' : ''}<a class="knop" href="#/taken/nieuw">+ Taak plannen</a></div>
     </div>
-    <section class="kaart">
-      <h2>Rondes</h2>
-      ${rondes.length ? `<div class="tabelhouder"><table>
-        <thead><tr><th>Werkpakket</th><th>Ronde</th><th class="verberg-mobiel">Soort</th><th>Periode</th><th>Status</th><th style="min-width:150px">Voortgang</th></tr></thead>
-        <tbody>${rondes.map(({ p, r, v, vg }) => `<tr class="klikbaar" data-href="${pakketPagina(v, false)}">
-          <td><strong>${esc(p.code || '')}</strong> ${esc(p.naam)}</td><td>R${r.nummer} ${esc(r.naam)}</td>
-          <td class="verberg-mobiel">${pakketSoortTekst(v)}</td>
-          <td>${periodeTekst(v) || '–'}${r.eind && r.eind < vandaagIso && r.status !== 'afgerond' ? ' <span class="label-status verlopen">te laat</span>' : ''}</td>
-          <td>${pakketStatusLabel(r.status)}</td><td>${voortgangBalk(vg)}</td></tr>`).join('')}</tbody></table></div>`
-    : `<p class="mleeg">Geen lopende of geplande rondes.${magBeheren() ? ' <a href="#/werkpakketten/nieuw">Werkpakket aanmaken</a>' : ''}</p>`}
-    </section>
+    <section class="kaart bordkaart"><div id="planningsbord"><p class="leeg">Planning laden…</p></div></section>
     <h2>Taken</h2>
     <div class="filters">
       <select id="bron" aria-label="Bron"><option value="">Alle bronnen</option>${Object.entries(BRON_TEKST).map(([k, v]) => optie(k, v)).join('')}</select>
@@ -2831,6 +3048,7 @@ async function takenPagina() {
     <div class="kaart" style="padding:0"><div class="tabelhouder"><table>
       <thead><tr><th>Urgentie</th><th>Taak</th><th>Object</th><th class="verberg-mobiel">Deadline</th><th class="verberg-mobiel">Toegewezen</th><th class="verberg-mobiel">Bron</th><th></th></tr></thead>
       <tbody id="rijen"></tbody></table></div></div>`;
+  planningsbord(app.querySelector('#planningsbord'), { focusPakket: q.get('pakket') ?? '' });
   const [bron, soort, wie] = ['#bron', '#soort', '#wie'].map((s) => app.querySelector(s));
   const toon = () => {
     const rijen = gesorteerd.filter((t) => (!bron.value || t.bron === bron.value) && (!soort.value || t.soort === soort.value)
@@ -3539,7 +3757,7 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
     : { naam: '', code: '', toegewezen: [], omschrijving: '', objecten: [] };
   // Rondes (taken): bestaande pakketten zonder rondes krijgen hun ene ronde expliciet.
   const rondes = rondesVan(p).map((r) => ({ ...r, ...(kopie ? { id: nieuwId(), status: 'gepland', start: '', eind: '' } : {}) }));
-  if (!bron) Object.assign(rondes[0], { id: nieuwId(), naam: 'Ronde 1', soort: 'werk', werksoort: '', inspectiesoort: 'Schouw', start: vandaag(), status: 'gepland' });
+  if (!bron) Object.assign(rondes[0], { id: nieuwId(), naam: 'Ronde 1', soort: 'werk', werksoort: '', inspectiesoort: 'Schouw', start: '', eind: '', status: 'gepland' });
   if (q.get('nieuweRonde') && bron) {
     const laatste = rondes[rondes.length - 1];
     rondes.push({ ...laatste, id: nieuwId(), nummer: (Number(laatste.nummer) || rondes.length) + 1, naam: volgendeRondeNaam(laatste.naam), start: '', eind: '', status: 'gepland' });
@@ -3619,8 +3837,8 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
     ? `<select data-r="${i}" data-veld="inspectiesoort">${INSPECTIESOORTEN.map((s) => optie(s, s, r.inspectiesoort)).join('')}</select>
               <small>Kies "${BV.BVC_SOORT}" voor een bomeninspectie: uitvoerders openen dan het BVC-formulier volgens het RWS-protocol.</small>`
     : `<select data-r="${i}" data-veld="werksoort"><option value="">– vrij te kiezen –</option>${WERKSOORTEN.map((s) => optie(s, s, r.werksoort)).join('')}</select>`}</div>
-          <div class="veld"><label>Start</label><input type="date" data-r="${i}" data-veld="start" value="${esc(r.start)}"></div>
-          <div class="veld"><label>Gereed uiterlijk</label><input type="date" data-r="${i}" data-veld="eind" value="${esc(r.eind)}"></div>
+          <div class="veld"><label>Planning</label><div class="planningtekst">${r.start ? `📅 ${periodeTekst(r)}` : '<span class="label-status binnenkort">Nog niet ingepland</span>'}
+            <small>Plannen doe je in de <a href="#/planning${id ? `?pakket=${esc(id)}` : ''}">Planning</a>.</small></div></div>
           <div class="veld"><label>Status</label><select data-r="${i}" data-veld="status">${Object.entries(PAKKETSTATUS).map(([k, x]) => optie(k, x, r.status)).join('')}</select></div>
           <div class="veld"><label>Objecten</label><div>${r.objectIds?.length
     ? `<span class="label-status binnenkort">Deelselectie: ${r.objectIds.length} objecten</span> <button type="button" class="knop klein" data-ronde-alles="${i}">Alle objecten</button>`
@@ -3736,8 +3954,9 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
     };
     await db.bewaar('werkpakketten', opslaan);
     formulierGewijzigd = false;
-    melding('Werkpakket opgeslagen');
-    ga(`#/werkpakketten/${opslaan.id}`);
+    const ongepland = opgeslagenRondes.filter((r) => !r.start).length;
+    melding(ongepland ? `Werkpakket opgeslagen – plan ${ongepland === 1 ? 'de ronde' : `de ${ongepland} rondes`} nu in de planning` : 'Werkpakket opgeslagen');
+    ga(ongepland ? `#/planning?pakket=${opslaan.id}` : `#/werkpakketten/${opslaan.id}`);
   };
 }
 
@@ -3775,12 +3994,14 @@ async function pakketDetail(id, q = new URLSearchParams()) {
         <p>${pr.code ? `${esc(pr.code)} · ` : ''}${(pr.objecten ?? []).length} objecten · ${pakketStatusLabel(pr.status)}</p></div>
       <div class="knoppen">
         ${magBeheren() ? `<a class="knop" href="#/werkpakketten/${esc(id)}/bewerken">Bewerken</a>
+          <a class="knop" href="#/planning?pakket=${esc(id)}">📅 Inplannen</a>
           <a class="knop" href="#/werkpakketten/${esc(id)}/bewerken?nieuweRonde=1">＋ Volgende ronde</a>
           <a class="knop" href="#/werkpakketten/nieuw?kopie=${esc(id)}" title="Kopie van het hele pakket">🔁 Kopiëren</a>` : ''}
         ${pr.vrijgaveVereist ? `<a class="knop" href="#/vrijgaven/nieuw?pakket=${esc(id)}">🌿 Vrijgave</a>` : ''}
         ${magBeheren() ? '<button class="knop gevaar" id="verwijder">Verwijderen</button>' : ''}
       </div>
     </div>
+    ${alleRondes.some((r) => !r.start) ? `<div class="kaart mhier">📌 ${alleRondes.filter((r) => !r.start).length} ronde(s) nog niet ingepland. <a href="#/planning?pakket=${esc(id)}">Plannen in de planning →</a></div>` : ''}
     <section class="kaart">
       <h2 style="margin-bottom:.25rem">Totaal</h2>${voortgangBalk(totaal)}
       ${pr.toegewezen?.length ? `<p style="margin:.5rem 0 0"><small>👤 ${pr.toegewezen.map(esc).join(', ')}</small></p>` : ''}

@@ -687,3 +687,61 @@ details.waarneming > summary > span { display: flex; align-items: center; gap: .
   border-bottom: 3px solid transparent; margin-bottom: -2px; }
 .tabbalk a:hover { color: var(--tekst); background: var(--primair-licht); }
 .tabbalk a.actief { color: var(--primair); border-bottom-color: var(--primair); }
+
+/* Planningsbord (balken per ronde) */
+.bordkaart { padding: .75rem; }
+.bord-balkje { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .9rem; margin-bottom: .6rem; }
+.bord-balkje select { width: auto; }
+.bord-zoom { flex: 0 0 auto; }
+.bord-zoom label { flex: 0 0 auto; }
+.bord-zoom span { padding: .35rem .8rem; }
+.bord-vink { display: flex; align-items: center; gap: .35rem; font-size: .9rem; }
+.bord-vink input { width: 18px; height: 18px; min-height: 0; }
+.bord-legenda { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .5rem; font-size: .82rem; color: var(--tekst-zacht); margin-left: auto; }
+.bord-legenda i { display: inline-block; width: 18px; height: 10px; border-radius: 3px; vertical-align: middle; }
+.bord-legenda i.gepland { background: repeating-linear-gradient(45deg, #9aa5b1 0 3px, #dfe4ea 3px 6px); }
+.bord-legenda i.telaat { border: 2px solid #c62828; }
+.bord-melding { margin: 0 0 .6rem; padding: .45rem .7rem; border-radius: 8px; background: #fff1cc; color: #7a5600; font-size: .92rem; }
+.bord { --label-breedte: 260px; overflow-x: auto; border: 1px solid var(--rand); border-radius: 10px; background: var(--vlak); position: relative; }
+.bord-kop { display: flex; position: sticky; top: 0; z-index: 4; background: var(--vlak); border-bottom: 1px solid var(--rand); width: max-content; min-width: 100%; }
+.bord-label { flex: 0 0 var(--label-breedte); width: var(--label-breedte); position: sticky; left: 0; z-index: 3; background: var(--vlak);
+  padding: .35rem .6rem; border-right: 1px solid var(--rand); display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+.bord-label a { color: var(--tekst); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: .4rem; }
+.bord-label a:hover { text-decoration: underline; }
+.bord-label small { color: var(--tekst-zacht); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .76rem; }
+.kopcel { font-size: .78rem; text-transform: uppercase; letter-spacing: .03em; color: var(--tekst-zacht); font-weight: 600; }
+.bord-tijd { position: relative; height: 46px; flex: none; }
+.bord-maanden span, .bord-weken span { position: absolute; white-space: nowrap; overflow: hidden; font-size: .78rem; padding-left: 4px; border-left: 1px solid var(--rand); }
+.bord-maanden span { top: 0; height: 22px; line-height: 22px; font-weight: 700; text-transform: capitalize; }
+.bord-weken span { top: 22px; height: 24px; line-height: 24px; color: var(--tekst-zacht); }
+.bord-lijf { position: relative; width: max-content; min-width: 100%; }
+.bord-raster { position: absolute; top: 0; bottom: 0; pointer-events: none; z-index: 0; margin-left: var(--label-breedte); left: 0 !important; }
+.bord-raster i { position: absolute; top: 0; bottom: 0; border-left: 1px dashed color-mix(in srgb, var(--rand) 70%, transparent); }
+.bord-vandaag { position: absolute; top: 0; bottom: 0; width: 2px; background: #c62828; z-index: 2; }
+.bord-vandaag::before { content: 'vandaag'; position: absolute; top: 2px; left: 4px; font-size: .68rem; color: #c62828; font-weight: 700; background: var(--vlak); padding: 0 2px; }
+.bord-rij { display: flex; min-height: 40px; border-bottom: 1px solid color-mix(in srgb, var(--rand) 60%, transparent); position: relative; z-index: 1; }
+.bord-rij.pakketrij { min-height: 46px; background: color-mix(in srgb, var(--primair) 5%, transparent); }
+.bord-rij.pakketrij .bord-label { background: color-mix(in srgb, var(--primair) 5%, var(--vlak)); }
+.bord-pakket.focus .bord-label { box-shadow: inset 4px 0 0 var(--accent); }
+.bord-pakket.focus .pakketrij { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.bord-spoor { position: relative; flex: none; }
+.bord-spoor.bewerkbaar { cursor: crosshair; }
+.bord-soort { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.bord-somlijn { position: absolute; top: 50%; height: 6px; margin-top: -3px; border-radius: 3px; background: color-mix(in srgb, var(--primair) 45%, transparent); }
+.bord-balk { position: absolute; top: 6px; bottom: 6px; border-radius: 6px; background: var(--kleur); color: #fff; overflow: hidden; display: flex; align-items: center;
+  font-size: .78rem; font-weight: 600; cursor: grab; box-shadow: 0 1px 2px rgba(0,0,0,.2); touch-action: none; user-select: none; }
+.bord-balk.status-gepland { background: repeating-linear-gradient(45deg, var(--kleur) 0 6px, color-mix(in srgb, var(--kleur) 70%, #fff) 6px 12px); }
+.bord-balk.status-afgerond { background: #8a96a3; }
+.bord-balk.te-laat { outline: 3px solid #c62828; outline-offset: -1px; }
+.bord-balk.sleept { opacity: .85; cursor: grabbing; box-shadow: 0 4px 12px rgba(0,0,0,.3); }
+.bord-balk.sleept::after, .bord-balk.nieuw::after { content: attr(data-periode); position: absolute; left: 4px; top: -1px; font-size: .68rem; }
+.bord-balk:focus-visible { outline: 3px solid var(--accent); }
+.bord-voortgang { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(0,0,0,.22); pointer-events: none; }
+.bord-tekst { position: relative; padding: 0 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 1px rgba(0,0,0,.35); pointer-events: none; }
+.greep { position: absolute; top: 0; bottom: 0; width: 8px; cursor: ew-resize; z-index: 1; }
+.greep.begin { left: 0; } .greep.eind { right: 0; }
+.greep::after { content: ''; position: absolute; top: 30%; bottom: 30%; left: 3px; width: 2px; border-radius: 1px; background: rgba(255,255,255,.7); }
+.bord-leeg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: .8rem; color: var(--tekst-zacht); pointer-events: none; white-space: nowrap; }
+.planningtekst { display: flex; flex-direction: column; gap: .2rem; padding-top: .45rem; }
+.planningtekst small { color: var(--tekst-zacht); }
+@media (max-width: 700px) { .bord { --label-breedte: 150px; } }

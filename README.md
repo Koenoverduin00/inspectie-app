@@ -223,8 +223,17 @@ De weergave wordt automatisch gekozen op schermbreedte. Onder *Instellingen → 
 
 - **Werkpakketten** met tabbladen *Werkpakketten · Inspecties · Werkzaamheden · Maatregelen*: inspecties en
   werkzaamheden worden uitgevoerd binnen werkpakketten, en maatregelen zijn altijd het resultaat daarvan.
-- **Planning**: de lopende en geplande rondes van de werkpakketten (periode, status, voortgang, *te laat*) en alle
-  taken (zelf gepland, openstaande maatregelen, inspectieplanning). Oude links naar `#/taken` openen de planning.
+- **Planning**: werkpakketten maak je onder *Werkpakketten* (zonder datums); inplannen doe je hier op het
+  **planningsbord**: per werkpakket de rondes als balken in de tijd (weken, maanden of jaar; ◀ Vandaag ▶).
+  - **Inplannen**: trek in een lege rij de periode, of klik in de rij (één week).
+  - **Verschuiven / verlengen**: sleep de balk, of sleep de linker- of rechterrand.
+  - **Klik op een balk**: datums precies invullen, status (gepland / actief / afgerond), uit de planning halen.
+  - Kleur = soort (oranje werkzaamheid, blauw inspectie), gestreept = gepland, donkere vulling = voortgang,
+    rode rand = te laat, rode lijn = vandaag. Filter op soort; afgeronde rondes kun je tonen of verbergen.
+  - Na het maken van een werkpakket ga je direct naar de planning, met dat pakket uitgelicht; op een werkpakket
+    staat de knop *📅 Inplannen*. Gewone gebruikers zien het bord alleen-lezen.
+  Daaronder alle taken (zelf gepland, openstaande maatregelen, inspectieplanning). Oude links naar `#/taken`
+  openen de planning.
 - **Flora & fauna**: ongewijzigd.
 - **Instellingen** met voor beheerders het tabblad *Kaart & GIS* (lagen, GIS inladen). Gewone gebruikers zien geen
   kaart en GIS: het tabblad ontbreekt, de pagina is geblokkeerd en links naar de kaart zijn weg.
@@ -329,6 +338,7 @@ js/pakketten.js       werkpakketten en rondes: voortgang, toewijzing en objectfi
 js/pakketexcel.js     Excel-sjabloon (keuzelijsten, controles, beveiliging) en import met controle
 js/resultatenexcel.js inspectieresultaten naar Excel (resultaten, gebreken, maatregelen, foto's)
 js/stowa.js           STOWA-systematiek waterkeringen: zones, 61 inspectiewijzers, keuzelijsten, urgentie
+js/planning.js        planningsbord: dagen, weken, balkposities en verslepen (pure functies)
 js/digigids.js        Digigids: 100 schadebeelden (6 categorieën) met klassen, criteria en voorbeeldfoto's
 js/gisimport.js       GIS inladen: splitsen per geometrie, instellingen raden, controles, bestaande laag bijwerken
 js/bvc.js             boomveiligheidscontrole volgens protocol RWS, SUF-BVC, RD-coördinaten
