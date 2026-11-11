@@ -229,6 +229,11 @@ De weergave wordt automatisch gekozen op schermbreedte. Onder *Instellingen → 
 
 - **Werkpakketten** met tabbladen *Werkpakketten · Inspecties · Werkzaamheden · Maatregelen*: inspecties en
   werkzaamheden worden uitgevoerd binnen werkpakketten, en maatregelen zijn altijd het resultaat daarvan.
+- **Werkzaamheden alleen binnen een werkpakket.** Elke registratie hoort bij een actieve werkronde. Vanaf het
+  dashboard, de lijst of de telefoon (*Registratie werkzaamheden*) kies je eerst de ronde; vanaf een object of taak
+  gaat de app direct naar de enige passende ronde, of laat de keuze zien als er meer zijn. Zit het object in geen
+  actieve werkronde, dan meldt de app dat (beheerders krijgen *+ Werkpakket met dit object*). In het formulier kies je
+  alleen uit de objecten van de ronde. Oudere werkzaamheden zonder pakket blijven gewoon zichtbaar en bewerkbaar.
 - **Werkpakket ↔ planning**: in het werkpakket geef je het **aantal rondes** en per ronde de **duur** (weken of
   dagen; elke ronde mag anders zijn). In de planning kies je de startdatum; wijzig je later de duur, dan schuift de
   einddatum mee, en verleng je een balk in de planning, dan past de duur in het werkpakket zich aan.

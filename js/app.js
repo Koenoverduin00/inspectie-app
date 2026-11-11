@@ -46,7 +46,7 @@ const instelling = {
 // ---------------------------------------------------------------------------
 const ROUTES = [
   [/^\/$/, 'dashboard', () => (isMobiel() ? mobielStart() : dashboard())],
-  [/^\/m\/werk$/, 'm-werk', () => objectKiezer('werk')],
+  [/^\/m\/werk$/, 'm-werk', () => werkpakketKiezer(null, { mobiel: true })],
   [/^\/m\/werk\/nieuw$/, 'm-werk', (_, q) => werkFormulier(null, q.get('object'), { mobiel: true, taakId: q.get('taak'), maatregel: q.get('maatregel'), pakketId: q.get('pakket'), rondeId: q.get('ronde') })],
   [/^\/m\/werk\/([^/]+)$/, 'm-werk', (id) => werkFormulier(id, null, { mobiel: true })],
   [/^\/m\/inspectie$/, 'm-inspectie', () => objectKiezer('inspectie')],
@@ -1594,7 +1594,7 @@ async function mobielStart() {
       ${loginHint}
       <a class="mtegel" href="#/m/werk">
         <span class="micoon">🛠️</span>
-        <span><strong>Registratie werkzaamheden</strong><small>Uitgevoerd werk vastleggen, met foto's en uren</small></span>
+        <span><strong>Registratie werkzaamheden</strong><small>Werk vastleggen binnen je werkpakket, met foto's en uren</small></span>
       </a>
       <a class="mtegel" href="#/m/inspectie">
         <span class="micoon">🔍</span>
@@ -1895,7 +1895,58 @@ async function verwijderWerk(w) {
   await db.verwijder('werkzaamheden', w.id);
 }
 
+// ---------------------------------------------------------------------------
+// Werkzaamheden horen altijd bij een werkpakket: eerst de ronde kiezen
+// ---------------------------------------------------------------------------
+/** Actieve werk-rondes (optioneel alleen die met dit object, en op de telefoon alleen 'voor mij'). */
+async function actieveWerkRondes({ objectId = '', alleenMijn = false } = {}) {
+  const g = await pakketGegevens();
+  const ik = sync.sessie()?.gebruiker?.email ?? '';
+  return actieveRondes(g)
+    .filter(({ pakket: v }) => v.soort === 'werk' && (!alleenMijn || pakketVoorMij(v, ik)) && (!objectId || v.objecten.includes(objectId)));
+}
+
+async function werkpakketKiezer(objectId, { mobiel = false, taakId = null, maatregel = null } = {}) {
+  const lijst = await actieveWerkRondes({ objectId, alleenMijn: mobiel });
+  const object = objectId ? await db.haal('objecten', objectId) : null;
+  const href = (v) => {
+    const q = new URLSearchParams({ pakket: v.id });
+    if (rondeParam(v)) q.set('ronde', rondeParam(v));
+    if (objectId) q.set('object', objectId);
+    if (taakId) q.set('taak', taakId);
+    if (maatregel) q.set('maatregel', maatregel);
+    // Telefoon zonder object: naar de ronde met kaart en 'volgende dichtbij'.
+    if (mobiel && !objectId) return pakketPagina(v, true);
+    return `${mobiel ? '#/m/werk' : '#/werkzaamheden'}/nieuw?${q}`;
+  };
+  // Precies één passende ronde voor dit object: direct door naar het formulier.
+  if (objectId && lijst.length === 1) {
+    location.replace(href(lijst[0].pakket));
+    return;
+  }
+  const terug = mobiel ? '#/' : objectId ? `#/objecten/${esc(objectId)}` : '#/werkzaamheden';
+  const kop = mobiel
+    ? `<div class="mkop"><a href="${terug}" class="mterug" aria-label="Terug">←</a><div><small>Registratie werkzaamheden</small><h1>Kies het werkpakket</h1></div></div>`
+    : `<div class="paginakop"><div><p><a href="${terug}">← Terug</a></p><h1>Werkzaamheid registreren</h1>
+        <p>Werkzaamheden worden altijd binnen een werkpakket uitgevoerd. Kies de ronde${object ? ` waarin ${esc(object.code)} – ${esc(object.naam)} zit` : ''}.</p></div></div>`;
+  const leeg = object
+    ? `<strong>${esc(object.code)} – ${esc(object.naam)}</strong> zit in geen actieve werkronde${mobiel ? ' die aan jou is toegewezen' : ''}.`
+    : `Er ${mobiel ? 'is voor jou' : 'is'} geen actieve werkronde.`;
+  app.innerHTML = `${kop}
+    ${lijst.length ? `<ul class="mlijst pakketlijst ${mobiel ? '' : 'kaart'}">${lijst.map(({ pakket: v, voortgang }) => `
+      <li><a href="${href(v)}"><span class="micoon klein">📦</span>
+        <span><strong>${esc(v.naam)}</strong><small>${v.code ? `${esc(v.code)} · ` : ''}${pakketSoortTekst(v)}${periodeTekst(v) ? ` · ${periodeTekst(v)}` : ''}</small>
+        ${voortgangBalk(voortgang)}</span></a></li>`).join('')}</ul>`
+    : `<div class="kaart leeg"><p>${leeg}</p>
+      <p><small>Een werkzaamheid registreer je binnen een actieve ronde van een werkpakket. ${magBeheren()
+    ? 'Maak een werkpakket aan (of voeg het object toe aan een bestaand pakket) en zet de ronde in de planning op actief.'
+    : 'Vraag de beheerder om een werkpakket aan te maken of de ronde actief te zetten.'}</small></p>
+      ${magBeheren() && !mobiel ? `<div class="knoppen" style="justify-content:center"><a class="knop primair" href="#/werkpakketten/nieuw${objectId ? `?object=${esc(objectId)}` : ''}">+ Werkpakket${object ? ' met dit object' : ''}</a>
+        <a class="knop" href="#/planning">Naar de planning</a></div>` : ''}</div>`}`;
+}
+
 async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maatregel = null, pakketId = null, rondeId = null } = {}) {
+  if (!id && !pakketId) return werkpakketKiezer(objectId, { mobiel, taakId, maatregel });
   const [objecten, inspecties] = await Promise.all([inProject('objecten'), inProject('inspecties')]);
   objecten.sort((a, b) => String(a.code).localeCompare(String(b.code), 'nl', { numeric: true }));
   const bestaand = id ? await db.haal('werkzaamheden', id) : null;
@@ -1921,6 +1972,19 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
   const taak = taakId ? await db.haal('taken', taakId) : null;
   const pakket = await laadPakketView(w.werkpakketId, w.rondeId);
   if (pakket) w.rondeId = pakket.rondeId;
+  if (!bestaand && !pakket) {
+    app.innerHTML = leegKaart('Dit werkpakket bestaat niet (meer).', `<a class="knop" href="${mobiel ? '#/m/werk' : '#/werkzaamheden/nieuw'}">Ander werkpakket kiezen</a>`);
+    return;
+  }
+  if (!bestaand && w.objectId && !pakket.objecten.includes(w.objectId)) {
+    app.innerHTML = leegKaart(`Dit object hoort niet bij ${esc(pakket.naam)}.`, `<a class="knop" href="${mobiel ? '#/m/werk' : '#/werkzaamheden/nieuw'}?object=${esc(w.objectId)}">Passend werkpakket kiezen</a>`);
+    return;
+  }
+  // Binnen een werkpakket kies je alleen uit de objecten van de ronde.
+  if (pakket && !bestaand) {
+    const inRonde = new Set(pakket.objecten);
+    for (let n = objecten.length - 1; n >= 0; n--) if (!inRonde.has(objecten[n].id)) objecten.splice(n, 1);
+  }
   if (pakket && !bestaand && pakket.werksoort) w.soort = pakket.werksoort;
   const pakketTerug = pakket ? pakketPagina(pakket, mobiel) : null;
   const vrijgavenProject = await inProject('vrijgaven');
@@ -1982,6 +2046,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     <div class="paginakop"><div><p><a href="${terug}">← Terug</a></p>
       <h1>${bestaand ? 'Werkzaamheid bewerken' : 'Werkzaamheid registreren'}</h1></div></div>
     <form id="form" novalidate>
+      ${taakBanner}${pakketBanner}${bestaand && !pakket ? '<div class="kaart"><small>Deze werkzaamheid is geregistreerd vóórdat werkzaamheden aan een werkpakket gekoppeld moesten worden.</small></div>' : ''}
       <div id="vrijgave-banner">${vrijgaveBanner(w.objectId)}</div>
       <section class="kaart"><div class="velden">${velden}</div></section>
       <section class="kaart" id="extra-blok" hidden><h2>Extra gegevens</h2><div class="extra-velden"></div></section>
@@ -3925,6 +3990,7 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
     rondes.push({ ...laatste, id: nieuwId(), nummer: (Number(laatste.nummer) || rondes.length) + 1, naam: volgendeRondeNaam(laatste.naam), start: '', eind: '', status: 'gepland', duur: PL.duurVan(laatste) });
   }
   const gekozen = new Set(p.objecten ?? []);
+  if (!bron && q.get('object')) gekozen.add(q.get('object'));
   const leden = project?.leden ?? [];
   const terug = id ? `#/werkpakketten/${esc(id)}` : '#/werkpakketten';
 
