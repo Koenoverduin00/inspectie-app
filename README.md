@@ -214,10 +214,20 @@ per apparaat kiezen voor donker of 'volg instelling van het apparaat'.
 | Doel | Snel vastleggen buiten | Inrichten, beheren en rapporteren |
 | Start | Twee grote knoppen: **Registratie werkzaamheden** en **Schouw & inspectie** | Dashboard met KPI's, conditieverdeling en planning |
 | Object kiezen | Zoeken of **📍 Dichtbij** (GPS, gesorteerd op afstand) | Lijsten met filters |
-| Menu | Onderin: Start · Werkzaamheden · Schouw · Account | Bovenin: alle onderdelen |
+| Menu | Onderin: Start · Werkzaamheden · Schouw · Account | Bovenin: Dashboard · Objecten · Werkpakketten · Planning · Flora & fauna · Instellingen |
 
 De weergave wordt automatisch gekozen op schermbreedte. Onder *Instellingen → Weergave op dit apparaat* (of
 *Account → Volledige versie openen* op de telefoon) kun je dat per apparaat vastzetten.
+
+### Menu-indeling (pc)
+
+- **Werkpakketten** met tabbladen *Werkpakketten · Inspecties · Werkzaamheden · Maatregelen*: inspecties en
+  werkzaamheden worden uitgevoerd binnen werkpakketten, en maatregelen zijn altijd het resultaat daarvan.
+- **Planning**: de lopende en geplande rondes van de werkpakketten (periode, status, voortgang, *te laat*) en alle
+  taken (zelf gepland, openstaande maatregelen, inspectieplanning). Oude links naar `#/taken` openen de planning.
+- **Flora & fauna**: ongewijzigd.
+- **Instellingen** met voor beheerders het tabblad *Kaart & GIS* (lagen, GIS inladen). Gewone gebruikers zien geen
+  kaart en GIS: het tabblad ontbreekt, de pagina is geblokkeerd en links naar de kaart zijn weg.
 
 ## Functies
 

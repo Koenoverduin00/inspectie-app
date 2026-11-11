@@ -680,3 +680,10 @@ details.waarneming > summary > span { display: flex; align-items: center; gap: .
   .keuzetegel { font-size: .92rem; padding: .55rem .6rem; }
   .dg-klassen { grid-template-columns: 1fr 1fr; }
 }
+
+/* Tabbladen binnen een hoofdgroep (Werkpakketten, Instellingen) */
+.tabbalk { display: flex; gap: .25rem; margin: 0 0 1rem; border-bottom: 2px solid var(--rand); overflow-x: auto; scrollbar-width: thin; }
+.tabbalk a { padding: .6rem .9rem; border-radius: 8px 8px 0 0; color: var(--tekst-zacht); text-decoration: none; font-weight: 600; white-space: nowrap;
+  border-bottom: 3px solid transparent; margin-bottom: -2px; }
+.tabbalk a:hover { color: var(--tekst); background: var(--primair-licht); }
+.tabbalk a.actief { color: var(--primair); border-bottom-color: var(--primair); }

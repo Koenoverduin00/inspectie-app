@@ -84,6 +84,7 @@ const ROUTES = [
   [/^\/projecten\/([^/]+)\/bewerken$/, 'projecten', (id) => projectFormulier(id)],
   [/^\/projecten\/([^/]+)\/velden$/, 'projecten', formulierveldenPagina],
   [/^\/gis\/importeren$/, 'kaart', gisImport],
+  [/^\/planning$/, 'taken', takenPagina],
   [/^\/taken$/, 'taken', takenPagina],
   [/^\/werkpakketten$/, 'werkpakketten', werkpakkettenLijst],
   [/^\/werkpakketten\/nieuw$/, 'werkpakketten', (_, q) => pakketFormulier(null, q)],
@@ -96,6 +97,21 @@ const ROUTES = [
   [/^\/kaart$/, 'kaart', kaart],
   [/^\/instellingen$/, 'instellingen', instellingen],
 ];
+
+// Het hoofdmenu is compact: onderdelen vallen onder een hoofdgroep en hebben daar een tabblad.
+const NAV_GROEP = { inspecties: 'werkpakketten', werkzaamheden: 'werkpakketten', maatregelen: 'werkpakketten', taken: 'planning', kaart: 'instellingen' };
+const TABBLADEN = {
+  werkpakketten: () => [['#/werkpakketten', '📦 Werkpakketten'], ['#/inspecties', '🔍 Inspecties'], ['#/werkzaamheden', '🛠️ Werkzaamheden'], ['#/maatregelen', '⚠️ Maatregelen']],
+  instellingen: () => (magBeheren() ? [['#/instellingen', '⚙️ Algemeen'], ['#/kaart', '🗺️ Kaart & GIS']] : []),
+};
+// Alleen de overzichtspagina's krijgen tabbladen (geen formulieren of details).
+const TAB_PAGINAS = /^\/(werkpakketten|inspecties|werkzaamheden|maatregelen|instellingen|kaart)$/;
+
+function tabbalk(pad, groep) {
+  const tabs = TABBLADEN[groep]?.() ?? [];
+  if (tabs.length < 2) return '';
+  return `<nav class="tabbalk" aria-label="Onderdelen">${tabs.map(([href, label]) => `<a href="${href}" class="${href === `#${pad}` ? 'actief' : ''}"${href === `#${pad}` ? ' aria-current="page"' : ''}>${label}</a>`).join('')}</nav>`;
+}
 
 let formulierGewijzigd = false;
 
@@ -118,9 +134,10 @@ async function toonRoute() {
     a.classList.toggle('actief', actief);
     if (actief) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   });
+  const sectie = NAV_GROEP[route?.[1]] ?? route?.[1];
   document.querySelectorAll('[data-nav]').forEach((a) => {
-    a.classList.toggle('actief', route?.[1] === a.dataset.nav);
-    if (route?.[1] === a.dataset.nav) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+    a.classList.toggle('actief', sectie === a.dataset.nav);
+    if (sectie === a.dataset.nav) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   });
   window.scrollTo(0, 0);
   if (!route) {
@@ -137,6 +154,9 @@ async function toonRoute() {
       return;
     }
     await handler(id, query);
+    if (!mobiel && TAB_PAGINAS.test(pad) && location.hash.split('?')[0] === `#${pad}` && !app.querySelector('.tabbalk')) {
+      app.insertAdjacentHTML('afterbegin', tabbalk(pad, sectie));
+    }
   } catch (fout) {
     console.error(fout);
     app.innerHTML = `<div class="kaart"><h1>Er ging iets mis</h1><p>${esc(fout.message)}</p><a class="knop" href="#/">Naar dashboard</a></div>`;
@@ -421,7 +441,7 @@ async function dashboard() {
       <div class="kaart ${direct ? 'waarschuwing' : ''}"><div class="getal">${direct}</div><div class="label">Directe maatregelen open</div></div>
       <div class="kaart"><div class="getal" style="font-size:1.5rem">${euro(kosten)}</div><div class="label">Raming open maatregelen</div></div>
       <div class="kaart"><div class="getal">${werkRecent.length}</div><div class="label">Werkzaamheden, laatste 30 dagen (${urenTekst(urenRecent)})</div></div>
-      <a class="kaart kpi-link ${takenUrgent ? 'waarschuwing' : ''}" href="#/taken"><div class="getal">${takenOpen.length}</div><div class="label">Open taken (${takenUrgent} urgent/hoog)</div></a>
+      <a class="kaart kpi-link ${takenUrgent ? 'waarschuwing' : ''}" href="#/planning"><div class="getal">${takenOpen.length}</div><div class="label">Open taken (${takenUrgent} urgent/hoog)</div></a>
     </div>
     ${actievePakketten.length ? `<section class="kaart">
       <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">Werkpakketten</h2><a href="#/werkpakketten">Alle →</a></div>
@@ -430,7 +450,7 @@ async function dashboard() {
         ${voortgangBalk(pakketInfo.voortgangen.get(p.id))}</a>`).join('')}</div>
     </section>` : ''}
     <section class="kaart">
-      <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">Belangrijkste taken</h2><a href="#/taken">Alle taken →</a></div>
+      <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">Belangrijkste taken</h2><a href="#/planning">Alle taken →</a></div>
       ${takenOpen.length ? `<div class="tabelhouder"><table><tbody>
         ${takenOpen.slice(0, 6).map((t) => `<tr class="klikbaar" data-href="${taakHref(t, false)}">
           <td>${rangLabel(t.rang)}</td><td>${t.soort === 'werk' ? '🛠️' : '🔍'} ${esc(t.titel)}</td><td>${objectNaam(t.object)}</td>
@@ -596,7 +616,7 @@ async function objectDetail(id) {
           <dt>Afmetingen</dt><dd>${o.lengte || o.breedte ? `${esc(o.lengte || '?')} × ${esc(o.breedte || '?')} m` : '–'}</dd>
           <dt>Beheerder</dt><dd>${esc(o.beheerder || '–')}</dd>
           <dt>Locatie</dt><dd>${esc(o.locatie || '–')}</dd>
-          ${o.geometrie ? `<dt>GIS</dt><dd>${geometrieInfo(o)}${laag ? ` · laag <a href="#/kaart">${esc(laag.naam)}</a>` : ''}</dd>` : ''}
+          ${o.geometrie ? `<dt>GIS</dt><dd>${geometrieInfo(o)}${laag ? ` · laag ${magBeheren() ? `<a href="#/kaart">${esc(laag.naam)}</a>` : esc(laag.naam)}` : ''}</dd>` : ''}
           <dt>Coördinaten</dt><dd>${heeftLocatie ? `${esc(o.lat)}, ${esc(o.lng)} · <a href="https://www.openstreetmap.org/?mlat=${encodeURIComponent(o.lat)}&mlon=${encodeURIComponent(o.lng)}#map=18/${encodeURIComponent(o.lat)}/${encodeURIComponent(o.lng)}" target="_blank" rel="noopener">kaart</a>` : '–'}</dd>
           <dt>Status</dt><dd>${esc(o.status || '–')}</dd>
         </dl>
@@ -2566,6 +2586,10 @@ function matenTekst(m, aantal) {
 }
 
 async function kaart() {
+  if (!magBeheren()) {
+    app.innerHTML = leegKaart('Kaart & GIS is alleen beschikbaar voor beheerders.', '<a class="knop" href="#/">Naar het dashboard</a>');
+    return;
+  }
   const [objecten, lagen] = await Promise.all([inProject('objecten'), inProject('lagen')]);
   const groepen = [
     ...lagen.map((l) => ({ id: l.id, naam: l.naam, kleur: l.kleur, laag: l, objecten: objecten.filter((o) => o.laagId === l.id) })),
@@ -2763,11 +2787,28 @@ async function takenPagina() {
   const project = await actiefProject();
   const leden = project?.leden ?? [];
   const gesorteerd = sorteerTaken(lijst);
+  const pg = await pakketGegevens();
+  // Rondes van werkpakketten in de tijd: wat loopt er en wat komt eraan.
+  const rondes = pg.pakketten.flatMap((p) => rondesVan(p).filter((r) => r.status !== 'afgerond').map((r) => ({ p, r, v: pg.views.get(`${p.id}:${r.id}`), vg: pg.rondeVoortgang.get(`${p.id}:${r.id}`) })))
+    .sort((a, b) => (a.r.status === 'actief' ? 0 : 1) - (b.r.status === 'actief' ? 0 : 1) || String(a.r.start || '9999').localeCompare(String(b.r.start || '9999')));
+  const vandaagIso = vandaag();
   app.innerHTML = `
     <div class="paginakop">
-      <div><h1>Taken</h1><p>Geplande taken, openstaande maatregelen en inspecties volgens planning. De inspecteur ziet ze op volgorde van urgentie en afstand.</p></div>
-      <a class="knop primair" href="#/taken/nieuw">+ Taak plannen</a>
+      <div><h1>Planning</h1><p>Lopende en geplande rondes van de werkpakketten, en alle taken: zelf geplande taken, openstaande maatregelen en inspecties volgens planning.</p></div>
+      <div class="knoppen">${magBeheren() ? '<a class="knop" href="#/werkpakketten/nieuw">+ Werkpakket</a>' : ''}<a class="knop primair" href="#/taken/nieuw">+ Taak plannen</a></div>
     </div>
+    <section class="kaart">
+      <h2>Rondes</h2>
+      ${rondes.length ? `<div class="tabelhouder"><table>
+        <thead><tr><th>Werkpakket</th><th>Ronde</th><th class="verberg-mobiel">Soort</th><th>Periode</th><th>Status</th><th style="min-width:150px">Voortgang</th></tr></thead>
+        <tbody>${rondes.map(({ p, r, v, vg }) => `<tr class="klikbaar" data-href="${pakketPagina(v, false)}">
+          <td><strong>${esc(p.code || '')}</strong> ${esc(p.naam)}</td><td>R${r.nummer} ${esc(r.naam)}</td>
+          <td class="verberg-mobiel">${pakketSoortTekst(v)}</td>
+          <td>${periodeTekst(v) || '–'}${r.eind && r.eind < vandaagIso && r.status !== 'afgerond' ? ' <span class="label-status verlopen">te laat</span>' : ''}</td>
+          <td>${pakketStatusLabel(r.status)}</td><td>${voortgangBalk(vg)}</td></tr>`).join('')}</tbody></table></div>`
+    : `<p class="mleeg">Geen lopende of geplande rondes.${magBeheren() ? ' <a href="#/werkpakketten/nieuw">Werkpakket aanmaken</a>' : ''}</p>`}
+    </section>
+    <h2>Taken</h2>
     <div class="filters">
       <select id="bron" aria-label="Bron"><option value="">Alle bronnen</option>${Object.entries(BRON_TEKST).map(([k, v]) => optie(k, v)).join('')}</select>
       <select id="soort" aria-label="Soort"><option value="">Inspecties en werk</option>${optie('inspectie', 'Inspecties')}${optie('werk', 'Werkzaamheden')}</select>
@@ -2804,7 +2845,7 @@ async function taakFormulier(id, q = new URLSearchParams()) {
   objecten.sort((a, b) => String(a.code).localeCompare(String(b.code), 'nl', { numeric: true }));
   const bestaand = id ? await db.haal('taken', id) : null;
   if (id && !bestaand) {
-    app.innerHTML = leegKaart('Taak niet gevonden.', '<a class="knop" href="#/taken">Terug</a>');
+    app.innerHTML = leegKaart('Taak niet gevonden.', '<a class="knop" href="#/planning">Terug</a>');
     return;
   }
   const t = bestaand ?? {
@@ -2812,7 +2853,7 @@ async function taakFormulier(id, q = new URLSearchParams()) {
     prioriteit: 'normaal', deadline: '', toegewezenAan: '', status: 'open', maatregel: q.get('maatregel') ?? '',
   };
   app.innerHTML = `
-    <div class="paginakop"><div><p><a href="#/taken">← Taken</a></p><h1>${bestaand ? 'Taak bewerken' : 'Taak plannen'}</h1></div></div>
+    <div class="paginakop"><div><p><a href="#/planning">← Planning</a></p><h1>${bestaand ? 'Taak bewerken' : 'Taak plannen'}</h1></div></div>
     <form id="form" class="kaart" novalidate>
       <div class="velden">
         <div class="veld breed"><label for="f-object" class="vereist">Object / GIS-vlak</label>
@@ -2836,7 +2877,7 @@ async function taakFormulier(id, q = new URLSearchParams()) {
       <section id="extra-blok" hidden style="margin-top:1.25rem"><h2>Extra gegevens</h2><div class="extra-velden"></div></section>
       <div class="formvoet">
         ${bestaand ? '<button type="button" class="knop gevaar" id="verwijder" style="margin-right:auto">Verwijderen</button>' : ''}
-        <a class="knop" href="#/taken">Annuleren</a><button class="knop primair" type="submit">Opslaan</button>
+        <a class="knop" href="#/planning">Annuleren</a><button class="knop primair" type="submit">Opslaan</button>
       </div>
     </form>`;
   const form = app.querySelector('#form');
@@ -2860,13 +2901,13 @@ async function taakFormulier(id, q = new URLSearchParams()) {
     });
     formulierGewijzigd = false;
     melding('Taak opgeslagen');
-    ga('#/taken');
+    ga('#/planning');
   };
   app.querySelector('#verwijder')?.addEventListener('click', async () => {
     if (!confirm('Deze taak verwijderen?')) return;
     for (const fid of bestaand.extraFotoIds ?? []) await db.verwijder('fotos', fid);
     await db.verwijder('taken', id);
-    ga('#/taken');
+    ga('#/planning');
   });
 }
 
