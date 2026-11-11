@@ -2972,7 +2972,6 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
   const beheer = magBeheren();
   const zoom = PL.ZOOM[instelling.lees('planZoom')] ? instelling.lees('planZoom') : 'maanden';
   let anker = instelling.lees('planAnker') || vandaag();
-  let toonAfgerond = instelling.lees('planAfgerond') === '1';
   let filterSoort = '';
   const vandaagNr = PL.dagNr(vandaag());
 
@@ -2987,7 +2986,7 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
     const breedte = b.dagen * b.px;
     const x = (n) => (n - b.begin) * b.px;
     const pakketten = g.pakketten
-      .map((p) => ({ p, rondes: rondesVan(p).filter((r) => (toonAfgerond || r.status !== 'afgerond') && (!filterSoort || r.soort === filterSoort)) }))
+      .map((p) => ({ p, rondes: rondesVan(p).filter((r) => !filterSoort || r.soort === filterSoort) }))
       .filter(({ rondes }) => rondes.length)
       .sort((a, c) => {
         const eerste = (x2) => Math.min(...x2.rondes.map((r) => PL.dagNr(r.start) ?? 1e9));
@@ -3003,13 +3002,14 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
       const laat = PL.teLaat(r, vandaag());
       const titel = `R${r.nummer} ${r.naam} · ${periodeTekst(v) || 'nog niet ingepland'} · ${vg.gedaan.size + vg.overgeslagen.size}/${vg.totaal}`;
       return `<div class="bord-rij" data-pakket="${esc(p.id)}" data-ronde="${esc(r.id)}">
-        <div class="bord-label"><a href="${pakketPagina(v, false)}"><span class="bord-soort" style="background:${kleur}"></span>R${r.nummer} ${esc(r.naam)}</a>
-          <small>${r.soort === 'inspectie' ? esc(r.inspectiesoort || 'Inspectie') : esc(r.werksoort || 'Werkzaamheid')}</small></div>
+        <div class="bord-label"><div class="bord-labelregel"><a href="${pakketPagina(v, false)}"><span class="bord-soort" style="background:${kleur}"></span>R${r.nummer} ${esc(r.naam)}</a>
+            <span class="bord-pct ${r.status === 'afgerond' ? 'klaar' : ''}" title="${vg.gedaan.size + vg.overgeslagen.size} van ${vg.totaal} objecten">${r.status === 'afgerond' ? '✓ ' : ''}${vg.percentage}%</span></div>
+          <small>${r.soort === 'inspectie' ? esc(r.inspectiesoort || 'Inspectie') : esc(r.werksoort || 'Werkzaamheid')} · ${PL.duurTekst(PL.duurVan(r))}</small></div>
         <div class="bord-spoor ${beheer ? 'bewerkbaar' : ''}" style="width:${breedte}px">
           ${pos ? `<div class="bord-balk status-${esc(r.status)} ${laat ? 'te-laat' : ''}" style="left:${pos.left}px;width:${Math.max(pos.width, 4)}px;--kleur:${kleur}" title="${esc(titel)}" tabindex="0">
             <span class="bord-voortgang" style="width:${vg.percentage}%"></span>
-            ${beheer && !pos.afgekaptLinks ? '<span class="greep begin"></span>' : ''}<span class="bord-tekst">${r.status === 'afgerond' ? '✓ ' : ''}${esc(r.naam)} · ${vg.percentage}%</span>${beheer && !pos.afgekaptRechts ? '<span class="greep eind"></span>' : ''}
-          </div>` : r.start ? '' : `<span class="bord-leeg">${beheer ? '↔ Sleep hier om in te plannen' : 'Nog niet ingepland'}</span>`}
+            ${beheer && !pos.afgekaptLinks ? '<span class="greep begin"></span>' : ''}<span class="bord-tekst">${esc(PL.balkTekst(r, vg.percentage, Math.max(pos.width, 4)))}</span>${beheer && !pos.afgekaptRechts ? '<span class="greep eind"></span>' : ''}
+          </div>${PL.balkTekst(r, vg.percentage, Math.max(pos.width, 4)) ? '' : `<span class="bord-buitentekst" style="left:${pos.left + Math.max(pos.width, 4) + 4}px">${r.status === 'afgerond' ? '✓ ' : ''}R${r.nummer} · ${vg.percentage}%</span>`}` : r.start ? '' : `<span class="bord-leeg">${beheer ? '↔ Sleep hier om in te plannen' : 'Nog niet ingepland'}</span>`}
         </div></div>`;
     };
 
@@ -3022,11 +3022,10 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
         </div>
         <div class="segment bord-zoom">${Object.entries(PL.ZOOM).map(([kz, z]) => `<label><input type="radio" name="planzoom" value="${kz}" ${kz === zoom ? 'checked' : ''}><span>${z.label}</span></label>`).join('')}</div>
         <select id="bord-soort" aria-label="Soort">${optie('', 'Werk en inspecties', filterSoort)}${optie('werk', 'Werkzaamheden', filterSoort)}${optie('inspectie', 'Inspecties', filterSoort)}</select>
-        <label class="bord-vink"><input type="checkbox" id="bord-afgerond" ${toonAfgerond ? 'checked' : ''}> Afgeronde rondes tonen</label>
         <span class="bord-legenda"><i style="background:${BORD_KLEUR.werk}"></i>Werkzaamheid <i style="background:${BORD_KLEUR.inspectie}"></i>Inspectie
-          <i class="gepland"></i>Gepland <i class="telaat"></i>Te laat</span>
+          <i class="gepland"></i>Gepland <i class="afgerond">✓</i>Afgerond <i class="telaat"></i>Te laat</span>
       </div>
-      ${nietGepland ? `<p class="bord-melding">📌 ${nietGepland} ronde${nietGepland === 1 ? '' : 's'} nog niet ingepland${beheer ? ' – sleep in de rij over de gewenste periode, of klik in de rij.' : '.'}</p>` : ''}
+      ${nietGepland ? `<p class="bord-melding">📌 ${nietGepland} ronde${nietGepland === 1 ? '' : 's'} nog niet ingepland${beheer ? ' – klik in de rij op de startdatum (de duur uit het werkpakket wordt gebruikt), of sleep over de gewenste periode.' : '.'}</p>` : ''}
       ${pakketten.length ? `<div class="bord" style="--bord-breedte:${breedte}px">
         <div class="bord-kop">
           <div class="bord-label kopcel">Werkpakket / ronde</div>
@@ -3067,7 +3066,6 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
     });
     el.querySelectorAll('input[name=planzoom]').forEach((i) => { i.onchange = () => { instelling.schrijf('planZoom', i.value); planningsbord(el, { focusPakket }); }; });
     el.querySelector('#bord-soort').onchange = (e) => { filterSoort = e.target.value; teken(); };
-    el.querySelector('#bord-afgerond').onchange = (e) => { toonAfgerond = e.target.checked; instelling.schrijf('planAfgerond', toonAfgerond ? '1' : ''); teken(); };
     if (focusPakket && eerste) el.querySelector(`#bord-${CSS.escape(focusPakket)}`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     eerste = false;
     // Horizontaal: na een wijziging blijft het bord staan; bij een nieuwe periode of schaal naar vandaag.
@@ -3131,9 +3129,9 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
           spoor.removeEventListener('pointerup', los);
           spoor.removeEventListener('pointercancel', los);
           if (!bewogen && modus !== 'teken') { rondeDialoog(rij, true); return; }
-          if (!bewogen && modus === 'teken') nieuw = { start: basis.start, eind: basis.start + 6 }; // klik in lege rij: één week
+          if (!bewogen && modus === 'teken') nieuw = { start: basis.start, eind: basis.start + PL.duurVan(ronde) - 1 }; // klik in lege rij: de duur van de ronde
           if (modus !== 'teken' && nieuw.start === basis.start && nieuw.eind === basis.eind) return;
-          await bewaarRonde(pakket.id, ronde.id, { start: PL.isoVan(nieuw.start), eind: PL.isoVan(nieuw.eind) });
+          await bewaarRonde(pakket.id, ronde.id, { start: PL.isoVan(nieuw.start), eind: PL.isoVan(nieuw.eind), duur: nieuw.eind - nieuw.start + 1 });
           melding(`R${ronde.nummer} ${ronde.naam}: ${datumNL(PL.isoVan(nieuw.start))} – ${datumNL(PL.isoVan(nieuw.eind))}`);
           teken();
         };
@@ -3176,10 +3174,16 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
     const eind = d.querySelector('#d-eind').value;
     const status = d.querySelector('input[name=d-status]:checked')?.value ?? r.status;
     d.remove();
-    if (keuze === 'wis') { await bewaarRonde(p.id, r.id, { start: '', eind: '' }); teken(); return; }
+    if (keuze === 'wis') {
+      if (!confirm(`Weet je zeker dat je R${r.nummer} ${r.naam} uit de planning wilt halen?\n\nDe ronde zelf en alle registraties blijven bestaan; alleen de periode vervalt.`)) return;
+      await bewaarRonde(p.id, r.id, { start: '', eind: '' });
+      melding(`R${r.nummer} ${r.naam} uit de planning gehaald`);
+      teken();
+      return;
+    }
     if (keuze !== 'ja') return;
     if (start && eind && eind < start) { melding('De einddatum ligt vóór de start.', 'fout'); return; }
-    await bewaarRonde(p.id, r.id, { start, eind, status });
+    await bewaarRonde(p.id, r.id, { start, eind, status, ...(start && eind ? { duur: PL.dagNr(eind) - PL.dagNr(start) + 1 } : {}) });
     teken();
   };
 
@@ -3918,7 +3922,7 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
   if (!bron) Object.assign(rondes[0], { id: nieuwId(), naam: 'Ronde 1', soort: 'werk', werksoort: '', inspectiesoort: 'Schouw', start: '', eind: '', status: 'gepland' });
   if (q.get('nieuweRonde') && bron) {
     const laatste = rondes[rondes.length - 1];
-    rondes.push({ ...laatste, id: nieuwId(), nummer: (Number(laatste.nummer) || rondes.length) + 1, naam: volgendeRondeNaam(laatste.naam), start: '', eind: '', status: 'gepland' });
+    rondes.push({ ...laatste, id: nieuwId(), nummer: (Number(laatste.nummer) || rondes.length) + 1, naam: volgendeRondeNaam(laatste.naam), start: '', eind: '', status: 'gepland', duur: PL.duurVan(laatste) });
   }
   const gekozen = new Set(p.objecten ?? []);
   const leden = project?.leden ?? [];
@@ -3946,8 +3950,11 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
         </div>
       </section>
       <section>
-        <div class="mtussen"><h2>Rondes / taken</h2><button type="button" class="knop" id="ronde-plus">＋ Ronde</button></div>
-        <p class="hulptekst">Een ronde geldt voor alle objecten van het pakket, tenzij er (via Excel) een deelselectie is opgegeven.</p>
+        <div class="mtussen"><h2>Rondes / taken</h2>
+          <div class="knoppen"><label class="aantal-rondes">Aantal rondes <input type="number" id="aantal-rondes" min="1" max="52" value="${rondes.length}"></label>
+            <button type="button" class="knop" id="ronde-plus">＋ Ronde</button></div></div>
+        <p class="hulptekst">Geef per ronde de duur op; elke ronde mag anders zijn. In de <a href="#/planning${id ? `?pakket=${esc(id)}` : ''}">Planning</a> kies je daarna de startdatum en
+          schuif je de rondes in de tijd. Een ronde geldt voor alle objecten van het pakket, tenzij er (via Excel) een deelselectie is opgegeven.</p>
         <div id="rondes"></div>
       </section>
       <section class="kaart">
@@ -3995,8 +4002,11 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
     ? `<select data-r="${i}" data-veld="inspectiesoort">${INSPECTIESOORTEN.map((s) => optie(s, s, r.inspectiesoort)).join('')}</select>
               <small>Kies "${BV.BVC_SOORT}" voor een bomeninspectie: uitvoerders openen dan het BVC-formulier volgens het RWS-protocol.</small>`
     : `<select data-r="${i}" data-veld="werksoort"><option value="">– vrij te kiezen –</option>${WERKSOORTEN.map((s) => optie(s, s, r.werksoort)).join('')}</select>`}</div>
-          <div class="veld"><label>Planning</label><div class="planningtekst">${r.start ? `📅 ${periodeTekst(r)}` : '<span class="label-status binnenkort">Nog niet ingepland</span>'}
-            <small>Plannen doe je in de <a href="#/planning${id ? `?pakket=${esc(id)}` : ''}">Planning</a>.</small></div></div>
+          <div class="veld"><label>Duur</label><div class="duurveld">
+            <input type="number" min="1" max="${r.duurEenheid === 'dagen' ? 365 : 52}" data-r="${i}" data-duur="aantal" value="${esc(r.duurEenheid === 'dagen' ? PL.duurVan(r) : Math.max(1, Math.round(PL.duurVan(r) / 7)))}">
+            <select data-r="${i}" data-duur="eenheid">${optie('weken', 'weken', r.duurEenheid === 'dagen' ? 'dagen' : 'weken')}${optie('dagen', 'dagen', r.duurEenheid === 'dagen' ? 'dagen' : 'weken')}</select></div></div>
+          <div class="veld"><label>Planning</label><div class="planningtekst">${r.start ? `📅 ${periodeTekst({ ...r, eind: r.eind || PL.isoVan(PL.dagNr(r.start) + PL.duurVan(r) - 1) })}` : '<span class="label-status binnenkort">Nog niet ingepland</span>'}
+            <small>Startdatum kies je in de <a href="#/planning${id ? `?pakket=${esc(id)}` : ''}">Planning</a>.</small></div></div>
           <div class="veld"><label>Status</label><select data-r="${i}" data-veld="status">${Object.entries(PAKKETSTATUS).map(([k, x]) => optie(k, x, r.status)).join('')}</select></div>
           <div class="veld"><label>Objecten</label><div>${r.objectIds?.length
     ? `<span class="label-status binnenkort">Deelselectie: ${r.objectIds.length} objecten</span> <button type="button" class="knop klein" data-ronde-alles="${i}">Alle objecten</button>`
@@ -4004,22 +4014,64 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
         </div></div>`).join('');
   };
   tekenRondes();
+  // Duur: bij een ingeplande ronde schuift de einddatum mee, zodat planning en werkpakket gelijk blijven.
+  $('#rondes').addEventListener('change', (e) => {
+    const i = e.target.dataset.r;
+    if (i === undefined || !e.target.dataset.duur) return;
+    const r = rondes[Number(i)];
+    const blok = e.target.closest('.duurveld');
+    const aantal = Math.max(1, Math.round(Number(blok.querySelector('[data-duur=aantal]').value) || 1));
+    const eenheid = blok.querySelector('[data-duur=eenheid]').value;
+    if (e.target.dataset.duur === 'eenheid') {
+      // Bij wisselen van eenheid blijft de duur gelijk (2 weken → 14 dagen).
+      r.duurEenheid = eenheid;
+    } else {
+      r.duur = eenheid === 'dagen' ? aantal : aantal * 7;
+      r.duurEenheid = eenheid;
+    }
+    if (!r.duur) r.duur = PL.duurVan(r);
+    if (r.start) r.eind = PL.isoVan(PL.dagNr(r.start) + r.duur - 1);
+    formulierGewijzigd = true;
+    tekenRondes();
+  });
+  $('#aantal-rondes').addEventListener('change', (e) => {
+    const n = Math.min(52, Math.max(1, Math.round(Number(e.target.value) || 1)));
+    if (n < rondes.length && !confirm(`Rondes R${rondes[n].nummer} t/m R${rondes[rondes.length - 1].nummer} verwijderen? Registraties blijven bewaard.`)) {
+      e.target.value = rondes.length;
+      return;
+    }
+    while (rondes.length > n) rondes.pop();
+    while (rondes.length < n) voegRondeToe();
+    formulierGewijzigd = true;
+    tekenRondes();
+  });
   $('#rondes').addEventListener('input', (e) => {
     const i = e.target.dataset.r;
-    if (i === undefined) return;
+    if (i === undefined || e.target.dataset.duur) return;
     rondes[Number(i)][e.target.dataset.veld] = e.target.value;
     formulierGewijzigd = true;
     if (e.target.dataset.veld === 'soort' || e.target.dataset.veld === 'status') tekenRondes();
   });
   $('#rondes').addEventListener('click', (e) => {
     const w = e.target.closest('[data-ronde-weg]');
-    if (w && confirm('Deze ronde verwijderen? Registraties blijven bewaard.')) { rondes.splice(Number(w.dataset.rondeWeg), 1); tekenRondes(); }
+    if (w && confirm('Deze ronde verwijderen? Registraties blijven bewaard.')) { rondes.splice(Number(w.dataset.rondeWeg), 1); tekenRondes(); $('#aantal-rondes').value = rondes.length; }
     const al = e.target.closest('[data-ronde-alles]');
     if (al) { rondes[Number(al.dataset.rondeAlles)].objectIds = null; tekenRondes(); }
   });
-  $('#ronde-plus').onclick = () => {
+  // Nieuwe ronde: zelfde soort en duur als de vorige, nog niet ingepland.
+  const voegRondeToe = () => {
     const laatste = rondes[rondes.length - 1];
-    rondes.push({ ...laatste, id: nieuwId(), nummer: Math.max(...rondes.map((r) => Number(r.nummer) || 0)) + 1, naam: volgendeRondeNaam(laatste.naam), start: '', eind: '', status: 'gepland', objectIds: null });
+    const nummer = Math.max(...rondes.map((r) => Number(r.nummer) || 0)) + 1;
+    // "Maaironde 1" → "Maaironde 2"; zonder nummer in de naam: "Ronde 2".
+    const m = String(laatste.naam ?? '').match(/^(.*?)(\d+)$/);
+    rondes.push({
+      ...laatste, id: nieuwId(), nummer, naam: m ? `${m[1]}${Number(m[2]) + 1}` : `Ronde ${nummer}`,
+      start: '', eind: '', status: 'gepland', objectIds: null, duur: PL.duurVan(laatste), duurEenheid: laatste.duurEenheid,
+    });
+  };
+  $('#ronde-plus').onclick = () => {
+    voegRondeToe();
+    $('#aantal-rondes').value = rondes.length;
     tekenRondes();
   };
 
@@ -4101,6 +4153,7 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
       id: r.id, nummer: Number(r.nummer) || 1, naam: String(r.naam).trim(), soort: r.soort,
       werksoort: r.soort === 'werk' ? r.werksoort : '', inspectiesoort: r.soort === 'inspectie' ? r.inspectiesoort : '',
       start: r.start, eind: r.eind, status: r.status, objectIds: r.objectIds?.length ? r.objectIds : null,
+      duur: PL.duurVan(r), duurEenheid: r.duurEenheid === 'dagen' ? 'dagen' : 'weken',
     }));
     const opslaan = {
       ...(id ? bron : {}), id: id ?? nieuwId(), projectId: (id ? bron.projectId : null) ?? projectId(), code, naam: d.naam,

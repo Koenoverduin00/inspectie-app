@@ -34,3 +34,18 @@ test('verslepen en te laat', () => {
   assert.ok(PL.teLaat({ eind: '2027-01-01', status: 'actief' }, '2027-02-01'));
   assert.ok(!PL.teLaat({ eind: '2027-01-01', status: 'afgerond' }, '2027-02-01'));
 });
+
+test('duur en balktekst', () => {
+  assert.equal(PL.duurVan({ duur: 14 }), 14);
+  assert.equal(PL.duurVan({ start: '2027-03-01', eind: '2027-03-10' }), 10);
+  assert.equal(PL.duurVan({}), 7);
+  assert.equal(PL.duurTekst(21), '3 weken');
+  assert.equal(PL.duurTekst(10), '10 dagen');
+  const r = { nummer: 1, naam: 'Maaien april', status: 'actief' };
+  assert.equal(PL.balkTekst(r, 40, 300), 'R1 Maaien april · 40%');
+  assert.equal(PL.balkTekst(r, 40, 80), 'R1 · 40%');
+  assert.equal(PL.balkTekst(r, 40, 35), 'R1');
+  assert.equal(PL.balkTekst({ ...r, status: 'afgerond' }, 100, 48), '✓ R1');
+  assert.equal(PL.balkTekst({ ...r, status: 'afgerond' }, 100, 34), 'R1');
+  assert.equal(PL.balkTekst(r, 40, 10), '');
+});

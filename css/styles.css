@@ -753,3 +753,18 @@ tr[data-bevinding] .bevinding-taak { margin: 0; justify-content: flex-start; }
   border-radius: 10px; background: var(--primair-licht); font-size: .92rem; }
 .bevinding-balk:empty { display: none; }
 a.label-status { text-decoration: none; }
+
+/* Planning: afgeronde rondes groen, percentage per ronde; werkpakket: duur per ronde */
+.bord-balk.status-afgerond { background: #1a7f37; }
+.bord-balk.status-afgerond .bord-voortgang { display: none; }
+.bord-legenda i.afgerond { background: #1a7f37; color: #fff; font-style: normal; font-size: .62rem; line-height: 10px; text-align: center; }
+.bord-labelregel { display: flex; align-items: center; gap: .4rem; min-width: 0; }
+.bord-labelregel a { flex: 1; min-width: 0; }
+.bord-pct { flex: none; font-size: .78rem; font-weight: 700; padding: .05rem .4rem; border-radius: 99px; background: var(--achtergrond); color: var(--tekst-zacht); }
+.bord-pct.klaar { background: #dcf3e2; color: #146b2e; }
+.duurveld { display: flex; gap: .4rem; }
+.duurveld input { width: 5.5rem; flex: none; }
+.duurveld select { flex: 1; min-width: 0; }
+.aantal-rondes { display: flex; align-items: center; gap: .4rem; font-weight: 600; font-size: .92rem; }
+.aantal-rondes input { width: 4.5rem; }
+.bord-buitentekst { position: absolute; top: 50%; transform: translateY(-50%); font-size: .74rem; font-weight: 700; color: var(--tekst-zacht); white-space: nowrap; pointer-events: none; }

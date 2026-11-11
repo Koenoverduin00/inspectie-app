@@ -77,3 +77,22 @@ export function versleep({ start, eind }, modus, delta) {
 
 /** Ronde is te laat: einddatum verstreken en niet afgerond. */
 export const teLaat = (r, vandaagIso) => Boolean(r?.eind && r.eind < vandaagIso && r.status !== 'afgerond');
+
+/** Duur van een ronde in dagen: opgegeven duur, anders uit de geplande periode, anders één week. */
+export function duurVan(r) {
+  const d = Number(r?.duur);
+  if (Number.isFinite(d) && d >= 1) return Math.round(d);
+  const p = periode(r);
+  return p && !p.open ? p.eind - p.start + 1 : 7;
+}
+
+/** Tekst die op een balk past: volledig, ingekort (R1 · 40%) of alleen het rondenummer. */
+export function balkTekst(r, pct, breedte, { tekenBreedte = 6.6, marge = 18 } = {}) {
+  const past = (t) => t.length * tekenBreedte + marge <= breedte;
+  const vink = r.status === 'afgerond' ? '✓ ' : '';
+  for (const t of [`${vink}R${r.nummer} ${r.naam} · ${pct}%`, `${vink}R${r.nummer} · ${pct}%`, `${vink}R${r.nummer}`, `R${r.nummer}`]) if (past(t)) return t;
+  return breedte >= 16 ? (vink ? '✓' : '') : '';
+}
+
+/** Weergave van een duur: "3 weken" of "10 dagen". */
+export const duurTekst = (dagen) => (dagen % 7 === 0 ? `${dagen / 7} ${dagen === 7 ? 'week' : 'weken'}` : `${dagen} ${dagen === 1 ? 'dag' : 'dagen'}`);

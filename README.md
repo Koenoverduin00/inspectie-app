@@ -229,13 +229,20 @@ De weergave wordt automatisch gekozen op schermbreedte. Onder *Instellingen → 
 
 - **Werkpakketten** met tabbladen *Werkpakketten · Inspecties · Werkzaamheden · Maatregelen*: inspecties en
   werkzaamheden worden uitgevoerd binnen werkpakketten, en maatregelen zijn altijd het resultaat daarvan.
+- **Werkpakket ↔ planning**: in het werkpakket geef je het **aantal rondes** en per ronde de **duur** (weken of
+  dagen; elke ronde mag anders zijn). In de planning kies je de startdatum; wijzig je later de duur, dan schuift de
+  einddatum mee, en verleng je een balk in de planning, dan past de duur in het werkpakket zich aan.
 - **Planning**: werkpakketten maak je onder *Werkpakketten* (zonder datums); inplannen doe je hier op het
   **planningsbord**: per werkpakket de rondes als balken in de tijd (weken, maanden of jaar; ◀ Vandaag ▶).
-  - **Inplannen**: trek in een lege rij de periode, of klik in de rij (één week).
+  - **Inplannen**: klik in een lege rij op de startdatum (de duur uit het werkpakket wordt gebruikt), of trek de periode.
   - **Verschuiven / verlengen**: sleep de balk, of sleep de linker- of rechterrand.
-  - **Klik op een balk**: datums precies invullen, status (gepland / actief / afgerond), uit de planning halen.
+  - **Klik op een balk**: datums precies invullen, status (gepland / actief / afgerond), uit de planning halen (met
+    bevestigingsvraag; de ronde en registraties blijven bestaan).
+  - Naast elke ronde het **voortgangspercentage** van die ronde. Afgeronde rondes blijven staan: **groen met ✓**.
+  - Past de naam niet op een korte balk, dan wordt hij ingekort tot *R1 · 40%* of *R1*; bij heel korte balken staat
+    het label ernaast.
   - Kleur = soort (oranje werkzaamheid, blauw inspectie), gestreept = gepland, donkere vulling = voortgang,
-    rode rand = te laat, rode lijn = vandaag. Filter op soort; afgeronde rondes kun je tonen of verbergen.
+    rode rand = te laat, rode lijn = vandaag. Filter op soort.
   - Na het maken van een werkpakket ga je direct naar de planning, met dat pakket uitgelicht; op een werkpakket
     staat de knop *📅 Inplannen*. Gewone gebruikers zien het bord alleen-lezen.
   Daaronder alle taken (zelf gepland, openstaande maatregelen, inspectieplanning). Oude links naar `#/taken`
