@@ -49,15 +49,15 @@ const ROUTES = [
   [/^\/m\/werk$/, 'm-werk', () => werkpakketKiezer(null, { mobiel: true })],
   [/^\/m\/werk\/nieuw$/, 'm-werk', (_, q) => werkFormulier(null, q.get('object'), { mobiel: true, taakId: q.get('taak'), maatregel: q.get('maatregel'), pakketId: q.get('pakket'), rondeId: q.get('ronde') })],
   [/^\/m\/werk\/([^/]+)$/, 'm-werk', (id) => werkFormulier(id, null, { mobiel: true })],
-  [/^\/m\/inspectie$/, 'm-inspectie', () => objectKiezer('inspectie')],
-  [/^\/m\/inspectie\/nieuw$/, 'm-inspectie', (_, q) => inspectieFormulier(null, q.get('object'), { mobiel: true, taakId: q.get('taak'), pakketId: q.get('pakket'), rondeId: q.get('ronde') })],
+  [/^\/m\/inspectie$/, 'm-inspectie', () => inspectiepakketKiezer(null, { mobiel: true })],
+  [/^\/m\/inspectie\/nieuw$/, 'm-inspectie', (_, q) => inspectieFormulier(null, q.get('object'), { mobiel: true, taakId: q.get('taak'), pakketId: q.get('pakket'), rondeId: q.get('ronde'), calamiteit: q.get('calamiteit') === '1' })],
   [/^\/m\/inspectie\/([^/]+)$/, 'm-inspectie', (id) => inspectieFormulier(id, null, { mobiel: true })],
   [/^\/m\/account$/, 'm-account', mobielAccount],
   [/^\/m\/vrijgave$/, 'm-vrijgave', () => objectKiezer('vrijgave')],
   [/^\/m\/vrijgave\/nieuw$/, 'm-vrijgave', (_, q) => vrijgaveFormulier(null, q, { mobiel: true })],
   [/^\/m\/vrijgave\/([^/]+)\/bewerken$/, 'm-vrijgave', (id, q) => vrijgaveFormulier(id, q, { mobiel: true })],
   [/^\/m\/vrijgave\/([^/]+)$/, 'm-vrijgave', (id) => vrijgaveDetail(id, { mobiel: true })],
-  [/^\/m\/bvc$/, 'm-inspectie', () => objectKiezer('bvc')],
+  [/^\/m\/bvc$/, 'm-inspectie', () => inspectiepakketKiezer(null, { mobiel: true, alleen: 'bvc' })],
   [/^\/m\/bvc\/nieuw$/, 'm-inspectie', (_, q) => bvcFormulier(null, q.get('object'), { mobiel: true, taakId: q.get('taak'), pakketId: q.get('pakket'), rondeId: q.get('ronde') })],
   [/^\/m\/stowa\/nieuw$/, 'm-inspectie', (_, q) => stowaFormulier(null, q.get('object'), { mobiel: true, taakId: q.get('taak'), pakketId: q.get('pakket'), rondeId: q.get('ronde') })],
   [/^\/stowa\/nieuw$/, 'inspecties', (_, q) => stowaFormulier(null, q.get('object'), { taakId: q.get('taak'), pakketId: q.get('pakket'), rondeId: q.get('ronde') })],
@@ -75,7 +75,7 @@ const ROUTES = [
   [/^\/objecten\/([^/]+)\/bewerken$/, 'objecten', objectFormulier],
   [/^\/objecten\/([^/]+)$/, 'objecten', objectDetail],
   [/^\/inspecties$/, 'inspecties', inspectiesLijst],
-  [/^\/inspecties\/nieuw$/, 'inspecties', (_, q) => inspectieFormulier(null, q.get('object'), { taakId: q.get('taak'), pakketId: q.get('pakket'), rondeId: q.get('ronde') })],
+  [/^\/inspecties\/nieuw$/, 'inspecties', (_, q) => inspectieFormulier(null, q.get('object'), { taakId: q.get('taak'), pakketId: q.get('pakket'), rondeId: q.get('ronde'), calamiteit: q.get('calamiteit') === '1' })],
   [/^\/inspecties\/([^/]+)\/bewerken$/, 'inspecties', (id) => inspectieFormulier(id)],
   [/^\/inspecties\/([^/]+)\/rapport$/, 'inspecties', inspectieRapport],
   [/^\/inspecties\/([^/]+)$/, 'inspecties', inspectieDetail],
@@ -818,7 +818,7 @@ async function inspectiesLijst() {
       <div><h1>Inspecties</h1><p>${inspecties.length} inspecties geregistreerd.</p></div>
       <div class="knoppen"><button class="knop" id="resultaten-xls" title="De inspecties die nu gefilterd zijn, met gebreken en maatregelen">📊 Excel</button>
         <button class="knop" id="suf" title="Standaard Uitwisselingsformaat boomveiligheidscontrole (CROW)">SUF-BVC export</button>
-        <a class="knop" href="#/bvc/nieuw">🌳 + Boomveiligheidscontrole</a>
+        <a class="knop" href="#/inspecties/nieuw?calamiteit=1" title="Zonder werkpakket">⚠️ Incident / calamiteit</a>
         <a class="knop primair" href="#/inspecties/nieuw">+ Nieuwe inspectie</a></div>
     </div>
     <div class="filters">
@@ -876,7 +876,55 @@ async function laadFotos(ids) {
   return (await Promise.all((ids ?? []).map((id) => db.haal('fotos', id)))).filter(Boolean).map((f) => ({ id: f.id, data: f.data }));
 }
 
-async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null, pakketId = null, rondeId = null } = {}) {
+// ---------------------------------------------------------------------------
+// Inspecties horen bij een werkpakket; alleen een inspectie na incident of calamiteit mag los.
+// ---------------------------------------------------------------------------
+const CALAMITEIT = 'Inspectie na incident / calamiteit';
+
+/** soort: '' = alle inspecties, 'bvc' of 'stowa' = alleen rondes van die inspectiesoort. */
+async function inspectiepakketKiezer(objectId, { mobiel = false, taakId = null, alleen = '' } = {}) {
+  const g = await pakketGegevens();
+  const ik = sync.sessie()?.gebruiker?.email ?? '';
+  const past = (v) => v.soort === 'inspectie'
+    && (!alleen || (alleen === 'bvc' ? v.inspectiesoort === BV.BVC_SOORT : v.inspectiesoort === ST.STOWA_SOORT));
+  const lijst = actieveRondes(g).filter(({ pakket: v }) => past(v) && (!mobiel || pakketVoorMij(v, ik)) && (!objectId || v.objecten.includes(objectId)));
+  const object = objectId ? await db.haal('objecten', objectId) : null;
+  const href = (v) => {
+    if (!objectId) return pakketPagina(v, mobiel);
+    const h = pakketHref(v, objectId, mobiel);
+    return taakId ? `${h}&taak=${encodeURIComponent(taakId)}` : h;
+  };
+  if (objectId && lijst.length === 1) {
+    location.replace(href(lijst[0].pakket));
+    return;
+  }
+  const calamiteit = `${mobiel ? '#/m/inspectie' : '#/inspecties'}/nieuw?calamiteit=1${objectId ? `&object=${encodeURIComponent(objectId)}` : ''}${taakId ? `&taak=${encodeURIComponent(taakId)}` : ''}`;
+  const titel = alleen === 'bvc' ? 'Boomveiligheidscontrole' : alleen === 'stowa' ? 'Inspectie waterkering' : 'Schouw & inspectie';
+  const terug = mobiel ? '#/' : objectId ? `#/objecten/${esc(objectId)}` : '#/inspecties';
+  const kop = mobiel
+    ? `<div class="mkop"><a href="${terug}" class="mterug" aria-label="Terug">←</a><div><small>${titel}</small><h1>Kies het werkpakket</h1></div></div>`
+    : `<div class="paginakop"><div><p><a href="${terug}">← Terug</a></p><h1>${titel}</h1>
+        <p>Inspecties worden binnen een werkpakket uitgevoerd. Kies de ronde${object ? ` waarin ${esc(object.code)} – ${esc(object.naam)} zit` : ''}.
+        Alleen een inspectie na een incident of calamiteit kan zonder werkpakket.</p></div></div>`;
+  const leeg = object
+    ? `<strong>${esc(object.code)} – ${esc(object.naam)}</strong> zit in geen actieve inspectieronde${mobiel ? ' die aan jou is toegewezen' : ''}.`
+    : `Er ${mobiel ? 'is voor jou' : 'is'} geen actieve inspectieronde${alleen ? ` (${titel.toLowerCase()})` : ''}.`;
+  app.innerHTML = `${kop}
+    ${lijst.length ? `<ul class="mlijst pakketlijst ${mobiel ? '' : 'kaart'}">${lijst.map(({ pakket: v, voortgang }) => `
+      <li><a href="${href(v)}"><span class="micoon klein">${v.inspectiesoort === BV.BVC_SOORT ? '🌳' : v.inspectiesoort === ST.STOWA_SOORT ? '🌊' : '🔍'}</span>
+        <span><strong>${esc(v.naam)}</strong><small>${v.code ? `${esc(v.code)} · ` : ''}${esc(v.inspectiesoort || 'Inspectie')}${periodeTekst(v) ? ` · ${periodeTekst(v)}` : ''}</small>
+        ${voortgangBalk(voortgang)}</span></a></li>`).join('')}</ul>`
+    : `<div class="kaart leeg"><p>${leeg}</p>
+      <p><small>${magBeheren()
+    ? 'Maak een werkpakket met een inspectieronde aan (of voeg het object toe) en zet de ronde in de planning op actief.'
+    : 'Vraag de beheerder om een werkpakket aan te maken of de ronde actief te zetten.'}</small></p>
+      ${magBeheren() && !mobiel ? `<div class="knoppen" style="justify-content:center"><a class="knop primair" href="#/werkpakketten/nieuw${objectId ? `?object=${esc(objectId)}` : ''}">+ Werkpakket${object ? ' met dit object' : ''}</a>
+        <a class="knop" href="#/planning">Naar de planning</a></div>` : ''}</div>`}
+    ${alleen ? '' : `<a class="knop ${mobiel ? 'mgroot' : ''} calamiteitknop" href="${calamiteit}">⚠️ Inspectie na incident of calamiteit (zonder werkpakket)</a>`}`;
+}
+
+async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null, pakketId = null, rondeId = null, calamiteit = false } = {}) {
+  if (!id && !pakketId && !calamiteit) return inspectiepakketKiezer(objectId, { mobiel, taakId });
   const objecten = (await inProject('objecten')).sort((a, b) => String(a.code).localeCompare(String(b.code), 'nl', { numeric: true }));
   const bestaand = id ? await db.haal('inspecties', id) : null;
   if (id && !bestaand) {
@@ -915,6 +963,21 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
   const taak = taakId ? await db.haal('taken', taakId) : null;
   const pakket = await laadPakketView(staat.werkpakketId, staat.rondeId);
   if (pakket) staat.rondeId = pakket.rondeId;
+  if (!bestaand && staat.werkpakketId && !pakket) {
+    app.innerHTML = leegKaart('Dit werkpakket bestaat niet (meer).', `<a class="knop" href="${mobiel ? '#/m/inspectie' : '#/inspecties/nieuw'}">Ander werkpakket kiezen</a>`);
+    return;
+  }
+  if (!bestaand && pakket && staat.objectId && !pakket.objecten.includes(staat.objectId)) {
+    app.innerHTML = leegKaart(`Dit object hoort niet bij ${esc(pakket.naam)}.`, `<a class="knop" href="${mobiel ? '#/m/inspectie' : '#/inspecties/nieuw'}?object=${esc(staat.objectId)}">Passend werkpakket kiezen</a>`);
+    return;
+  }
+  if (pakket && !bestaand) {
+    const inRonde = new Set(pakket.objecten);
+    for (let n = objecten.length - 1; n >= 0; n--) if (!inRonde.has(objecten[n].id)) objecten.splice(n, 1);
+  }
+  // Zonder werkpakket kan alleen een inspectie na incident of calamiteit.
+  const losseCalamiteit = !pakket && (calamiteit || (bestaand && !bestaand.werkpakketId));
+  if (!bestaand && calamiteit && !pakket) staat.soort = CALAMITEIT;
   if (pakket && !bestaand && pakket.inspectiesoort) staat.soort = pakket.inspectiesoort;
   const pakketTerug = pakket ? pakketPagina(pakket, mobiel) : null;
   const openDetails = new Set(); // houdt opengeklapte onderdelen open bij hertekenen
@@ -927,7 +990,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
   const veldDatum = `<div class="veld"><label for="f-datum" class="vereist">Datum</label>
       <input id="f-datum" name="datum" type="date" required value="${esc(staat.datum)}"></div>`;
   const veldSoort = `<div class="veld"><label for="f-soort">Soort</label>
-      <select id="f-soort" name="soort">${INSPECTIESOORTEN.filter((s) => s !== BV.BVC_SOORT).map((s) => optie(s, s, staat.soort)).join('')}</select>
+      <select id="f-soort" name="soort">${(losseCalamiteit && !bestaand ? [CALAMITEIT] : INSPECTIESOORTEN.filter((s) => s !== BV.BVC_SOORT && (pakket || bestaand || s !== ST.STOWA_SOORT))).map((s) => optie(s, s, staat.soort)).join('')}</select>
       <small>Waterkering? Kies "${ST.STOWA_SOORT}" voor de STOWA-inspectiewijzers.</small></div>`;
   const veldInspecteur = `<div class="veld"><label for="f-inspecteur">Inspecteur</label>
       <input id="f-inspecteur" name="inspecteur" value="${esc(staat.inspecteur)}" maxlength="100"></div>`;
@@ -944,6 +1007,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     <form id="form" novalidate class="mform">
       ${taak ? `<div class="kaart mhier">📋 <strong>Taak:</strong> ${esc(taak.titel)}${taak.omschrijving ? `<br><small>${esc(taak.omschrijving)}</small>` : ''}</div>` : ''}
       ${pakket ? `<div class="kaart mhier">📦 <strong>Werkpakket:</strong> ${esc(pakket.naam)}<br><small>Telt mee als gedaan na <strong>Afronden</strong>.</small></div>` : ''}
+      ${!pakket && !bestaand ? '<div class="kaart waarschuwingskaart">⚠️ <strong>Inspectie na incident of calamiteit</strong><br><small>Zonder werkpakket. Gebruik dit alleen voor een onverwachte situatie; reguliere inspecties gaan via een werkpakket.</small></div>' : ''}
       <section class="kaart">
         <div class="velden">${objectVeld}${veldSoort}${veldDatum}${veldSamenvatting}${veldFotos}</div>
         <details data-details="algemeen"><summary>Inspecteur en weer</summary>
@@ -962,6 +1026,9 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
       <h1>${bestaand ? 'Inspectie bewerken' : 'Nieuwe inspectie'}</h1></div>
       <div id="totaal"></div></div>
     <form id="form" novalidate>
+      ${taak ? `<div class="kaart mhier">📋 <strong>Taak:</strong> ${esc(taak.titel)}</div>` : ''}
+      ${pakket ? `<div class="kaart mhier">📦 <strong>Werkpakket:</strong> ${esc(pakket.naam)} <small>· telt mee als gedaan na <strong>Afronden</strong></small></div>` : ''}
+      ${!pakket && !bestaand ? '<div class="kaart waarschuwingskaart">⚠️ <strong>Inspectie na incident of calamiteit</strong><br><small>Zonder werkpakket. Gebruik dit alleen voor een onverwachte situatie; reguliere inspecties gaan via een werkpakket.</small></div>' : ''}
       <section class="kaart">
         <h2>Algemeen</h2>
         <div class="velden">${objectVeld}${veldDatum}${veldInspecteur}${veldSoort}${veldWeer}${veldSamenvatting}${veldFotos}</div>
@@ -1140,6 +1207,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     const data = formulierData(form);
     if (!data.objectId) return melding('Kies een object.', 'fout');
     if (!data.datum) return melding('Vul de inspectiedatum in.', 'fout');
+    if (!bestaand && !staat.werkpakketId && data.soort !== CALAMITEIT) return melding('Zonder werkpakket kan alleen een inspectie na incident of calamiteit worden vastgelegd.', 'fout');
     const status = e.submitter?.dataset.status ?? staat.status ?? 'concept';
     if (status === 'afgerond') {
       const fouten = extraB.fouten();
@@ -1658,7 +1726,7 @@ async function objectKiezer(doel) {
       <button class="knop" id="dichtbij" type="button">📍 Dichtbij</button>
     </div>
     <ul class="mlijst" id="lijst"></ul>` : leegKaart('Er zijn nog geen objecten. Richt de objecten eerst in via de website op de pc.')}`;
-  app.querySelector('#nieuweboom')?.addEventListener('click', nieuweBoomHier);
+  app.querySelector('#nieuweboom')?.addEventListener('click', () => nieuweBoomHier());
   if (!objecten.length) return;
 
   const zoek = app.querySelector('#zoek');
@@ -4602,6 +4670,7 @@ async function mobielPakket(id, q = new URLSearchParams()) {
       <button class="knop primair" id="volgende" type="button">📍 Volgende dichtbij</button>
       <button class="knop" id="locatie" type="button">↻ Locatie</button></div>` : '<div class="kaart mhier">🎉 Alle objecten zijn gedaan.</div>'}
     ${p.vrijgaveVereist && open.length ? `<a class="knop mgroot" href="#/m/vrijgave/nieuw?pakket=${esc(p.id)}">🌿 Flora & fauna vrijgave voor dit pakket</a>` : ''}
+    ${p.soort === 'inspectie' && p.inspectiesoort === BV.BVC_SOORT && p.status === 'actief' ? '<button class="knop mgroot" id="nieuweboom" type="button">＋ Nieuwe boom op mijn locatie</button>' : ''}
     <div id="pakketkaart" class="mkaart"><p class="leeg">Kaart laden…</p></div>
     <h2 class="mlijstkop">Nog te doen (${open.length})</h2>
     <ul class="mlijst" id="open-lijst"></ul>
@@ -4638,6 +4707,7 @@ async function mobielPakket(id, q = new URLSearchParams()) {
     navigator.permissions.query({ name: 'geolocation' }).then((s) => { if (s.state === 'granted') metLocatie(true); }).catch(() => {});
   }
   app.querySelector('#locatie')?.addEventListener('click', () => metLocatie(false));
+  app.querySelector('#nieuweboom')?.addEventListener('click', () => nieuweBoomHier(p));
   app.querySelector('#volgende')?.addEventListener('click', () => {
     if (!laatstePositie) {
       bepaalPositie(() => { gesorteerd = tekenLijst(); if (gesorteerd[0]) location.hash = pakketHref(p, gesorteerd[0].o.id, true); });
@@ -4772,6 +4842,7 @@ const GROEP_ICOON = {
 const ZONE_NAAM = (z) => (z ? z.charAt(0).toUpperCase() + z.slice(1) : '');
 
 async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pakketId = null, rondeId = null } = {}) {
+  if (!id && !pakketId) return inspectiepakketKiezer(objectId, { mobiel, taakId, alleen: 'stowa' });
   const objecten = (await inProject('objecten')).sort((a, b) => String(a.code).localeCompare(String(b.code), 'nl', { numeric: true }));
   const bestaand = id ? await db.haal('inspecties', id) : null;
   if (id && !bestaand) {
@@ -5241,6 +5312,7 @@ async function stowaDetail(i, { rapport = false } = {}) {
 // Boomveiligheidscontrole (Boomveiligheidsprotocol Rijkswaterstaat)
 // ---------------------------------------------------------------------------
 async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakketId = null, rondeId = null } = {}) {
+  if (!id && !pakketId) return inspectiepakketKiezer(objectId, { mobiel, taakId, alleen: 'bvc' });
   const objecten = await inProject('objecten');
   const bestaand = id ? await db.haal('inspecties', id) : null;
   if (id && !bestaand) {
@@ -5651,7 +5723,7 @@ function bvcSamenvatting(inspecties) {
 }
 
 // Nieuwe boom inmeten met GPS (protocol § 5.3: max. ca. 3 meter afwijking)
-async function nieuweBoomHier() {
+async function nieuweBoomHier(pakket = null) {
   if (!navigator.geolocation) return melding('Locatiebepaling wordt niet ondersteund.', 'fout');
   melding('Locatie bepalen…');
   navigator.geolocation.getCurrentPosition(async (pos) => {
@@ -5665,9 +5737,15 @@ async function nieuweBoomHier() {
       nauwkeurigheid: Math.round(pos.coords.accuracy), aangemaakt: nu, gewijzigd: nu,
     };
     await db.bewaar('objecten', o);
+    if (pakket) {
+      // De nieuwe boom hoort bij het werkpakket (en bij de ronde als die een deelselectie heeft).
+      const p = await db.haal('werkpakketten', pakket.id);
+      const rondes = rondesVan(p).map((r) => (r.id === pakket.rondeId && r.objectIds?.length ? { ...r, objectIds: [...r.objectIds, o.id] } : r));
+      await db.bewaar('werkpakketten', { ...p, objecten: [...(p.objecten ?? []), o.id], ...(p.rondes?.length ? { rondes } : {}), gewijzigd: nu });
+    }
     melding(pos.coords.accuracy > 3 ? `${code} ingemeten (± ${Math.round(pos.coords.accuracy)} m; protocol vraagt max. ca. 3 m)` : `${code} ingemeten (± ${Math.round(pos.coords.accuracy)} m)`,
       pos.coords.accuracy > 3 ? 'fout' : 'ok');
-    ga(`#/m/bvc/nieuw?object=${encodeURIComponent(o.id)}`);
+    ga(pakket ? pakketHref(pakket, o.id, true) : `#/m/bvc/nieuw?object=${encodeURIComponent(o.id)}`);
   }, (fout) => melding(`Locatie niet beschikbaar: ${fout.message}`, 'fout'), { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
 }
 
@@ -6097,14 +6175,6 @@ async function instellingen() {
         <p>Verwijdert alle objecten, inspecties en foto's van dit apparaat. Gegevens die al online staan blijven bewaard
         en worden bij de volgende synchronisatie opnieuw opgehaald. Nog niet verstuurde wijzigingen gaan verloren.</p>
         <button class="knop gevaar" id="wis">Lokale gegevens wissen</button>
-      </section>
-      <section class="kaart breed">
-        <h2>Conditieschaal NEN 2767</h2>
-        <div class="tabelhouder"><table><tbody>
-          ${Object.entries(CONDITIES).map(([s, c]) => `<tr><td>${scoreLabel(Number(s))}</td><td>${esc(c.omschrijving)}</td></tr>`).join('')}
-        </tbody></table></div>
-        <p><small>De conditie van een gebrek wordt indicatief bepaald uit ernst (gering/serieus/ernstig), intensiteit (begin-/gevorderd/eindstadium)
-        en omvang (% van het bouwdeel). Je kunt per gebrek de conditie ook handmatig vaststellen. De conditie van de inspectie is die van het maatgevende gebrek.</small></p>
       </section>
     </div>`;
 

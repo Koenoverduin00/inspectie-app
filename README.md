@@ -229,6 +229,12 @@ De weergave wordt automatisch gekozen op schermbreedte. Onder *Instellingen → 
 
 - **Werkpakketten** met tabbladen *Werkpakketten · Inspecties · Werkzaamheden · Maatregelen*: inspecties en
   werkzaamheden worden uitgevoerd binnen werkpakketten, en maatregelen zijn altijd het resultaat daarvan.
+- **Inspecties alleen binnen een werkpakket**, met één uitzondering: *Inspectie na incident / calamiteit* kan los
+  (knop *⚠️ Incident / calamiteit* bij Inspecties, en onderaan elke keuzelijst; het formulier staat dan vast op die
+  soort en toont een waarschuwing). Verder werkt het als bij werkzaamheden: eerst de actieve inspectieronde kiezen,
+  vanaf een object direct naar de enige passende ronde, alleen objecten uit de ronde. Ook de boomveiligheidscontrole
+  en de STOWA-inspectie lopen via hun ronde. Een nieuwe boom inmeten (*＋ Nieuwe boom op mijn locatie*) doe je op de
+  telefoon binnen een actieve BVC-ronde; de boom wordt dan meteen aan het werkpakket toegevoegd.
 - **Werkzaamheden alleen binnen een werkpakket.** Elke registratie hoort bij een actieve werkronde. Vanaf het
   dashboard, de lijst of de telefoon (*Registratie werkzaamheden*) kies je eerst de ronde; vanaf een object of taak
   gaat de app direct naar de enige passende ronde, of laat de keuze zien als er meer zijn. Zit het object in geen
