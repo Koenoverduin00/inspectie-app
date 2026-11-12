@@ -25,6 +25,7 @@ import * as IMP from './gisimport.js';
 import * as ST from './stowa.js';
 import * as DG from './digigids.js';
 import * as PL from './planning.js';
+import * as DB from './dashboard.js';
 import { takenLijst, sorteerTaken, objectGeometrie, PRIORITEITEN } from './taken.js';
 
 const app = document.getElementById('app');
@@ -393,10 +394,17 @@ function gebrekSamenvatting(gebreken) {
 // ---------------------------------------------------------------------------
 // Dashboard
 // ---------------------------------------------------------------------------
+const DASH_ROLLEN = { opdrachtnemer: 'Opdrachtnemer', opdrachtgever: 'Opdrachtgever' };
+
 async function dashboard() {
-  const { objecten, inspecties, werkzaamheden, objectMap, status } = await laadAlles();
+  const { objecten, inspecties, werkzaamheden, objectMap } = await laadAlles();
   const project = await actiefProject();
-  const kop = `<div><h1>${esc(project.naam)}</h1><p>${project.opdrachtgever ? `${esc(project.opdrachtgever)} · ` : ''}Overzicht van het areaal, de taken en de inspectieplanning.</p></div>`;
+  const rol = DASH_ROLLEN[instelling.lees('dashboardRol')] ? instelling.lees('dashboardRol') : 'opdrachtnemer';
+  const schakelaar = `<div class="segment rolkeuze" role="radiogroup" aria-label="Weergave dashboard">${Object.entries(DASH_ROLLEN).map(([k, l]) => `
+    <label><input type="radio" name="dashrol" value="${k}" ${k === rol ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>`;
+  const kop = `<div><h1>${esc(project.naam)}</h1><p>${project.opdrachtgever ? `${esc(project.opdrachtgever)} · ` : ''}${rol === 'opdrachtgever'
+    ? 'Sturen op het contract: voortgang, achterstanden en bevindingen.'
+    : 'Sturen op de uitvoering: wat loopt er, ligt het op schema en wat is er gedaan.'}</p></div>`;
   if (objecten.length === 0) {
     app.innerHTML = `
       <div class="paginakop">${kop}</div>
@@ -414,113 +422,154 @@ async function dashboard() {
     return;
   }
 
-  const jaar = String(new Date().getFullYear());
-  const statussen = [...status.values()];
-  const teInspecteren = statussen.filter((s) => s.planning === 'verlopen' || s.planning === 'nooit').length;
-  const binnenkort = statussen.filter((s) => s.planning === 'binnenkort').length;
-  const maatregelenOpen = alleMaatregelen(inspecties, objectMap).filter((m) => m.gebrek.maatregelStatus !== 'uitgevoerd');
-  const direct = maatregelenOpen.filter((m) => m.gebrek.urgentie === 'direct').length;
-  const kosten = maatregelenOpen.reduce((t, m) => t + (Number(m.gebrek.kostenraming) || 0), 0);
-  const grens = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-  const werkRecent = werkzaamheden.filter((w) => String(w.datum) >= grens);
-  const urenRecent = werkRecent.reduce((t, w) => t + (Number(w.uren) || 0), 0);
+  const nu = vandaag();
+  const g = await pakketGegevens();
+  // Alle rondes met hun schema-signaal.
+  const rondes = [];
+  for (const p of g.pakketten) {
+    for (const r of rondesVan(p)) {
+      const sleutel = `${p.id}:${r.id}`;
+      const vg = g.rondeVoortgang.get(sleutel);
+      rondes.push({ p, r, v: g.views.get(sleutel), vg, s: DB.schema(r, vg, nu) });
+    }
+  }
+  const lopend = rondes.filter((x) => x.r.status === 'actief')
+    .sort((a, b) => DB.SIGNAAL[b.s.signaal].ernst - DB.SIGNAAL[a.s.signaal].ernst || String(a.r.eind ?? '9').localeCompare(String(b.r.eind ?? '9')));
+  const binnenkort = DB.startBinnenkort(rondes, nu, 14);
+  const achter = lopend.filter((x) => DB.SIGNAAL[x.s.signaal].ernst >= 2);
 
-  const verdeling = [1, 2, 3, 4, 5, 6].map((s) => ({ s, n: statussen.filter((x) => x.conditie === s).length }));
-  const geen = statussen.filter((x) => !x.conditie).length;
-  const max = Math.max(1, geen, ...verdeling.map((v) => v.n));
+  // Uitgevoerde werkzaamheden: per week, per soort en per uitvoerder.
+  const uitgevoerd = werkzaamheden.filter((w) => w.status !== 'gepland');
+  const weken = DB.perWeek(uitgevoerd, nu, 10);
+  const dezeWeek = weken.at(-1);
+  const vorigeWeek = weken.at(-2);
+  const grens = PL.isoVan(PL.dagNr(nu) - 27);
+  const recent = uitgevoerd.filter((w) => String(w.datum) >= grens && String(w.datum) <= nu);
+  const maxWeek = Math.max(1, ...weken.map((w) => w.aantal));
+  const perSoort = DB.telPer(recent, (w) => w.soort).slice(0, 6);
+  const perUitvoerder = DB.telPer(recent, (w) => w.uitvoerder).slice(0, 6);
+  const verdeling = (lijst) => {
+    const top = Math.max(1, ...lijst.map(([, n]) => n));
+    return lijst.length ? `<div class="verdeling">${lijst.map(([k, n]) => `<div class="balk"><span>${esc(k)}</span>
+      <div class="spoor"><div class="vulling" style="width:${(n / top) * 100}%"></div></div><strong>${n}</strong></div>`).join('')}</div>`
+      : '<p class="leeg">Geen werk in deze periode.</p>';
+  };
+  const trend = vorigeWeek.aantal ? Math.round(((dezeWeek.aantal - vorigeWeek.aantal) / vorigeWeek.aantal) * 100) : null;
+  const werkBlok = `<section class="kaart werkblok">
+    <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">🛠️ Uitgevoerde werkzaamheden</h2><a href="#/werkzaamheden">Alle werkzaamheden →</a></div>
+    <div class="werkblok-raster">
+      <div>
+        <div class="werkstand">
+          <div><span class="groot">${dezeWeek.aantal}</span><small>deze week (wk ${dezeWeek.week})${trend !== null ? ` · <b class="${trend >= 0 ? 'plus' : 'min'}">${trend >= 0 ? '▲' : '▼'} ${Math.abs(trend)}%</b> t.o.v. vorige week` : ''}</small></div>
+          <div><span class="groot">${urenTekst(dezeWeek.uren)}</span><small>uren deze week</small></div>
+          <div><span class="groot">${recent.length}</span><small>laatste 4 weken · ${urenTekst(recent.reduce((t, w) => t + (Number(w.uren) || 0), 0))}</small></div>
+        </div>
+        <div class="weekgrafiek" role="img" aria-label="Uitgevoerde werkzaamheden per week, laatste ${weken.length} weken">
+          ${weken.map((w, i) => `<div class="weekkolom ${i === weken.length - 1 ? 'nu' : ''}" title="Week ${w.week}: ${w.aantal} werkzaamheden, ${urenTekst(w.uren)}">
+            <span class="weekaantal">${w.aantal || ''}</span>
+            <div class="weekbalk" style="height:${(w.aantal / maxWeek) * 100}%"></div>
+            <small>wk ${w.week}</small></div>`).join('')}
+        </div>
+      </div>
+      <div class="werkverdeling">
+        <h3>Per werksoort <small>(4 weken)</small></h3>${verdeling(perSoort)}
+        <h3>Per uitvoerder <small>(4 weken)</small></h3>${verdeling(perUitvoerder)}
+      </div>
+    </div>
+  </section>`;
 
-  const pakketInfo = await pakketGegevens();
-  const actievePakketten = pakketInfo.pakketten.filter((p) => p.status !== 'afgerond');
-  const takenOpen = sorteerTaken(takenLijst({
-    objecten, inspecties, taken: await inProject('taken'), planning: status, vandaag: vandaag(),
-    pakketten: actieveRondes(pakketInfo), alleBevindingen: await alleBevindingenAlsTaak(),
-  }));
-  const takenUrgent = takenOpen.filter((t) => t.rang <= 2).length;
-  const planning = objecten
-    .filter((o) => status.get(o.id).planning !== 'geen')
-    .map((o) => ({ o, s: status.get(o.id) }))
-    .sort((a, b) => String(a.s.volgende ?? '0000').localeCompare(String(b.s.volgende ?? '0000')))
-    .slice(0, 8);
+  const stuurRij = (x) => {
+    const { s, v, vg } = x;
+    const st = DB.SIGNAAL[s.signaal];
+    return `<a class="stuurrij" href="${pakketPagina(v, false)}">
+      <div class="stuurkop"><strong>${esc(v.naam)}</strong><span class="label-status ${st.klasse}">${esc(s.signaal)}</span></div>
+      <div class="stuurbalk" title="${s.werkelijk}% gedaan${s.verwacht !== null ? `, ${s.verwacht}% verwacht volgens planning` : ''}">
+        <i style="width:${s.werkelijk}%"></i>${s.verwacht !== null ? `<b style="left:${s.verwacht}%"></b>` : ''}</div>
+      <small>${pakketSoortTekst(v)} · ${s.werkelijk}% gedaan${s.verwacht !== null ? ` (verwacht ${s.verwacht}%)` : ''} · ${vg.totaal - vg.open.length}/${vg.totaal} objecten${
+        v.eind ? ` · eind ${datumNL(v.eind)}` : ''}${s.resterendDagen ? ` · nog ${s.resterendDagen} dg${s.resterendObj ? `, ${String(s.tempo).replace('.', ',')} obj/dag nodig` : ''}` : ''}</small></a>`;
+  };
+  const rondesBlok = (titel, lijst, leeg) => `<section class="kaart">
+    <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">${titel}</h2><a href="#/planning">Planning →</a></div>
+    ${lijst.length ? `<div class="stuurlijst">${lijst.map(stuurRij).join('')}</div>` : `<p class="leeg">${leeg}</p>`}
+    ${binnenkort.length ? `<h3 class="tussenkop">Start binnen 14 dagen</h3><ul class="startlijst">${binnenkort.map((x) => `
+      <li><a href="${pakketPagina(x.v, false)}"><span>${datumNL(x.r.start)}</span><strong>${esc(x.v.naam)}</strong><small>${pakketSoortTekst(x.v)} · ${x.vg.totaal} objecten</small></a></li>`).join('')}</ul>` : ''}
+  </section>`;
+
+  const recentInsp = `<section class="kaart">
+    <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">Recente inspecties</h2><a href="#/inspecties">Alle →</a></div>
+    ${inspecties.length ? `<div class="tabelhouder"><table><tbody>
+      ${inspecties.slice(0, 8).map((i) => `
+        <tr class="klikbaar" data-href="#/inspecties/${esc(i.id)}">
+          <td class="nowrap">${datumNL(i.datum)}</td><td>${objectNaam(objectMap.get(i.objectId))}<small class="subregel">${esc(i.soort || '')}</small></td>
+          <td>${i.status === 'afgerond' ? inspectieOordeel(i) : statusLabel(i.status)}</td>
+        </tr>`).join('')}
+    </tbody></table></div>` : '<p class="leeg">Nog geen inspecties uitgevoerd.</p>'}
+  </section>`;
+  const recentWerk = `<section class="kaart">
+    <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">Recente werkzaamheden</h2><a href="#/werkzaamheden">Alle →</a></div>
+    ${werkzaamheden.length ? `<div class="tabelhouder"><table><tbody>
+      ${werkzaamheden.slice(0, 8).map((w) => `
+        <tr class="klikbaar" data-href="#/werkzaamheden/${esc(w.id)}">
+          <td class="nowrap">${datumNL(w.datum)}</td><td>${objectNaam(objectMap.get(w.objectId))}<small class="subregel">${esc(w.soort || '–')}${w.uitvoerder ? ` · ${esc(w.uitvoerder)}` : ''}${w.uren ? ` · ${urenTekst(w.uren)}` : ''}</small></td>
+          <td>${werkStatusLabel(w.status)}</td>
+        </tr>`).join('')}
+    </tbody></table></div>` : '<p class="leeg">Nog geen werkzaamheden geregistreerd.</p>'}
+  </section>`;
+
+  let inhoud;
+  if (rol === 'opdrachtgever') {
+    const lopendePakketten = g.pakketten.filter((p) => p.status !== 'afgerond');
+    const ergste = (p) => rondes.filter((x) => x.p === p && x.r.status === 'actief')
+      .reduce((m, x) => (DB.SIGNAAL[x.s.signaal].ernst > DB.SIGNAAL[m]?.ernst ? x.s.signaal : m), null);
+    const maatregelenOpen = alleMaatregelen(inspecties, objectMap).filter((m) => m.gebrek.maatregelStatus !== 'uitgevoerd');
+    const perUrgentie = URGENTIES.map((u) => {
+      const lijst = maatregelenOpen.filter((m) => m.gebrek.urgentie === u.id);
+      return { u, n: lijst.length, raming: lijst.reduce((t, m) => t + (Number(m.gebrek.kostenraming) || 0), 0) };
+    }).filter((x) => x.n);
+    const afgerondRecent = rondes.filter((x) => x.r.status === 'afgerond' && x.r.eind && String(x.r.eind) >= PL.isoVan(PL.dagNr(nu) - 60));
+    inhoud = `
+      <section class="kaart">
+        <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">Voortgang per werkpakket</h2><a href="#/werkpakketten">Alle werkpakketten →</a></div>
+        ${lopendePakketten.length ? `<div class="pakketten compact">${lopendePakketten.map((p) => {
+          const sig = ergste(p);
+          return `<a class="pakket" href="#/werkpakketten/${esc(p.id)}"><div class="pakketkop"><strong>${esc(p.naam)}</strong>${sig
+            ? `<span class="label-status ${DB.SIGNAAL[sig].klasse}">${esc(sig)}</span>` : pakketStatusLabel(p.status)}</div>
+          <small>${pakketRondesTekst(p)}</small>
+          ${voortgangBalk(g.voortgangen.get(p.id))}</a>`;
+        }).join('')}</div>` : '<p class="leeg">Geen lopende werkpakketten.</p>'}
+        ${afgerondRecent.length ? `<p class="tussenkop">✓ Afgerond in de laatste 60 dagen: ${afgerondRecent.map((x) => esc(x.v.naam)).join(', ')}</p>` : ''}
+      </section>
+      ${rondesBlok(achter.length ? `⚠️ Aandacht: ${achter.length} ronde${achter.length === 1 ? '' : 's'} achter op schema` : 'Lopende rondes', lopend, 'Er loopt op dit moment geen ronde.')}
+      ${werkBlok}
+      <section class="kaart">
+        <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">Open maatregelen uit inspecties</h2><a href="#/maatregelen">Alle maatregelen →</a></div>
+        ${perUrgentie.length ? `<div class="tabelhouder"><table><thead><tr><th>Urgentie</th><th>Aantal</th><th>Raming</th></tr></thead><tbody>
+          ${perUrgentie.map((x) => `<tr class="klikbaar" data-href="#/maatregelen"><td>${urgentieLabel(x.u.id)}</td><td>${x.n}</td><td>${x.raming ? euro(x.raming) : '–'}</td></tr>`).join('')}
+        </tbody></table></div>` : '<p class="leeg">Geen open maatregelen.</p>'}
+      </section>
+      <div class="raster-2">${recentInsp}${recentWerk}</div>`;
+  } else {
+    inhoud = `
+      ${werkBlok}
+      ${rondesBlok('Lopende rondes – ligt het werk op schema?', lopend, 'Er loopt op dit moment geen ronde. Zet een ronde in de planning op actief.')}
+      <div class="raster-2">${recentWerk}${recentInsp}</div>`;
+  }
 
   app.innerHTML = `
     <div class="paginakop">
       ${kop}
       <div class="knoppen">
-        <a class="knop" href="#/taken/nieuw">+ Taak</a>
-        <a class="knop" href="#/objecten/nieuw">+ Object</a>
-        <a class="knop" href="#/werkzaamheden/nieuw">+ Werkzaamheid</a>
-        <a class="knop primair" href="#/inspecties/nieuw">+ Inspectie</a>
+        ${schakelaar}
+        ${rol === 'opdrachtgever'
+    ? '<a class="knop" href="#/planning">📅 Planning</a><a class="knop primair" href="#/werkpakketten">📦 Werkpakketten</a>'
+    : '<a class="knop" href="#/inspecties/nieuw">+ Inspectie</a><a class="knop primair" href="#/werkzaamheden/nieuw">+ Werkzaamheid</a>'}
       </div>
     </div>
-    <div class="kpi">
-      <div class="kaart"><div class="getal">${objecten.length}</div><div class="label">Geregistreerde objecten</div></div>
-      <div class="kaart"><div class="getal">${inspecties.filter((i) => String(i.datum).startsWith(jaar)).length}</div><div class="label">Inspecties in ${jaar}</div></div>
-      <div class="kaart ${teInspecteren ? 'waarschuwing' : ''}"><div class="getal">${teInspecteren}</div><div class="label">Inspectie verlopen / nooit uitgevoerd</div></div>
-      <div class="kaart"><div class="getal">${binnenkort}</div><div class="label">Inspectie binnen 90 dagen</div></div>
-      <div class="kaart ${direct ? 'waarschuwing' : ''}"><div class="getal">${direct}</div><div class="label">Directe maatregelen open</div></div>
-      <div class="kaart"><div class="getal" style="font-size:1.5rem">${euro(kosten)}</div><div class="label">Raming open maatregelen</div></div>
-      <div class="kaart"><div class="getal">${werkRecent.length}</div><div class="label">Werkzaamheden, laatste 30 dagen (${urenTekst(urenRecent)})</div></div>
-      <a class="kaart kpi-link ${takenUrgent ? 'waarschuwing' : ''}" href="#/planning"><div class="getal">${takenOpen.length}</div><div class="label">Open taken (${takenUrgent} urgent/hoog)</div></a>
-    </div>
-    ${actievePakketten.length ? `<section class="kaart">
-      <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">Werkpakketten</h2><a href="#/werkpakketten">Alle →</a></div>
-      <div class="pakketten compact">${actievePakketten.slice(0, 6).map((p) => `
-        <a class="pakket" href="#/werkpakketten/${esc(p.id)}"><div class="pakketkop"><strong>${esc(p.naam)}</strong>${pakketStatusLabel(p.status)}</div>
-        ${voortgangBalk(pakketInfo.voortgangen.get(p.id))}</a>`).join('')}</div>
-    </section>` : ''}
-    <section class="kaart">
-      <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">Belangrijkste taken</h2><a href="#/planning">Alle taken →</a></div>
-      ${takenOpen.length ? `<div class="tabelhouder"><table><tbody>
-        ${takenOpen.slice(0, 6).map((t) => `<tr class="klikbaar" data-href="${taakHref(t, false)}">
-          <td>${rangLabel(t.rang)}</td><td>${t.soort === 'werk' ? '🛠️' : '🔍'} ${esc(t.titel)}</td><td>${objectNaam(t.object)}</td>
-          <td class="verberg-mobiel">${BRON_TEKST[t.bron]}${t.toegewezenAan ? ` · ${esc(t.toegewezenAan)}` : ''}</td></tr>`).join('')}
-      </tbody></table></div>` : '<p class="leeg">Geen openstaande taken.</p>'}
-    </section>
-    <div class="raster-2">
-      <section class="kaart">
-        <h2>Conditieverdeling (NEN 2767)</h2>
-        <div class="verdeling">
-          ${verdeling.map(({ s, n }) => `
-            <div class="balk"><span>${s} · ${CONDITIES[s].label}</span>
-              <div class="spoor"><div class="vulling" style="width:${(n / max) * 100}%;background:${CONDITIES[s].kleur}"></div></div>
-              <strong>${n}</strong></div>`).join('')}
-          <div class="balk"><span>Onbekend</span>
-            <div class="spoor"><div class="vulling" style="width:${(geen / max) * 100}%;background:#8a96a3"></div></div>
-            <strong>${geen}</strong></div>
-        </div>
-      </section>
-      <section class="kaart">
-        <h2>Recente inspecties</h2>
-        ${inspecties.length ? `<div class="tabelhouder"><table><tbody>
-          ${inspecties.slice(0, 6).map((i) => `
-            <tr class="klikbaar" data-href="#/inspecties/${esc(i.id)}">
-              <td>${datumNL(i.datum)}</td><td>${objectNaam(objectMap.get(i.objectId))}</td>
-              <td>${i.status === 'afgerond' ? inspectieOordeel(i) : statusLabel(i.status)}</td>
-            </tr>`).join('')}
-        </tbody></table></div>` : '<p class="leeg">Nog geen inspecties uitgevoerd.</p>'}
-      </section>
-      <section class="kaart">
-        <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">Recente werkzaamheden</h2><a href="#/werkzaamheden">Alle →</a></div>
-        ${werkzaamheden.length ? `<div class="tabelhouder"><table><tbody>
-          ${werkzaamheden.slice(0, 6).map((w) => `
-            <tr class="klikbaar" data-href="#/werkzaamheden/${esc(w.id)}">
-              <td>${datumNL(w.datum)}</td><td>${objectNaam(objectMap.get(w.objectId))}</td><td>${esc(w.soort || '–')}</td>
-              <td>${werkStatusLabel(w.status)}</td>
-            </tr>`).join('')}
-        </tbody></table></div>` : '<p class="leeg">Nog geen werkzaamheden geregistreerd.</p>'}
-      </section>
-    </div>
-    <section class="kaart">
-      <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">Inspectieplanning</h2><a href="#/objecten">Alle objecten →</a></div>
-      <div class="tabelhouder"><table>
-        <thead><tr><th>Object</th><th class="verberg-mobiel">Type</th><th>Conditie</th><th>Laatste</th><th>Volgende</th><th>Status</th></tr></thead>
-        <tbody>${planning.map(({ o, s }) => `
-          <tr class="klikbaar" data-href="#/objecten/${esc(o.id)}">
-            <td>${objectNaam(o)}</td><td class="verberg-mobiel">${esc(o.type)}</td><td>${oordeelLabel(s)}</td>
-            <td>${datumNL(s.laatste?.datum)}</td><td>${s.volgende ? datumNL(s.volgende) : 'Z.s.m.'}</td><td>${planningLabel(s.planning)}</td>
-          </tr>`).join('')}</tbody>
-      </table></div>
-    </section>`;
+    ${inhoud}`;
+  app.querySelectorAll('input[name=dashrol]').forEach((r) => r.addEventListener('change', () => {
+    instelling.schrijf('dashboardRol', r.value);
+    dashboard();
+  }));
 }
 
 async function laadDemo() {

@@ -100,6 +100,20 @@ gevraagd wordt:
   maatregelen, volgende inspectie, BVC-gegevens, eigen velden, RD- en GPS-coördinaten), *Gebreken*, *Maatregelen*
   en optioneel *Foto's* (miniaturen per object en gebrek).
 
+## Dashboard: sturen op de uitvoering
+
+Bovenaan schakel je tussen twee weergaven; de keuze wordt per apparaat onthouden.
+
+- **Opdrachtnemer** – *Uitgevoerde werkzaamheden* staat groot bovenaan: aantal en uren deze week (met trend t.o.v. vorige week),
+  een weekgrafiek van de laatste 10 weken en de verdeling per werksoort en per uitvoerder (4 weken). Daaronder de lopende rondes
+  met hun schema-signaal en de recente werkzaamheden en inspecties naast elkaar.
+- **Opdrachtgever** – voortgang per werkpakket, rondes die achter liggen bovenaan, de uitgevoerde werkzaamheden,
+  open maatregelen per urgentie (met raming) en de recente inspecties en werkzaamheden naast elkaar.
+
+**Schema-signaal per ronde**: de voortgang (gedaan + overgeslagen) wordt vergeleken met het verstreken deel van de geplande
+periode (streepje in de balk). Meer dan 10 procentpunt achter = *achter*, meer dan 25 = *flinke achterstand*, na de einddatum
+niet klaar = *te laat*. Ook staat erbij hoeveel objecten per dag nog nodig zijn. Rondes die binnen 14 dagen starten staan eronder.
+
 ## Flora- en fauna-vrijgave (veldcheck)
 
 Eigen tegel op de telefoon. Gebaseerd op de **Gedragscode Soortenbescherming Rijkswaterstaat 2025–2029**
@@ -218,7 +232,7 @@ per apparaat kiezen voor donker of 'volg instelling van het apparaat'.
 | | Telefoon – **veldversie** | Pc – **volledige versie** |
 |---|---|---|
 | Doel | Snel vastleggen buiten | Inrichten, beheren en rapporteren |
-| Start | Twee grote knoppen: **Registratie werkzaamheden** en **Schouw & inspectie** | Dashboard met KPI's, conditieverdeling en planning |
+| Start | Twee grote knoppen: **Registratie werkzaamheden** en **Schouw & inspectie** | Stuurdashboard (opdrachtnemer / opdrachtgever) |
 | Object kiezen | Zoeken of **📍 Dichtbij** (GPS, gesorteerd op afstand) | Lijsten met filters |
 | Menu | Onderin: Start · Werkzaamheden · Schouw · Account | Bovenin: Dashboard · Objecten · Werkpakketten · Planning · Flora & fauna · Instellingen |
 
@@ -275,7 +289,7 @@ De weergave wordt automatisch gekozen op schermbreedte. Onder *Instellingen → 
 - **Werkzaamheden** – soort, datum, omschrijving, foto's voor/na, uren, uitvoerder, gebruikt materiaal en status
   (gereed / vervolg nodig). Openstaande maatregelen van het object kun je direct afvinken; ze worden dan op
   *uitgevoerd* gezet en gekoppeld aan het werk. Overzicht met filters en CSV-export op de pc.
-- **Dashboard** – KPI's, conditieverdeling van het areaal, recente inspecties en inspectieplanning
+- **Dashboard** – stuurdashboard met schakelaar *Opdrachtnemer | Opdrachtgever* (wordt onthouden)
   (verlopen / binnenkort / op schema, op basis van laatste afgeronde inspectie + interval).
 - **Maatregelen** – alle onderhoudsadviezen gesorteerd op urgentie, totale raming, afvinken als uitgevoerd.
 - **Kaart** – objecten op de PDOK-luchtfoto (standaard 50% sterkte, vervaagd naar wit; instelbaar met de 🛰️-schuif; wisselen naar OpenStreetMap via de lagenknop). *Kaart & GIS* toont puur het areaal: kleur op laag, objecttype of een GIS-kenmerk, met aantallen, oppervlakte en lengte per laag. De achtergrond vereist internet.

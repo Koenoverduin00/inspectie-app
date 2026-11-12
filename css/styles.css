@@ -769,3 +769,44 @@ a.label-status { text-decoration: none; }
 .aantal-rondes input { width: 4.5rem; }
 .bord-buitentekst { position: absolute; top: 50%; transform: translateY(-50%); font-size: .74rem; font-weight: 700; color: var(--tekst-zacht); white-space: nowrap; pointer-events: none; }
 .calamiteitknop { margin-top: 1rem; border-color: #e07b00; color: #8a4b00; }
+
+/* Dashboard: sturen op de uitvoering */
+.rolkeuze { flex: 0 0 auto; gap: 0; }
+.rolkeuze label { flex: 0 0 auto; }
+.rolkeuze span { padding: 0 .9rem; border-radius: 0; }
+.rolkeuze label:first-child span { border-radius: 8px 0 0 8px; }
+.rolkeuze label:last-child span { border-radius: 0 8px 8px 0; margin-left: -1px; }
+.subregel { display: block; color: var(--tekst-zacht); font-size: .8rem; }
+.tussenkop { margin: 1rem 0 .4rem; font-size: .95rem; color: var(--tekst-zacht); }
+.werkblok { border-top: 4px solid #1a7f37; }
+.werkblok-raster { display: grid; gap: 1.5rem; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+@media (max-width: 800px) { .werkblok-raster { grid-template-columns: 1fr; } }
+.werkstand { display: flex; flex-wrap: wrap; gap: 1.5rem; margin-bottom: 1rem; }
+.werkstand > div { display: flex; flex-direction: column; }
+.werkstand .groot { font-size: 2.4rem; font-weight: 700; line-height: 1; color: #1a7f37; }
+.werkstand small { color: var(--tekst-zacht); }
+.werkstand .plus { color: #1a7f37; } .werkstand .min { color: var(--gevaar); }
+.weekgrafiek { display: flex; align-items: stretch; gap: .35rem; height: 190px; }
+.weekkolom { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; min-width: 0; }
+.weekbalk { width: 100%; max-width: 46px; background: color-mix(in srgb, #1a7f37 55%, transparent); border-radius: 5px 5px 0 0; min-height: 2px; }
+.weekkolom.nu .weekbalk { background: #1a7f37; }
+.weekaantal { font-size: .8rem; font-weight: 600; }
+.weekkolom small { font-size: .7rem; color: var(--tekst-zacht); white-space: nowrap; margin-top: .2rem; }
+.werkverdeling h3 { font-size: .95rem; margin: 0 0 .4rem; }
+.werkverdeling h3 + .verdeling, .werkverdeling h3 + .leeg { margin-bottom: 1rem; }
+.werkverdeling .balk { grid-template-columns: minmax(0, 9rem) 1fr 28px; }
+.werkverdeling .balk span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.werkverdeling .vulling { background: #1a7f37; }
+.stuurlijst { display: flex; flex-direction: column; gap: .5rem; }
+.stuurrij { display: block; padding: .6rem .75rem; border: 1px solid var(--rand); border-radius: 10px; color: inherit; text-decoration: none; }
+.stuurrij:hover { border-color: var(--primair); }
+.stuurkop { display: flex; justify-content: space-between; gap: .5rem; align-items: center; margin-bottom: .35rem; }
+.stuurkop strong { overflow-wrap: anywhere; }
+.stuurrij small { color: var(--tekst-zacht); }
+.stuurbalk { position: relative; height: 12px; background: var(--achtergrond); border-radius: 6px; margin-bottom: .3rem; }
+.stuurbalk i { position: absolute; inset: 0 auto 0 0; background: #1a7f37; border-radius: 6px; }
+.stuurbalk b { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--tekst); transform: translateX(-1px); }
+.startlijst { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .3rem; }
+.startlijst a { display: grid; grid-template-columns: 6.5rem 1fr; gap: 0 .5rem; color: inherit; text-decoration: none; padding: .3rem 0; }
+.startlijst small { grid-column: 2; color: var(--tekst-zacht); }
+.nowrap { white-space: nowrap; }

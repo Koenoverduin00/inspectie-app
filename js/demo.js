@@ -113,7 +113,7 @@ export function demoData() {
   const werkpakketten = [{
     id: nieuwId(), code: 'WP-DEMO-001', naam: 'Groenonderhoud Park Zuid', status: 'actief',
     rondes: [
-      { id: nieuwId(), nummer: 1, naam: 'Maaironde 1', soort: 'werk', werksoort: 'Groenonderhoud', inspectiesoort: '', start: dag(0), eind: dag(7), status: 'actief', objectIds: null },
+      { id: nieuwId(), nummer: 1, naam: 'Maaironde 1', soort: 'werk', werksoort: 'Groenonderhoud', inspectiesoort: '', start: dag(-6), eind: dag(5), status: 'actief', objectIds: null },
       { id: nieuwId(), nummer: 2, naam: 'Maaironde 2', soort: 'werk', werksoort: 'Groenonderhoud', inspectiesoort: '', start: dag(28), eind: dag(35), status: 'gepland', objectIds: null },
     ],
     toegewezen: [], omschrijving: 'Gazons maaien, randen bijwerken en maaisel afvoeren.', objecten: vakken.map((v) => v.id),
@@ -124,6 +124,26 @@ export function demoData() {
     toegewezen: [], omschrijving: '', objecten: [brug, viaduct, fietsbrug, duiker, kade].map((o) => o.id),
     aangemaakt: nu, gewijzigd: nu,
   }];
+
+  // Lopend werk, zodat het dashboard laat zien wat er de afgelopen weken is gedaan.
+  const [groen] = werkpakketten;
+  const reparatie = {
+    id: nieuwId(), code: 'WP-DEMO-003', naam: 'Klein onderhoud kunstwerken', status: 'actief',
+    rondes: [{ id: nieuwId(), nummer: 1, naam: 'Onderhoud 2026', soort: 'werk', werksoort: 'Klein onderhoud', inspectiesoort: '', start: dag(-63), eind: dag(28), status: 'actief', objectIds: null }],
+    toegewezen: [], omschrijving: 'Klein onderhoud en herstel op afroep.', objecten: [brug, viaduct, fietsbrug, duiker].map((o) => o.id),
+    aangemaakt: nu, gewijzigd: nu,
+  };
+  werkpakketten.push(reparatie);
+  const inRonde = (p, i, object, dagen, velden) => werk(object, dag(-dagen), { werkpakketId: p.id, rondeId: p.rondes[i].id, ...velden });
+  werkzaamheden.push(
+    inRonde(groen, 0, vakken[0], 4, { soort: 'Groenonderhoud', uren: 6, uitvoerder: 'Groenploeg 1', omschrijving: 'Gazon gemaaid, randen gestoken, maaisel afgevoerd.' }),
+    inRonde(reparatie, 0, fietsbrug, 2, { soort: 'Klein onderhoud', uren: 3, uitvoerder: 'R. Bakker', omschrijving: 'Losse leuningregel vastgezet.' }),
+    inRonde(reparatie, 0, brug, 9, { soort: 'Schilderwerk', uren: 7, uitvoerder: 'R. Bakker', omschrijving: 'Hekwerk noordzijde bijgewerkt.' }),
+    inRonde(reparatie, 0, viaduct, 16, { soort: 'Reinigen', uren: 4, uitvoerder: 'P. Jansen', omschrijving: 'Afvoergoten en kolken gereinigd.' }),
+    inRonde(reparatie, 0, duiker, 23, { soort: 'Afwatering vrijmaken', uren: 2, omschrijving: 'Rooster schoongemaakt.' }),
+    inRonde(reparatie, 0, brug, 30, { soort: 'Reinigen', uren: 5, uitvoerder: 'R. Bakker', omschrijving: 'Graffiti verwijderd.' }),
+    inRonde(reparatie, 0, viaduct, 44, { soort: 'Klein onderhoud', uren: 3, omschrijving: 'Lichtmast-voet afgekit.' }),
+  );
 
   return { app: 'inspectie-app', versie: 1, lagen, objecten, inspecties, werkzaamheden, taken, werkpakketten, fotos: [] };
 }
