@@ -880,3 +880,21 @@ body.inlogscherm main#app { padding: 0; max-width: none; margin: 0; }
 @keyframes draai { to { transform: rotate(360deg); } }
 @media (min-height: 760px) { .inlog { padding-top: calc(3rem + env(safe-area-inset-top)); } .inlog-merk { margin-bottom: 2rem; } }
 @media (prefers-reduced-motion: reduce) { .inlog-merk, .inlog-kaart, .inlog-kaart.schud { animation: none; } }
+
+/* Objecten zoeken en kaart binnen werkpakketten en inspecties */
+.samenstel-kaartbalk { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; margin-bottom: .5rem; }
+.samenstel-kaartbalk .legenda { display: flex; flex-direction: row; gap: .75rem; flex-wrap: wrap; }
+.samenstel-kaartbalk small { color: var(--tekst-zacht); flex-basis: 100%; }
+.samenstelkaart { height: 380px; border: 1px solid var(--rand); border-radius: 8px; overflow: hidden; margin-bottom: .75rem; }
+.kaart-gebied, .kaart-gebied .leaflet-interactive { cursor: crosshair !important; }
+.objectenkaart { height: 60vh; min-height: 360px; margin: 0; padding: 0; overflow: hidden; }
+.objectzoek { align-items: center; }
+.objectzoek input[type=search] { flex: 2 1 260px; }
+.objectzoek-teller { color: var(--tekst-zacht); font-size: .9rem; }
+.kaartpin { border: 0; background: none; cursor: pointer; padding: 0 .2rem; font-size: .95rem; }
+.weergavekeuze { flex: 0 0 auto; gap: 0; }
+.weergavekeuze label { flex: 0 0 auto; }
+.weergavekeuze span { border-radius: 0; padding: 0 .8rem; }
+.weergavekeuze label:first-child span { border-radius: 8px 0 0 8px; }
+.weergavekeuze label:last-child span { border-radius: 0 8px 8px 0; margin-left: -1px; }
+.mlijst li.leeg { padding: .75rem; color: var(--tekst-zacht); }

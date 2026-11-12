@@ -125,6 +125,17 @@ Bovenaan schakel je tussen twee weergaven; de keuze wordt per apparaat onthouden
 periode (streepje in de balk). Meer dan 10 procentpunt achter = *achter*, meer dan 25 = *flinke achterstand*, na de einddatum
 niet klaar = *te laat*. Ook staat erbij hoeveel objecten per dag nog nodig zijn. Rondes die binnen 14 dagen starten staan eronder.
 
+## Objecten zoeken en de kaart in werkpakketten en inspecties
+
+- **Zoeken** werkt op code, naam, type, locatie én GIS-kenmerken, met meerdere woorden tegelijk (bijv. `gazon noord`).
+  Dat kan in de objectenlijst, bij het samenstellen van een werkpakket, in de objectentabel van een werkpakket
+  (met filter op open / gedaan / overgeslagen) en op de telefoon in de lijst *Nog te doen* (vanaf 6 objecten).
+- **Werkpakket samenstellen**: de kaart toont de gefilterde objecten (groen = in pakket, grijs = niet).
+  Klik op een object om het toe te voegen of eruit te halen, of gebruik **▭ Gebied toevoegen / eruit** en sleep een rechthoek.
+- **Werkpakket bekijken**: zoeken filtert ook de kaart; met 📍 achter een objectcode spring je ernaartoe.
+- **Inspecties**: schakel tussen **☰ Lijst** en **🗺️ Kaart**. De kaart volgt de filters en kleurt elk object naar het
+  oordeel van de laatste inspectie (NEN-conditie, STOWA-urgentie of BVC-klasse); klik voor de inspecties van dat object.
+
 ## Flora- en fauna-vrijgave (veldcheck)
 
 Eigen tegel op de telefoon. Gebaseerd op de **Gedragscode Soortenbescherming Rijkswaterstaat 2025–2029**
