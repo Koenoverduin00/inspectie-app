@@ -282,7 +282,7 @@ function leegKaart(tekst, knop = '') {
 
 async function fotosHtml(ids, { verwijderbaar = false } = {}) {
   if (!ids?.length) return '';
-  const fotos = (await Promise.all(ids.map((id) => db.haal('fotos', id)))).filter(Boolean);
+  const fotos = await laadFotos(ids);
   return `<div class="fotos">${fotos.map((f) => `
     <div class="foto"><img src="${esc(f.data)}" alt="Inspectiefoto" loading="lazy" data-lichtbak>
     ${verwijderbaar ? `<button type="button" data-foto-weg="${esc(f.id)}" aria-label="Foto verwijderen">×</button>` : ''}</div>`).join('')}</div>`;
@@ -291,7 +291,7 @@ async function fotosHtml(ids, { verwijderbaar = false } = {}) {
 /** Fotogalerij voor detail- en rapportpagina's: grotere tegels met nummer, klik = vergroten. */
 async function fotoGalerij(ids, { titel = '' } = {}) {
   if (!ids?.length) return '';
-  const fotos = (await Promise.all(ids.map((id) => db.haal('fotos', id)))).filter(Boolean);
+  const fotos = await laadFotos(ids);
   if (!fotos.length) return '';
   return `<div class="galerij">${titel ? `<div class="galerij-titel">${esc(titel)} <span>${fotos.length}</span></div>` : ''}
     <div class="galerij-raster">${fotos.map((f, n) => `<figure><img src="${esc(f.data)}" alt="${esc(titel || 'Foto')} ${n + 1}" loading="lazy" data-lichtbak>
@@ -1061,8 +1061,122 @@ function nieuwGebrek() {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Foto's: formaat per project en opslag op dit apparaat
+// ---------------------------------------------------------------------------
+const FOTOFORMATEN = {
+  compact: { label: 'Compact', zijde: 1280, kwaliteit: 0.7, indicatie: 'ca. 150 kB', uitleg: 'Snelst, ruim voldoende om gebreken te herkennen' },
+  standaard: { label: 'Standaard', zijde: 1600, kwaliteit: 0.75, indicatie: 'ca. 250 kB', uitleg: 'Goede balans tussen detail en snelheid' },
+  hoog: { label: 'Hoog', zijde: 2048, kwaliteit: 0.85, indicatie: 'ca. 500 kB', uitleg: 'Voor details zoals scheuren of typeplaatjes' },
+};
+
+async function fotoFormaat() {
+  const p = await actiefProject();
+  return FOTOFORMATEN[p?.fotoformaat] ? p.fotoformaat : 'standaard';
+}
+
+/** Foto uit de camera of een bestand: verkleind en gecomprimeerd volgens het formaat van het project. */
+async function maakFoto(bestand) {
+  const f = FOTOFORMATEN[await fotoFormaat()];
+  return verkleinFoto(bestand, f.zijde, f.kwaliteit);
+}
+
+const fotoBytes = (data) => Math.round((String(data ?? '').length - String(data ?? '').indexOf(',') - 1) * 0.75);
+const mb = (bytes) => `${(bytes / 1048576).toLocaleString('nl-NL', { maximumFractionDigits: 1, minimumFractionDigits: 1 })} MB`;
+
+/** Foto's en opslag: formaat (beheerder, per project), downloaden en opruimen (per apparaat). */
+async function fotoOpslagBlok(el) {
+  const [fotos, project, wachtrij, records] = await Promise.all([
+    db.alle('fotos'), actiefProject(), db.sync.wachtrij(),
+    Promise.all(['inspecties', 'werkzaamheden', 'taken', 'vrijgaven'].map((s) => db.alle(s))).then((x) => x.flat()),
+  ]);
+  const formaat = FOTOFORMATEN[project?.fotoformaat] ? project.fotoformaat : 'standaard';
+  const wachtend = new Set(wachtrij.filter((r) => r.store === 'fotos').map((r) => r.recordId));
+  // Foto's die bij een ander project horen (en al verstuurd zijn) mogen van dit apparaat af: ze staan op de server.
+  const fotoProject = new Map();
+  for (const r of records) for (const id of fotoIdsVanRecord(r)) fotoProject.set(id, r.projectId);
+  const pid = projectId();
+  const anders = fotos.filter((f) => (f.projectId ?? fotoProject.get(f.id)) && (f.projectId ?? fotoProject.get(f.id)) !== pid && !wachtend.has(f.id));
+  const totaal = fotos.reduce((t, f) => t + fotoBytes(f.data), 0);
+  const andersBytes = anders.reduce((t, f) => t + fotoBytes(f.data), 0);
+  let schijf = '';
+  try {
+    const est = await navigator.storage?.estimate?.();
+    if (est?.usage != null) schijf = `${mb(est.usage)} in gebruik door de app${est.quota ? ` (ruimte: ${mb(est.quota)})` : ''}`;
+  } catch { /* niet ondersteund */ }
+  let vast = null;
+  try { vast = await navigator.storage?.persisted?.(); } catch { /* niet ondersteund */ }
+  const beheer = magBeheren() && project;
+  const vooraf = instelling.lees('fotosVooraf', 'project');
+
+  el.innerHTML = `
+    <h2>Foto's en opslag</h2>
+    <div class="velden">
+      <div class="veld breed"><label>Fotoformaat${project ? ` voor ${esc(project.naam)}` : ''}</label>
+        ${beheer ? `<div class="fotoformaten">${Object.entries(FOTOFORMATEN).map(([k, f]) => `
+          <label class="keuzetegel"><input type="radio" name="fotoformaat" value="${k}" ${k === formaat ? 'checked' : ''}>
+            <span><strong>${f.label}</strong><small>${f.zijde} px · ${f.indicatie} per foto</small><small>${f.uitleg}</small></span></label>`).join('')}</div>
+          <small>Geldt voor iedereen in dit project, voor nieuwe foto's. Foto's worden altijd verkleind en zonder locatiegegevens (EXIF) opgeslagen.</small>`
+    : `<p style="margin:0"><strong>${FOTOFORMATEN[formaat].label}</strong> · ${FOTOFORMATEN[formaat].zijde} px · ${FOTOFORMATEN[formaat].indicatie} per foto <small>(ingesteld door de beheerder)</small></p>`}</div>
+      <div class="veld breed"><label for="f-fotosvooraf">Foto's van collega's op dit apparaat</label>
+        <select id="f-fotosvooraf">
+          ${optie('project', 'Van het project waarin ik werk vooraf downloaden (aanbevolen)', vooraf)}
+          ${optie('opvraag', 'Pas downloaden als ik een inspectie of werkzaamheid open (zuinig)', vooraf)}
+        </select>
+        <small>Vooraf downloaden zorgt dat je foto's ook offline kunt bekijken.</small></div>
+    </div>
+    <dl class="gegevens" style="margin-top:.75rem">
+      <dt>Foto's op dit apparaat</dt><dd>${fotos.length} · ${mb(totaal)}${wachtend.size ? ` · ${wachtend.size} nog te versturen` : ''}</dd>
+      ${schijf ? `<dt>Opslag</dt><dd>${schijf}</dd>` : ''}
+      ${vast !== null ? `<dt>Beschermd tegen opruimen</dt><dd>${vast ? 'Ja' : 'Nee – de browser mag bij ruimtegebrek gegevens wissen'}</dd>` : ''}
+    </dl>
+    <div class="knoppen">
+      <button type="button" class="knop" id="fotos-opruimen" ${anders.length ? '' : 'disabled'}>🧹 ${anders.length ? `${anders.length} foto's van andere projecten verwijderen (${mb(andersBytes)})` : 'Geen foto’s van andere projecten'}</button>
+      ${vast === false ? '<button type="button" class="knop" id="opslag-vast">🔒 Opslag beschermen</button>' : ''}
+    </div>
+    <p><small>Opruimen verwijdert alleen foto's die al online staan; ze worden opnieuw geladen als je ze weer opent.</small></p>`;
+
+  el.querySelectorAll('input[name=fotoformaat]').forEach((r) => r.addEventListener('change', async () => {
+    const p = await actiefProject();
+    if (!p) return;
+    await db.bewaar('projecten', { ...p, fotoformaat: r.value, gewijzigd: new Date().toISOString() });
+    melding(`Fotoformaat: ${FOTOFORMATEN[r.value].label}`);
+  }));
+  el.querySelector('#f-fotosvooraf').addEventListener('change', (e) => {
+    instelling.schrijf('fotosVooraf', e.target.value);
+    melding('Opgeslagen');
+    if (e.target.value === 'project') sync.synchroniseer();
+  });
+  el.querySelector('#fotos-opruimen').addEventListener('click', async () => {
+    if (!confirm(`${anders.length} foto's van andere projecten (${mb(andersBytes)}) van dit apparaat verwijderen? Ze blijven online bewaard.`)) return;
+    for (const f of anders) await db.sync.verwijder('fotos', f.id);
+    melding(`${anders.length} foto's verwijderd van dit apparaat`);
+    fotoOpslagBlok(el);
+  });
+  el.querySelector('#opslag-vast')?.addEventListener('click', async () => {
+    const ok = await navigator.storage.persist().catch(() => false);
+    melding(ok ? 'Opslag is beschermd' : 'De browser staat dit (nog) niet toe. Installeer de app op het beginscherm en probeer het opnieuw.', ok ? 'ok' : 'fout');
+    fotoOpslagBlok(el);
+  });
+}
+
+function fotoIdsVanRecord(r) {
+  return [
+    ...(r?.fotoIds ?? []), ...(r?.extraFotoIds ?? []), ...(r?.gebreken ?? []).flatMap((g) => g.fotoIds ?? []),
+    ...(r?.bvc?.gebreken ?? []).flatMap((g) => g.fotoIds ?? []), ...(r?.waarnemingen ?? []).flatMap((w) => w.fotoIds ?? []),
+    ...(r?.stowa?.waarnemingen ?? []).flatMap((w) => w.fotoIds ?? []),
+  ];
+}
+
 async function laadFotos(ids) {
-  return (await Promise.all((ids ?? []).map((id) => db.haal('fotos', id)))).filter(Boolean).map((f) => ({ id: f.id, data: f.data }));
+  // Ontbreekt een foto op dit apparaat, dan wordt hij (als dat kan) meteen van de server gehaald.
+  const pid = projectId();
+  return (await Promise.all((ids ?? []).map(async (id) => {
+    const f = await db.haal('fotos', id);
+    if (f) return { id: f.id, data: f.data };
+    const data = await sync.haalFoto(id, pid);
+    return data ? { id, data } : null;
+  }))).filter(Boolean);
 }
 
 // ---------------------------------------------------------------------------
@@ -1355,7 +1469,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     const bestanden = [...e.target.files];
     melding(`${bestanden.length} foto('s) verwerken…`);
     try {
-      for (const bestand of bestanden) fotoLijst(sleutel).push({ id: nieuwId(), data: await verkleinFoto(bestand) });
+      for (const bestand of bestanden) fotoLijst(sleutel).push({ id: nieuwId(), data: await maakFoto(bestand) });
       formulierGewijzigd = true;
     } catch (fout) {
       melding(fout.message, 'fout');
@@ -2156,12 +2270,14 @@ async function mobielAccount() {
         <input id="f-naam" name="naam" value="${esc(instelling.lees('inspecteur'))}" autocomplete="name"></div>
       <div class="formvoet"><button class="knop primair" type="submit">Opslaan</button></div>
     </form>
+    <section class="kaart" id="fotoopslag"><p class="leeg">Laden…</p></section>
     <section class="kaart">
       <h2>Weergave</h2>
       <p>Dashboard, objectbeheer en rapporten zitten in de volledige versie, bedoeld voor de pc.</p>
       <button class="knop" id="volledig" type="button">Volledige versie openen</button>
     </section>`;
   toonAccount(app.querySelector('#account'));
+  fotoOpslagBlok(app.querySelector('#fotoopslag'));
   app.querySelector('#naam').onsubmit = (e) => {
     e.preventDefault();
     instelling.schrijf('inspecteur', formulierData(e.target).naam);
@@ -2556,7 +2672,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     if (e.target.id !== 'foto-input' || !e.target.files?.length) return;
     melding(`${e.target.files.length} foto('s) verwerken…`);
     try {
-      for (const bestand of [...e.target.files]) fotos.push({ id: nieuwId(), data: await verkleinFoto(bestand) });
+      for (const bestand of [...e.target.files]) fotos.push({ id: nieuwId(), data: await maakFoto(bestand) });
       formulierGewijzigd = true;
     } catch (fout) {
       melding(fout.message, 'fout');
@@ -4087,7 +4203,7 @@ async function extraBlok(blok, defsNu, record) {
     const id = e.target.dataset?.extraFoto;
     if (!id || !e.target.files?.length) return;
     try {
-      for (const f of [...e.target.files]) (extraFotos[id] ??= []).push({ id: nieuwId(), data: await verkleinFoto(f) });
+      for (const f of [...e.target.files]) (extraFotos[id] ??= []).push({ id: nieuwId(), data: await maakFoto(f) });
       formulierGewijzigd = true;
     } catch (fout) { melding(fout.message, 'fout'); }
     teken();
@@ -5064,7 +5180,7 @@ async function exporteerResultaten({ lijst, titel, onderdeel = '', filter = '', 
     let fotoData = null;
     if (metFotos) {
       const ids = [...new Set(r.fotos.map((f) => f.fotoId))];
-      fotoData = new Map((await Promise.all(ids.map((fid) => db.haal('fotos', fid)))).filter(Boolean).map((f) => [f.id, f.data]));
+      fotoData = new Map((await laadFotos(ids)).map((f) => [f.id, f.data]));
     }
     const wb = RX.maakWerkboek(ExcelJS, r, { titel, project: project?.naam ?? '', onderdeel, filter, fotoData });
     download(`${bestandsnaam.replace(/[^\w-]+/g, '_')}-${vandaag()}.xlsx`, await wb.xlsx.writeBuffer(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -5679,7 +5795,7 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
     const k = e.target.dataset.fotoBij;
     if (!k || !e.target.files?.length) return;
     try {
-      for (const f of [...e.target.files]) fotoLijst(k).push({ id: nieuwId(), data: await verkleinFoto(f) });
+      for (const f of [...e.target.files]) fotoLijst(k).push({ id: nieuwId(), data: await maakFoto(f) });
     } catch (fout) { melding(fout.message, 'fout'); }
     if (k === 'alg') tekenAlg(); else tekenW();
   });
@@ -6124,7 +6240,7 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
     const k = e.target.dataset.fotoBij;
     if (!k || !e.target.files?.length) return;
     try {
-      for (const f of [...e.target.files]) fotoLijst(k).push({ id: nieuwId(), data: await verkleinFoto(f) });
+      for (const f of [...e.target.files]) fotoLijst(k).push({ id: nieuwId(), data: await maakFoto(f) });
     } catch (fout) { melding(fout.message, 'fout'); }
     if (k === 'alg') tekenAlgemeen(); else tekenGebreken();
   });
@@ -6541,7 +6657,7 @@ async function vrijgaveFormulier(id, q = new URLSearchParams(), { mobiel = false
     const k = e.target.dataset.fotoBij;
     if (!k || !e.target.files?.length) return;
     try {
-      for (const f of [...e.target.files]) fotoLijst(k).push({ id: nieuwId(), data: await verkleinFoto(f) });
+      for (const f of [...e.target.files]) fotoLijst(k).push({ id: nieuwId(), data: await maakFoto(f) });
     } catch (fout) { melding(fout.message, 'fout'); }
     if (k === 'alg') tekenAlgemeen(); else tekenWaarnemingen();
   });
@@ -6770,6 +6886,7 @@ async function instellingen() {
           <label class="knop fotoknop">Back-up importeren<input type="file" accept=".json,application/json" id="import"></label>
         </div>
       </section>
+      <section class="kaart" id="fotoopslag"><p class="leeg">Laden…</p></section>
       <section class="kaart">
         <h2>Voorbeelddata</h2>
         <p>Voeg een aantal voorbeeldobjecten (bruggen, viaduct, duiker, kademuur) met inspecties toe.</p>
@@ -6814,6 +6931,7 @@ async function instellingen() {
   };
   app.querySelector('#demo').onclick = laadDemo;
   toonAccount(app.querySelector('#account'));
+  fotoOpslagBlok(app.querySelector('#fotoopslag'));
   app.querySelector('#wis').onclick = async () => {
     const wachtend = await db.sync.aantalInWachtrij();
     const waarschuwing = wachtend ? `\n\nLet op: ${wachtend} wijziging(en) zijn nog niet verstuurd en gaan verloren.` : '';
@@ -7012,6 +7130,8 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 
 sync.opStatus(syncIndicator);
 sync.start({
+  fotoProject: () => projectId() || null,
+  fotosVooraf: () => instelling.lees('fotosVooraf', 'project') !== 'opvraag',
   // Nieuwe gegevens van een ander apparaat: scherm verversen, behalve tijdens het invullen van een formulier.
   naOphalen: async () => {
     await migreerZonderProject();
@@ -7029,4 +7149,5 @@ sync.opStatus(() => {
   if (wasIngelogd && !nu && isMobiel()) router();
   wasIngelogd = nu;
 });
+navigator.storage?.persist?.().catch(() => {}); // vraagt de browser de gegevens niet zomaar op te ruimen
 migreerZonderProject().finally(router);

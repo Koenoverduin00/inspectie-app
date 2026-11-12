@@ -364,10 +364,14 @@ async function verwerkRij(tabel, rij) {
 }
 
 async function haalOntbrekendeFotosOp() {
+  // Alleen de foto's van het project waarin je werkt; andere worden geladen zodra je ze opent.
+  if (fotoBeleid.vooraf && !fotoBeleid.vooraf()) return;
+  const actief = fotoBeleid.project?.() ?? null;
   const aanwezig = new Set(await db.sync.fotoIds());
   const nodig = new Map(); // fotoId → projectId
   const records = [...await db.alle('inspecties'), ...await db.alle('werkzaamheden'), ...await db.alle('taken'), ...await db.alle('vrijgaven')];
   for (const record of records) {
+    if (actief && record.projectId && record.projectId !== actief) continue;
     for (const id of fotoIdsVan(record)) if (!aanwezig.has(id)) nodig.set(id, record.projectId ?? null);
   }
   for (const [id, projectId] of nodig) {
@@ -379,6 +383,21 @@ async function haalOntbrekendeFotosOp() {
       if (fout instanceof TypeError || fout instanceof NietIngelogd) throw fout;
       console.warn(`Foto ${id} nog niet beschikbaar`, fout.message); // volgende keer opnieuw
     }
+  }
+}
+
+const fotoBeleid = {};
+
+/** Eén foto van de server halen (bij openen van een inspectie of werkzaamheid). Geeft null als dat niet lukt. */
+export async function haalFoto(id, projectId) {
+  if (!isIngesteld() || !sessie() || !navigator.onLine) return null;
+  try {
+    const res = await api(`/storage/v1/object/authenticated/${BUCKET}/${fotoPad(id, projectId)}`);
+    const data = await blobNaarDataUrl(await res.blob());
+    await db.sync.bewaar('fotos', { id, data, projectId, datum: new Date().toISOString() });
+    return data;
+  } catch {
+    return null;
   }
 }
 
@@ -453,6 +472,8 @@ function plan(vertraging = 1500) {
 
 export function start(opties = {}) {
   naOphalen = opties.naOphalen ?? naOphalen;
+  fotoBeleid.project = opties.fotoProject;
+  fotoBeleid.vooraf = opties.fotosVooraf;
   db.bijWijziging(() => {
     werkWachtendBij();
     plan();

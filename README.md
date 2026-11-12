@@ -139,6 +139,18 @@ niet klaar = *te laat*. Ook staat erbij hoeveel objecten per dag nog nodig zijn.
 - **Inspecties**: schakel tussen **☰ Lijst** en **🗺️ Kaart**. De kaart volgt de filters en kleurt elk object naar het
   oordeel van de laatste inspectie (NEN-conditie, STOWA-urgentie of BVC-klasse); klik voor de inspecties van dat object.
 
+## Foto's en opslag (snelheid)
+
+Onder **Instellingen → Foto's en opslag** (op de telefoon onder Account):
+
+- **Fotoformaat per project** (beheerder, geldt voor iedereen): *Compact* 1280 px (~150 kB), *Standaard* 1600 px (~250 kB, standaard)
+  of *Hoog* 2048 px (~500 kB). Elke foto wordt op het toestel verkleind vóór opslaan en versturen; een telefoonfoto van
+  5–8 MB wordt zo 100–500 kB. Locatiegegevens (EXIF) gaan er daarbij af.
+- **Foto's van collega's**: alleen die van het project waarin je werkt worden vooraf gedownload (andere projecten pas als
+  je ze opent), of kies *pas downloaden bij openen* om data en opslag te sparen.
+- **Opruimen**: verwijder foto's van andere projecten van dit apparaat (alleen als ze al online staan).
+- De app vraagt de browser om de gegevens te beschermen tegen automatisch opruimen.
+
 ## Flora- en fauna-vrijgave (veldcheck)
 
 Eigen tegel op de telefoon. Gebaseerd op de **Gedragscode Soortenbescherming Rijkswaterstaat 2025–2029**

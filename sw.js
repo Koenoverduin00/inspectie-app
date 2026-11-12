@@ -1,5 +1,5 @@
 // Service worker: maakt de app offline bruikbaar in het veld.
-const CACHE = 'inspectie-app-v30';
+const CACHE = 'inspectie-app-v31';
 const BESTANDEN = [
   './', 'index.html', 'manifest.webmanifest', 'css/styles.css', 'icons/icon.svg',
   'js/app.js', 'js/db.js', 'js/nen2767.js', 'js/utils.js', 'js/catalogus.js', 'js/demo.js',

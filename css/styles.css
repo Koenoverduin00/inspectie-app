@@ -903,3 +903,10 @@ body.inlogscherm main#app { padding: 0; max-width: none; margin: 0; }
 .vindlijst button:hover, .vindlijst button:focus-visible { background: var(--primair-licht); }
 .vindlijst small { display: block; color: var(--tekst-zacht); }
 .vindlijst .leeg { padding: .4rem .5rem; color: var(--tekst-zacht); font-size: .9rem; }
+.fotoformaten { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: .5rem; }
+.fotoformaten .keuzetegel { position: relative; align-items: flex-start; }
+.fotoformaten .keuzetegel input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.fotoformaten .keuzetegel span { font-size: 1rem; display: flex; flex-direction: column; gap: .1rem; }
+.fotoformaten .keuzetegel small { font-weight: 400; color: var(--tekst-zacht); font-size: .8rem; }
+.fotoformaten .keuzetegel:has(input:checked) { border-color: var(--primair); background: var(--primair-licht); }
+.fotoformaten .keuzetegel:has(input:focus-visible) { outline: 3px solid color-mix(in srgb, var(--primair) 40%, transparent); }
