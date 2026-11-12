@@ -74,6 +74,8 @@ const FOUTVERTALINGEN = [
   [/email not confirmed/i, 'Je e-mailadres is nog niet bevestigd. Klik op de link in de bevestigingsmail.'],
   [/user already registered/i, 'Er bestaat al een account met dit e-mailadres. Log in.'],
   [/password should be at least/i, 'Het wachtwoord moet minimaal 6 tekens lang zijn.'],
+  [/rate limit|too many requests|for security purposes/i, 'Te veel pogingen. Wacht even en probeer het opnieuw.'],
+  [/new password should be different/i, 'Kies een ander wachtwoord dan je huidige.'],
   [/signups not allowed/i, 'Nieuwe accounts aanmaken is uitgeschakeld. Vraag de beheerder om een uitnodiging.'],
   [/row-level security|permission denied|unauthorized/i,
     'Geen toegang. Staat je e-mailadres in de tabel "teamleden" in Supabase?'],
@@ -124,6 +126,40 @@ export async function registreren(email, wachtwoord) {
   zetStatus({ fase: 'bezig', fout: '' });
   synchroniseer();
   return { bevestigen: false };
+}
+
+/** Stuurt een mail met een link om een nieuw wachtwoord in te stellen. */
+export async function wachtwoordVergeten(email, terugUrl) {
+  const { url, key } = configuratie();
+  const q = terugUrl ? `?redirect_to=${encodeURIComponent(terugUrl)}` : '';
+  const res = await fetch(`${url}/auth/v1/recover${q}`, {
+    method: 'POST', headers: { apikey: key, 'Content-Type': 'application/json' }, body: JSON.stringify({ email }),
+  });
+  if (!res.ok) throw await foutUit(res);
+}
+
+/** Sessie uit een link in een mail (bevestiging of wachtwoordherstel): #access_token=…&refresh_token=…&type=… */
+export async function sessieUitLink(params) {
+  const { url, key } = configuratie();
+  const token = params.get('access_token');
+  const res = await fetch(`${url}/auth/v1/user`, { headers: { apikey: key, Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw await foutUit(res);
+  const user = await res.json();
+  bewaarSessie({ access_token: token, refresh_token: params.get('refresh_token'), expires_in: params.get('expires_in'), user });
+  zetStatus({ fase: 'bezig', fout: '' });
+  synchroniseer();
+}
+
+/** Nieuw wachtwoord voor de ingelogde gebruiker (na een herstel-link). */
+export async function nieuwWachtwoord(wachtwoord) {
+  const s = sessie();
+  if (!s) throw new Error('De herstel-link is verlopen. Vraag een nieuwe aan.');
+  const { url, key } = configuratie();
+  const res = await fetch(`${url}/auth/v1/user`, {
+    method: 'PUT', headers: { apikey: key, Authorization: `Bearer ${s.access_token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: wachtwoord }),
+  });
+  if (!res.ok) throw await foutUit(res);
 }
 
 export async function uitloggen() {

@@ -100,6 +100,17 @@ gevraagd wordt:
   maatregelen, volgende inspectie, BVC-gegevens, eigen velden, RD- en GPS-coördinaten), *Gebreken*, *Maatregelen*
   en optioneel *Foto's* (miniaturen per object en gebrek).
 
+## Inloggen op de telefoon
+
+Op de telefoon start de app (als de online synchronisatie is ingesteld en je niet bent ingelogd) met een
+inlogscherm over het volledige scherm, zonder menu's: e-mailadres (wordt onthouden), wachtwoord met oogje om te tonen,
+**Wachtwoord vergeten?** (stuurt een herstelmail), **Account aanmaken** en onderaan *Offline werken zonder account*
+(geldt tot de app wordt gesloten). Na uitloggen of een verlopen sessie kom je vanzelf terug op dit scherm.
+De link uit de herstelmail opent het scherm *Nieuw wachtwoord*.
+
+> Zet in Supabase onder *Authentication → URL Configuration* de **Site URL** (en eventueel een Redirect URL) op het
+> adres van de app, bijv. `https://<gebruiker>.github.io/inspectie-app/`, anders wijzen de links in de mails naar localhost.
+
 ## Dashboard: sturen op de uitvoering
 
 Bovenaan schakel je tussen twee weergaven; de keuze wordt per apparaat onthouden.

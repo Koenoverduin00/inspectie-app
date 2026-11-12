@@ -132,7 +132,8 @@ async function vernieuwApp() {
 }
 
 function router() {
-  renderKetting = renderKetting.then(toonRoute, toonRoute);
+  const stap = () => verwerkAuthLink().catch(() => {}).then(toonRoute);
+  renderKetting = renderKetting.then(stap, stap);
   return renderKetting;
 }
 
@@ -156,6 +157,10 @@ async function toonRoute() {
     if (sectie === a.dataset.nav) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   });
   window.scrollTo(0, 0);
+  if (pad === '/wachtwoord') { wachtwoordPagina(); return; }
+  const inlog = mobiel && moetInloggen(pad);
+  document.body.classList.toggle('inlogscherm', inlog);
+  if (inlog) { inlogScherm(); return; }
   if (!route) {
     // Meestal: de pagina komt uit een nieuwere versie van de app die nog niet volledig geladen is.
     app.innerHTML = `<div class="kaart leeg"><h1>Pagina niet gevonden</h1>
@@ -1646,6 +1651,197 @@ async function maatregelen() {
         URGENTIES.find((u) => u.id === g.urgentie)?.label ?? '', g.kostenraming, g.maatregelStatus ?? 'open', g.uitgevoerdOp ?? '']);
     }
     download(`maatregelen-${vandaag()}.csv`, csv(rijen), 'text/csv;charset=utf-8');
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Inlogscherm (telefoon): volledig scherm, zonder menu's – zoals bij andere apps
+// ---------------------------------------------------------------------------
+const ZONDER_LOGIN = 'inspectie-app:zonderLogin';
+const OOG = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
+const OOG_DICHT = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6C3.8 8.4 2 12 2 12s3.6 7 10 7a9.6 9.6 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
+
+function zonderLoginGekozen() {
+  try { return sessionStorage.getItem(ZONDER_LOGIN) === '1'; } catch { return false; }
+}
+
+/** Op de telefoon: eerst inloggen (tenzij de gebruiker bewust offline zonder account werkt). */
+function moetInloggen(pad) {
+  return sync.isIngesteld() && !sync.sessie() && !zonderLoginGekozen() && !/^\/wachtwoord/.test(pad);
+}
+
+function inlogScherm(modus = 'in', bericht = '') {
+  const email = instelling.lees('laatsteEmail');
+  const teksten = {
+    in: { titel: 'Welkom terug', sub: 'Log in met je werkaccount', knop: 'Inloggen' },
+    nieuw: { titel: 'Account aanmaken', sub: 'Gebruik je zakelijke e-mailadres', knop: 'Account aanmaken' },
+    vergeten: { titel: 'Wachtwoord vergeten', sub: 'We sturen je een link om een nieuw wachtwoord in te stellen', knop: 'Link versturen' },
+  };
+  const t = teksten[modus];
+  const berichtKaart = (titel, tekst) => `<div class="inlog-kaart inlog-bericht"><div class="inlog-vink" aria-hidden="true">✉️</div>
+    <h2>${titel}</h2><p>${tekst}</p><button class="inlog-knop" type="button" id="terug">Naar inloggen</button></div>`;
+  app.innerHTML = `<div class="inlog">
+    <div class="inlog-merk">
+      <div class="inlog-logo"><img src="icons/icon.svg" alt="" width="44" height="44"></div>
+      <h1>Inspectie &amp; Registratie</h1>
+      <p>Werkzaamheden en inspecties in het veld</p>
+    </div>
+    ${bericht === 'bevestigen' ? berichtKaart('Bevestig je e-mailadres', `We hebben een bevestigingsmail gestuurd naar <strong>${esc(email)}</strong>. Klik op de link in die mail en log daarna in.`)
+    : bericht === 'verzonden' ? berichtKaart('Check je mail', `Als er een account bestaat voor <strong>${esc(email)}</strong>, ontvang je zo een link om een nieuw wachtwoord in te stellen.`)
+      : `<form class="inlog-kaart" id="inlog" novalidate>
+      <h2>${t.titel}</h2>
+      <p class="inlog-sub">${t.sub}</p>
+      <label class="inlog-veld"><span>E-mailadres</span>
+        <input id="i-email" name="email" type="email" inputmode="email" autocomplete="username" autocapitalize="off" spellcheck="false"
+          value="${esc(email)}" placeholder="naam@bedrijf.nl" required></label>
+      ${modus === 'vergeten' ? '' : `<label class="inlog-veld"><span>Wachtwoord</span>
+        <span class="inlog-ww"><input id="i-ww" name="wachtwoord" type="password" minlength="6" required
+          autocomplete="${modus === 'nieuw' ? 'new-password' : 'current-password'}" placeholder="${modus === 'nieuw' ? 'Minimaal 6 tekens' : '••••••••'}">
+        <button type="button" class="inlog-oog" aria-label="Wachtwoord tonen" aria-pressed="false">${OOG}</button></span></label>`}
+      ${modus === 'in' ? '<a href="#" class="inlog-link inlog-vergeten" data-modus="vergeten">Wachtwoord vergeten?</a>' : ''}
+      <p class="inlog-fout" role="alert" hidden></p>
+      <button class="inlog-knop" type="submit"><span class="inlog-spinner" aria-hidden="true"></span><span>${t.knop}</span></button>
+      <p class="inlog-wissel">${modus === 'in'
+        ? 'Nog geen account? <a href="#" class="inlog-link" data-modus="nieuw">Account aanmaken</a>'
+        : '<a href="#" class="inlog-link" data-modus="in">← Terug naar inloggen</a>'}</p>
+    </form>`}
+    <button type="button" class="inlog-zonder" id="zonder">Offline werken zonder account</button>
+  </div>`;
+
+  app.querySelector('#terug')?.addEventListener('click', () => inlogScherm('in'));
+  app.querySelectorAll('[data-modus]').forEach((a) => a.addEventListener('click', (e) => {
+    e.preventDefault();
+    const v = app.querySelector('#i-email')?.value.trim();
+    if (v) instelling.schrijf('laatsteEmail', v);
+    inlogScherm(a.dataset.modus);
+  }));
+  app.querySelector('#zonder').onclick = () => {
+    try { sessionStorage.setItem(ZONDER_LOGIN, '1'); } catch { /* geen opslag: alleen voor deze keer */ }
+    document.body.classList.remove('inlogscherm');
+    if (location.hash && location.hash !== '#/') location.hash = '#/'; else router();
+  };
+  const oog = app.querySelector('.inlog-oog');
+  if (oog) {
+    oog.onclick = () => {
+      const ww = app.querySelector('#i-ww');
+      const zien = ww.type === 'password';
+      ww.type = zien ? 'text' : 'password';
+      oog.innerHTML = zien ? OOG_DICHT : OOG;
+      oog.setAttribute('aria-pressed', String(zien));
+      oog.setAttribute('aria-label', zien ? 'Wachtwoord verbergen' : 'Wachtwoord tonen');
+    };
+  }
+  const form = app.querySelector('#inlog');
+  if (!form) return;
+  if (!email) form.querySelector('#i-email').focus({ preventScroll: true });
+  const fout = form.querySelector('.inlog-fout');
+  const toonFout = (tekst, veld) => {
+    fout.textContent = tekst;
+    fout.hidden = false;
+    form.classList.remove('schud');
+    void form.offsetWidth;
+    form.classList.add('schud');
+    veld?.focus();
+  };
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const em = form.elements.email;
+    const ww = form.elements.wachtwoord;
+    if (!em.value.trim() || !em.checkValidity()) return toonFout('Vul een geldig e-mailadres in.', em);
+    if (ww && ww.value.length < 6) return toonFout(ww.value ? 'Het wachtwoord moet minimaal 6 tekens lang zijn.' : 'Vul je wachtwoord in.', ww);
+    if (!navigator.onLine) return toonFout('Je bent offline. Inloggen kan alleen met internetverbinding.');
+    const knop = form.querySelector('.inlog-knop');
+    knop.disabled = true;
+    form.classList.add('bezig');
+    fout.hidden = true;
+    const adres = em.value.trim();
+    instelling.schrijf('laatsteEmail', adres);
+    try {
+      if (modus === 'vergeten') {
+        await sync.wachtwoordVergeten(adres, location.href.split('#')[0]);
+        inlogScherm('in', 'verzonden');
+        return;
+      }
+      if (modus === 'nieuw') {
+        const r = await sync.registreren(adres, ww.value);
+        if (r.bevestigen) { inlogScherm('in', 'bevestigen'); return; }
+      } else {
+        await sync.inloggen(adres, ww.value);
+      }
+      document.body.classList.remove('inlogscherm');
+      melding('Ingelogd');
+      router();
+    } catch (err) {
+      toonFout(err instanceof TypeError ? 'Geen verbinding met de server. Probeer het zo opnieuw.' : err.message);
+    } finally {
+      if (form.isConnected) {
+        knop.disabled = false;
+        form.classList.remove('bezig');
+      }
+    }
+  };
+}
+
+/** Na een link uit een mail (bevestiging of wachtwoordherstel) staat de sessie in de URL. */
+async function verwerkAuthLink() {
+  const h = location.hash.slice(1);
+  if (!/(^|&)(access_token|error_description)=/.test(h)) return;
+  const p = new URLSearchParams(h);
+  const herstel = p.get('type') === 'recovery';
+  history.replaceState(null, '', `${location.pathname}${location.search}${herstel ? '#/wachtwoord' : '#/'}`);
+  if (p.get('error_description')) {
+    melding(p.get('error_description').replace(/\+/g, ' '), 'fout');
+    return;
+  }
+  try {
+    await sync.sessieUitLink(p);
+    if (!herstel) melding('E-mailadres bevestigd – je bent ingelogd');
+  } catch (err) {
+    melding(`Inloggen via de link mislukt: ${err.message}`, 'fout');
+  }
+}
+
+/** Nieuw wachtwoord instellen na de herstel-link. */
+function wachtwoordPagina() {
+  document.body.classList.add('inlogscherm');
+  app.innerHTML = `<div class="inlog">
+    <div class="inlog-merk"><div class="inlog-logo"><img src="icons/icon.svg" alt="" width="44" height="44"></div><h1>Inspectie &amp; Registratie</h1></div>
+    <form class="inlog-kaart" id="nieuwww" novalidate>
+      <h2>Nieuw wachtwoord</h2>
+      <p class="inlog-sub">${sync.sessie() ? `Voor ${esc(sync.sessie().gebruiker?.email ?? '')}` : 'De herstel-link is verlopen of al gebruikt.'}</p>
+      ${sync.sessie() ? `<label class="inlog-veld"><span>Nieuw wachtwoord</span>
+        <span class="inlog-ww"><input id="i-ww" name="wachtwoord" type="password" minlength="6" autocomplete="new-password" placeholder="Minimaal 6 tekens" required>
+        <button type="button" class="inlog-oog" aria-label="Wachtwoord tonen" aria-pressed="false">${OOG}</button></span></label>
+      <p class="inlog-fout" role="alert" hidden></p>
+      <button class="inlog-knop" type="submit"><span class="inlog-spinner" aria-hidden="true"></span><span>Wachtwoord opslaan</span></button>`
+    : '<a class="inlog-knop" href="#/">Naar inloggen</a>'}
+    </form></div>`;
+  const form = app.querySelector('#nieuwww');
+  const oog = form.querySelector('.inlog-oog');
+  if (!oog) return;
+  oog.onclick = () => {
+    const ww = form.querySelector('#i-ww');
+    const zien = ww.type === 'password';
+    ww.type = zien ? 'text' : 'password';
+    oog.innerHTML = zien ? OOG_DICHT : OOG;
+  };
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const ww = form.elements.wachtwoord;
+    const fout = form.querySelector('.inlog-fout');
+    if (ww.value.length < 6) { fout.textContent = 'Het wachtwoord moet minimaal 6 tekens lang zijn.'; fout.hidden = false; return; }
+    form.classList.add('bezig');
+    try {
+      await sync.nieuwWachtwoord(ww.value);
+      document.body.classList.remove('inlogscherm');
+      melding('Wachtwoord gewijzigd');
+      location.hash = '#/';
+    } catch (err) {
+      fout.textContent = err.message;
+      fout.hidden = false;
+    } finally {
+      form.classList.remove('bezig');
+    }
   };
 }
 
@@ -6465,5 +6661,12 @@ sync.start({
     }
     if (!/\/(nieuw|bewerken)/.test(location.hash) && !formulierGewijzigd) router();
   },
+});
+// Uitgelogd (zelf of omdat de sessie is verlopen): op de telefoon terug naar het inlogscherm.
+let wasIngelogd = Boolean(sync.sessie());
+sync.opStatus(() => {
+  const nu = Boolean(sync.sessie());
+  if (wasIngelogd && !nu && isMobiel()) router();
+  wasIngelogd = nu;
 });
 migreerZonderProject().finally(router);
