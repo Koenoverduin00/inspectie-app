@@ -9,6 +9,11 @@
   <title>Inspectie &amp; Registratie</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Inspectie">
   <link rel="stylesheet" href="css/styles.css">
   <script>try { document.documentElement.dataset.thema = localStorage.getItem('inspectie-app:thema') || 'licht'; } catch { document.documentElement.dataset.thema = 'licht'; }</script>
 </head>
@@ -29,14 +34,13 @@
     </nav>
     <a id="syncstatus" class="syncstatus" href="#/instellingen" data-fase="uit">Alleen lokaal</a>
   </header>
+  <a id="statusregel" class="statusregel" href="#/m/account" hidden></a>
   <main id="app" tabindex="-1"><p class="laden">Laden…</p></main>
   <nav class="onderbalk" aria-label="Veldmenu">
-    <a href="#/" data-mnav="dashboard"><span aria-hidden="true">🏠</span>Start</a>
-    <a href="#/m/werk" data-mnav="m-werk"><span aria-hidden="true">🛠️</span>Werkzaamheden</a>
-    <a href="#/m/inspectie" data-mnav="m-inspectie"><span aria-hidden="true">🔍</span>Schouw</a>
-    <a href="#/m/pakketten" data-mnav="m-pakket"><span aria-hidden="true">📦</span>Pakketten</a>
-    <a href="#/m/account" data-mnav="m-account"><span aria-hidden="true">👤</span>Account</a>
+    <a href="#/" data-mnav="dashboard m-werk m-inspectie m-pakket m-vrijgave"><span aria-hidden="true">🏠</span>Vandaag</a>
+    <a href="#/m/kaart" data-mnav="m-kaart"><span aria-hidden="true">🗺️</span>Kaart</a>
+    <a href="#/m/account" data-mnav="m-account"><span aria-hidden="true">👤</span>Ik</a>
   </nav>
-  <script type="module" src="js/app.js?v=31"></script>
+  <script type="module" src="js/app.js?v=32"></script>
 </body>
 </html>

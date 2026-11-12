@@ -54,6 +54,7 @@ const ROUTES = [
   [/^\/m\/inspectie\/nieuw$/, 'm-inspectie', (_, q) => inspectieFormulier(null, q.get('object'), { mobiel: true, taakId: q.get('taak'), pakketId: q.get('pakket'), rondeId: q.get('ronde'), calamiteit: q.get('calamiteit') === '1' })],
   [/^\/m\/inspectie\/([^/]+)$/, 'm-inspectie', (id) => inspectieFormulier(id, null, { mobiel: true })],
   [/^\/m\/account$/, 'm-account', mobielAccount],
+  [/^\/m\/kaart$/, 'm-kaart', mobielKaart],
   [/^\/m\/vrijgave$/, 'm-vrijgave', () => objectKiezer('vrijgave')],
   [/^\/m\/vrijgave\/nieuw$/, 'm-vrijgave', (_, q) => vrijgaveFormulier(null, q, { mobiel: true })],
   [/^\/m\/vrijgave\/([^/]+)\/bewerken$/, 'm-vrijgave', (id, q) => vrijgaveFormulier(id, q, { mobiel: true })],
@@ -147,7 +148,7 @@ async function toonRoute() {
   const mobiel = isMobiel();
   document.body.classList.toggle('modus-mobiel', mobiel);
   document.querySelectorAll('[data-mnav]').forEach((a) => {
-    const actief = route?.[1] === a.dataset.mnav;
+    const actief = a.dataset.mnav.split(' ').includes(route?.[1]);
     a.classList.toggle('actief', actief);
     if (actief) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   });
@@ -1560,7 +1561,8 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     await db.bewaar('inspecties', inspectie);
     if (data.inspecteur) instelling.schrijf('inspecteur', data.inspecteur);
     formulierGewijzigd = false;
-    melding(status === 'afgerond' ? 'Inspectie afgerond en opgeslagen' : 'Concept opgeslagen');
+    if (!mobiel) melding(status === 'afgerond' ? 'Inspectie afgerond en opgeslagen' : 'Concept opgeslagen');
+    else onthoudOpslag(status === 'afgerond' ? 'Inspectie opgeslagen' : 'Concept opgeslagen', inspectie.objectId);
     if (status === 'afgerond') await rondTaakAf(taakId, inspectieId);
     ga(pakketTerug ?? (mobiel ? '#/' : `#/inspecties/${inspectieId}`));
   };
@@ -2119,6 +2121,178 @@ function groet() {
 }
 
 // ---------------------------------------------------------------------------
+// Mobiel: kaart met alle objecten van je actieve rondes
+// ---------------------------------------------------------------------------
+async function mobielKaart() {
+  const g = await pakketGegevens();
+  const ik = sync.sessie()?.gebruiker?.email ?? '';
+  const rondes = actieveRondes(g).filter(({ pakket }) => pakketVoorMij(pakket, ik));
+  // Per object: in welke rondes het zit en wat de status daar is.
+  const perObject = new Map();
+  for (const { pakket: v, voortgang: vg } of rondes) {
+    for (const oid of v.objecten) {
+      const o = g.objectMap.get(oid);
+      if (!o) continue;
+      const st = vg.gedaan.has(oid) ? 'gedaan' : vg.overgeslagen.has(oid) ? 'overgeslagen' : 'open';
+      if (!perObject.has(oid)) perObject.set(oid, { o, rondes: [] });
+      perObject.get(oid).rondes.push({ v, st });
+    }
+  }
+  const statusVan = (oid) => {
+    const r = perObject.get(oid)?.rondes ?? [];
+    return r.some((x) => x.st === 'open') ? 'open' : r.some((x) => x.st === 'gedaan') ? 'gedaan' : 'overgeslagen';
+  };
+  const lijst = [...perObject.values()];
+  const open = lijst.filter(({ o }) => statusVan(o.id) === 'open').length;
+  app.innerHTML = `
+    <div class="mkaartkop"><div><h1>Kaart</h1><small>${rondes.length ? `${open} open · ${lijst.length - open} klaar · ${rondes.length} ronde${rondes.length === 1 ? '' : 's'}` : 'Geen actieve rondes'}</small></div>
+      <button class="knop" id="mijnlocatie" type="button">📍 Mijn locatie</button></div>
+    <div class="mlegenda"><span><i style="background:${PAKKET_KLEUR.open}"></i>Te doen</span><span><i style="background:${PAKKET_KLEUR.gedaan}"></i>Gedaan</span><span><i style="background:${PAKKET_KLEUR.overgeslagen}"></i>Overgeslagen</span></div>
+    ${rondes.length ? '<div id="veldkaart" class="veldkaart"><p class="leeg">Kaart laden…</p></div>'
+    : '<div class="kaart leeg"><p>Er loopt op dit moment geen ronde voor jou.</p><p><small>Zodra de beheerder een ronde actief zet, zie je de objecten hier.</small></p></div>'}`;
+  if (!rondes.length) return;
+  const navigeer = (o) => {
+    const geom = objectGeometrie(o);
+    const [lng, lat] = geom.type === 'Point' ? geom.coordinates : gis.middelpunt(geom);
+    return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+  };
+  const kaart = await tekenObjectenKaart(app.querySelector('#veldkaart'), {
+    objecten: lijst.map((x) => x.o),
+    kleurVan: (o) => PAKKET_KLEUR[statusVan(o.id)],
+    popup: (o) => `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br><small>${esc(o.type || '')}</small>
+      <div class="veldpopup">${perObject.get(o.id).rondes.map(({ v, st }) => `<div class="veldronde"><small>${esc(v.naam)}</small>
+        ${st === 'open' ? `<div class="popupknoppen"><a class="knop klein primair" href="${pakketHref(v, o.id, true)}">▶ Start</a>
+          <button class="knop klein" data-overslaan="${esc(o.id)}" data-pakket="${esc(v.id)}:${esc(v.rondeId)}">⏭ Overslaan</button></div>`
+    : `<span class="label-status ${st === 'gedaan' ? 'afgerond' : ''}">${st === 'gedaan' ? '✓ Gedaan' : '⏭ Overgeslagen'}</span>`}</div>`).join('')}</div>
+      <a class="knop klein" href="${navigeer(o)}" target="_blank" rel="noopener">🧭 Navigeer erheen</a>`,
+  });
+  if (!kaart) return;
+  app.querySelector('#veldkaart').addEventListener('click', async (e) => {
+    const over = e.target.closest('[data-overslaan]');
+    if (!over) return;
+    const [pid, rid] = over.dataset.pakket.split(':');
+    const v = g.views.get(`${pid}:${rid}`);
+    if (v && await slaObjectOver(v, g.objectMap.get(over.dataset.overslaan))) router();
+  });
+  const toonLocatie = (stil) => bepaalPositie(() => {
+    kaart.zetPositie(laatstePositie);
+    if (!stil) kaart.map.setView([laatstePositie[1], laatstePositie[0]], Math.max(kaart.map.getZoom(), 17), { animate: false });
+  }, { stil });
+  app.querySelector('#mijnlocatie').onclick = () => toonLocatie(false);
+  if (laatstePositie) kaart.zetPositie(laatstePositie);
+  if (navigator.permissions?.query) {
+    navigator.permissions.query({ name: 'geolocation' }).then((s) => { if (s.state === 'granted') toonLocatie(true); }).catch(() => {});
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Mobiel: duidelijke statusregel (versturen, offline, inloggen)
+// ---------------------------------------------------------------------------
+function statusregel(st) {
+  const el = document.getElementById('statusregel');
+  if (!el) return;
+  const n = st.wachtend ?? 0;
+  const reg = (x) => `${x} registratie${x === 1 ? '' : 's'}`;
+  let soort = 'ok';
+  let tekst;
+  if (!navigator.onLine || st.fase === 'offline') {
+    soort = 'offline';
+    tekst = `📴 Offline – alles wordt op je telefoon bewaard${n ? ` (${reg(n)} wachten)` : ''}`;
+  } else if (st.fase === 'bezig') {
+    soort = 'bezig';
+    tekst = `⟳ Bezig met versturen${n ? ` (${n})` : ''}…`;
+  } else if (st.fase === 'fout') {
+    soort = 'fout';
+    tekst = `⚠️ Versturen lukt niet${n ? ` – ${reg(n)} wachten` : ''}. Tik voor details`;
+  } else if (st.fase === 'uitgelogd') {
+    soort = 'let';
+    tekst = `🔑 Niet ingelogd – ${n ? `${reg(n)} staan alleen op deze telefoon` : 'werk wordt niet gedeeld'}. Tik om in te loggen`;
+  } else if (st.fase === 'uit') {
+    soort = 'let';
+    tekst = '💾 Alleen op deze telefoon opgeslagen';
+  } else if (n) {
+    soort = 'let';
+    tekst = `⏳ ${reg(n)} wachten om verstuurd te worden`;
+  } else {
+    const t = st.laatsteSync ? new Date(st.laatsteSync) : null;
+    tekst = `✓ Alles verstuurd${t ? ` · ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}` : ''}`;
+  }
+  el.textContent = tekst;
+  el.dataset.soort = soort;
+  el.hidden = false;
+}
+
+// ---------------------------------------------------------------------------
+// Mobiel: na opslaan een duidelijke bevestiging met de volgende stap
+// ---------------------------------------------------------------------------
+const OPGESLAGEN = 'inspectie-app:opgeslagen';
+function onthoudOpslag(tekst, objectId = '') {
+  try { sessionStorage.setItem(OPGESLAGEN, JSON.stringify({ tekst, objectId, tijd: Date.now() })); } catch { /* geen opslag */ }
+}
+function opslagBevestiging() {
+  let x = null;
+  try {
+    x = JSON.parse(sessionStorage.getItem(OPGESLAGEN));
+    sessionStorage.removeItem(OPGESLAGEN);
+  } catch { /* geen opslag */ }
+  return x && Date.now() - x.tijd < 60_000 ? x : null;
+}
+function opslagKaart(x, { objectMap, volgende = '' } = {}) {
+  if (!x) return '';
+  const o = x.objectId ? objectMap?.get(x.objectId) : null;
+  return `<div class="mopgeslagen" role="status"><span class="mvink" aria-hidden="true">✓</span>
+    <div><strong>${esc(x.tekst)}</strong>${o ? `<small>${esc(o.code)} – ${esc(o.naam)}</small>` : ''}</div>${volgende}</div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Mobiel: app op het beginscherm zetten
+// ---------------------------------------------------------------------------
+let installPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  installPrompt = e;
+  const k = document.querySelector('#installeer-knop');
+  if (k) k.hidden = false;
+});
+window.addEventListener('appinstalled', () => {
+  installPrompt = null;
+  document.querySelector('.minstall')?.remove();
+  melding('App geïnstalleerd – open hem voortaan vanaf je beginscherm');
+});
+const isGeinstalleerd = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIos = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+function installKaart() {
+  if (isGeinstalleerd()) return '';
+  const later = Number(instelling.lees('installLater', '0'));
+  if (later && Date.now() - later < 14 * 86400000) return '';
+  const deel = '<svg viewBox="0 0 24 24" width="18" height="18" aria-label="Deel-knop" style="vertical-align:-3px"><path fill="none" stroke="currentColor" stroke-width="2" d="M12 3v12M7 8l5-5 5 5M5 12v8h14v-8"/></svg>';
+  const uitleg = isIos()
+    ? `<ol><li>Tik onderin Safari op ${deel} <strong>Deel</strong></li><li>Kies <strong>Zet op beginscherm</strong></li><li>Tik op <strong>Voeg toe</strong></li></ol>`
+    : `<p id="install-uitleg">Open het browsermenu <strong>⋮</strong> en kies <strong>App installeren</strong> of <strong>Toevoegen aan startscherm</strong>.</p>`;
+  return `<section class="minstall"><img src="icons/icon-192.png" alt="" width="44" height="44">
+    <div><strong>Zet de app op je beginscherm</strong><small>Opent op volledig scherm en werkt betrouwbaarder offline.</small>
+      ${uitleg}
+      <div class="knoppen"><button class="knop primair" id="installeer-knop" type="button" ${installPrompt ? '' : 'hidden'}>📲 Installeren</button>
+        <button class="knop" id="install-later" type="button">Later</button></div></div></section>`;
+}
+
+function koppelInstallKaart() {
+  app.querySelector('#installeer-knop')?.addEventListener('click', async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    const keuze = await installPrompt.userChoice.catch(() => null);
+    if (keuze?.outcome === 'accepted') app.querySelector('.minstall')?.remove();
+    installPrompt = null;
+  });
+  app.querySelector('#install-later')?.addEventListener('click', () => {
+    instelling.schrijf('installLater', String(Date.now()));
+    app.querySelector('.minstall')?.remove();
+  });
+  if (installPrompt) app.querySelector('#install-uitleg')?.remove();
+}
+
+// ---------------------------------------------------------------------------
 // Mobiel: startscherm met de twee veldfuncties
 // ---------------------------------------------------------------------------
 async function mobielStart() {
@@ -2145,6 +2319,10 @@ async function mobielStart() {
     })),
   ].sort((a, b) => String(b.tijd).localeCompare(String(a.tijd)));
 
+  const g = await pakketGegevens();
+  const ik = sync.sessie()?.gebruiker?.email ?? '';
+  const vrijgaveNodig = actieveRondes(g).some(({ pakket }) => pakket.vrijgaveVereist && pakketVoorMij(pakket, ik))
+    || (await inProject('vrijgaven')).some((v) => v.status === 'concept');
   const loginHint = sync.isIngesteld() && !sync.sessie()
     ? `<a class="kaart mhint" href="#/m/account">🔑 <span><strong>Log in</strong> zodat je werk ook op kantoor zichtbaar is.</span></a>` : '';
   const regel = (x) => `<li><a href="${x.href}"><span class="micoon klein">${x.icoon}</span>
@@ -2152,7 +2330,9 @@ async function mobielStart() {
 
   app.innerHTML = `
     <div class="mstart">
+      ${opslagKaart(opslagBevestiging(), { objectMap })}
       <p class="mgroet">${groet()}${naam ? `, ${esc(naam)}` : ''}</p>
+      ${installKaart()}
       ${loginHint}
       <a class="mtegel" href="#/m/werk">
         <span class="micoon">🛠️</span>
@@ -2162,10 +2342,10 @@ async function mobielStart() {
         <span class="micoon">🔍</span>
         <span><strong>Schouw &amp; inspectie</strong><small>Gebreken vastleggen en boomveiligheidscontrole</small></span>
       </a>
-      <a class="mtegel" href="#/m/vrijgave">
+      ${vrijgaveNodig ? `<a class="mtegel" href="#/m/vrijgave">
         <span class="micoon">🌿</span>
         <span><strong>Flora &amp; fauna vrijgave</strong><small>Ecologische veldcheck vóór de werkzaamheden</small></span>
-      </a>
+      </a>` : ''}
       ${concepten.length ? `<h2>Verder gaan</h2><ul class="mlijst">${concepten.slice(0, 5).map((i) => regel({
     href: `#/m/inspectie/${i.id}`, icoon: '📝', titel: `Concept ${i.soort.toLowerCase()} · ${datumNL(i.datum)}`, object: objectMap.get(i.objectId),
   })).join('')}</ul>` : ''}
@@ -2176,6 +2356,7 @@ async function mobielStart() {
     </div>`;
   toonMijnPakketten(app.querySelector('#mijnpakketten'));
   toonLogischNu(app.querySelector('#logisch'));
+  koppelInstallKaart();
 }
 
 async function toonMijnPakketten(el) {
@@ -2737,7 +2918,8 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     });
     if (data.uitvoerder) instelling.schrijf('inspecteur', data.uitvoerder);
     formulierGewijzigd = false;
-    melding('Werkzaamheid opgeslagen');
+    if (!mobiel) melding('Werkzaamheid opgeslagen');
+    else onthoudOpslag('Werkzaamheid opgeslagen', data.objectId);
     await rondTaakAf(taakId, werkId);
     ga(pakketTerug ?? (mobiel ? '#/' : `#/werkzaamheden/${werkId}`));
   };
@@ -2802,7 +2984,10 @@ async function werkProjectkopBij() {
   if (!chip) return;
   const p = await actiefProject();
   chip.textContent = p ? p.naam : 'Kies een project';
-  chip.title = p ? 'Ander project kiezen' : '';
+  // Maar één project: op de telefoon valt er niets te kiezen.
+  const een = Boolean(p) && (await zichtbareProjecten()).length <= 1 && !magBeheren();
+  document.body.classList.toggle('een-project', een);
+  chip.title = p && !een ? 'Ander project kiezen' : '';
 }
 
 async function projectenPagina() {
@@ -3590,9 +3775,15 @@ async function tekenObjectenKaart(el, { objecten, kleurVan, popup = null, opKlik
   const passend = (b) => (b.isValid() ? map.fitBounds(b, { padding: [24, 24], maxZoom: 18, animate: false }) : map.setView([52.1, 5.1], 8, { animate: false }));
   passend(groep.getBounds());
   let zichtbaar = new Set(lagen.keys());
+  let jij = null;
   return {
     map,
     aantal: lagen.size,
+    zetPositie(pos) {
+      if (!pos) return;
+      if (jij) jij.setLatLng([pos[1], pos[0]]);
+      else jij = L.circleMarker([pos[1], pos[0]], { radius: 9, color: '#fff', weight: 3, fillColor: '#1f6feb', fillOpacity: 1, interactive: false }).addTo(map).bindTooltip('Jij');
+    },
     toon(ids, { inzoomen = false } = {}) {
       zichtbaar = new Set([...ids].filter((id) => lagen.has(id)));
       lagen.forEach((laag, id) => {
@@ -5372,8 +5563,12 @@ async function mobielPakket(id, q = new URLSearchParams()) {
   const objecten = (p.objecten ?? []).map((oid) => g.objectMap.get(oid)).filter(Boolean);
   const statusVan = (oid) => (v.gedaan.has(oid) ? 'gedaan' : v.overgeslagen.has(oid) ? 'overgeslagen' : 'open');
   const open = objecten.filter((o) => statusVan(o.id) === 'open');
+  const bevestiging = opslagKaart(opslagBevestiging(), {
+    objectMap: g.objectMap,
+    volgende: open.length ? '<button class="knop primair" type="button" data-volgende>▶ Volgende</button>' : '<span class="mklaar">🎉 Ronde klaar</span>',
+  });
 
-  app.innerHTML = `
+  app.innerHTML = `${bevestiging}
     <div class="mkop"><a href="#/m/pakketten" class="mterug" aria-label="Terug">←</a>
       <div style="flex:1;min-width:0"><small>${pakketSoortTekst(p)}${lopend.length > 1 ? ` · <a href="#/m/pakket/${esc(id)}?kies=1">andere ronde</a>` : ''}</small><h1>${esc(p.naam)}</h1></div></div>
     ${voortgangBalk(v, { groot: true })}
@@ -5429,6 +5624,7 @@ async function mobielPakket(id, q = new URLSearchParams()) {
     (await kaart)?.toon(ids);
   });
   app.querySelector('#nieuweboom')?.addEventListener('click', () => nieuweBoomHier(p));
+  app.querySelector('[data-volgende]')?.addEventListener('click', () => app.querySelector('#volgende')?.click());
   app.querySelector('#volgende')?.addEventListener('click', () => {
     if (!laatstePositie) {
       bepaalPositie(() => { gesorteerd = tekenLijst(); if (gesorteerd[0]) location.hash = pakketHref(p, gesorteerd[0].o.id, true); });
@@ -5906,7 +6102,8 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
     instelling.schrijf('stowaMoment', staat.moment);
     formulierGewijzigd = false;
     const rood = waarnemingen.filter((w) => w.urgentieKleur === 'rood').length;
-    melding(status === 'afgerond' ? `Inspectie afgerond${rood ? ` – ${rood}× rood: direct melden aan de beheerder!` : ''}` : 'Concept opgeslagen', rood && status === 'afgerond' ? 'fout' : 'ok');
+    if (mobiel) onthoudOpslag(status === 'afgerond' ? 'Waterkeringinspectie opgeslagen' : 'Concept opgeslagen', object.id);
+    if (!mobiel || (rood && status === 'afgerond')) melding(status === 'afgerond' ? `Inspectie afgerond${rood ? ` – ${rood}× rood: direct melden aan de beheerder!` : ''}` : 'Concept opgeslagen', rood && status === 'afgerond' ? 'fout' : 'ok');
     ga(pakket ? pakketPagina(pakket, mobiel) : (mobiel ? '#/' : `#/inspecties/${inspectieId}`));
   };
 }
@@ -6317,7 +6514,8 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
     instelling.schrijf('bvcCertificaat', b.certificaat);
     instelling.schrijf('bvcMethode', b.methode);
     formulierGewijzigd = false;
-    melding(status === 'afgerond' ? 'Boomveiligheidscontrole afgerond' : 'Concept opgeslagen');
+    if (!mobiel) melding(status === 'afgerond' ? 'Boomveiligheidscontrole afgerond' : 'Concept opgeslagen');
+    else onthoudOpslag(status === 'afgerond' ? 'Boomcontrole opgeslagen' : 'Concept opgeslagen', object.id);
     ga(pakket ? (mobiel ? `#/m/pakket/${pakket.id}` : `#/werkpakketten/${pakket.id}`) : (mobiel ? '#/m/bvc' : `#/inspecties/${inspectieId}`));
   };
 }
@@ -7129,6 +7327,9 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 }
 
 sync.opStatus(syncIndicator);
+let laatsteSyncStatus = null;
+sync.opStatus((st) => { laatsteSyncStatus = { ...st }; statusregel(st); });
+['online', 'offline'].forEach((ev) => window.addEventListener(ev, () => laatsteSyncStatus && statusregel(laatsteSyncStatus)));
 sync.start({
   fotoProject: () => projectId() || null,
   fotosVooraf: () => instelling.lees('fotosVooraf', 'project') !== 'opvraag',

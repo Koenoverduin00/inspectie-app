@@ -910,3 +910,60 @@ body.inlogscherm main#app { padding: 0; max-width: none; margin: 0; }
 .fotoformaten .keuzetegel small { font-weight: 400; color: var(--tekst-zacht); font-size: .8rem; }
 .fotoformaten .keuzetegel:has(input:checked) { border-color: var(--primair); background: var(--primair-licht); }
 .fotoformaten .keuzetegel:has(input:focus-visible) { outline: 3px solid color-mix(in srgb, var(--primair) 40%, transparent); }
+
+/* Mobiel: eenvoudiger onderbalk (3 knoppen) */
+body.modus-mobiel .onderbalk { grid-template-columns: repeat(3, 1fr); }
+body.modus-mobiel .onderbalk a { font-size: .78rem; min-height: 60px; }
+body.modus-mobiel .onderbalk a span { font-size: 1.5rem; }
+body.modus-mobiel .onderbalk a.actief { background: var(--primair-licht); }
+
+/* Eén project: geen projectkeuze */
+body.modus-mobiel.een-project .projectchip { pointer-events: none; border-color: transparent; background: none; padding-left: 0; }
+body.modus-mobiel.een-project .projectchip::after { content: none; }
+
+/* Mobiel: duidelijke statusregel onder de kop */
+.statusregel { display: none; }
+body.modus-mobiel .statusregel:not([hidden]) {
+  display: block; padding: .45rem 16px; font-size: .85rem; font-weight: 600;
+  text-decoration: none; border-bottom: 1px solid var(--rand); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: color-mix(in srgb, var(--ok) 10%, var(--vlak)); color: var(--ok);
+}
+body.modus-mobiel .statusregel[data-soort="bezig"] { background: var(--primair-licht); color: var(--primair); }
+body.modus-mobiel .statusregel[data-soort="let"] { background: color-mix(in srgb, #e07b00 14%, var(--vlak)); color: #8a4b00; }
+body.modus-mobiel .statusregel[data-soort="offline"] { background: #3b4754; color: #fff; }
+body.modus-mobiel .statusregel[data-soort="fout"] { background: color-mix(in srgb, var(--gevaar) 14%, var(--vlak)); color: var(--gevaar); }
+body.modus-mobiel .syncstatus, body.modus-mobiel .melding-offline { display: none; }
+body.inlogscherm .statusregel { display: none !important; }
+
+/* Mobiel: bevestiging na opslaan */
+.mopgeslagen {
+  display: flex; align-items: center; gap: .75rem; padding: .85rem 1rem; margin: 0 0 1rem; border-radius: 14px;
+  background: color-mix(in srgb, var(--ok) 12%, var(--vlak)); border: 1.5px solid color-mix(in srgb, var(--ok) 45%, transparent);
+  animation: inlog-in .35s ease-out both;
+}
+.mopgeslagen > div { flex: 1; min-width: 0; }
+.mopgeslagen strong { display: block; color: var(--ok); }
+.mopgeslagen small { display: block; color: var(--tekst-zacht); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mvink { width: 36px; height: 36px; border-radius: 50%; background: var(--ok); color: #fff; display: grid; place-items: center; font-weight: 800; flex: none; }
+.mopgeslagen .knop { flex: none; min-height: 44px; }
+.mklaar { font-weight: 700; flex: none; }
+
+/* Mobiel: kaart als werkscherm */
+.mkaartkop { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin-bottom: .5rem; }
+.mkaartkop h1 { margin: 0; font-size: 1.3rem; }
+.mkaartkop small { color: var(--tekst-zacht); }
+.mlegenda { display: flex; gap: .9rem; flex-wrap: wrap; font-size: .8rem; color: var(--tekst-zacht); margin-bottom: .5rem; }
+.mlegenda i { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: .3rem; vertical-align: -1px; }
+.veldkaart { height: calc(100dvh - 250px - env(safe-area-inset-bottom)); min-height: 320px; border-radius: var(--radius); border: 1px solid var(--rand); overflow: hidden; }
+.veldpopup { margin: .4rem 0; display: flex; flex-direction: column; gap: .4rem; }
+.veldronde small { display: block; color: var(--tekst-zacht); margin-bottom: .2rem; }
+
+/* Mobiel: installeren */
+.minstall { display: flex; gap: .85rem; align-items: flex-start; padding: 1rem; margin-bottom: 1rem; border-radius: 14px; background: var(--vlak); border: 1px solid var(--rand); box-shadow: var(--schaduw); }
+.minstall img { border-radius: 11px; flex: none; }
+.minstall > div > strong { display: block; }
+.minstall small { display: block; color: var(--tekst-zacht); }
+.minstall ol { margin: .5rem 0; padding-left: 1.2rem; }
+.minstall ol li { margin: .15rem 0; }
+.minstall p { margin: .5rem 0; font-size: .92rem; }
+.minstall .knoppen { margin-top: .5rem; }

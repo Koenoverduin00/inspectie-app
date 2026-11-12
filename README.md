@@ -100,6 +100,19 @@ gevraagd wordt:
   maatregelen, volgende inspectie, BVC-gegevens, eigen velden, RD- en GPS-coördinaten), *Gebreken*, *Maatregelen*
   en optioneel *Foto's* (miniaturen per object en gebrek).
 
+## Veldversie (telefoon)
+
+- **Onderbalk met drie knoppen**: *Vandaag* (startscherm, werkpakketten, registreren), *Kaart* en *Ik* (account, foto's en opslag).
+- **Kaart**: alle objecten van jouw actieve rondes (oranje = te doen, groen = gedaan, grijs = overgeslagen) met je eigen
+  locatie. Tik op een object voor **▶ Start**, **⏭ Overslaan** of **🧭 Navigeer erheen** (opent de routeplanner).
+- **Statusregel** onder de kop: *✓ Alles verstuurd*, *⏳ 3 registraties wachten*, *📴 Offline – alles wordt bewaard*,
+  *🔑 Niet ingelogd* of *⚠️ Versturen lukt niet*. Tik erop voor details.
+- **Na opslaan** een groene bevestiging met het object en de knop **▶ Volgende** (volgend object dichtbij).
+- **Minder keuzes**: maar één project → geen projectkeuze; *Flora & fauna vrijgave* staat er alleen als een actief pakket
+  een vrijgave vereist (of er nog een concept open staat); uitvoerders zien alleen de pakketten die aan hen zijn toegewezen.
+- **Installeren**: het startscherm legt uit hoe je de app op het beginscherm zet (iPhone: Deel → Zet op beginscherm;
+  Android: knop *Installeren*). Met *Later* verdwijnt de uitleg 14 dagen.
+
 ## Inloggen op de telefoon
 
 Op de telefoon start de app (als de online synchronisatie is ingesteld en je niet bent ingelogd) met een
@@ -271,7 +284,7 @@ per apparaat kiezen voor donker of 'volg instelling van het apparaat'.
 | Doel | Snel vastleggen buiten | Inrichten, beheren en rapporteren |
 | Start | Twee grote knoppen: **Registratie werkzaamheden** en **Schouw & inspectie** | Stuurdashboard (opdrachtnemer / opdrachtgever) |
 | Object kiezen | Zoeken of **📍 Dichtbij** (GPS, gesorteerd op afstand) | Lijsten met filters |
-| Menu | Onderin: Start · Werkzaamheden · Schouw · Account | Bovenin: Dashboard · Objecten · Werkpakketten · Planning · Flora & fauna · Instellingen |
+| Menu | Onderin: Vandaag · Kaart · Ik | Bovenin: Dashboard · Objecten · Werkpakketten · Planning · Flora & fauna · Instellingen |
 
 De weergave wordt automatisch gekozen op schermbreedte. Onder *Instellingen → Weergave op dit apparaat* (of
 *Account → Volledige versie openen* op de telefoon) kun je dat per apparaat vastzetten.
