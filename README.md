@@ -130,6 +130,9 @@ niet klaar = *te laat*. Ook staat erbij hoeveel objecten per dag nog nodig zijn.
 - **Zoeken** werkt op code, naam, type, locatie én GIS-kenmerken, met meerdere woorden tegelijk (bijv. `gazon noord`).
   Dat kan in de objectenlijst, bij het samenstellen van een werkpakket, in de objectentabel van een werkpakket
   (met filter op open / gedaan / overgeslagen) en op de telefoon in de lijst *Nog te doen* (vanaf 6 objecten).
+- **Objecten**: schakel tussen **☰ Lijst** en **🗺️ Kaart**. Typ in het zoekveld: de kaart toont alleen de gevonden objecten
+  en zoomt erop in (één treffer: direct naar het object, Enter = naar de eerste treffer). Rechts staat de lijst met treffers
+  om aan te klikken; met 📍 in de lijst spring je naar het object op de kaart.
 - **Werkpakket samenstellen**: de kaart toont de gefilterde objecten (groen = in pakket, grijs = niet).
   Klik op een object om het toe te voegen of eruit te halen, of gebruik **▭ Gebied toevoegen / eruit** en sleep een rechthoek.
 - **Werkpakket bekijken**: zoeken filtert ook de kaart; met 📍 achter een objectcode spring je ernaartoe.

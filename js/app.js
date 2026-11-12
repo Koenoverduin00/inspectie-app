@@ -592,6 +592,7 @@ async function laadDemo() {
 // ---------------------------------------------------------------------------
 async function objectenLijst() {
   const { objecten, status } = await laadAlles();
+  let weergave = instelling.lees('objectWeergave') === 'kaart' ? 'kaart' : 'lijst';
   const typen = [...new Set(objecten.map((o) => o.type).filter(Boolean))].sort();
   app.innerHTML = `
     <div class="paginakop">
@@ -608,16 +609,30 @@ async function objectenLijst() {
         ${[1, 2, 3, 4, 5, 6].map((s) => optie(s, `${s} · ${CONDITIES[s].label}`)).join('')}${optie('geen', 'Niet geïnspecteerd')}</select>
       <select id="planning" aria-label="Planning"><option value="">Alle planningen</option>
         ${Object.entries(PLANNING_TEKST).filter(([k]) => k !== 'onbekend').map(([k, v]) => optie(k, v)).join('')}</select>
+      <div class="segment weergavekeuze" role="radiogroup" aria-label="Weergave">
+        <label><input type="radio" name="oweergave" value="lijst" ${weergave === 'lijst' ? 'checked' : ''}><span>☰ Lijst</span></label>
+        <label><input type="radio" name="oweergave" value="kaart" ${weergave === 'kaart' ? 'checked' : ''}><span>🗺️ Kaart</span></label></div>
     </div>
-    <div class="kaart" style="padding:0"><div class="tabelhouder"><table>
+    <div id="objectkaart-blok" ${weergave === 'kaart' ? '' : 'hidden'}>
+      <div class="kaartindeling">
+        <div id="objectkaart" class="kaart objectenkaart"><p class="leeg">Kaart laden…</p></div>
+        <aside class="kaart lagenpaneel">
+          <h2>Gevonden</h2>
+          <p id="okaart-telling"><small></small></p>
+          <ul class="vindlijst" id="vindlijst"></ul>
+        </aside>
+      </div>
+    </div>
+    <div class="kaart" id="objectlijst" style="padding:0" ${weergave === 'kaart' ? 'hidden' : ''}><div class="tabelhouder"><table>
       <thead><tr><th>Code</th><th>Naam</th><th class="verberg-mobiel">Type</th><th class="verberg-mobiel">Bouwjaar</th><th>Conditie</th><th class="verberg-mobiel">Laatste inspectie</th><th>Planning</th></tr></thead>
       <tbody id="rijen"></tbody>
     </table></div></div>`;
 
+  let gevonden = [];
   const filters = ['zoek', 'type', 'conditie', 'planning'].map((id) => app.querySelector(`#${id}`));
   const toon = () => {
     const [zoek, type, conditie, planning] = filters.map((f) => f.value.toLowerCase());
-    const rijen = objecten.filter((o) => {
+    const rijen = gevonden = objecten.filter((o) => {
       const s = status.get(o.id);
       if (!objectPast(o, zoekTermen(zoek))) return false;
       if (type && o.type?.toLowerCase() !== type) return false;
@@ -628,13 +643,74 @@ async function objectenLijst() {
     app.querySelector('#rijen').innerHTML = rijen.length ? rijen.map((o) => {
       const s = status.get(o.id);
       return `<tr class="klikbaar" data-href="#/objecten/${esc(o.id)}">
-        <td><strong>${esc(o.code)}</strong></td><td>${esc(o.naam)}</td><td class="verberg-mobiel">${esc(o.type)}</td>
+        <td><strong>${esc(o.code)}</strong>${objectGeometrie(o) ? ` <button type="button" class="kaartpin" data-opkaart="${esc(o.id)}" title="Op de kaart tonen" aria-label="${esc(o.code)} op de kaart tonen">📍</button>` : ''}</td><td>${esc(o.naam)}</td><td class="verberg-mobiel">${esc(o.type)}</td>
         <td class="verberg-mobiel">${esc(o.bouwjaar || '–')}</td><td>${oordeelLabel(s)}</td>
         <td class="verberg-mobiel">${datumNL(s.laatste?.datum)}</td><td>${planningLabel(s.planning)}</td></tr>`;
     }).join('') : `<tr><td colspan="7" class="leeg">${objecten.length ? 'Geen objecten gevonden met deze filters.' : 'Nog geen objecten. <a href="#/objecten/nieuw">Registreer het eerste object</a>.'}</td></tr>`;
   };
-  filters.forEach((f) => f.addEventListener('input', toon));
+  // Kaart: zoeken en filteren tonen de gevonden objecten; bij weinig treffers zoomt de kaart erop in.
+  let kaartKlaar = null;
+  const werkKaartBij = async () => {
+    const k = await kaartKlaar;
+    if (!k) return;
+    const metLocatie = gevonden.filter((o) => objectGeometrie(o));
+    const n = k.toon(new Set(metLocatie.map((o) => o.id)), { inzoomen: true });
+    if (n === 1) k.zoomNaar(metLocatie[0].id);
+    const zonder = gevonden.length - metLocatie.length;
+    app.querySelector('#okaart-telling small').textContent = `${n} van ${objecten.length} objecten op de kaart${zonder ? ` · ${zonder} zonder locatie` : ''}.`;
+    app.querySelector('#vindlijst').innerHTML = metLocatie.slice(0, 50).map((o) => `<li><button type="button" data-vind="${esc(o.id)}">
+      <strong>${esc(o.code)}</strong> ${esc(o.naam)}<small>${esc(o.type || '')}</small></button></li>`).join('')
+      + (metLocatie.length > 50 ? `<li class="leeg">+ ${metLocatie.length - 50} meer – typ verder om te verfijnen</li>` : '')
+      + (!metLocatie.length ? '<li class="leeg">Geen objecten gevonden.</li>' : '');
+  };
+  const startKaart = () => {
+    if (kaartKlaar) return;
+    kaartKlaar = tekenObjectenKaart(app.querySelector('#objectkaart'), {
+      objecten,
+      kleurVan: (o) => {
+        const s = status.get(o.id);
+        return s?.laatste ? oordeelKleur(s.laatste) : '#1f6feb';
+      },
+      popup: (o) => {
+        const s = status.get(o.id);
+        return `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br><small>${esc(o.type || '')}${o.locatie ? ` · ${esc(o.locatie)}` : ''}</small><br>
+          ${oordeelLabel(s)} ${s?.laatste ? `<small>laatste inspectie ${datumNL(s.laatste.datum)}</small>` : ''}<br><a href="#/objecten/${esc(o.id)}">Object openen</a>`;
+      },
+    });
+    werkKaartBij();
+  };
+  const zetWeergave = (w) => {
+    weergave = w;
+    instelling.schrijf('objectWeergave', w);
+    app.querySelectorAll('input[name=oweergave]').forEach((r) => { r.checked = r.value === w; });
+    app.querySelector('#objectkaart-blok').hidden = w !== 'kaart';
+    app.querySelector('#objectlijst').hidden = w === 'kaart';
+    if (w === 'kaart') {
+      if (kaartKlaar) kaartKlaar.then((k) => k?.map.invalidateSize());
+      startKaart();
+    }
+  };
+  app.querySelectorAll('input[name=oweergave]').forEach((r) => r.addEventListener('change', () => zetWeergave(r.value)));
+  app.querySelector('#rijen').addEventListener('click', async (e) => {
+    const pin = e.target.closest('[data-opkaart]');
+    if (!pin) return;
+    e.stopPropagation();
+    zetWeergave('kaart');
+    (await kaartKlaar)?.zoomNaar(pin.dataset.opkaart);
+  }, true);
+  app.querySelector('#vindlijst').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-vind]');
+    if (b) (await kaartKlaar)?.zoomNaar(b.dataset.vind);
+  });
+  // Enter in het zoekveld op de kaart: direct naar de eerste treffer.
+  app.querySelector('#zoek').addEventListener('keydown', async (e) => {
+    if (e.key !== 'Enter' || weergave !== 'kaart') return;
+    const eerste = gevonden.find((o) => objectGeometrie(o));
+    if (eerste) (await kaartKlaar)?.zoomNaar(eerste.id);
+  });
+  filters.forEach((f) => f.addEventListener('input', () => { toon(); if (kaartKlaar) werkKaartBij(); }));
   toon();
+  if (weergave === 'kaart') startKaart();
 
   app.querySelector('#export').onclick = () => {
     const rijen = [['Code', 'Naam', 'Type', 'Materiaal', 'Bouwjaar', 'Beheerder', 'Locatie', 'Breedtegraad', 'Lengtegraad',

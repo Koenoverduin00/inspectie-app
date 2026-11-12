@@ -898,3 +898,8 @@ body.inlogscherm main#app { padding: 0; max-width: none; margin: 0; }
 .weergavekeuze label:first-child span { border-radius: 8px 0 0 8px; }
 .weergavekeuze label:last-child span { border-radius: 0 8px 8px 0; margin-left: -1px; }
 .mlijst li.leeg { padding: .75rem; color: var(--tekst-zacht); }
+.vindlijst { list-style: none; margin: .5rem 0 0; padding: 0; max-height: 52vh; overflow: auto; }
+.vindlijst button { width: 100%; text-align: left; background: none; border: 0; border-radius: 6px; padding: .4rem .5rem; cursor: pointer; color: inherit; font: inherit; }
+.vindlijst button:hover, .vindlijst button:focus-visible { background: var(--primair-licht); }
+.vindlijst small { display: block; color: var(--tekst-zacht); }
+.vindlijst .leeg { padding: .4rem .5rem; color: var(--tekst-zacht); font-size: .9rem; }
