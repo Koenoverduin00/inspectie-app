@@ -101,16 +101,17 @@ const ROUTES = [
   [/^\/taken\/([^/]+)\/bewerken$/, 'taken', (id) => taakFormulier(id)],
   [/^\/kaart$/, 'kaart', kaart],
   [/^\/instellingen$/, 'instellingen', instellingen],
+  [/^\/personen$/, 'personen', personenPagina],
 ];
 
 // Het hoofdmenu is compact: onderdelen vallen onder een hoofdgroep en hebben daar een tabblad.
-const NAV_GROEP = { inspecties: 'werkpakketten', werkzaamheden: 'werkpakketten', maatregelen: 'werkpakketten', taken: 'planning', kaart: 'instellingen' };
+const NAV_GROEP = { inspecties: 'werkpakketten', werkzaamheden: 'werkpakketten', maatregelen: 'werkpakketten', taken: 'planning', kaart: 'instellingen', personen: 'instellingen' };
 const TABBLADEN = {
   werkpakketten: () => [['#/werkpakketten', I.pakket + ' Werkpakketten'], ['#/inspecties', I.inspectie + ' Inspecties'], ['#/werkzaamheden', I.werk + ' Werkzaamheden'], ['#/maatregelen', I.let + ' Maatregelen']],
-  instellingen: () => (magBeheren() ? [['#/instellingen', I.instellingen + ' Algemeen'], ['#/kaart', I.kaart + ' Kaart & GIS']] : []),
+  instellingen: () => (magBeheren() ? [['#/instellingen', I.instellingen + ' Algemeen'], ['#/personen', I.personen + ' Personen'], ['#/kaart', I.kaart + ' Kaart & GIS']] : []),
 };
 // Alleen de overzichtspagina's krijgen tabbladen (geen formulieren of details).
-const TAB_PAGINAS = /^\/(werkpakketten|inspecties|werkzaamheden|maatregelen|instellingen|kaart)$/;
+const TAB_PAGINAS = /^\/(werkpakketten|inspecties|werkzaamheden|maatregelen|instellingen|personen|kaart)$/;
 
 function tabbalk(pad, groep) {
   const tabs = TABBLADEN[groep]?.() ?? [];
@@ -160,7 +161,7 @@ async function toonRoute() {
     if (sectie === a.dataset.nav) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   });
   window.scrollTo(0, 0);
-  if (pad === '/wachtwoord') { wachtwoordPagina(); return; }
+  if (pad === '/wachtwoord') { wachtwoordPagina(query.get('welkom') === '1'); return; }
   const inlog = mobiel && moetInloggen(pad);
   document.body.classList.toggle('inlogscherm', inlog);
   if (inlog) { inlogScherm(); return; }
@@ -2042,32 +2043,37 @@ async function verwerkAuthLink() {
   if (!/(^|&)(access_token|error_description)=/.test(h)) return;
   const p = new URLSearchParams(h);
   const herstel = p.get('type') === 'recovery';
-  history.replaceState(null, '', `${location.pathname}${location.search}${herstel ? '#/wachtwoord' : '#/'}`);
+  // Uitnodiging (inloglink of eerste aanmelding): welkom heten en een wachtwoord laten instellen.
+  const welkom = ['magiclink', 'signup', 'invite'].includes(p.get('type'));
+  history.replaceState(null, '', `${location.pathname}${location.search}${herstel ? '#/wachtwoord' : welkom ? '#/wachtwoord?welkom=1' : '#/'}`);
   if (p.get('error_description')) {
     melding(p.get('error_description').replace(/\+/g, ' '), 'fout');
     return;
   }
   try {
     await sync.sessieUitLink(p);
-    if (!herstel) melding('E-mailadres bevestigd – je bent ingelogd');
+    if (!herstel && !welkom) melding('E-mailadres bevestigd – je bent ingelogd');
   } catch (err) {
     melding(`Inloggen via de link mislukt: ${err.message}`, 'fout');
   }
 }
 
 /** Nieuw wachtwoord instellen na de herstel-link. */
-function wachtwoordPagina() {
+function wachtwoordPagina(welkom = false) {
   document.body.classList.add('inlogscherm');
   app.innerHTML = `<div class="inlog">
     <div class="inlog-merk"><div class="inlog-logo"><img src="icons/icon.svg" alt="" width="44" height="44"></div><h1>Inspectie &amp; Registratie</h1></div>
     <form class="inlog-kaart" id="nieuwww" novalidate>
-      <h2>Nieuw wachtwoord</h2>
-      <p class="inlog-sub">${sync.sessie() ? `Voor ${esc(sync.sessie().gebruiker?.email ?? '')}` : 'De herstel-link is verlopen of al gebruikt.'}</p>
+      <h2>${welkom && sync.sessie() ? 'Welkom!' : 'Nieuw wachtwoord'}</h2>
+      <p class="inlog-sub">${sync.sessie() ? (welkom
+    ? `Je bent uitgenodigd en ingelogd als <strong>${esc(sync.sessie().gebruiker?.email ?? '')}</strong>. Stel een wachtwoord in, dan kun je voortaan ook zonder e-mail inloggen.`
+    : `Voor ${esc(sync.sessie().gebruiker?.email ?? '')}`) : 'De link is verlopen of al gebruikt. Vraag de beheerder om een nieuwe uitnodiging, of gebruik "Wachtwoord vergeten".'}</p>
       ${sync.sessie() ? `<label class="inlog-veld"><span>Nieuw wachtwoord</span>
         <span class="inlog-ww"><input id="i-ww" name="wachtwoord" type="password" minlength="6" autocomplete="new-password" placeholder="Minimaal 6 tekens" required>
         <button type="button" class="inlog-oog" aria-label="Wachtwoord tonen" aria-pressed="false">${OOG}</button></span></label>
       <p class="inlog-fout" role="alert" hidden></p>
-      <button class="inlog-knop" type="submit"><span class="inlog-spinner" aria-hidden="true"></span><span>Wachtwoord opslaan</span></button>`
+      <button class="inlog-knop" type="submit"><span class="inlog-spinner" aria-hidden="true"></span><span>Wachtwoord opslaan</span></button>
+      ${welkom ? '<p class="inlog-wissel"><a href="#/" class="inlog-link" id="later">Later instellen</a></p>' : ''}`
     : '<a class="inlog-knop" href="#/">Naar inloggen</a>'}
     </form></div>`;
   const form = app.querySelector('#nieuwww');
@@ -3091,6 +3097,179 @@ async function zichtbareProjecten() {
 }
 
 const magBeheren = () => sync.rol() === 'beheerder';
+
+// ---------------------------------------------------------------------------
+// Personen (pc, alleen beheerders): mensen toevoegen aan projecten en uitnodigen per e-mail
+// ---------------------------------------------------------------------------
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+/** Alle personen uit de ledenlijsten van de projecten, met naam en uitnodigingsstatus. */
+function personenUitProjecten(projecten) {
+  const m = new Map();
+  for (const p of projecten) {
+    for (const email of p.leden ?? []) {
+      const e = String(email).toLowerCase();
+      const info = p.ledenInfo?.[e] ?? {};
+      const x = m.get(e) ?? { email: e, naam: '', projecten: [], uitgenodigdOp: '', uitgenodigdDoor: '' };
+      x.projecten.push(p);
+      if (info.naam && !x.naam) x.naam = info.naam;
+      if (info.uitgenodigdOp && info.uitgenodigdOp > x.uitgenodigdOp) Object.assign(x, { uitgenodigdOp: info.uitgenodigdOp, uitgenodigdDoor: info.uitgenodigdDoor ?? '' });
+      m.set(e, x);
+    }
+  }
+  return [...m.values()].sort((a, b) => (a.naam || a.email).localeCompare(b.naam || b.email, 'nl'));
+}
+
+/** Zet een persoon in (of uit) de ledenlijst van projecten; info wordt per project bewaard. */
+async function zetPersoonInProjecten(email, gewenst, info = {}) {
+  const nu = new Date().toISOString();
+  for (const p of await zichtbareProjecten()) {
+    const leden = new Set((p.leden ?? []).map((x) => String(x).toLowerCase()));
+    const was = leden.has(email);
+    const moet = gewenst.has(p.id);
+    const ledenInfo = { ...(p.ledenInfo ?? {}) };
+    if (moet) {
+      leden.add(email);
+      ledenInfo[email] = { ...(ledenInfo[email] ?? {}), ...Object.fromEntries(Object.entries(info).filter(([, v]) => v !== undefined)) };
+    } else {
+      leden.delete(email);
+      delete ledenInfo[email];
+    }
+    const infoGewijzigd = moet && JSON.stringify(ledenInfo[email]) !== JSON.stringify(p.ledenInfo?.[email]);
+    if (was !== moet || infoGewijzigd) await db.bewaar('projecten', { ...p, leden: [...leden], ledenInfo, gewijzigd: nu });
+  }
+}
+
+/** Verstuurt de uitnodiging en legt vast wanneer en door wie. */
+async function verstuurUitnodiging(email, naam) {
+  if (!sync.isIngesteld() || !sync.sessie()) throw new Error('Log eerst in om uitnodigingen te kunnen versturen.');
+  if (!navigator.onLine) throw new Error('Je bent offline. De persoon is toegevoegd; verstuur de uitnodiging later opnieuw.');
+  await sync.nodigUit(email, { naam, terugUrl: location.href.split('#')[0] });
+  const nu = new Date().toISOString();
+  const door = sync.sessie()?.gebruiker?.email ?? '';
+  for (const p of await zichtbareProjecten()) {
+    if (!(p.leden ?? []).map((x) => String(x).toLowerCase()).includes(email)) continue;
+    const ledenInfo = { ...(p.ledenInfo ?? {}), [email]: { ...(p.ledenInfo?.[email] ?? {}), naam: naam || p.ledenInfo?.[email]?.naam || '', uitgenodigdOp: nu, uitgenodigdDoor: door } };
+    await db.bewaar('projecten', { ...p, ledenInfo, gewijzigd: nu });
+  }
+}
+
+async function personenPagina() {
+  if (!magBeheren()) {
+    app.innerHTML = leegKaart('Alleen beheerders kunnen personen toevoegen en uitnodigen.', '<a class="knop" href="#/">Naar het dashboard</a>');
+    return;
+  }
+  const projecten = await zichtbareProjecten();
+  const personen = personenUitProjecten(projecten);
+  const actief = projectId();
+  const ik = sync.sessie()?.gebruiker?.email ?? '';
+  const kanMailen = sync.isIngesteld() && Boolean(sync.sessie());
+  const projectChips = (naam, gekozen) => projecten.map((p) => `<label class="chip"><input type="checkbox" name="${naam}" value="${esc(p.id)}" ${gekozen.has(p.id) ? 'checked' : ''}><span>${esc(p.naam)}</span></label>`).join('');
+
+  app.innerHTML = `
+    <div class="paginakop"><div><h1>Personen</h1>
+      <p>Voeg medewerkers toe aan projecten en nodig ze uit per e-mail. Alleen beheerders zien deze pagina.</p></div></div>
+    ${kanMailen ? '' : `<div class="kaart waarschuwingskaart">${I.let} <strong>Je bent niet ingelogd.</strong> Je kunt personen toevoegen, maar uitnodigingen worden pas verstuurd als je bent ingelogd.</div>`}
+    <form class="kaart" id="uitnodigen" novalidate>
+      <h2>${I.mail} Persoon uitnodigen</h2>
+      <div class="velden">
+        <div class="veld"><label for="p-email" class="vereist">E-mailadres</label><input id="p-email" name="email" type="email" autocomplete="off" placeholder="naam@bedrijf.nl" required></div>
+        <div class="veld"><label for="p-naam">Naam</label><input id="p-naam" name="naam" autocomplete="off" placeholder="Voor- en achternaam"></div>
+        <div class="veld breed"><label>Toegang tot projecten</label>
+          ${projecten.length ? `<div class="chips">${projectChips('p-project', new Set(actief ? [actief] : []))}</div>
+          <small>De persoon ziet en bewerkt alleen de inhoud van deze projecten.</small>` : '<small>Maak eerst een project aan.</small>'}</div>
+        <div class="veld breed"><label class="vink"><input type="checkbox" name="mailen" ${kanMailen ? 'checked' : 'disabled'}>
+          <span><strong>Uitnodiging per e-mail versturen</strong><small>De persoon krijgt een mail met een link waarmee hij direct is ingelogd en een wachtwoord kan instellen.</small></span></label></div>
+      </div>
+      <div class="formvoet"><button class="knop primair" type="submit">${I.mail} Uitnodigen</button></div>
+    </form>
+    <section class="kaart" style="padding:0">
+      <div class="tabelhouder"><table>
+        <thead><tr><th>Naam</th><th>E-mailadres</th><th>Projecten</th><th>Uitnodiging</th><th></th></tr></thead>
+        <tbody>${personen.length ? personen.map((x) => `<tr data-email="${esc(x.email)}">
+          <td>${x.naam ? esc(x.naam) : '<span class="zacht">–</span>'}${x.email === ik ? ' <small>(jij)</small>' : ''}</td>
+          <td>${esc(x.email)}</td>
+          <td>${x.projecten.map((p) => `<span class="chipje">${esc(p.naam)}</span>`).join(' ')}</td>
+          <td>${x.uitgenodigdOp ? `${I.vink} ${datumNL(x.uitgenodigdOp.slice(0, 10))}${x.uitgenodigdDoor ? `<br><small>door ${esc(x.uitgenodigdDoor)}</small>` : ''}` : '<span class="label-status binnenkort">Nog niet verstuurd</span>'}</td>
+          <td class="acties"><button class="knop klein" type="button" data-opnieuw ${kanMailen ? '' : 'disabled'}>${I.mail} ${x.uitgenodigdOp ? 'Opnieuw' : 'Versturen'}</button>
+            <button class="knop klein" type="button" data-wijzig>Projecten</button>
+            <button class="knop klein gevaar" type="button" data-weg aria-label="${esc(x.email)} verwijderen">${I.verwijder}</button></td>
+        </tr>`).join('') : '<tr><td colspan="5" class="leeg">Nog geen personen toegevoegd.</td></tr>'}</tbody>
+      </table></div>
+    </section>
+    <p><small>Beheerders (toegang tot alle projecten) worden vastgelegd in Supabase, in de tabel <code>teamleden</code>.</small></p>`;
+  if (!isMobiel()) app.insertAdjacentHTML('afterbegin', tabbalk('/personen', 'instellingen'));
+
+  const form = app.querySelector('#uitnodigen');
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const email = form.elements.email.value.trim().toLowerCase();
+    const naam = form.elements.naam.value.trim();
+    const gekozen = new Set([...form.querySelectorAll('input[name=p-project]:checked')].map((x) => x.value));
+    if (!EMAIL_RE.test(email)) return melding('Vul een geldig e-mailadres in.', 'fout');
+    if (!gekozen.size) return melding('Kies minstens één project.', 'fout');
+    const knop = form.querySelector('button[type=submit]');
+    knop.disabled = true;
+    try {
+      const bestaand = personen.find((x) => x.email === email);
+      const huidig = new Set([...(bestaand?.projecten ?? []).map((p) => p.id), ...gekozen]);
+      await zetPersoonInProjecten(email, huidig, { naam: naam || undefined });
+      if (form.elements.mailen.checked) {
+        await verstuurUitnodiging(email, naam);
+        melding(`Uitnodiging verstuurd naar ${email}`);
+      } else {
+        melding(`${email} toegevoegd (zonder e-mail)`);
+      }
+      personenPagina();
+    } catch (fout) {
+      melding(fout instanceof TypeError ? 'Geen verbinding met de server.' : fout.message, 'fout');
+      knop.disabled = false;
+      personenPagina();
+    }
+  };
+
+  app.querySelector('tbody').addEventListener('click', async (e) => {
+    const tr = e.target.closest('tr[data-email]');
+    if (!tr) return;
+    const x = personen.find((p) => p.email === tr.dataset.email);
+    if (e.target.closest('[data-opnieuw]')) {
+      const knop = e.target.closest('[data-opnieuw]');
+      knop.disabled = true;
+      try {
+        await verstuurUitnodiging(x.email, x.naam);
+        melding(`Uitnodiging verstuurd naar ${x.email}`);
+        personenPagina();
+      } catch (fout) {
+        melding(fout instanceof TypeError ? 'Geen verbinding met de server.' : fout.message, 'fout');
+        knop.disabled = false;
+      }
+    } else if (e.target.closest('[data-weg]')) {
+      if (!confirm(`${x.naam || x.email} uit alle projecten verwijderen? Het account blijft bestaan, maar heeft geen toegang meer tot deze projecten.`)) return;
+      await zetPersoonInProjecten(x.email, new Set());
+      melding('Persoon verwijderd uit de projecten');
+      personenPagina();
+    } else if (e.target.closest('[data-wijzig]')) {
+      const d = document.createElement('dialog');
+      d.className = 'dialoog';
+      d.innerHTML = `<form method="dialog"><h2>Projecten van ${esc(x.naam || x.email)}</h2>
+        <div class="chips" style="margin:.75rem 0">${projectChips('d-project', new Set(x.projecten.map((p) => p.id)))}</div>
+        <div class="knoppen" style="justify-content:flex-end"><button class="knop" value="nee">Annuleren</button><button class="knop primair" value="ja">Opslaan</button></div></form>`;
+      document.body.append(d);
+      d.showModal();
+      d.addEventListener('close', async () => {
+        const gekozen = new Set([...d.querySelectorAll('input[name=d-project]:checked')].map((i) => i.value));
+        const ok = d.returnValue === 'ja';
+        d.remove();
+        if (!ok) return;
+        if (!gekozen.size && !confirm('Geen projecten gekozen: de persoon wordt verwijderd. Doorgaan?')) return;
+        await zetPersoonInProjecten(x.email, gekozen, { naam: x.naam || undefined });
+        melding('Opgeslagen');
+        personenPagina();
+      });
+    }
+  });
+}
+
 
 // Gegevens van vóór de projectindeling komen in één "Eerste project" terecht.
 async function migreerZonderProject() {

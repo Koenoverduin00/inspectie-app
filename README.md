@@ -118,6 +118,27 @@ gevraagd wordt:
 - **Installeren**: het startscherm legt uit hoe je de app op het beginscherm zet (iPhone: Deel → Zet op beginscherm;
   Android: knop *Installeren*). Met *Later* verdwijnt de uitleg 14 dagen.
 
+## Personen uitnodigen (pc, alleen beheerders)
+
+Onder **Instellingen → Personen** voegt een beheerder medewerkers toe: e-mailadres, naam en de projecten waar ze bij
+mogen. Met *Uitnodiging per e-mail versturen* krijgt de persoon een mail met een inloglink. Wie op de link klikt is
+direct ingelogd en krijgt een welkomstscherm om een wachtwoord in te stellen (of *Later*). In de lijst zie je per persoon
+de projecten en wanneer/door wie de uitnodiging is verstuurd, met **Opnieuw**, **Projecten** en **Verwijderen**.
+
+Alleen beheerders zien de pagina en kunnen de ledenlijst van projecten wijzigen (afgedwongen door de RLS-regels in
+Supabase). Beheerders zelf (toegang tot alle projecten) staan in de tabel `teamleden`.
+
+**Eenmalig instellen in Supabase**
+1. *Authentication → Emails → SMTP Settings*: stel een eigen mailserver in (bijv. het SMTP-account van je organisatie of
+   een dienst als Postmark, Brevo of SendGrid). Zonder eigen SMTP verstuurt Supabase maar enkele mails per uur en alleen
+   naar leden van het Supabase-team, dus dan komen uitnodigingen niet aan.
+2. *Authentication → URL Configuration*: Site URL én Redirect URL = het adres van de app.
+3. *Authentication → Emails → Templates*: pas de sjablonen **Magic Link** en **Confirm signup** aan naar een
+   uitnodiging, bijvoorbeeld onderwerp *"Uitnodiging Inspectie & Registratie"* en tekst *"Je bent uitgenodigd voor de app
+   Inspectie & Registratie. Klik op de knop om in te loggen: {{ .ConfirmationURL }}"*.
+4. *Authentication → Sign In / Providers*: laat *Allow new users to sign up* aan staan (nodig om het account bij de
+   uitnodiging aan te maken). Toegang tot gegevens krijgt alleen wie in een project of in `teamleden` staat.
+
 ## Inloggen op de telefoon
 
 Op de telefoon start de app (als de online synchronisatie is ingesteld en je niet bent ingelogd) met een

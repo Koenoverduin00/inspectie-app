@@ -1016,3 +1016,5 @@ body.inlogscherm .statusregel { display: none !important; }
   background: color-mix(in srgb, #e07b00 12%, transparent); border-radius: 99px; padding: .1rem .5rem; }
 .leaflet-popup .popupknoppen { display: flex; flex-wrap: wrap; gap: .4rem; }
 .leaflet-popup .knop { white-space: nowrap; }
+.chipje { display: inline-block; background: var(--primair-licht); color: var(--primair); border-radius: 99px; padding: .1rem .55rem; font-size: .82rem; font-weight: 600; margin: .1rem .15rem .1rem 0; white-space: nowrap; }
+td.acties { white-space: nowrap; }

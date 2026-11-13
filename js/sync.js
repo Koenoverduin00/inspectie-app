@@ -74,7 +74,9 @@ const FOUTVERTALINGEN = [
   [/email not confirmed/i, 'Je e-mailadres is nog niet bevestigd. Klik op de link in de bevestigingsmail.'],
   [/user already registered/i, 'Er bestaat al een account met dit e-mailadres. Log in.'],
   [/password should be at least/i, 'Het wachtwoord moet minimaal 6 tekens lang zijn.'],
+  [/email rate limit/i, 'Er zijn te veel e-mails verstuurd. Supabase verstuurt zonder eigen mailserver maar een paar mails per uur; stel een eigen SMTP-server in (Supabase → Authentication → Emails).'],
   [/rate limit|too many requests|for security purposes/i, 'Te veel pogingen. Wacht even en probeer het opnieuw.'],
+  [/error sending .*email|smtp/i, 'De e-mail kon niet worden verstuurd. Controleer de mailinstellingen in Supabase (Authentication → Emails → SMTP).'],
   [/new password should be different/i, 'Kies een ander wachtwoord dan je huidige.'],
   [/signups not allowed/i, 'Nieuwe accounts aanmaken is uitgeschakeld. Vraag de beheerder om een uitnodiging.'],
   [/row-level security|permission denied|unauthorized/i,
@@ -126,6 +128,20 @@ export async function registreren(email, wachtwoord) {
   zetStatus({ fase: 'bezig', fout: '' });
   synchroniseer();
   return { bevestigen: false };
+}
+
+/**
+ * Uitnodiging per e-mail: Supabase maakt (als dat nog niet bestaat) een account aan en stuurt een inloglink.
+ * Gebruikt alleen de publieke sleutel; de beheerdersrechten zitten in de projectledenlijst (RLS).
+ */
+export async function nodigUit(email, { naam = '', terugUrl = '' } = {}) {
+  const { url, key } = configuratie();
+  const q = terugUrl ? `?redirect_to=${encodeURIComponent(terugUrl)}` : '';
+  const res = await fetch(`${url}/auth/v1/otp${q}`, {
+    method: 'POST', headers: { apikey: key, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, create_user: true, data: naam ? { naam } : {} }),
+  });
+  if (!res.ok) throw await foutUit(res);
 }
 
 /** Stuurt een mail met een link om een nieuw wachtwoord in te stellen. */
