@@ -118,6 +118,21 @@ gevraagd wordt:
 - **Installeren**: het startscherm legt uit hoe je de app op het beginscherm zet (iPhone: Deel → Zet op beginscherm;
   Android: knop *Installeren*). Met *Later* verdwijnt de uitleg 14 dagen.
 
+## Project inrichten (stappenplan)
+
+Na het aanmaken van een project opent het **stappenplan** (ook via de balk op het dashboard en *Project inrichten*).
+Tien stappen, met per stap *wat je nodig hebt*, *zo gaat het snel* en *zo doe je het goed (voor later)*; de app ziet zelf
+welke stappen klaar zijn:
+
+1. Projectgegevens · 2. Objecten inladen (GIS) · 3. Categorieën controleren · 4. Extra formuliervelden (optioneel) ·
+5. Foto's en instellingen (optioneel) · 6. Personen uitnodigen · 7. Werkpakketten aanmaken · 8. Rondes inplannen ·
+9. Toewijzen en rechten · 10. Proefregistratie in het veld (optioneel)
+
+De nadruk ligt op categorieën: objecttype en kenmerken consistent in het GIS-bestand, keuzelijsten in plaats van vrije
+tekst, vaste pakketcodes en werksoorten uit de lijst, zodat filteren, dashboards en exports later direct kloppen.
+Optionele stappen kun je overslaan, en een stap die de app niet kan herkennen markeer je zelf als klaar. Zolang je vanuit
+het stappenplan aan het inrichten bent, staat bovenaan elke pagina een balk *Terug naar het stappenplan*.
+
 ## Personen uitnodigen (pc, alleen beheerders)
 
 Onder **Instellingen → Personen** voegt een beheerder medewerkers toe: e-mailadres, naam en de projecten waar ze bij

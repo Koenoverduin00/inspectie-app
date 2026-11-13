@@ -103,6 +103,7 @@ const ROUTES = [
   [/^\/instellingen$/, 'instellingen', instellingen],
   [/^\/personen$/, 'personen', personenPagina],
   [/^\/toewijzen$/, 'toewijzen', toewijzenPagina],
+  [/^\/inrichting$/, 'inrichting', inrichtingPagina],
 ];
 
 // Het hoofdmenu is compact: onderdelen vallen onder een hoofdgroep en hebben daar een tabblad.
@@ -187,6 +188,7 @@ async function toonRoute() {
     if (!mobiel && TAB_PAGINAS.test(pad) && location.hash.split('?')[0] === `#${pad}` && !app.querySelector('.tabbalk')) {
       app.insertAdjacentHTML('afterbegin', tabbalk(pad, sectie));
     }
+    if (!mobiel && location.hash.split('?')[0] === `#${pad}`) stappenplanBalk(pad);
   } catch (fout) {
     console.error(fout);
     app.innerHTML = `<div class="kaart"><h1>Er ging iets mis</h1><p>${esc(fout.message)}</p><a class="knop" href="#/">Naar dashboard</a></div>`;
@@ -420,10 +422,10 @@ async function dashboard() {
       <div class="paginakop">${kop}</div>
       <div class="kaart leeg">
         <h2>Project inrichten</h2>
-        <p>Dit project heeft nog geen objecten. Laad een GIS-bestand in (elk vlak wordt een object),<br>
-        registreer objecten met de hand, of laad voorbeelddata om de app te verkennen.</p>
+        <p>Dit project heeft nog geen objecten. Het stappenplan neemt je in tien stappen mee door een complete inrichting:<br>
+        van GIS-bestand en categorieën tot werkpakketten, planning en toewijzing.</p>
         <div class="knoppen" style="justify-content:center">
-          ${magBeheren() ? '<a class="knop primair" href="#/gis/importeren">' + I.kaart + ' GIS-laag inladen</a>' : ''}
+          ${magBeheren() ? `<a class="knop primair" href="#/inrichting">${I.taak} Stappenplan inrichten</a><a class="knop" href="#/gis/importeren">${I.kaart} GIS-laag inladen</a>` : ''}
           <a class="knop" href="#/objecten/nieuw">+ Object registreren</a>
           <button class="knop" id="demo">Voorbeelddata laden</button>
         </div>
@@ -575,11 +577,257 @@ async function dashboard() {
     : '<a class="knop" href="#/inspecties/nieuw">+ Inspectie</a><a class="knop primair" href="#/werkzaamheden/nieuw">+ Werkzaamheid</a>'}
       </div>
     </div>
+    ${await inrichtingBanner()}
     ${inhoud}`;
   app.querySelectorAll('input[name=dashrol]').forEach((r) => r.addEventListener('change', () => {
     instelling.schrijf('dashboardRol', r.value);
     dashboard();
   }));
+}
+
+// ---------------------------------------------------------------------------
+// Project inrichten: stappenplan dat de beheerder door de eenmalige inrichting leidt
+// ---------------------------------------------------------------------------
+/**
+ * Elke stap: wat je nodig hebt, hoe het snelst gaat, hoe het het best gaat (zodat je later kunt filteren en niets
+ * hoeft aan te vullen), en een automatische controle of de stap klaar is.
+ */
+const INRICHTING = [
+  {
+    id: 'project', titel: 'Projectgegevens', icoon: 'instellingen', verplicht: true,
+    doel: 'De basis die overal terugkomt: in rapporten, exports, het dashboard en de mails aan medewerkers.',
+    nodig: ['Projectnaam zoals de opdrachtgever hem gebruikt (bijv. contract- of bestekcode)', 'Naam van de opdrachtgever', 'Korte omschrijving: gebied, looptijd, soort werk'],
+    snel: 'Vul naam en opdrachtgever in; de omschrijving kan kort.',
+    best: ['Gebruik in de projectnaam het contract- of bestek­nummer (bijv. "BS-2027-014 Dijkring 16"), dan is elk export­bestand direct herleidbaar.',
+      'Bepaal nu of bevindingen uit inspecties automatisch een taak worden. Standaard uit: dan zet je zelf door wat echt moet gebeuren.'],
+    actie: (p) => [`#/projecten/${encodeURIComponent(p.id)}/bewerken`, 'Projectgegevens invullen'],
+    klaar: ({ p }) => Boolean(p.opdrachtgever && p.omschrijving),
+    status: ({ p }) => (p.opdrachtgever ? (p.omschrijving ? 'Compleet' : 'Omschrijving ontbreekt') : 'Opdrachtgever ontbreekt'),
+  },
+  {
+    id: 'gis', titel: 'Objecten inladen (GIS)', icoon: 'kaart', verplicht: true,
+    doel: 'Alle objecten waar je werk of inspecties op doet. Eén keer goed inladen; later bijwerken met een nieuwere versie van hetzelfde bestand.',
+    nodig: ['GIS-bestand: GeoPackage (.gpkg), shapefile (.zip) of GeoJSON', 'Een kolom met een unieke code per object (bijv. "beheer_id")',
+      'Een kolom met het objecttype (bijv. "type" of "beheertype")', 'Een kolom met een herkenbare naam of locatie (optioneel, maar handig in het veld)'],
+    snel: 'Sleep het bestand in Kaart & GIS → GIS inladen; de app herkent zelf de kolommen. Lijnen, vlakken en punten gaan in één keer.',
+    best: ['Kies bij het inladen de juiste kolom als objecttype. Daarop filter je straks bij het samenstellen van werkpakketten en op de objectenkaart.',
+      'Zorg dat categorie-kolommen (type, gebied/wijk, beheertype, materiaal) in het bestand al consistent zijn gespeld: "Gazon" en "gazon" worden twee categorieën.',
+      'Neem kenmerken mee die je later wilt gebruiken (oppervlakte, maaifrequentie, eigenaar). Alle kolommen blijven bewaard en zijn filterbaar.',
+      'Laad per thema één laag (bijv. "Groen", "Kunstwerken"). Krijg je een nieuwe versie? Gebruik "bijwerken" bij de laag, dan blijven alle koppelingen intact.'],
+    actie: () => ['#/gis/importeren', 'GIS-bestand inladen'],
+    klaar: ({ objecten }) => objecten.length > 0,
+    status: ({ objecten, lagen }) => (objecten.length ? `${objecten.length} objecten in ${lagen.length || 'geen'} ${lagen.length === 1 ? 'laag' : 'lagen'}` : 'Nog geen objecten'),
+  },
+  {
+    id: 'categorieen', titel: 'Categorieën controleren', icoon: 'lijst', verplicht: true,
+    doel: 'Filteren werkt alleen als elk object een type en de juiste kenmerken heeft. Nu controleren voorkomt aanvullen tijdens het project.',
+    nodig: ['De lijst met objecttypen die de opdrachtgever hanteert', 'Welke kenmerken je wilt gebruiken om werk te selecteren (bijv. gebied, maaifrequentie)'],
+    snel: 'Open Objecten en filter op type: zie je “(onbekend)” of dubbele schrijfwijzen, pas dan het GIS-bestand aan en werk de laag bij.',
+    best: ['Elk object heeft een objecttype. Objecten zonder type vallen buiten elk filter.',
+      'Eén schrijfwijze per categorie; corrigeer in het bronbestand en laad opnieuw (bijwerken), dan blijft het ook bij volgende leveringen goed.',
+      'Controleer dat codes uniek zijn; daarop koppelt de app werk en inspecties bij een nieuwe versie van het bestand.'],
+    actie: () => ['#/objecten', 'Objecten controleren'],
+    klaar: ({ objecten }) => objecten.length > 0 && objecten.every((o) => o.type),
+    status: ({ objecten }) => {
+      if (!objecten.length) return 'Eerst objecten inladen';
+      const zonder = objecten.filter((o) => !o.type).length;
+      const typen = new Set(objecten.map((o) => o.type).filter(Boolean)).size;
+      return zonder ? `${zonder} object${zonder === 1 ? '' : 'en'} zonder type` : `${typen} objecttype${typen === 1 ? '' : 'n'}, alle objecten ingedeeld`;
+    },
+  },
+  {
+    id: 'velden', titel: 'Extra formuliervelden', icoon: 'taak', verplicht: false,
+    doel: 'Leg vooraf vast wat medewerkers extra moeten registreren. Zo heb je achteraf geen ontbrekende gegevens in rapportages.',
+    nodig: ['Wat de opdrachtgever per registratie wil terugzien (bijv. hoeveelheid m², afvoer maaisel, gebruikt materiaal)', 'Welke velden verplicht zijn'],
+    snel: 'Voeg alleen de velden toe die in het bestek of de rapportage worden gevraagd.',
+    best: ['Gebruik een keuzelijst in plaats van vrije tekst voor alles waarop je later wilt filteren of tellen (bijv. "Afvoer: ja / nee / deels").',
+      'Maak velden verplicht als de opdrachtgever ze eist; de app laat dan niet toe dat iets ontbreekt.',
+      'Beperk velden met "alleen bij" tot de werksoort waar ze bij horen, zodat formulieren kort blijven.'],
+    actie: (p) => [`#/projecten/${encodeURIComponent(p.id)}/velden`, 'Formuliervelden instellen'],
+    klaar: ({ p }) => (p.velden ?? []).length > 0,
+    status: ({ p }) => ((p.velden ?? []).length ? `${p.velden.length} extra veld${p.velden.length === 1 ? '' : 'en'}` : 'Geen extra velden (optioneel)'),
+  },
+  {
+    id: 'fotos', titel: "Foto's en instellingen", icoon: 'camera', verplicht: false,
+    doel: 'Bepaal hoe groot foto\'s worden. Dat houdt de app snel en de opslag klein.',
+    nodig: ['Hoeveel detail de opdrachtgever op foto\'s verwacht'],
+    snel: 'Kies "Compact" tenzij je fijne details moet kunnen zien.',
+    best: ['Compact (1280 px) is voor de meeste projecten ruim voldoende om gebreken te herkennen.',
+      'Kies "Hoog" alleen bij detailinspecties, zoals scheurwijdtes of typeplaatjes.'],
+    actie: () => ['#/instellingen', 'Fotoformaat kiezen'],
+    klaar: ({ p }) => Boolean(p.fotoformaat),
+    status: ({ p }) => (p.fotoformaat ? `Fotoformaat: ${FOTOFORMATEN[p.fotoformaat]?.label ?? p.fotoformaat}` : 'Standaard (nog niet bewust gekozen)'),
+  },
+  {
+    id: 'personen', titel: 'Personen uitnodigen', icoon: 'personen', verplicht: true,
+    doel: 'Iedereen die in het veld werkt, krijgt een eigen account. Zo zie je per registratie wie wat heeft gedaan.',
+    nodig: ['E-mailadres en naam van elke medewerker', 'Welke medewerkers welk soort werk doen (werk, inspectie, flora & fauna)'],
+    snel: 'Nodig iedereen in één keer uit via Personen; vink alleen dit project aan.',
+    best: ['Vul altijd de naam in: die verschijnt in rapporten en in het toewijzingsoverzicht.',
+      'Gebruik zakelijke e-mailadressen; bij vertrek van een medewerker verwijder je hem uit het project.'],
+    actie: () => ['#/personen', 'Personen uitnodigen'],
+    klaar: ({ p }) => (p.leden ?? []).length > 0,
+    status: ({ p }) => ((p.leden ?? []).length ? `${p.leden.length} ${p.leden.length === 1 ? 'persoon' : 'personen'}` : 'Nog niemand uitgenodigd'),
+  },
+  {
+    id: 'pakketten', titel: 'Werkpakketten aanmaken', icoon: 'pakket', verplicht: true,
+    doel: 'Werkpakketten zijn de opdrachten in het veld: welk werk of welke inspectie, op welke objecten, in hoeveel rondes.',
+    nodig: ['Lijst met werksoorten en inspectiesoorten uit het bestek', 'Per pakket: de objecten (op type, gebied of kenmerk)', 'Aantal rondes per jaar en de duur van elke ronde',
+      'Waar een flora- en fauna-vrijgave nodig is'],
+    snel: 'Veel pakketten? Download het Excel-sjabloon, vul het in en lees het in. Enkele pakketten maak je direct in de app, met objecten via filters of de kaart.',
+    best: ['Geef elk pakket een vaste code (bijv. WP-2027-001); daarmee werk je later via Excel bij zonder dubbele pakketten.',
+      'Kies werksoort en inspectiesoort uit de lijst, niet als vrije tekst: daarop filter je in de dashboards en exports.',
+      'Selecteer objecten met de filters op type en kenmerk in plaats van los aanklikken; zo is de selectie reproduceerbaar.',
+      'Geef aan of een flora- en fauna-vrijgave vereist is; de app waarschuwt medewerkers dan automatisch.'],
+    actie: () => ['#/werkpakketten', 'Werkpakketten maken'],
+    klaar: ({ pakketten }) => pakketten.length > 0,
+    status: ({ pakketten }) => (pakketten.length ? `${pakketten.length} werkpakket${pakketten.length === 1 ? '' : 'ten'}` : 'Nog geen werkpakketten'),
+  },
+  {
+    id: 'planning', titel: 'Rondes inplannen', icoon: 'kalender', verplicht: true,
+    doel: 'Pas als een ronde gepland en actief is, ziet de medewerker hem op de telefoon. De planning stuurt ook het dashboard (op schema / achter).',
+    nodig: ['Start- en einddatum per ronde (of alleen de start; de duur komt uit het pakket)'],
+    snel: 'Klik in de planning per rij op de startdatum; de duur uit het werkpakket wordt gebruikt.',
+    best: ['Plan alle rondes van het jaar direct in; dan ziet de opdrachtgever de hele planning en waarschuwt het dashboard bij achterstand.',
+      'Zet een ronde pas op actief als het werk mag starten (bijv. na de vrijgave).'],
+    actie: () => ['#/planning', 'Naar de planning'],
+    klaar: ({ rondes }) => rondes.length > 0 && rondes.every((r) => r.start),
+    status: ({ rondes }) => {
+      if (!rondes.length) return 'Eerst werkpakketten maken';
+      const open = rondes.filter((r) => !r.start).length;
+      return open ? `${open} van ${rondes.length} rondes nog niet ingepland` : `Alle ${rondes.length} rondes ingepland`;
+    },
+  },
+  {
+    id: 'toewijzen', titel: 'Toewijzen en rechten', icoon: 'personen', verplicht: true,
+    doel: 'Bepaal wie welk werkpakket ziet en wat iemand mag. Hoe gerichter, hoe kleiner de kans op fouten buiten.',
+    nodig: ['Welke medewerker welk pakket uitvoert', 'Wie mag inspecteren, overslaan of een vrijgave vastleggen'],
+    snel: 'Zet strikte toewijzing aan en vink in het raster per persoon de pakketten aan.',
+    best: ['Strikte toewijzing aan: een nieuw pakket is dan voor niemand zichtbaar tot je het bewust toewijst.',
+      'Geef alleen de rechten die iemand nodig heeft (bijv. geen "overslaan" voor nieuwe medewerkers).'],
+    actie: () => ['#/toewijzen', 'Toewijzen'],
+    klaar: ({ p, pakketten }) => Boolean(p.striktToewijzen) || pakketten.some((x) => (x.toegewezen ?? []).length),
+    status: ({ p, pakketten }) => `${p.striktToewijzen ? 'Strikt aan' : 'Strikt uit'} · ${pakketten.filter((x) => (x.toegewezen ?? []).length).length} pakket(ten) toegewezen`,
+  },
+  {
+    id: 'test', titel: 'Proefregistratie in het veld', icoon: 'gereed', verplicht: false,
+    doel: 'Eén proef op een telefoon laat zien of alles klopt: zichtbaarheid, formulieren, foto\'s en synchronisatie.',
+    nodig: ['Een telefoon met de app op het beginscherm', 'Een account van een medewerker (niet de beheerder)'],
+    snel: 'Log in als medewerker, open een pakket en leg één werkzaamheid of inspectie vast.',
+    best: ['Controleer op de pc of de registratie binnenkomt met foto, naam en de extra velden.',
+      'Verwijder de proefregistratie daarna, zodat de voortgang klopt.'],
+    actie: () => ['#/werkzaamheden', 'Registraties bekijken'],
+    klaar: ({ registraties }) => registraties > 0,
+    status: ({ registraties }) => (registraties ? `${registraties} registratie${registraties === 1 ? '' : 's'}` : 'Nog geen registraties'),
+  },
+];
+
+const INRICHTING_TERUG = 'inspectie-app:inrichtingTerug';
+
+/** Balk bovenaan andere pagina's zolang je vanuit het stappenplan aan het inrichten bent. */
+function stappenplanBalk(pad) {
+  let stap = '';
+  try { stap = sessionStorage.getItem(INRICHTING_TERUG) ?? ''; } catch { /* geen opslag */ }
+  if (!stap || pad === '/inrichting' || pad === '/' || !magBeheren()) return;
+  const s = INRICHTING.find((x) => x.id === stap);
+  if (!s || app.querySelector('.stappenplanbalk')) return;
+  app.insertAdjacentHTML('afterbegin', `<div class="stappenplanbalk"><span>${I.taak} Je bent bezig met het inrichten: <strong>${esc(s.titel)}</strong></span>
+    <a class="knop klein primair" href="#/inrichting?stap=${s.id}">Terug naar het stappenplan</a>
+    <button class="knop klein" type="button" data-stappenplan-sluit aria-label="Stappenplan-balk sluiten">${I.kruis}</button></div>`);
+  app.querySelector('[data-stappenplan-sluit]').onclick = () => {
+    try { sessionStorage.removeItem(INRICHTING_TERUG); } catch { /* geen opslag */ }
+    app.querySelector('.stappenplanbalk')?.remove();
+  };
+}
+
+async function inrichtingStand(p) {
+  const [objecten, lagen, pakketten, werk, inspecties] = await Promise.all([
+    inProject('objecten'), inProject('lagen'), inProject('werkpakketten'), inProject('werkzaamheden'), inProject('inspecties'),
+  ]);
+  const rondes = pakketten.flatMap((x) => rondesVan(x));
+  const ctx = { p, objecten, lagen, pakketten, rondes, registraties: werk.length + inspecties.length };
+  const handmatig = p.inrichting?.handmatig ?? {};
+  const stappen = INRICHTING.map((s) => {
+    const auto = s.klaar(ctx);
+    const keuze = handmatig[s.id];
+    return { ...s, auto, klaar: auto || keuze === 'klaar', overgeslagen: !auto && keuze === 'overgeslagen', tekst: s.status(ctx) };
+  });
+  return { stappen, aantalKlaar: stappen.filter((s) => s.klaar || s.overgeslagen).length };
+}
+
+/** Voortgangsbalk op het dashboard zolang de inrichting niet af is. */
+async function inrichtingBanner() {
+  const p = await actiefProject();
+  if (!p || !magBeheren() || p.inrichting?.verborgen) return '';
+  const { stappen, aantalKlaar } = await inrichtingStand(p);
+  if (aantalKlaar === stappen.length) return '';
+  const volgende = stappen.find((s) => !s.klaar && !s.overgeslagen);
+  return `<a class="kaart inrichtingbanner" href="#/inrichting?stap=${volgende.id}">
+    <span class="ib-ring" style="--pct:${Math.round((aantalKlaar / stappen.length) * 100)}"><b>${aantalKlaar}/${stappen.length}</b></span>
+    <span><strong>Project inrichten</strong><small>Volgende stap: ${esc(volgende.titel)} – ${esc(volgende.tekst)}</small></span>
+    <span class="knop primair">Verder ${I.door}</span></a>`;
+}
+
+async function inrichtingPagina(_, q = new URLSearchParams()) {
+  const p = await actiefProject();
+  if (!p) { app.innerHTML = leegKaart('Kies eerst een project.', '<a class="knop" href="#/projecten">Projecten</a>'); return; }
+  if (!magBeheren()) { app.innerHTML = leegKaart('Alleen beheerders richten een project in.', '<a class="knop" href="#/">Naar het dashboard</a>'); return; }
+  const { stappen, aantalKlaar } = await inrichtingStand(p);
+  const gekozen = stappen.find((s) => s.id === q.get('stap')) ?? stappen.find((s) => !s.klaar && !s.overgeslagen) ?? stappen[0];
+  const nr = stappen.indexOf(gekozen) + 1;
+  const [href, knoptekst] = gekozen.actie(p);
+  const pct = Math.round((aantalKlaar / stappen.length) * 100);
+  const statusIcoon = (s) => (s.klaar ? `<span class="stapbol klaar">${I.vink}</span>` : s.overgeslagen ? `<span class="stapbol over">–</span>` : `<span class="stapbol">${stappen.indexOf(s) + 1}</span>`);
+
+  app.innerHTML = `
+    <div class="paginakop"><div><h1>Project inrichten</h1>
+      <p>${esc(p.naam)} · Neem de stappen op volgorde door. Wat je nu zorgvuldig invult, hoef je tijdens het project niet meer aan te vullen.</p></div>
+      <div class="knoppen"><button class="knop" id="verbergen" type="button">${p.inrichting?.verborgen ? 'Toon op dashboard' : 'Verbergen op dashboard'}</button>
+        <a class="knop" href="#/">Naar het dashboard</a></div></div>
+    <div class="inrichting">
+      <aside class="kaart stappenlijst">
+        <div class="ib-voortgang"><div class="balkje"><i style="width:${pct}%;background:var(--ok)"></i></div><small>${aantalKlaar} van ${stappen.length} stappen klaar</small></div>
+        <ol>${stappen.map((s) => `<li class="${s === gekozen ? 'actief' : ''} ${s.klaar ? 'klaar' : ''}">
+          <a href="#/inrichting?stap=${s.id}">${statusIcoon(s)}<span><strong>${esc(s.titel)}</strong>${s.verplicht ? '' : ' <em>optioneel</em>'}<small>${esc(s.tekst)}</small></span></a></li>`).join('')}</ol>
+        <p class="ib-demo"><small>Eerst rondkijken? <button type="button" class="linkknop" id="demo">Voorbeelddata laden</button></small></p>
+      </aside>
+      <section class="kaart stapdetail">
+        <div class="stapkop"><span class="stapicoon">${I[gekozen.icoon] ?? ''}</span><div><small>Stap ${nr} van ${stappen.length}${gekozen.verplicht ? '' : ' · optioneel'}</small>
+          <h2>${esc(gekozen.titel)}</h2></div>
+          <span class="label-status ${gekozen.klaar ? 'afgerond' : gekozen.overgeslagen ? '' : 'binnenkort'}">${gekozen.klaar ? `${I.vink} Klaar` : gekozen.overgeslagen ? 'Overgeslagen' : 'Te doen'}</span></div>
+        <p class="stapdoel">${esc(gekozen.doel)}</p>
+        <p class="stapstand">${I.grafiek} <strong>Stand:</strong> ${esc(gekozen.tekst)}</p>
+        <div class="stapblokken">
+          <div class="stapblok"><h3>${I.taak} Wat heb je nodig</h3><ul class="vinklijst">${gekozen.nodig.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>
+          <div class="stapblok snel"><h3>${I.start} Zo gaat het snel</h3><p>${esc(gekozen.snel)}</p></div>
+          <div class="stapblok best"><h3>${I.gereed} Zo doe je het goed (voor later)</h3><ul>${gekozen.best.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>
+        </div>
+        <div class="formvoet">
+          ${!gekozen.auto ? `<button class="knop" type="button" data-markeer="${gekozen.klaar ? '' : 'klaar'}">${gekozen.klaar ? 'Toch nog niet klaar' : `${I.vink} Markeer als klaar`}</button>` : ''}
+          ${!gekozen.verplicht && !gekozen.klaar ? `<button class="knop" type="button" data-markeer="${gekozen.overgeslagen ? '' : 'overgeslagen'}">${gekozen.overgeslagen ? 'Toch doen' : 'Overslaan'}</button>` : ''}
+          ${nr < stappen.length ? `<a class="knop" href="#/inrichting?stap=${stappen[nr].id}">Volgende stap</a>` : ''}
+          <a class="knop primair" href="${href}">${esc(knoptekst)} ${I.door}</a>
+        </div>
+      </section>
+    </div>`;
+
+  app.querySelector('#demo').onclick = laadDemo;
+  try { sessionStorage.setItem(INRICHTING_TERUG, gekozen.id); } catch { /* geen opslag */ }
+  app.querySelector('a[href="#/"]')?.addEventListener('click', () => { try { sessionStorage.removeItem(INRICHTING_TERUG); } catch { /* */ } });
+  const bewaar = async (wijziging) => {
+    const actueel = await actiefProject();
+    await db.bewaar('projecten', { ...actueel, inrichting: wijziging(actueel.inrichting ?? {}), gewijzigd: new Date().toISOString() });
+  };
+  app.querySelector('#verbergen').onclick = async () => {
+    await bewaar((i) => ({ ...i, verborgen: !i.verborgen }));
+    router();
+  };
+  app.querySelectorAll('[data-markeer]').forEach((k) => {
+    k.onclick = async () => {
+      await bewaar((i) => ({ ...i, handmatig: { ...(i.handmatig ?? {}), [gekozen.id]: k.dataset.markeer || undefined } }));
+      router();
+    };
+  });
 }
 
 async function laadDemo() {
@@ -3594,8 +3842,10 @@ async function projectFormulier(id) {
     await db.bewaar('projecten', opslaan);
     formulierGewijzigd = false;
     if (!bestaand) kiesProject(opslaan.id);
-    melding(bestaand ? 'Project opgeslagen' : 'Project aangemaakt en geopend');
-    ga(bestaand ? '#/projecten' : '#/');
+    melding(bestaand ? 'Project opgeslagen' : 'Project aangemaakt – we lopen samen de inrichting door');
+    let vanStappenplan = false;
+    try { vanStappenplan = sessionStorage.getItem(INRICHTING_TERUG) === 'project'; } catch { /* geen opslag */ }
+    ga(bestaand ? (vanStappenplan ? '#/inrichting?stap=gis' : '#/projecten') : '#/inrichting');
   };
   app.querySelector('#verwijder')?.addEventListener('click', async () => {
     const naam = prompt(`Hiermee verwijder je het project met álle objecten, GIS-lagen, inspecties, werkzaamheden, taken en foto's.\n\nTyp de projectnaam "${p.naam}" om te bevestigen:`);

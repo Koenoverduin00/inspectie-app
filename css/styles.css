@@ -1050,3 +1050,59 @@ body.geen-inspectie a.mtegel[href="#/m/inspectie"] { display: none !important; }
 .rechten-tabel td, .rechten-tabel th { text-align: center; }
 .rechten-tabel td:first-child, .rechten-tabel th:first-child { text-align: left; }
 .rechten-tabel thead th small { display: block; text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--tekst-zacht); }
+
+/* Project inrichten: stappenplan */
+.inrichting { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 1rem; align-items: start; }
+@media (max-width: 900px) { .inrichting { grid-template-columns: 1fr; } }
+.stappenlijst { position: sticky; top: 72px; padding: 1rem .75rem; }
+.stappenlijst ol { list-style: none; margin: .5rem 0 0; padding: 0; display: flex; flex-direction: column; gap: .15rem; }
+.stappenlijst li a { display: flex; gap: .65rem; align-items: flex-start; padding: .55rem .6rem; border-radius: 10px; color: inherit; text-decoration: none; }
+.stappenlijst li a:hover { background: var(--achtergrond); }
+.stappenlijst li.actief a { background: var(--primair-licht); }
+.stappenlijst li strong { display: inline; font-size: .95rem; margin-right: .3rem; }
+.stappenlijst li em { font-style: normal; font-size: .72rem; color: var(--tekst-zacht); border: 1px solid var(--rand); border-radius: 99px; padding: 0 .35rem; }
+.stappenlijst li small { display: block; color: var(--tekst-zacht); font-size: .8rem; margin-top: .1rem; }
+.stapbol { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: .85rem;
+  border: 2px solid var(--rand); background: var(--vlak); color: var(--tekst-zacht); }
+.stappenlijst li.actief .stapbol:not(.klaar) { border-color: var(--primair); color: var(--primair); }
+.stapbol.klaar { background: var(--ok); border-color: var(--ok); color: #fff; }
+.stapbol.klaar .ico { width: 16px; height: 16px; stroke-width: 3; }
+.stapbol.over { background: var(--achtergrond); }
+.ib-voortgang .balkje { height: 8px; border-radius: 99px; background: var(--achtergrond); overflow: hidden; display: flex; }
+.ib-voortgang small { color: var(--tekst-zacht); }
+.ib-demo { margin: .75rem .6rem 0; }
+.linkknop { background: none; border: 0; padding: 0; color: var(--primair); text-decoration: underline; cursor: pointer; font: inherit; }
+.stapdetail { padding: 1.5rem; }
+.stapkop { display: flex; align-items: center; gap: .9rem; margin-bottom: .75rem; }
+.stapkop > div { flex: 1; }
+.stapkop small { color: var(--tekst-zacht); }
+.stapkop h2 { margin: 0; font-size: 1.45rem; }
+.stapicoon { width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center; background: var(--primair-licht); color: var(--primair); }
+.stapicoon .ico { width: 1.6rem; height: 1.6rem; stroke-width: 1.75; }
+.stapdoel { font-size: 1.05rem; margin: 0 0 .5rem; }
+.stapstand { color: var(--tekst-zacht); margin: 0 0 1.25rem; }
+.stapblokken { display: grid; grid-template-columns: 1fr 1fr; gap: .9rem; }
+@media (max-width: 1100px) { .stapblokken { grid-template-columns: 1fr; } }
+.stapblok { border: 1px solid var(--rand); border-radius: 12px; padding: 1rem 1.1rem; }
+.stapblok h3 { margin: 0 0 .5rem; font-size: 1rem; display: flex; align-items: center; gap: .4rem; }
+.stapblok h3 .ico { color: var(--primair); }
+.stapblok ul { margin: 0; padding-left: 1.1rem; }
+.stapblok li { margin: .3rem 0; }
+.stapblok p { margin: 0; }
+.stapblok.best { grid-column: 1 / -1; border-color: color-mix(in srgb, var(--ok) 45%, transparent); background: color-mix(in srgb, var(--ok) 6%, var(--vlak)); }
+.stapblok.best h3 .ico { color: var(--ok); }
+.stapblok.snel { background: var(--achtergrond); }
+.vinklijst { list-style: none; padding-left: 0 !important; }
+.vinklijst li { position: relative; padding-left: 1.5rem; }
+.vinklijst li::before { content: ""; position: absolute; left: 0; top: .2rem; width: 14px; height: 14px; border: 2px solid var(--rand); border-radius: 4px; }
+.inrichtingbanner { display: flex; align-items: center; gap: 1rem; color: inherit; text-decoration: none; border-color: color-mix(in srgb, var(--primair) 35%, transparent); }
+.inrichtingbanner:hover { border-color: var(--primair); }
+.inrichtingbanner > span:nth-child(2) { flex: 1; }
+.inrichtingbanner small { display: block; color: var(--tekst-zacht); }
+.ib-ring { width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center; flex: none;
+  background: conic-gradient(var(--ok) calc(var(--pct) * 1%), var(--achtergrond) 0); }
+.ib-ring b { width: 42px; height: 42px; border-radius: 50%; background: var(--vlak); display: grid; place-items: center; font-size: .85rem; }
+.stappenplanbalk { display: flex; align-items: center; gap: .75rem; padding: .6rem .9rem; margin-bottom: 1rem; border-radius: 12px;
+  background: var(--primair-licht); border: 1px solid color-mix(in srgb, var(--primair) 30%, transparent); }
+.stappenplanbalk > span { flex: 1; }
+.stappenplanbalk .ico { color: var(--primair); }

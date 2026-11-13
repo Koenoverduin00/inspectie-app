@@ -1,5 +1,5 @@
 // Service worker: maakt de app offline bruikbaar in het veld.
-const CACHE = 'inspectie-app-v38';
+const CACHE = 'inspectie-app-v40';
 const BESTANDEN = [
   './', 'index.html', 'manifest.webmanifest', 'css/styles.css', 'icons/icon.svg', 'icons/icon-192.png', 'icons/apple-touch-icon.png',
   'js/app.js', 'js/db.js', 'js/nen2767.js', 'js/utils.js', 'js/catalogus.js', 'js/demo.js',
