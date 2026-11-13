@@ -118,6 +118,13 @@ gevraagd wordt:
 - **Installeren**: het startscherm legt uit hoe je de app op het beginscherm zet (iPhone: Deel → Zet op beginscherm;
   Android: knop *Installeren*). Met *Later* verdwijnt de uitleg 14 dagen.
 
+## Planning wijzigen met bevestiging
+
+Elke wijziging door slepen op het planbord (verplaatsen, randen verlengen/inkorten, een periode trekken of in een lege rij
+klikken) vraagt eerst bevestiging: het venster toont de oude en de nieuwe periode en waarschuwt extra als de ronde al
+actief of afgerond is, er al objecten zijn afgemeld, het om een afroep gaat (gereed vóór verandert) of de nieuwe einddatum
+in het verleden ligt. Bij *Annuleren* springt de balk terug.
+
 ## Werk op afroep (niet vooruit te plannen)
 
 Niet al het werk is vooraf te plannen: correctief onderhoud, werk na afstemming met de opdrachtgever, na een melding of

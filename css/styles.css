@@ -1133,3 +1133,13 @@ form:not(.afroep-inspectie) .a-insp { display: none; }
 .zacht { color: var(--tekst-zacht); }
 .afroepblok { border-left: 5px solid #7c3aed; margin-top: 1rem; }
 .afroepblok .paginakop small { color: var(--tekst-zacht); display: block; }
+.planbevestiging h2 { display: flex; align-items: center; gap: .4rem; }
+.planbevestiging h2 .ico { color: var(--primair); }
+.planvergelijk { width: 100%; margin: .75rem 0 0; border-collapse: collapse; }
+.planvergelijk th { text-align: left; width: 5rem; color: var(--tekst-zacht); font-weight: 600; padding: .35rem .5rem; }
+.planvergelijk td { padding: .35rem .5rem; }
+.planvergelijk tr.nieuw td { font-weight: 700; color: var(--primair); }
+.planvergelijk tr.nieuw { background: var(--primair-licht); }
+.planletop { list-style: none; margin: .75rem 0 0; padding: .6rem .75rem; border-radius: 10px; background: color-mix(in srgb, #e07b00 10%, var(--vlak)); }
+.planletop li { display: flex; gap: .45rem; margin: .2rem 0; font-size: .92rem; }
+.planletop .ico { color: #b45309; flex: none; margin-top: .15rem; }

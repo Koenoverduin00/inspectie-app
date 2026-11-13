@@ -4695,6 +4695,38 @@ async function rondTaakAf(taakId, gekoppeldId) {
 // ---------------------------------------------------------------------------
 const BORD_KLEUR = { werk: '#e07b00', inspectie: '#1f6feb' };
 
+/** Vraagt bevestiging voordat een wijziging door slepen op het planbord wordt opgeslagen. */
+function bevestigPlanwijziging({ ronde, pakket, modus, vg, oud, nieuw }) {
+  return new Promise((resolve) => {
+    const tekst = (p) => `${datumNL(PL.isoVan(p.start))} – ${datumNL(PL.isoVan(p.eind))}`;
+    const dagen = (p) => p.eind - p.start + 1;
+    const actie = { verplaats: 'verplaatsen', begin: 'startdatum wijzigen', eind: 'einddatum wijzigen', teken: 'inplannen' }[modus];
+    const letter = ronde.afroep ? 'A' : 'R';
+    const let_op = [];
+    if (ronde.status === 'actief') let_op.push('Deze ronde is <strong>actief</strong>: uitvoerders werken er mogelijk al aan.');
+    if (ronde.status === 'afgerond') let_op.push('Deze ronde is al <strong>afgerond</strong>.');
+    if (vg && (vg.gedaan.size || vg.overgeslagen.size)) let_op.push(`Er zijn al <strong>${vg.gedaan.size + vg.overgeslagen.size}</strong> objecten afgemeld; die blijven bij deze ronde horen.`);
+    if (ronde.afroep) let_op.push('Bij een afroep verandert hiermee de datum <strong>gereed vóór</strong> die de uitvoerders zien.');
+    if (oud && nieuw.eind < PL.dagNr(vandaag()) && oud.eind >= PL.dagNr(vandaag())) let_op.push('De nieuwe einddatum ligt in het verleden: de ronde wordt dan als <strong>te laat</strong> getoond.');
+    const d = document.createElement('dialog');
+    d.className = 'dialoog planbevestiging';
+    d.innerHTML = `<form method="dialog">
+      <h2>${I.kalender} Planning wijzigen?</h2>
+      <p>Weet je zeker dat je <strong>${letter}${ronde.nummer} ${esc(ronde.naam)}</strong> van <em>${esc(pakket.naam)}</em> wilt ${actie}?</p>
+      <table class="planvergelijk"><tbody>
+        ${oud ? `<tr><th>Was</th><td>${tekst(oud)}</td><td>${dagen(oud)} dagen</td></tr>` : '<tr><th>Was</th><td colspan="2">Nog niet ingepland</td></tr>'}
+        <tr class="nieuw"><th>Wordt</th><td>${tekst(nieuw)}</td><td>${dagen(nieuw)} dagen</td></tr>
+      </tbody></table>
+      ${let_op.length ? `<ul class="planletop">${let_op.map((x) => `<li>${I.let} <span>${x}</span></li>`).join('')}</ul>` : ''}
+      <div class="knoppen" style="justify-content:flex-end;margin-top:1rem">
+        <button class="knop" value="nee">Annuleren</button>
+        <button class="knop primair" value="ja" autofocus>Ja, ${actie}</button></div></form>`;
+    document.body.append(d);
+    d.addEventListener('close', () => { const ja = d.returnValue === 'ja'; d.remove(); resolve(ja); });
+    d.showModal();
+  });
+}
+
 /** Slaat een gewijzigde ronde (start/eind/status) op in het werkpakket. */
 async function bewaarRonde(pakketId, rondeId, wijziging) {
   const p = await db.haal('werkpakketten', pakketId);
@@ -4878,6 +4910,12 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
           if (!bewogen && modus !== 'teken') { rondeDialoog(rij, true); return; }
           if (!bewogen && modus === 'teken') nieuw = { start: basis.start, eind: basis.start + PL.duurVan(ronde) - 1 }; // klik in lege rij: de duur van de ronde
           if (modus !== 'teken' && nieuw.start === basis.start && nieuw.eind === basis.eind) return;
+          const vg = g.rondeVoortgang.get(`${pakket.id}:${ronde.id}`);
+          const ok = await bevestigPlanwijziging({
+            ronde, pakket, modus, vg,
+            oud: ronde.start ? { start: PL.dagNr(ronde.start), eind: PL.dagNr(ronde.eind || ronde.start) } : null, nieuw,
+          });
+          if (!ok) { teken(); return; } // terug naar de oude stand
           await bewaarRonde(pakket.id, ronde.id, { start: PL.isoVan(nieuw.start), eind: PL.isoVan(nieuw.eind), duur: nieuw.eind - nieuw.start + 1 });
           melding(`R${ronde.nummer} ${ronde.naam}: ${datumNL(PL.isoVan(nieuw.start))} – ${datumNL(PL.isoVan(nieuw.eind))}`);
           teken();
