@@ -5576,6 +5576,43 @@ function extraInvoerHtml(d, waarde, fotos = []) {
       return `<div class="fotos">${fotos.map((f, n) => `<div class="foto"><img src="${esc(f.data)}" alt="Foto ${n + 1}" data-lichtbak>
         <button type="button" data-extra-foto-weg="${esc(d.id)}:${n}" aria-label="Foto verwijderen">×</button></div>`).join('')}
         <label class="knop fotoknop">${I.camera} Foto<input type="file" accept="image/*" capture="environment" multiple data-extra-foto="${esc(d.id)}"></label></div>`;
+    case 'meerkeuze':
+      return `<div class="keuzechips meerkeuze">${(d.opties ?? []).map((o) => `
+        <label class="keuzechip-vink"><input type="checkbox" ${attr} value="${esc(o)}" ${(waarde ?? []).includes(o) ? 'checked' : ''}><span>${esc(o)}</span></label>`).join('')}</div>`;
+    case 'locatie': {
+      const heeft = waarde && waarde.lat != null && waarde.lat !== '';
+      return `<div class="locveld" data-locveld="${esc(d.id)}">
+        <div class="knoppen"><button type="button" class="knop" data-loc-gps="${esc(d.id)}">${I.gps} Mijn GPS-locatie</button>
+          <button type="button" class="knop" data-loc-kaart="${esc(d.id)}">${I.locatie} Op de kaart aanwijzen</button>
+          ${heeft ? `<button type="button" class="knop klein" data-loc-weg="${esc(d.id)}" aria-label="Locatie wissen">${I.kruis}</button>` : ''}</div>
+        <small data-loc-tekst>${heeft ? esc(velden.toonWaarde(d, waarde)) : 'Nog geen locatie gekozen.'}</small>
+        <div class="locveld-kaart" hidden></div></div>`;
+    }
+    case 'handtekening': {
+      const getekend = fotos[0];
+      return `<div class="handtekening" data-handtekening="${esc(d.id)}">
+        ${getekend ? `<div class="ht-beeld"><img src="${esc(getekend.data)}" alt="Handtekening"></div>
+          <button type="button" class="knop klein" data-teken-opnieuw="${esc(d.id)}">Opnieuw tekenen</button>`
+    : `<canvas class="ht-vlak" width="900" height="300" data-teken="${esc(d.id)}" aria-label="Teken hier je handtekening"></canvas>
+          <div class="ht-onder"><small>Teken met je vinger of muis in het vak.</small><button type="button" class="knop klein" data-teken-wis="${esc(d.id)}">Wissen</button></div>`}
+        <input type="text" ${attr} data-sub="naam" maxlength="80" placeholder="Naam ondertekenaar" value="${esc(waarde?.naam ?? '')}" aria-label="Naam ondertekenaar"></div>`;
+    }
+    case 'tijdsduur': {
+      const v = waarde ?? {};
+      const duur = velden.duurMinuten(v);
+      return `<div class="tijdsduur">
+        <label><span>Begin</span><input type="time" ${attr} data-sub="begin" value="${esc(v.begin ?? '')}"></label>
+        <label><span>Eind</span><input type="time" ${attr} data-sub="eind" value="${esc(v.eind ?? '')}"></label>
+        ${d.pauze ? `<label><span>Pauze (min)</span><input type="number" min="0" max="600" step="5" inputmode="numeric" ${attr} data-sub="pauze" value="${esc(v.pauze ?? '')}"></label>` : ''}
+        ${d.ploeg ? `<label><span>Aantal personen</span><input type="number" min="1" max="99" inputmode="numeric" ${attr} data-sub="personen" value="${esc(v.personen ?? '1')}"></label>` : ''}
+        <small class="td-duur" data-duur="${esc(d.id)}">${duur != null ? esc(velden.toonWaarde(d, v)) : ''}</small></div>`;
+    }
+    case 'bijlage':
+      return `<div class="bijlagen">${fotos.map((f, n) => `<div class="bijlage">${I.bestand}<a href="${esc(f.data)}" download="${esc(f.naam ?? 'bijlage')}" target="_blank" rel="noopener">${esc(f.naam ?? 'bijlage')}</a>
+        <small>${f.grootte ? `${Math.max(1, Math.round(f.grootte / 1024))} kB` : ''}</small>
+        <button type="button" data-extra-foto-weg="${esc(d.id)}:${n}" aria-label="Bijlage verwijderen">×</button></div>`).join('')}
+        <label class="knop fotoknop">${I.bestand} Bijlage toevoegen<input type="file" accept=".pdf,image/*,.doc,.docx,.xls,.xlsx,.txt,.csv" multiple data-extra-bijlage="${esc(d.id)}"></label>
+        <small>Pdf, foto of document, maximaal 10 MB per bestand.</small></div>`;
     default:
       return `<input id="${id}" ${attr} type="text" maxlength="500" value="${esc(waarde ?? '')}">`;
   }
@@ -5583,12 +5620,50 @@ function extraInvoerHtml(d, waarde, fotos = []) {
 
 function extraVeldenHtml(defs, extra, extraFotos) {
   return `<div class="velden">${defs.map((d) => {
-    const breed = ['tekst', 'checklist', 'foto'].includes(d.type) ? ' breed' : '';
+    const breed = ['tekst', 'checklist', 'foto', 'meerkeuze', 'locatie', 'handtekening', 'tijdsduur', 'bijlage'].includes(d.type) ? ' breed' : '';
     const hulp = d.hulptekst || (d.type === 'checklist' && d.verplicht ? 'Alle punten moeten worden afgevinkt.' : '');
     return `<div class="veld${breed}" data-extraveld="${esc(d.id)}">
       <label for="x-${esc(d.id)}" ${d.verplicht ? 'class="vereist"' : ''}>${esc(d.label)}</label>
       ${extraInvoerHtml(d, extra[d.id], extraFotos[d.id])}${hulp ? `<small>${esc(hulp)}</small>` : ''}</div>`;
   }).join('')}</div>`;
+}
+
+/** Kaartje in een locatieveld: tik om een punt te zetten, versleep om te verbeteren. */
+async function locatieKaart(blok, id, extra, alleDefs) {
+  const veld = blok.querySelector(`[data-locveld="${CSS.escape(id)}"]`);
+  const el = veld?.querySelector('.locveld-kaart');
+  if (!el) return;
+  el.hidden = false;
+  let L;
+  try { L = await laadLeaflet(); } catch (fout) { el.innerHTML = `<p class="leeg">${esc(fout.message)}</p>`; return; }
+  if (el._kaart) { el._kaart.invalidateSize(); return; }
+  const map = L.map(el, { zoomAnimation: false, fadeAnimation: false });
+  el._kaart = map;
+  voegAchtergrondToe(L, map);
+  const d = alleDefs.find((x) => x.id === id);
+  const v = extra[id];
+  // Startpunt: bestaande locatie, anders het gekozen object, anders je laatste positie.
+  const objectId = app.querySelector('#f-object')?.value;
+  const o = objectId ? await db.haal('objecten', objectId) : null;
+  const geom = o ? objectGeometrie(o) : null;
+  if (v?.lat != null) map.setView([v.lat, v.lng], 19);
+  else if (geom) {
+    const laag = L.geoJSON(geom, { style: { color: '#e07b00', weight: 2, fillOpacity: 0.15 }, pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 7 }) }).addTo(map);
+    map.fitBounds(laag.getBounds(), { maxZoom: 19, padding: [20, 20] });
+  } else if (laatstePositie) map.setView([laatstePositie[1], laatstePositie[0]], 18);
+  else map.setView([52.1, 5.1], 8);
+  let marker = v?.lat != null ? L.marker([v.lat, v.lng], { draggable: true }).addTo(map) : null;
+  const zet = (ll) => {
+    extra[id] = { lat: Number(ll.lat.toFixed(7)), lng: Number(ll.lng.toFixed(7)), bron: 'kaart' };
+    veld.querySelector('[data-loc-tekst]').textContent = velden.toonWaarde(d, extra[id]);
+    formulierGewijzigd = true;
+  };
+  map.on('click', (e) => {
+    if (marker) marker.setLatLng(e.latlng);
+    else { marker = L.marker(e.latlng, { draggable: true }).addTo(map); marker.on('dragend', () => zet(marker.getLatLng())); }
+    zet(e.latlng);
+  });
+  marker?.on('dragend', () => zet(marker.getLatLng()));
 }
 
 /**
@@ -5602,11 +5677,22 @@ async function extraBlok(blok, defsNu, record) {
   const alleDefs = defsNu.alle ?? [];
   const extraFotos = {};
   for (const d of alleDefs.filter((x) => x.type === 'foto')) extraFotos[d.id] = await laadFotos(extra[d.id] ?? []);
+  for (const d of alleDefs.filter((x) => x.type === 'handtekening')) extraFotos[d.id] = extra[d.id]?.foto ? await laadFotos([extra[d.id].foto]) : [];
+  for (const d of alleDefs.filter((x) => x.type === 'bijlage')) {
+    const meta = new Map((extra[d.id] ?? []).map((b) => [b.id, b]));
+    extraFotos[d.id] = (await laadFotos([...meta.keys()])).map((f) => ({ ...meta.get(f.id), ...f }));
+  }
   const origineleFotoIds = new Set(record?.extraFotoIds ?? []);
   const doel = blok.querySelector('.extra-velden');
+  // Velden waar een ander veld van afhangt ("alleen tonen als …"): bij een wijziging opnieuw tekenen.
+  const bronnen = new Set(alleDefs.map((d) => d.toonAls?.veld).filter(Boolean));
+  const zichtbaarNu = () => {
+    const defs = defsNu();
+    return defs.length ? velden.zichtbareVelden(defs, defs[0].formulier, null, extra) : [];
+  };
 
   const teken = () => {
-    const defs = defsNu();
+    const defs = zichtbaarNu();
     blok.hidden = !defs.length;
     doel.innerHTML = defs.length ? extraVeldenHtml(defs, extra, extraFotos) : '';
   };
@@ -5615,12 +5701,32 @@ async function extraBlok(blok, defsNu, record) {
     const id = el.dataset?.extra;
     if (!id) return;
     formulierGewijzigd = true;
+    if (el.dataset.sub) {
+      extra[id] = { ...(extra[id] ?? {}), [el.dataset.sub]: el.value };
+      const duurEl = blok.querySelector(`[data-duur="${CSS.escape(id)}"]`);
+      const d = alleDefs.find((x) => x.id === id);
+      if (duurEl && d) duurEl.textContent = velden.duurMinuten(extra[id]) != null ? velden.toonWaarde(d, extra[id]) : '';
+      return;
+    }
     if (el.type === 'radio') extra[id] = el.value === 'ja';
     else if (el.type === 'checkbox') {
       extra[id] = [...blok.querySelectorAll(`input[type=checkbox][data-extra="${CSS.escape(id)}"]:checked`)].map((c) => c.value);
     } else extra[id] = el.value;
+    if (bronnen.has(id) && el.type !== 'text' && el.type !== 'number') teken();
   });
   blok.addEventListener('change', async (e) => {
+    const bijlageId = e.target.dataset?.extraBijlage;
+    if (bijlageId && e.target.files?.length) {
+      for (const f of [...e.target.files]) {
+        if (f.size > 10 * 1048576) { melding(`${f.name} is groter dan 10 MB.`, 'fout'); continue; }
+        const data = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(f); });
+        (extraFotos[bijlageId] ??= []).push({ id: nieuwId(), data, naam: f.name, type: f.type, grootte: f.size });
+      }
+      formulierGewijzigd = true;
+      teken();
+      return;
+    }
+    if (e.target.dataset?.extra && e.target.tagName === 'SELECT' && bronnen.has(e.target.dataset.extra)) teken();
     const id = e.target.dataset?.extraFoto;
     if (!id || !e.target.files?.length) return;
     try {
@@ -5629,7 +5735,57 @@ async function extraBlok(blok, defsNu, record) {
     } catch (fout) { melding(fout.message, 'fout'); }
     teken();
   });
-  blok.addEventListener('click', (e) => {
+  // Handtekening: tekenen op een canvas; bij loslaten wordt het een afbeelding.
+  blok.addEventListener('pointerdown', (e) => {
+    const cv = e.target.closest('canvas[data-teken]');
+    if (!cv) return;
+    e.preventDefault();
+    const id = cv.dataset.teken;
+    const ctx = cv.getContext('2d');
+    Object.assign(ctx, { lineWidth: 4, lineCap: 'round', lineJoin: 'round', strokeStyle: '#1d2733' });
+    const r = cv.getBoundingClientRect();
+    const punt = (ev) => [(ev.clientX - r.left) * (cv.width / r.width), (ev.clientY - r.top) * (cv.height / r.height)];
+    cv.setPointerCapture(e.pointerId);
+    ctx.beginPath();
+    ctx.moveTo(...punt(e));
+    const beweeg = (ev) => { ctx.lineTo(...punt(ev)); ctx.stroke(); };
+    const los = () => {
+      cv.removeEventListener('pointermove', beweeg);
+      cv.removeEventListener('pointerup', los);
+      extraFotos[id] = [{ id: extraFotos[id]?.[0]?.nieuw ? extraFotos[id][0].id : nieuwId(), data: cv.toDataURL('image/png'), nieuw: true }];
+      extra[id] = { ...(extra[id] ?? {}), op: new Date().toISOString() };
+      formulierGewijzigd = true;
+    };
+    cv.addEventListener('pointermove', beweeg);
+    cv.addEventListener('pointerup', los);
+  });
+  blok.addEventListener('click', async (e) => {
+    const wis = e.target.closest('[data-teken-wis]');
+    if (wis) {
+      const cv = blok.querySelector(`canvas[data-teken="${CSS.escape(wis.dataset.tekenWis)}"]`);
+      cv?.getContext('2d').clearRect(0, 0, cv.width, cv.height);
+      extraFotos[wis.dataset.tekenWis] = [];
+      return;
+    }
+    const opnieuw = e.target.closest('[data-teken-opnieuw]');
+    if (opnieuw) { extraFotos[opnieuw.dataset.tekenOpnieuw] = []; formulierGewijzigd = true; teken(); return; }
+    const gps = e.target.closest('[data-loc-gps]');
+    if (gps) {
+      const id = gps.dataset.locGps;
+      if (!navigator.geolocation) { melding('Locatiebepaling wordt niet ondersteund.', 'fout'); return; }
+      gps.disabled = true;
+      navigator.geolocation.getCurrentPosition((pos) => {
+        extra[id] = { lat: Number(pos.coords.latitude.toFixed(7)), lng: Number(pos.coords.longitude.toFixed(7)), bron: 'gps', nauwkeurigheid: Math.round(pos.coords.accuracy) };
+        laatstePositie = [pos.coords.longitude, pos.coords.latitude];
+        formulierGewijzigd = true;
+        teken();
+      }, (fout) => { gps.disabled = false; melding(`Locatie niet beschikbaar: ${fout.message}`, 'fout'); }, { enableHighAccuracy: true, timeout: 15000 });
+      return;
+    }
+    const locWeg = e.target.closest('[data-loc-weg]');
+    if (locWeg) { delete extra[locWeg.dataset.locWeg]; formulierGewijzigd = true; teken(); return; }
+    const kaartKnop = e.target.closest('[data-loc-kaart]');
+    if (kaartKnop) { await locatieKaart(blok, kaartKnop.dataset.locKaart, extra, alleDefs); return; }
     const weg = e.target.closest('[data-extra-foto-weg]');
     if (!weg) return;
     const [id, n] = weg.dataset.extraFotoWeg.split(':');
@@ -5643,12 +5799,20 @@ async function extraBlok(blok, defsNu, record) {
     teken,
     /** Antwoorden van de zichtbare velden (+ bewaarde antwoorden van verwijderde velden). */
     waarden() {
-      const zichtbaar = defsNu();
+      const zichtbaar = zichtbaarNu();
       const bekend = new Set(alleDefs.map((d) => d.id));
       const uit = {};
       for (const [k, v] of Object.entries(extra)) if (!bekend.has(k)) uit[k] = v; // historie bewaren
       for (const d of zichtbaar) {
         if (d.type === 'foto') uit[d.id] = (extraFotos[d.id] ?? []).map((f) => f.id);
+        else if (d.type === 'handtekening') {
+          const f = extraFotos[d.id]?.[0];
+          if (f || extra[d.id]?.naam) uit[d.id] = { naam: String(extra[d.id]?.naam ?? '').trim(), op: extra[d.id]?.op ?? '', foto: f?.id ?? '' };
+        } else if (d.type === 'bijlage') uit[d.id] = (extraFotos[d.id] ?? []).map(({ id, naam, type, grootte }) => ({ id, naam, type, grootte }));
+        else if (d.type === 'tijdsduur' && extra[d.id]) {
+          const v = extra[d.id];
+          uit[d.id] = { begin: v.begin ?? '', eind: v.eind ?? '', ...(d.pauze && v.pauze !== '' && v.pauze != null ? { pauze: Number(v.pauze) } : {}), ...(d.ploeg ? { personen: Number(v.personen) || 1 } : {}) };
+        }
         else if (d.type === 'getal') uit[d.id] = extra[d.id] === '' || extra[d.id] == null ? '' : Number(extra[d.id]);
         else if (extra[d.id] !== undefined) uit[d.id] = extra[d.id];
       }
@@ -5658,13 +5822,13 @@ async function extraBlok(blok, defsNu, record) {
       return Object.fromEntries(alleDefs.map((d) => [d.id, d.label]));
     },
     fouten() {
-      return velden.controleer(defsNu(), this.waarden());
+      return velden.controleer(zichtbaarNu(), this.waarden());
     },
     /** Slaat nieuwe foto's op en ruimt verwijderde op; geeft alle foto-id's terug. */
     async bewaarFotos(meta) {
-      const zichtbaar = new Set(defsNu().filter((d) => d.type === 'foto').map((d) => d.id));
+      const zichtbaar = new Set(zichtbaarNu().filter((d) => ['foto', 'handtekening', 'bijlage'].includes(d.type)).map((d) => d.id));
       const huidige = Object.entries(extraFotos).filter(([id]) => zichtbaar.has(id)).flatMap(([, l]) => l);
-      await db.bewaarVeel('fotos', huidige.filter((f) => !origineleFotoIds.has(f.id)).map((f) => ({ id: f.id, data: f.data, ...meta })));
+      await db.bewaarVeel('fotos', huidige.filter((f) => !origineleFotoIds.has(f.id)).map((f) => ({ id: f.id, data: f.data, ...(f.naam ? { naam: f.naam } : {}), ...meta })));
       const blijven = new Set(huidige.map((f) => f.id));
       for (const fid of origineleFotoIds) if (!blijven.has(fid)) await db.verwijder('fotos', fid);
       return [...blijven];
@@ -5696,12 +5860,24 @@ async function extraDetailHtml(record, formulier) {
   const p = await actiefProject();
   const regels = extraWeergave(record, (p?.velden ?? []).filter((d) => d.formulier === formulier));
   if (!regels.length) return '';
-  const tekst = regels.filter(({ d }) => d.type !== 'foto');
+  const tekst = regels.filter(({ d }) => !['foto', 'bijlage'].includes(d.type));
   const fotoRegels = regels.filter(({ d }) => d.type === 'foto');
   const fotoBlokken = await Promise.all(fotoRegels.map(async ({ d, v }) => `<h3>${esc(d.label)}</h3>${await fotosHtml(v)}`));
+  const bijlageBlokken = await Promise.all(regels.filter(({ d }) => d.type === 'bijlage').map(async ({ d, v }) => {
+    const data = new Map((await laadFotos((v ?? []).map((b) => b.id))).map((f) => [f.id, f.data]));
+    return `<h3>${esc(d.label)}</h3><div class="bijlagen">${(v ?? []).map((b) => `<div class="bijlage">${I.bestand}${data.get(b.id)
+      ? `<a href="${esc(data.get(b.id))}" download="${esc(b.naam)}" target="_blank" rel="noopener">${esc(b.naam)}</a>` : `<span>${esc(b.naam)} <small>(nog niet geladen)</small></span>`}
+      <small>${b.grootte ? `${Math.max(1, Math.round(b.grootte / 1024))} kB` : ''}</small></div>`).join('')}</div>`;
+  }));
+  const handtekeningen = new Map((await laadFotos(tekst.filter(({ d }) => d.type === 'handtekening').map(({ v }) => v?.foto).filter(Boolean))).map((f) => [f.id, f.data]));
+  const waardeHtml = ({ d, v }) => {
+    if (d.type === 'handtekening') return `${esc(velden.toonWaarde(d, v, datumNL))}${handtekeningen.get(v?.foto) ? `<br><img class="ht-weergave" src="${esc(handtekeningen.get(v.foto))}" alt="Handtekening">` : ''}`;
+    if (d.type === 'locatie') return `${esc(velden.toonWaarde(d, v, datumNL))} <a href="https://www.google.com/maps/search/?api=1&query=${Number(v.lat)},${Number(v.lng)}" target="_blank" rel="noopener">Kaart ${I.extern}</a>`;
+    return esc(velden.toonWaarde(d, v, datumNL));
+  };
   return `<section class="kaart"><h2>Extra gegevens</h2>
-    ${tekst.length ? `<dl class="gegevens">${tekst.map(({ d, v }) => `<dt>${esc(d.label)}</dt><dd>${esc(velden.toonWaarde(d, v, datumNL))}</dd>`).join('')}</dl>` : ''}
-    ${fotoBlokken.join('')}</section>`;
+    ${tekst.length ? `<dl class="gegevens">${tekst.map((x) => `<dt>${esc(x.d.label)}</dt><dd>${waardeHtml(x)}</dd>`).join('')}</dl>` : ''}
+    ${fotoBlokken.join('')}${bijlageBlokken.join('')}</section>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -5752,7 +5928,8 @@ async function formulierveldenPagina(id, q) {
             <li class="${bewerk?.id === d.id ? 'actief' : ''}">
               <div><strong>${esc(d.label || '(zonder naam)')}</strong>
                 <small>${velden.VELDTYPEN[d.type]}${d.type === 'getal' && d.eenheid ? ` (${esc(d.eenheid)})` : ''}${d.verplicht ? ' · verplicht' : ''}
-                ${d.alleenBij?.length ? ` · alleen bij ${d.alleenBij.map((s) => esc(SOORT_LABEL[s] ?? s)).join(', ')}` : ''}</small></div>
+                ${d.alleenBij?.length ? ` · alleen bij ${d.alleenBij.map((s) => esc(SOORT_LABEL[s] ?? s)).join(', ')}` : ''}
+                ${d.toonAls?.veld ? ` · alleen als <em>${esc(lijst.find((x) => x.id === d.toonAls.veld)?.label ?? '?')}</em> = ${esc(d.toonAls.waarde)}` : ''}</small></div>
               <div class="knoppen" style="flex-wrap:nowrap">
                 <button class="knop klein" data-omhoog="${esc(d.id)}" ${i === 0 ? 'disabled' : ''} aria-label="Omhoog">↑</button>
                 <button class="knop klein" data-omlaag="${esc(d.id)}" ${i === eigen.length - 1 ? 'disabled' : ''} aria-label="Omlaag">↓</button>
@@ -5771,8 +5948,9 @@ async function formulierveldenPagina(id, q) {
     app.querySelectorAll('[data-weg]').forEach((k) => {
       k.onclick = async () => {
         const d = lijst.find((x) => x.id === k.dataset.weg);
-        if (!confirm(`Veld "${d.label}" verwijderen? Al ingevulde antwoorden blijven bij de registraties bewaard.`)) return;
-        lijst = lijst.filter((x) => x.id !== d.id);
+        const afhankelijk = lijst.filter((x) => x.toonAls?.veld === d.id).map((x) => x.label);
+        if (!confirm(`Veld "${d.label}" verwijderen? Al ingevulde antwoorden blijven bij de registraties bewaard.${afhankelijk.length ? `\n\nDeze velden hangen ervan af en worden daarna altijd getoond: ${afhankelijk.join(', ')}.` : ''}`)) return;
+        lijst = lijst.filter((x) => x.id !== d.id).map((x) => (x.toonAls?.veld === d.id ? { ...x, toonAls: null } : x));
         if (bewerk?.id === d.id) bewerk = null;
         await opslaan();
         teken();
@@ -5811,9 +5989,28 @@ async function formulierveldenPagina(id, q) {
             <div class="veld"><label for="v-eenheid">Eenheid</label><input id="v-eenheid" name="eenheid" maxlength="12" value="${esc(d.eenheid)}" placeholder="m², st., uur"></div>
             <div class="veld"><label for="v-min">Minimum</label><input id="v-min" name="min" type="number" step="any" value="${esc(d.min)}"></div>
             <div class="veld"><label for="v-max">Maximum</label><input id="v-max" name="max" type="number" step="any" value="${esc(d.max)}"></div>` : ''}
-          ${d.type === 'keuze' || d.type === 'checklist' ? `
-            <div class="veld breed"><label for="v-opties" class="vereist">${d.type === 'keuze' ? 'Keuzes' : 'Af te vinken punten'} (één per regel)</label>
-              <textarea id="v-opties" name="opties" placeholder="${d.type === 'keuze' ? 'Groenafval\nRestafval\nGrond' : 'Afzetting geplaatst\nWerkplek opgeruimd'}">${esc((d.opties ?? []).join('\n'))}</textarea></div>` : ''}
+          ${d.type === 'keuze' || d.type === 'checklist' || d.type === 'meerkeuze' ? `
+            <div class="veld breed"><label for="v-opties" class="vereist">${d.type === 'checklist' ? 'Af te vinken punten' : 'Keuzes'} (één per regel)</label>
+              <textarea id="v-opties" name="opties" placeholder="${d.type === 'checklist' ? 'Afzetting geplaatst\nWerkplek opgeruimd' : d.type === 'meerkeuze' ? 'Zwerfvuil\nGraffiti\nSchade' : 'Groenafval\nRestafval\nGrond'}">${esc((d.opties ?? []).join('\n'))}</textarea>
+              ${d.type === 'meerkeuze' ? '<small>De invuller mag meerdere keuzes aanvinken (of geen, als het veld niet verplicht is).</small>' : d.type === 'checklist' ? '<small>Bij verplicht moeten álle punten worden afgevinkt.</small>' : ''}</div>` : ''}
+          ${d.type === 'tijdsduur' ? `
+            <div class="veld breed"><label>Extra vragen</label><div class="chips">
+              <label class="chip"><input type="checkbox" name="pauze" ${d.pauze ? 'checked' : ''}><span>Pauze (minuten)</span></label>
+              <label class="chip"><input type="checkbox" name="ploeg" ${d.ploeg ? 'checked' : ''}><span>Aantal personen (manuren)</span></label></div>
+              <small>De duur wordt automatisch berekend; over middernacht werken mag.</small></div>` : ''}
+          ${d.type === 'locatie' ? '<div class="veld breed"><small>De invuller kiest zijn GPS-locatie of tikt een punt aan op de kaart (het object van de registratie staat erop).</small></div>' : ''}
+          ${d.type === 'handtekening' ? '<div class="veld breed"><small>De ondertekenaar tekent met de vinger op de telefoon en vult zijn naam in. Bij verplicht zijn handtekening én naam nodig.</small></div>' : ''}
+          ${d.type === 'bijlage' ? '<div class="veld breed"><small>Pdf, foto of document (Word, Excel), maximaal 10 MB per bestand, meerdere bestanden mogelijk.</small></div>' : ''}
+          ${(() => {
+    const bronnen = lijst.filter((x) => x.formulier === formulier && x.id !== d.id && velden.VOORWAARDE_TYPEN.includes(x.type) && x.label);
+    if (!bronnen.length) return '';
+    const bron = bronnen.find((x) => x.id === d.toonAls?.veld);
+    const waarden = bron ? (bron.type === 'janee' ? ['Ja', 'Nee'] : (bron.opties ?? [])) : [];
+    return `<div class="veld breed toonals"><label>Alleen tonen als</label><div class="toonals-regel">
+              <select name="toonAlsVeld" aria-label="Veld"><option value="">– altijd tonen –</option>${bronnen.map((x) => optie(x.id, x.label, d.toonAls?.veld ?? '')).join('')}</select>
+              ${bron ? `<span>is</span><select name="toonAlsWaarde" aria-label="Waarde">${waarden.map((w) => optie(w, w, d.toonAls?.waarde ?? waarden[0])).join('')}</select>` : ''}</div>
+              <small>Bijvoorbeeld: toon <em>Hoeveelheid</em> en <em>Stortbon</em> alleen als <em>Afgevoerd?</em> = Ja. Zo blijven formulieren kort.</small></div>`;
+  })()}
           <div class="veld breed"><label for="v-hulp">Toelichting voor de invuller</label>
             <input id="v-hulp" name="hulptekst" maxlength="200" value="${esc(d.hulptekst)}" placeholder="optioneel"></div>
           <div class="veld breed"><label>Alleen tonen bij ${formulier === 'taak' ? 'soort taak' : 'soort'}</label>
@@ -5836,10 +6033,17 @@ async function formulierveldenPagina(id, q) {
       });
       if (fd.has('eenheid')) Object.assign(bewerk, { eenheid: String(fd.get('eenheid')), min: String(fd.get('min')), max: String(fd.get('max')) });
       if (fd.has('opties')) bewerk.opties = String(fd.get('opties')).split('\n');
+      if (bewerk.type === 'tijdsduur') Object.assign(bewerk, { pauze: fd.get('pauze') === 'on', ploeg: fd.get('ploeg') === 'on' });
+      const tv = String(fd.get('toonAlsVeld') ?? '');
+      bewerk.toonAls = tv ? { veld: tv, waarde: String(fd.get('toonAlsWaarde') ?? (bewerk.toonAls?.veld === tv ? bewerk.toonAls.waarde : '')) } : null;
+      if (bewerk.toonAls && !bewerk.toonAls.waarde) {
+        const bron = lijst.find((x) => x.id === tv);
+        bewerk.toonAls.waarde = bron?.type === 'janee' ? 'Ja' : (bron?.opties?.[0] ?? '');
+      }
     };
     form.addEventListener('change', (e) => {
       lees();
-      if (e.target.name === 'type') tekenEditor();
+      if (e.target.name === 'type' || e.target.name === 'toonAlsVeld') tekenEditor();
       else el.querySelector('.voorbeeld').innerHTML = bewerk.label ? extraVeldenHtml([velden.normaliseer(bewerk)], {}, {}) : '';
     });
     form.addEventListener('input', (e) => {
@@ -5853,7 +6057,7 @@ async function formulierveldenPagina(id, q) {
       lees();
       const n = velden.normaliseer(bewerk);
       if (!n.label) return melding('Geef het veld een naam.', 'fout');
-      if ((n.type === 'keuze' || n.type === 'checklist') && !n.opties.length) return melding('Vul minstens één keuze of punt in.', 'fout');
+      if ((n.type === 'keuze' || n.type === 'checklist' || n.type === 'meerkeuze') && !n.opties.length) return melding('Vul minstens één keuze of punt in.', 'fout');
       if (n.type === 'getal' && n.min !== '' && n.max !== '' && Number(n.min) > Number(n.max)) return melding('Minimum is groter dan maximum.', 'fout');
       const i = lijst.findIndex((x) => x.id === n.id);
       if (i >= 0) lijst[i] = n; else lijst.push(n);

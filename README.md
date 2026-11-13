@@ -376,6 +376,15 @@ De velden verschijnen automatisch op telefoon en pc in het blok *Extra gegevens*
 rapport, en krijgen een eigen kolom in de CSV-export van werkzaamheden. Antwoorden blijven bewaard als een veld
 later wordt verwijderd.
 
+
+**Veldtypen**: tekst, getal (eenheid, min/max), keuzelijst, ja/nee, datum, tijd, foto, checklist (alles afvinken),
+**meerkeuze** (meerdere opties), **locatie** (GPS of punt op de kaart, met het object als achtergrond), **handtekening**
+(tekenen met de vinger + naam ondertekenaar; opgeslagen als afbeelding), **begin- en eindtijd** (optioneel pauze en
+aantal personen; duur en manuren worden berekend, over middernacht mag) en **bijlage** (pdf/foto/document, max. 10 MB).
+
+**Alleen tonen als …**: een veld kan afhangen van een ja/nee-, keuze- of meerkeuzeveld (bijv. *Hoeveelheid* en
+*Stortbon* alleen als *Afgevoerd?* = Ja). Verborgen velden zijn nooit verplicht en worden niet opgeslagen.
+
 ## Kleurthema
 
 De app is standaard licht, ook als de pc of telefoon op donkere modus staat. Onder *Instellingen → Voorkeuren* kun je
