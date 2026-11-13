@@ -967,3 +967,23 @@ body.inlogscherm .statusregel { display: none !important; }
 .minstall ol li { margin: .15rem 0; }
 .minstall p { margin: .5rem 0; font-size: .92rem; }
 .minstall .knoppen { margin-top: .5rem; }
+
+/* Iconen (lijn-iconen in plaats van emoji) */
+.ico { display: inline-block; width: 1.1em; height: 1.1em; vertical-align: -0.18em; flex: none; stroke-width: 2; }
+.knop .ico { width: 1.05em; height: 1.05em; margin-right: .1em; }
+.knop.klein .ico { width: 1em; height: 1em; }
+.micoon { color: var(--primair); }
+.micoon .ico { width: 1.6rem; height: 1.6rem; stroke-width: 1.75; }
+.micoon.klein .ico { width: 1.25rem; height: 1.25rem; }
+.onderbalk a span { display: grid; place-items: center; }
+.onderbalk a span .ico { width: 1.55rem; height: 1.55rem; stroke-width: 1.75; vertical-align: 0; }
+.tabbalk a .ico { color: var(--tekst-zacht); margin-right: .25rem; }
+.tabbalk a.actief .ico { color: var(--primair); }
+.mhier > .ico, .waarschuwingskaart > .ico { color: var(--primair); margin-right: .25rem; }
+.waarschuwingskaart > .ico { color: #b45309; }
+.label-status .ico, .score .ico { width: .95em; height: .95em; vertical-align: -0.15em; }
+.dz-icoon .ico { width: 2.5rem; height: 2.5rem; stroke-width: 1.5; color: var(--primair); }
+.inlog-vink .ico { width: 2.6rem; height: 2.6rem; stroke-width: 1.5; color: var(--primair); }
+.kaartpin .ico { color: var(--primair); }
+.statusregel .ico { margin-right: .3rem; }
+.paginakop h2 .ico, .kaart h2 .ico { color: var(--primair); margin-right: .2rem; }

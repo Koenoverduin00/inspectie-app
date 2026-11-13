@@ -26,6 +26,7 @@ import * as ST from './stowa.js';
 import * as DG from './digigids.js';
 import * as PL from './planning.js';
 import * as DB from './dashboard.js';
+import { I, ico } from './iconen.js';
 import { takenLijst, sorteerTaken, objectGeometrie, PRIORITEITEN } from './taken.js';
 
 const app = document.getElementById('app');
@@ -104,8 +105,8 @@ const ROUTES = [
 // Het hoofdmenu is compact: onderdelen vallen onder een hoofdgroep en hebben daar een tabblad.
 const NAV_GROEP = { inspecties: 'werkpakketten', werkzaamheden: 'werkpakketten', maatregelen: 'werkpakketten', taken: 'planning', kaart: 'instellingen' };
 const TABBLADEN = {
-  werkpakketten: () => [['#/werkpakketten', '📦 Werkpakketten'], ['#/inspecties', '🔍 Inspecties'], ['#/werkzaamheden', '🛠️ Werkzaamheden'], ['#/maatregelen', '⚠️ Maatregelen']],
-  instellingen: () => (magBeheren() ? [['#/instellingen', '⚙️ Algemeen'], ['#/kaart', '🗺️ Kaart & GIS']] : []),
+  werkpakketten: () => [['#/werkpakketten', I.pakket + ' Werkpakketten'], ['#/inspecties', I.inspectie + ' Inspecties'], ['#/werkzaamheden', I.werk + ' Werkzaamheden'], ['#/maatregelen', I.let + ' Maatregelen']],
+  instellingen: () => (magBeheren() ? [['#/instellingen', I.instellingen + ' Algemeen'], ['#/kaart', I.kaart + ' Kaart & GIS']] : []),
 };
 // Alleen de overzichtspagina's krijgen tabbladen (geen formulieren of details).
 const TAB_PAGINAS = /^\/(werkpakketten|inspecties|werkzaamheden|maatregelen|instellingen|kaart)$/;
@@ -166,7 +167,7 @@ async function toonRoute() {
     // Meestal: de pagina komt uit een nieuwere versie van de app die nog niet volledig geladen is.
     app.innerHTML = `<div class="kaart leeg"><h1>Pagina niet gevonden</h1>
       <p>Mogelijk is er net een nieuwe versie van de app verschenen. Vernieuw de app om die te laden.</p>
-      <div class="knoppen" style="justify-content:center"><button class="knop primair" id="vernieuw">↻ App vernieuwen</button><a class="knop" href="#/">Naar het dashboard</a></div></div>`;
+      <div class="knoppen" style="justify-content:center"><button class="knop primair" id="vernieuw">${I.vernieuw} App vernieuwen</button><a class="knop" href="#/">Naar het dashboard</a></div></div>`;
     app.querySelector('#vernieuw').onclick = vernieuwApp;
     return;
   }
@@ -346,7 +347,7 @@ function locatieBlok(o) {
   return `<section class="kaart locatieblok"><h2>Locatie</h2>
     <div id="objectkaartje" class="objectkaartje"><p class="leeg">Kaart laden…</p></div>
     ${c ? `<p class="locatieregel"><small>${esc(o.locatie ? `${o.locatie} · ` : '')}RD X ${rd[0].toFixed(1)} · Y ${rd[1].toFixed(1)} · ${c[1].toFixed(6)}, ${c[0].toFixed(6)}</small>
-      <a class="geen-print" href="https://www.google.com/maps/search/?api=1&query=${c[1].toFixed(6)},${c[0].toFixed(6)}" target="_blank" rel="noopener">Navigeren ↗</a></p>` : ''}</section>`;
+      <a class="geen-print" href="https://www.google.com/maps/search/?api=1&query=${c[1].toFixed(6)},${c[0].toFixed(6)}" target="_blank" rel="noopener">Navigeren ${I.extern}</a></p>` : ''}</section>`;
 }
 
 const kenmerk = (label, waarde) => (waarde === '' || waarde === null || waarde === undefined ? ''
@@ -357,7 +358,7 @@ async function nenGebrekKaart(g, n) {
   const s = gebrekScore(g);
   return `<article class="gebrekkaart" data-bevinding="${esc(String(g.id ?? ''))}" style="--gk:${CONDITIES[s]?.kleur ?? '#9aa5b1'}">
     <header><span class="gk-nr">${n + 1}</span>
-      <div class="gk-titel"><h3>${esc(g.bouwdeel || 'Bouwdeel onbekend')} – ${esc(g.gebrek || 'gebrek')}</h3>${g.locatie ? `<small>📍 ${esc(g.locatie)}</small>` : ''}</div>
+      <div class="gk-titel"><h3>${esc(g.bouwdeel || 'Bouwdeel onbekend')} – ${esc(g.gebrek || 'gebrek')}</h3>${g.locatie ? `<small>${I.locatie} ${esc(g.locatie)}</small>` : ''}</div>
       ${scoreLabel(s)}</header>
     <div class="kenmerken">
       ${kenmerk('Ernst', esc(ERNST[g.ernst]?.label ?? '–'))}
@@ -419,7 +420,7 @@ async function dashboard() {
         <p>Dit project heeft nog geen objecten. Laad een GIS-bestand in (elk vlak wordt een object),<br>
         registreer objecten met de hand, of laad voorbeelddata om de app te verkennen.</p>
         <div class="knoppen" style="justify-content:center">
-          ${magBeheren() ? '<a class="knop primair" href="#/gis/importeren">🗺️ GIS-laag inladen</a>' : ''}
+          ${magBeheren() ? '<a class="knop primair" href="#/gis/importeren">' + I.kaart + ' GIS-laag inladen</a>' : ''}
           <a class="knop" href="#/objecten/nieuw">+ Object registreren</a>
           <button class="knop" id="demo">Voorbeelddata laden</button>
         </div>
@@ -462,7 +463,7 @@ async function dashboard() {
   };
   const trend = vorigeWeek.aantal ? Math.round(((dezeWeek.aantal - vorigeWeek.aantal) / vorigeWeek.aantal) * 100) : null;
   const werkBlok = `<section class="kaart werkblok">
-    <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">🛠️ Uitgevoerde werkzaamheden</h2><a href="#/werkzaamheden">Alle werkzaamheden →</a></div>
+    <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">${I.werk} Uitgevoerde werkzaamheden</h2><a href="#/werkzaamheden">Alle werkzaamheden →</a></div>
     <div class="werkblok-raster">
       <div>
         <div class="werkstand">
@@ -543,9 +544,9 @@ async function dashboard() {
           <small>${pakketRondesTekst(p)}</small>
           ${voortgangBalk(g.voortgangen.get(p.id))}</a>`;
         }).join('')}</div>` : '<p class="leeg">Geen lopende werkpakketten.</p>'}
-        ${afgerondRecent.length ? `<p class="tussenkop">✓ Afgerond in de laatste 60 dagen: ${afgerondRecent.map((x) => esc(x.v.naam)).join(', ')}</p>` : ''}
+        ${afgerondRecent.length ? `<p class="tussenkop">${I.vink} Afgerond in de laatste 60 dagen: ${afgerondRecent.map((x) => esc(x.v.naam)).join(', ')}</p>` : ''}
       </section>
-      ${rondesBlok(achter.length ? `⚠️ Aandacht: ${achter.length} ronde${achter.length === 1 ? '' : 's'} achter op schema` : 'Lopende rondes', lopend, 'Er loopt op dit moment geen ronde.')}
+      ${rondesBlok(achter.length ? `${I.let} Aandacht: ${achter.length} ronde${achter.length === 1 ? '' : 's'} achter op schema` : 'Lopende rondes', lopend, 'Er loopt op dit moment geen ronde.')}
       ${werkBlok}
       <section class="kaart">
         <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">Open maatregelen uit inspecties</h2><a href="#/maatregelen">Alle maatregelen →</a></div>
@@ -567,7 +568,7 @@ async function dashboard() {
       <div class="knoppen">
         ${schakelaar}
         ${rol === 'opdrachtgever'
-    ? '<a class="knop" href="#/planning">📅 Planning</a><a class="knop primair" href="#/werkpakketten">📦 Werkpakketten</a>'
+    ? '<a class="knop" href="#/planning">' + I.kalender + ' Planning</a><a class="knop primair" href="#/werkpakketten">' + I.pakket + ' Werkpakketten</a>'
     : '<a class="knop" href="#/inspecties/nieuw">+ Inspectie</a><a class="knop primair" href="#/werkzaamheden/nieuw">+ Werkzaamheid</a>'}
       </div>
     </div>
@@ -611,8 +612,8 @@ async function objectenLijst() {
       <select id="planning" aria-label="Planning"><option value="">Alle planningen</option>
         ${Object.entries(PLANNING_TEKST).filter(([k]) => k !== 'onbekend').map(([k, v]) => optie(k, v)).join('')}</select>
       <div class="segment weergavekeuze" role="radiogroup" aria-label="Weergave">
-        <label><input type="radio" name="oweergave" value="lijst" ${weergave === 'lijst' ? 'checked' : ''}><span>☰ Lijst</span></label>
-        <label><input type="radio" name="oweergave" value="kaart" ${weergave === 'kaart' ? 'checked' : ''}><span>🗺️ Kaart</span></label></div>
+        <label><input type="radio" name="oweergave" value="lijst" ${weergave === 'lijst' ? 'checked' : ''}><span>${I.lijst} Lijst</span></label>
+        <label><input type="radio" name="oweergave" value="kaart" ${weergave === 'kaart' ? 'checked' : ''}><span>${I.kaart} Kaart</span></label></div>
     </div>
     <div id="objectkaart-blok" ${weergave === 'kaart' ? '' : 'hidden'}>
       <div class="kaartindeling">
@@ -644,7 +645,7 @@ async function objectenLijst() {
     app.querySelector('#rijen').innerHTML = rijen.length ? rijen.map((o) => {
       const s = status.get(o.id);
       return `<tr class="klikbaar" data-href="#/objecten/${esc(o.id)}">
-        <td><strong>${esc(o.code)}</strong>${objectGeometrie(o) ? ` <button type="button" class="kaartpin" data-opkaart="${esc(o.id)}" title="Op de kaart tonen" aria-label="${esc(o.code)} op de kaart tonen">📍</button>` : ''}</td><td>${esc(o.naam)}</td><td class="verberg-mobiel">${esc(o.type)}</td>
+        <td><strong>${esc(o.code)}</strong>${objectGeometrie(o) ? ` <button type="button" class="kaartpin" data-opkaart="${esc(o.id)}" title="Op de kaart tonen" aria-label="${esc(o.code)} op de kaart tonen">${I.locatie}</button>` : ''}</td><td>${esc(o.naam)}</td><td class="verberg-mobiel">${esc(o.type)}</td>
         <td class="verberg-mobiel">${esc(o.bouwjaar || '–')}</td><td>${oordeelLabel(s)}</td>
         <td class="verberg-mobiel">${datumNL(s.laatste?.datum)}</td><td>${planningLabel(s.planning)}</td></tr>`;
     }).join('') : `<tr><td colspan="7" class="leeg">${objecten.length ? 'Geen objecten gevonden met deze filters.' : 'Nog geen objecten. <a href="#/objecten/nieuw">Registreer het eerste object</a>.'}</td></tr>`;
@@ -749,7 +750,7 @@ async function objectDetail(id) {
       <div class="knoppen">
         <a class="knop" href="#/objecten/${esc(id)}/bewerken">Bewerken</a>
         <button class="knop gevaar" id="verwijder">Verwijderen</button>
-        ${/^Boom|beplanting/i.test(o.type ?? '') ? `<a class="knop" href="#/bvc/nieuw?object=${esc(id)}">🌳 BVC</a>` : ''}
+        ${/^Boom|beplanting/i.test(o.type ?? '') ? `<a class="knop" href="#/bvc/nieuw?object=${esc(id)}">${I.boom} BVC</a>` : ''}
         <a class="knop" href="#/taken/nieuw?object=${esc(id)}">+ Taak</a>
         <a class="knop" href="#/werkzaamheden/nieuw?object=${esc(id)}">+ Werkzaamheid</a>
         <a class="knop primair" href="#/inspecties/nieuw?object=${esc(id)}">+ Nieuwe inspectie</a>
@@ -808,7 +809,7 @@ async function objectDetail(id) {
     <section class="kaart">
       <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">Open taken</h2><a class="knop klein" href="#/taken/nieuw?object=${esc(id)}">+ Taak plannen</a></div>
       ${objectTaken.length ? `<div class="tabelhouder"><table><tbody>${objectTaken.map((t) => `
-        <tr class="klikbaar" data-href="${taakHref(t, false)}"><td>${rangLabel(t.rang)}</td><td>${t.soort === 'werk' ? '🛠️' : '🔍'} ${esc(t.titel)}</td>
+        <tr class="klikbaar" data-href="${taakHref(t, false)}"><td>${rangLabel(t.rang)}</td><td>${t.soort === 'werk' ? I.werk : I.inspectie} ${esc(t.titel)}</td>
         <td>${t.deadline ? datumNL(t.deadline) : ''}</td><td>${esc(t.toegewezenAan || '')}</td></tr>`).join('')}</tbody></table></div>`
     : '<p class="leeg">Geen open taken voor dit object.</p>'}
     </section>
@@ -877,7 +878,7 @@ async function objectFormulier(id) {
           <input id="f-locatie" name="locatie" value="${esc(o.locatie)}" maxlength="200" placeholder="Straat, kilometrering, watergang…"></div>
         ${veld('lat', 'Breedtegraad (lat)', 'step="any" min="-90" max="90" inputmode="decimal"', 'number')}
         ${veld('lng', 'Lengtegraad (lng)', 'step="any" min="-180" max="180" inputmode="decimal"', 'number')}
-        <div class="veld" style="justify-content:flex-end"><button type="button" class="knop" id="gps">📍 Huidige locatie gebruiken</button></div>
+        <div class="veld" style="justify-content:flex-end"><button type="button" class="knop" id="gps">${I.locatie} Huidige locatie gebruiken</button></div>
         <div class="veld breed"><label for="f-notities">Notities</label>
           <textarea id="f-notities" name="notities" maxlength="4000">${esc(o.notities)}</textarea></div>
       </div>
@@ -948,9 +949,9 @@ async function inspectiesLijst() {
   app.innerHTML = `
     <div class="paginakop">
       <div><h1>Inspecties</h1><p>${inspecties.length} inspecties geregistreerd.</p></div>
-      <div class="knoppen"><button class="knop" id="resultaten-xls" title="De inspecties die nu gefilterd zijn, met gebreken en maatregelen">📊 Excel</button>
+      <div class="knoppen"><button class="knop" id="resultaten-xls" title="De inspecties die nu gefilterd zijn, met gebreken en maatregelen">${I.excel} Excel</button>
         <button class="knop" id="suf" title="Standaard Uitwisselingsformaat boomveiligheidscontrole (CROW)">SUF-BVC export</button>
-        <a class="knop" href="#/inspecties/nieuw?calamiteit=1" title="Zonder werkpakket">⚠️ Incident / calamiteit</a>
+        <a class="knop" href="#/inspecties/nieuw?calamiteit=1" title="Zonder werkpakket">${I.let} Incident / calamiteit</a>
         <a class="knop primair" href="#/inspecties/nieuw">+ Nieuwe inspectie</a></div>
     </div>
     <div class="filters">
@@ -960,8 +961,8 @@ async function inspectiesLijst() {
       <select id="jaar" aria-label="Jaar"><option value="">Alle jaren</option>
         ${[...new Set(inspecties.map((i) => String(i.datum).slice(0, 4)))].map((j) => optie(j, j)).join('')}</select>
       <div class="segment weergavekeuze" role="radiogroup" aria-label="Weergave">
-        <label><input type="radio" name="iweergave" value="lijst" ${weergave === 'lijst' ? 'checked' : ''}><span>☰ Lijst</span></label>
-        <label><input type="radio" name="iweergave" value="kaart" ${weergave === 'kaart' ? 'checked' : ''}><span>🗺️ Kaart</span></label></div>
+        <label><input type="radio" name="iweergave" value="lijst" ${weergave === 'lijst' ? 'checked' : ''}><span>${I.lijst} Lijst</span></label>
+        <label><input type="radio" name="iweergave" value="kaart" ${weergave === 'kaart' ? 'checked' : ''}><span>${I.kaart} Kaart</span></label></div>
     </div>
     <div id="inspectiekaart-blok" ${weergave === 'kaart' ? '' : 'hidden'}>
       <div class="kaartindeling">
@@ -1132,8 +1133,8 @@ async function fotoOpslagBlok(el) {
       ${vast !== null ? `<dt>Beschermd tegen opruimen</dt><dd>${vast ? 'Ja' : 'Nee – de browser mag bij ruimtegebrek gegevens wissen'}</dd>` : ''}
     </dl>
     <div class="knoppen">
-      <button type="button" class="knop" id="fotos-opruimen" ${anders.length ? '' : 'disabled'}>🧹 ${anders.length ? `${anders.length} foto's van andere projecten verwijderen (${mb(andersBytes)})` : 'Geen foto’s van andere projecten'}</button>
-      ${vast === false ? '<button type="button" class="knop" id="opslag-vast">🔒 Opslag beschermen</button>' : ''}
+      <button type="button" class="knop" id="fotos-opruimen" ${anders.length ? '' : 'disabled'}>${I.opruimen} ${anders.length ? `${anders.length} foto's van andere projecten verwijderen (${mb(andersBytes)})` : 'Geen foto’s van andere projecten'}</button>
+      ${vast === false ? '<button type="button" class="knop" id="opslag-vast">' + I.slot + ' Opslag beschermen</button>' : ''}
     </div>
     <p><small>Opruimen verwijdert alleen foto's die al online staan; ze worden opnieuw geladen als je ze weer opent.</small></p>`;
 
@@ -1215,7 +1216,7 @@ async function inspectiepakketKiezer(objectId, { mobiel = false, taakId = null, 
     : `Er ${mobiel ? 'is voor jou' : 'is'} geen actieve inspectieronde${alleen ? ` (${titel.toLowerCase()})` : ''}.`;
   app.innerHTML = `${kop}
     ${lijst.length ? `<ul class="mlijst pakketlijst ${mobiel ? '' : 'kaart'}">${lijst.map(({ pakket: v, voortgang }) => `
-      <li><a href="${href(v)}"><span class="micoon klein">${v.inspectiesoort === BV.BVC_SOORT ? '🌳' : v.inspectiesoort === ST.STOWA_SOORT ? '🌊' : '🔍'}</span>
+      <li><a href="${href(v)}"><span class="micoon klein">${v.inspectiesoort === BV.BVC_SOORT ? I.boom : v.inspectiesoort === ST.STOWA_SOORT ? I.water : I.inspectie}</span>
         <span><strong>${esc(v.naam)}</strong><small>${v.code ? `${esc(v.code)} · ` : ''}${esc(v.inspectiesoort || 'Inspectie')}${periodeTekst(v) ? ` · ${periodeTekst(v)}` : ''}</small>
         ${voortgangBalk(voortgang)}</span></a></li>`).join('')}</ul>`
     : `<div class="kaart leeg"><p>${leeg}</p>
@@ -1224,7 +1225,7 @@ async function inspectiepakketKiezer(objectId, { mobiel = false, taakId = null, 
     : 'Vraag de beheerder om een werkpakket aan te maken of de ronde actief te zetten.'}</small></p>
       ${magBeheren() && !mobiel ? `<div class="knoppen" style="justify-content:center"><a class="knop primair" href="#/werkpakketten/nieuw${objectId ? `?object=${esc(objectId)}` : ''}">+ Werkpakket${object ? ' met dit object' : ''}</a>
         <a class="knop" href="#/planning">Naar de planning</a></div>` : ''}</div>`}
-    ${alleen ? '' : `<a class="knop ${mobiel ? 'mgroot' : ''} calamiteitknop" href="${calamiteit}">⚠️ Inspectie na incident of calamiteit (zonder werkpakket)</a>`}`;
+    ${alleen ? '' : `<a class="knop ${mobiel ? 'mgroot' : ''} calamiteitknop" href="${calamiteit}">${I.let} Inspectie na incident of calamiteit (zonder werkpakket)</a>`}`;
 }
 
 async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null, pakketId = null, rondeId = null, calamiteit = false } = {}) {
@@ -1309,9 +1310,9 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
       <div><small>${bestaand ? 'Inspectie bewerken' : 'Schouw & inspectie'}</small>
       <h1>${object ? `${esc(object.code)} – ${esc(object.naam)}` : 'Kies een object'}</h1></div></div>
     <form id="form" novalidate class="mform">
-      ${taak ? `<div class="kaart mhier">📋 <strong>Taak:</strong> ${esc(taak.titel)}${taak.omschrijving ? `<br><small>${esc(taak.omschrijving)}</small>` : ''}</div>` : ''}
-      ${pakket ? `<div class="kaart mhier">📦 <strong>Werkpakket:</strong> ${esc(pakket.naam)}<br><small>Telt mee als gedaan na <strong>Afronden</strong>.</small></div>` : ''}
-      ${!pakket && !bestaand ? '<div class="kaart waarschuwingskaart">⚠️ <strong>Inspectie na incident of calamiteit</strong><br><small>Zonder werkpakket. Gebruik dit alleen voor een onverwachte situatie; reguliere inspecties gaan via een werkpakket.</small></div>' : ''}
+      ${taak ? `<div class="kaart mhier">${I.taak} <strong>Taak:</strong> ${esc(taak.titel)}${taak.omschrijving ? `<br><small>${esc(taak.omschrijving)}</small>` : ''}</div>` : ''}
+      ${pakket ? `<div class="kaart mhier">${I.pakket} <strong>Werkpakket:</strong> ${esc(pakket.naam)}<br><small>Telt mee als gedaan na <strong>Afronden</strong>.</small></div>` : ''}
+      ${!pakket && !bestaand ? '<div class="kaart waarschuwingskaart">' + I.let + ' <strong>Inspectie na incident of calamiteit</strong><br><small>Zonder werkpakket. Gebruik dit alleen voor een onverwachte situatie; reguliere inspecties gaan via een werkpakket.</small></div>' : ''}
       <section class="kaart">
         <div class="velden">${objectVeld}${veldSoort}${veldDatum}${veldSamenvatting}${veldFotos}</div>
         <details data-details="algemeen"><summary>Inspecteur en weer</summary>
@@ -1323,16 +1324,16 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
       <button type="button" class="knop mgroot" id="gebrek-toevoegen">＋ Gebrek vastleggen</button>
       <div class="mvoet">
         <button class="knop" type="submit" data-status="concept">Concept</button>
-        <button class="knop primair" type="submit" data-status="afgerond">✓ Afronden</button>
+        <button class="knop primair" type="submit" data-status="afgerond">${I.vink} Afronden</button>
       </div>
     </form>` : `
     <div class="paginakop"><div><p><a href="${terug}">← Terug</a></p>
       <h1>${bestaand ? 'Inspectie bewerken' : 'Nieuwe inspectie'}</h1></div>
       <div id="totaal"></div></div>
     <form id="form" novalidate>
-      ${taak ? `<div class="kaart mhier">📋 <strong>Taak:</strong> ${esc(taak.titel)}</div>` : ''}
-      ${pakket ? `<div class="kaart mhier">📦 <strong>Werkpakket:</strong> ${esc(pakket.naam)} <small>· telt mee als gedaan na <strong>Afronden</strong></small></div>` : ''}
-      ${!pakket && !bestaand ? '<div class="kaart waarschuwingskaart">⚠️ <strong>Inspectie na incident of calamiteit</strong><br><small>Zonder werkpakket. Gebruik dit alleen voor een onverwachte situatie; reguliere inspecties gaan via een werkpakket.</small></div>' : ''}
+      ${taak ? `<div class="kaart mhier">${I.taak} <strong>Taak:</strong> ${esc(taak.titel)}</div>` : ''}
+      ${pakket ? `<div class="kaart mhier">${I.pakket} <strong>Werkpakket:</strong> ${esc(pakket.naam)} <small>· telt mee als gedaan na <strong>Afronden</strong></small></div>` : ''}
+      ${!pakket && !bestaand ? '<div class="kaart waarschuwingskaart">' + I.let + ' <strong>Inspectie na incident of calamiteit</strong><br><small>Zonder werkpakket. Gebruik dit alleen voor een onverwachte situatie; reguliere inspecties gaan via een werkpakket.</small></div>' : ''}
       <section class="kaart">
         <h2>Algemeen</h2>
         <div class="velden">${objectVeld}${veldDatum}${veldInspecteur}${veldSoort}${veldWeer}${veldSamenvatting}${veldFotos}</div>
@@ -1374,7 +1375,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     <div class="fotos">
       ${fotos.map((f, n) => `<div class="foto"><img src="${esc(f.data)}" alt="Foto ${n + 1}" data-lichtbak>
         <button type="button" data-foto-weg="${esc(sleutel)}:${n}" aria-label="Foto verwijderen">×</button></div>`).join('')}
-      <label class="knop fotoknop">📷 Foto${mobiel ? '' : ' toevoegen'}
+      <label class="knop fotoknop">${I.camera} Foto${mobiel ? '' : ' toevoegen'}
         <input type="file" accept="image/*" capture="environment" multiple data-foto-bij="${esc(sleutel)}"></label>
     </div>`;
 
@@ -1425,7 +1426,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     <div class="gebrek" data-gebrek="${i}" style="border-left-color:${CONDITIES[gebrekScore(g)].kleur}">
       <div class="gebrek-kop"><h3 style="margin:0">Gebrek ${i + 1}</h3>
         <div class="knoppen"><span data-score="${i}">${scoreVoor(g)}</span>
-        <button type="button" class="knop klein gevaar" data-gebrek-weg="${i}">${mobiel ? '🗑' : 'Verwijderen'}</button></div></div>
+        <button type="button" class="knop klein gevaar" data-gebrek-weg="${i}">${mobiel ? I.verwijder : 'Verwijderen'}</button></div></div>
       ${inhoud}
     </div>`;
   };
@@ -1605,7 +1606,7 @@ async function inspectieDetail(id) {
           ${i.weer ? `<dt>Weer</dt><dd>${esc(i.weer)}</dd>` : ''}
           <dt>Gebreken</dt><dd>${gebreken.length}</dd>
           ${o?.inspectieInterval ? `<dt>Volgende inspectie</dt><dd>${datumNL(volgendeInspectie(i.datum, o.inspectieInterval))}</dd>` : ''}
-          ${pakket ? `<dt>Werkpakket</dt><dd><a href="${pakketPagina(pakket, false)}">📦 ${esc(pakket.naam)}</a></dd>` : ''}
+          ${pakket ? `<dt>Werkpakket</dt><dd><a href="${pakketPagina(pakket, false)}">${I.pakket} ${esc(pakket.naam)}</a></dd>` : ''}
         </dl>
       </section>
       ${locatieBlok(o)}
@@ -1746,7 +1747,7 @@ async function bevindingTaakDialoog(insp, g) {
   const d = document.createElement('dialog');
   d.className = 'dialoog';
   d.innerHTML = `<form method="dialog">
-    <h2>➜ Als taak doorzetten</h2>
+    <h2>${I.door} Als taak doorzetten</h2>
     <p><small>${esc([g.bouwdeel, g.gebrek].filter(Boolean).join(' – '))}${g.urgentie ? ` · ${esc(URGENTIES.find((u) => u.id === g.urgentie)?.label ?? '')}` : ''}</small></p>
     <div class="velden">
       <div class="veld breed"><label for="t-titel" class="vereist">Taak</label><input id="t-titel" value="${esc(v.titel)}" maxlength="160"></div>
@@ -1767,7 +1768,7 @@ async function bevindingTaakDialoog(insp, g) {
   return true;
 }
 
-const taakStatusLabel = (t) => `<a class="label-status ${t.status === 'gereed' ? 'afgerond' : 'binnenkort'}" href="#/taken/${esc(t.id)}/bewerken" title="${esc(t.titel)}">📋 Taak${t.status === 'gereed' ? ' gereed' : ''}${t.deadline ? ` · ${datumNL(t.deadline)}` : ''}${t.toegewezenAan ? ` · ${esc(t.toegewezenAan.split('@')[0])}` : ''}</a>`;
+const taakStatusLabel = (t) => `<a class="label-status ${t.status === 'gereed' ? 'afgerond' : 'binnenkort'}" href="#/taken/${esc(t.id)}/bewerken" title="${esc(t.titel)}">${I.taak} Taak${t.status === 'gereed' ? ' gereed' : ''}${t.deadline ? ` · ${datumNL(t.deadline)}` : ''}${t.toegewezenAan ? ` · ${esc(t.toegewezenAan.split('@')[0])}` : ''}</a>`;
 
 /** Voegt op een inspectiepagina per bevinding een taakknop toe, en bovenaan "alle open bevindingen als taak". */
 async function bevindingKnoppen(insp) {
@@ -1787,7 +1788,7 @@ async function bevindingKnoppen(insp) {
       plek.innerHTML = g.maatregelStatus === 'uitgevoerd' ? '<span class="label-status uitgevoerd">Maatregel uitgevoerd</span>'
         : t ? taakStatusLabel(t)
           : auto && (g.maatregel || g.urgentie) ? '<small class="hulptekst">Automatisch een taak (projectinstelling)</small>'
-            : `<button type="button" class="knop klein" data-als-taak="${esc(String(g.id))}">➜ Als taak</button>`;
+            : `<button type="button" class="knop klein" data-als-taak="${esc(String(g.id))}">${I.door} Als taak</button>`;
     });
     const open = items.filter((g) => g.maatregelStatus !== 'uitgevoerd' && !taken.has(bevindingSleutel(insp, g)));
     let balk = app.querySelector('#bevinding-balk');
@@ -1798,7 +1799,7 @@ async function bevindingKnoppen(insp) {
       kop.after(balk);
     }
     balk.innerHTML = open.length && !auto
-      ? `<span>${open.length} bevinding${open.length === 1 ? '' : 'en'} nog geen taak.</span><button type="button" class="knop klein" id="alle-als-taak">➜ Alle open bevindingen als taak</button>`
+      ? `<span>${open.length} bevinding${open.length === 1 ? '' : 'en'} nog geen taak.</span><button type="button" class="knop klein" id="alle-als-taak">${I.door} Alle open bevindingen als taak</button>`
       : auto ? '<span>In dit project worden alle bevindingen met een maatregel automatisch een taak.</span>' : '';
   };
   teken();
@@ -1830,7 +1831,7 @@ async function maatregelen() {
   app.innerHTML = `
     <div class="paginakop">
       <div><h1>Maatregelen</h1><p>Onderhoudsadviezen uit alle inspecties, gesorteerd op urgentie. Zet een bevinding door als taak om hem in te plannen en uit te laten voeren.</p></div>
-      <div class="knoppen"><button class="knop" id="zichtbaar-als-taak">➜ Zichtbare als taak</button><button class="knop" id="export">CSV exporteren</button></div>
+      <div class="knoppen"><button class="knop" id="zichtbaar-als-taak">${I.door} Zichtbare als taak</button><button class="knop" id="export">CSV exporteren</button></div>
     </div>
     <div class="filters">
       <select id="status" aria-label="Status">${optie('open', 'Openstaand', 'open')}${optie('uitgevoerd', 'Uitgevoerd')}${optie('', 'Alle')}</select>
@@ -1860,8 +1861,8 @@ async function maatregelen() {
         <td class="verberg-mobiel">${esc(g.maatregel || '–')}</td>
         <td>${g.urgentieKleur ? stowaLabel(g.urgentieKleur) : g.bvcMaatregel ? bvkLabel(i.bvc?.bvk) : scoreLabel(gebrekScore(g))}</td><td>${euro(g.kostenraming)}</td>
         <td>${taken.has(bevindingSleutel(i, g)) ? taakStatusLabel(taken.get(bevindingSleutel(i, g)))
-    : g.maatregelStatus === 'uitgevoerd' ? '–' : auto ? '<small>automatisch</small>' : `<button class="knop klein" data-als-taak="${n}">➜ Als taak</button>`}</td>
-        <td><button class="knop klein" data-wissel="${n}">${g.maatregelStatus === 'uitgevoerd' ? 'Heropenen' : '✓ Uitgevoerd'}</button></td>
+    : g.maatregelStatus === 'uitgevoerd' ? '–' : auto ? '<small>automatisch</small>' : `<button class="knop klein" data-als-taak="${n}">${I.door} Als taak</button>`}</td>
+        <td><button class="knop klein" data-wissel="${n}">${g.maatregelStatus === 'uitgevoerd' ? 'Heropenen' : I.vink + ' Uitgevoerd'}</button></td>
       </tr>`).join('') : '<tr><td colspan="8" class="leeg">Geen maatregelen gevonden.</td></tr>';
   };
   [statusF, urgentieF, taakF].forEach((f) => f.addEventListener('input', toon));
@@ -1929,7 +1930,7 @@ function inlogScherm(modus = 'in', bericht = '') {
     vergeten: { titel: 'Wachtwoord vergeten', sub: 'We sturen je een link om een nieuw wachtwoord in te stellen', knop: 'Link versturen' },
   };
   const t = teksten[modus];
-  const berichtKaart = (titel, tekst) => `<div class="inlog-kaart inlog-bericht"><div class="inlog-vink" aria-hidden="true">✉️</div>
+  const berichtKaart = (titel, tekst) => `<div class="inlog-kaart inlog-bericht"><div class="inlog-vink" aria-hidden="true">${I.mail}</div>
     <h2>${titel}</h2><p>${tekst}</p><button class="inlog-knop" type="button" id="terug">Naar inloggen</button></div>`;
   app.innerHTML = `<div class="inlog">
     <div class="inlog-merk">
@@ -2146,7 +2147,7 @@ async function mobielKaart() {
   const open = lijst.filter(({ o }) => statusVan(o.id) === 'open').length;
   app.innerHTML = `
     <div class="mkaartkop"><div><h1>Kaart</h1><small>${rondes.length ? `${open} open · ${lijst.length - open} klaar · ${rondes.length} ronde${rondes.length === 1 ? '' : 's'}` : 'Geen actieve rondes'}</small></div>
-      <button class="knop" id="mijnlocatie" type="button">📍 Mijn locatie</button></div>
+      <button class="knop" id="mijnlocatie" type="button">${I.locatie} Mijn locatie</button></div>
     <div class="mlegenda"><span><i style="background:${PAKKET_KLEUR.open}"></i>Te doen</span><span><i style="background:${PAKKET_KLEUR.gedaan}"></i>Gedaan</span><span><i style="background:${PAKKET_KLEUR.overgeslagen}"></i>Overgeslagen</span></div>
     ${rondes.length ? '<div id="veldkaart" class="veldkaart"><p class="leeg">Kaart laden…</p></div>'
     : '<div class="kaart leeg"><p>Er loopt op dit moment geen ronde voor jou.</p><p><small>Zodra de beheerder een ronde actief zet, zie je de objecten hier.</small></p></div>'}`;
@@ -2161,10 +2162,10 @@ async function mobielKaart() {
     kleurVan: (o) => PAKKET_KLEUR[statusVan(o.id)],
     popup: (o) => `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br><small>${esc(o.type || '')}</small>
       <div class="veldpopup">${perObject.get(o.id).rondes.map(({ v, st }) => `<div class="veldronde"><small>${esc(v.naam)}</small>
-        ${st === 'open' ? `<div class="popupknoppen"><a class="knop klein primair" href="${pakketHref(v, o.id, true)}">▶ Start</a>
-          <button class="knop klein" data-overslaan="${esc(o.id)}" data-pakket="${esc(v.id)}:${esc(v.rondeId)}">⏭ Overslaan</button></div>`
-    : `<span class="label-status ${st === 'gedaan' ? 'afgerond' : ''}">${st === 'gedaan' ? '✓ Gedaan' : '⏭ Overgeslagen'}</span>`}</div>`).join('')}</div>
-      <a class="knop klein" href="${navigeer(o)}" target="_blank" rel="noopener">🧭 Navigeer erheen</a>`,
+        ${st === 'open' ? `<div class="popupknoppen"><a class="knop klein primair" href="${pakketHref(v, o.id, true)}">${I.start} Start</a>
+          <button class="knop klein" data-overslaan="${esc(o.id)}" data-pakket="${esc(v.id)}:${esc(v.rondeId)}">${I.overslaan} Overslaan</button></div>`
+    : `<span class="label-status ${st === 'gedaan' ? 'afgerond' : ''}">${st === 'gedaan' ? I.vink + ' Gedaan' : I.overslaan + ' Overgeslagen'}</span>`}</div>`).join('')}</div>
+      <a class="knop klein" href="${navigeer(o)}" target="_blank" rel="noopener">${I.navigeer} Navigeer erheen</a>`,
   });
   if (!kaart) return;
   app.querySelector('#veldkaart').addEventListener('click', async (e) => {
@@ -2193,31 +2194,32 @@ function statusregel(st) {
   if (!el) return;
   const n = st.wachtend ?? 0;
   const reg = (x) => `${x} registratie${x === 1 ? '' : 's'}`;
+  const wacht = (x) => (x === 1 ? 'wacht' : 'wachten');
   let soort = 'ok';
   let tekst;
   if (!navigator.onLine || st.fase === 'offline') {
     soort = 'offline';
-    tekst = `📴 Offline – alles wordt op je telefoon bewaard${n ? ` (${reg(n)} wachten)` : ''}`;
+    tekst = `${I.offline} Offline – alles wordt op je telefoon bewaard${n ? ` (${reg(n)} ${wacht(n)})` : ''}`;
   } else if (st.fase === 'bezig') {
     soort = 'bezig';
     tekst = `⟳ Bezig met versturen${n ? ` (${n})` : ''}…`;
   } else if (st.fase === 'fout') {
     soort = 'fout';
-    tekst = `⚠️ Versturen lukt niet${n ? ` – ${reg(n)} wachten` : ''}. Tik voor details`;
+    tekst = `${I.let} Versturen lukt niet${n ? ` – ${reg(n)} ${wacht(n)}` : ''}. Tik voor details`;
   } else if (st.fase === 'uitgelogd') {
     soort = 'let';
-    tekst = `🔑 Niet ingelogd – ${n ? `${reg(n)} staan alleen op deze telefoon` : 'werk wordt niet gedeeld'}. Tik om in te loggen`;
+    tekst = `${I.inloggen} Niet ingelogd – ${n ? `${reg(n)} staan alleen op deze telefoon` : 'werk wordt niet gedeeld'}. Tik om in te loggen`;
   } else if (st.fase === 'uit') {
     soort = 'let';
-    tekst = '💾 Alleen op deze telefoon opgeslagen';
+    tekst = I.opslag + ' Alleen op deze telefoon opgeslagen';
   } else if (n) {
     soort = 'let';
-    tekst = `⏳ ${reg(n)} wachten om verstuurd te worden`;
+    tekst = `${I.wacht} ${reg(n)} ${wacht(n)} om verstuurd te worden`;
   } else {
     const t = st.laatsteSync ? new Date(st.laatsteSync) : null;
-    tekst = `✓ Alles verstuurd${t ? ` · ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}` : ''}`;
+    tekst = `${I.vink} Alles verstuurd${t ? ` · ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}` : ''}`;
   }
-  el.textContent = tekst;
+  el.innerHTML = tekst;
   el.dataset.soort = soort;
   el.hidden = false;
 }
@@ -2240,7 +2242,7 @@ function opslagBevestiging() {
 function opslagKaart(x, { objectMap, volgende = '' } = {}) {
   if (!x) return '';
   const o = x.objectId ? objectMap?.get(x.objectId) : null;
-  return `<div class="mopgeslagen" role="status"><span class="mvink" aria-hidden="true">✓</span>
+  return `<div class="mopgeslagen" role="status"><span class="mvink" aria-hidden="true">${I.vink}</span>
     <div><strong>${esc(x.tekst)}</strong>${o ? `<small>${esc(o.code)} – ${esc(o.naam)}</small>` : ''}</div>${volgende}</div>`;
 }
 
@@ -2273,7 +2275,7 @@ function installKaart() {
   return `<section class="minstall"><img src="icons/icon-192.png" alt="" width="44" height="44">
     <div><strong>Zet de app op je beginscherm</strong><small>Opent op volledig scherm en werkt betrouwbaarder offline.</small>
       ${uitleg}
-      <div class="knoppen"><button class="knop primair" id="installeer-knop" type="button" ${installPrompt ? '' : 'hidden'}>📲 Installeren</button>
+      <div class="knoppen"><button class="knop primair" id="installeer-knop" type="button" ${installPrompt ? '' : 'hidden'}>${I.installeer} Installeren</button>
         <button class="knop" id="install-later" type="button">Later</button></div></div></section>`;
 }
 
@@ -2304,17 +2306,17 @@ async function mobielStart() {
   const dag = vandaag();
   const vandaagLijst = [
     ...werk.filter((w) => w.datum === dag).map((w) => ({
-      href: `#/m/werk/${w.id}`, icoon: '🛠️', titel: w.soort || 'Werkzaamheid', object: objectMap.get(w.objectId), tijd: w.gewijzigd,
+      href: `#/m/werk/${w.id}`, icoon: I.werk, titel: w.soort || 'Werkzaamheid', object: objectMap.get(w.objectId), tijd: w.gewijzigd,
     })),
     ...inspecties.filter((i) => i.datum === dag && i.status === 'afgerond').map((i) => ({
-      href: `#/m/inspectie/${i.id}`, icoon: i.bvc ? '🌳' : i.stowa ? '🌊' : '🔍',
+      href: `#/m/inspectie/${i.id}`, icoon: i.bvc ? I.boom : i.stowa ? I.water : I.inspectie,
       titel: i.bvc ? `Boomveiligheid · ${i.bvc.niet ? 'niet aangetroffen' : BV.BVK[i.bvc.bvk]?.kort ?? ''}`
         : i.stowa ? `Waterkering · ${i.stowa.waarnemingen?.length ?? 0} waarneming(en)${ST.zwaarste(i.stowa.waarnemingen) ? ` · ${ST.URGENTIE[ST.zwaarste(i.stowa.waarnemingen)].label.toLowerCase()}` : ''}`
           : `${i.soort} · ${i.gebreken?.length ?? 0} gebrek(en)`,
       object: objectMap.get(i.objectId), tijd: i.gewijzigd,
     })),
     ...(await inProject('vrijgaven')).filter((v) => v.datum === dag).map((v) => ({
-      href: `#/m/vrijgave/${v.id}`, icoon: '🌿', titel: `Vrijgave · ${eco.BESLUIT[v.besluit]?.label ?? 'concept'}`,
+      href: `#/m/vrijgave/${v.id}`, icoon: I.blad, titel: `Vrijgave · ${eco.BESLUIT[v.besluit]?.label ?? 'concept'}`,
       object: objectMap.get(v.objectIds?.[0]), tijd: v.gewijzigd,
     })),
   ].sort((a, b) => String(b.tijd).localeCompare(String(a.tijd)));
@@ -2324,7 +2326,7 @@ async function mobielStart() {
   const vrijgaveNodig = actieveRondes(g).some(({ pakket }) => pakket.vrijgaveVereist && pakketVoorMij(pakket, ik))
     || (await inProject('vrijgaven')).some((v) => v.status === 'concept');
   const loginHint = sync.isIngesteld() && !sync.sessie()
-    ? `<a class="kaart mhint" href="#/m/account">🔑 <span><strong>Log in</strong> zodat je werk ook op kantoor zichtbaar is.</span></a>` : '';
+    ? `<a class="kaart mhint" href="#/m/account">${I.inloggen} <span><strong>Log in</strong> zodat je werk ook op kantoor zichtbaar is.</span></a>` : '';
   const regel = (x) => `<li><a href="${x.href}"><span class="micoon klein">${x.icoon}</span>
     <span><strong>${esc(x.titel)}</strong><small>${objectNaam(x.object)}</small></span></a></li>`;
 
@@ -2335,19 +2337,19 @@ async function mobielStart() {
       ${installKaart()}
       ${loginHint}
       <a class="mtegel" href="#/m/werk">
-        <span class="micoon">🛠️</span>
+        <span class="micoon">${I.werk}</span>
         <span><strong>Registratie werkzaamheden</strong><small>Werk vastleggen binnen je werkpakket, met foto's en uren</small></span>
       </a>
       <a class="mtegel" href="#/m/inspectie">
-        <span class="micoon">🔍</span>
+        <span class="micoon">${I.inspectie}</span>
         <span><strong>Schouw &amp; inspectie</strong><small>Gebreken vastleggen en boomveiligheidscontrole</small></span>
       </a>
       ${vrijgaveNodig ? `<a class="mtegel" href="#/m/vrijgave">
-        <span class="micoon">🌿</span>
+        <span class="micoon">${I.blad}</span>
         <span><strong>Flora &amp; fauna vrijgave</strong><small>Ecologische veldcheck vóór de werkzaamheden</small></span>
       </a>` : ''}
       ${concepten.length ? `<h2>Verder gaan</h2><ul class="mlijst">${concepten.slice(0, 5).map((i) => regel({
-    href: `#/m/inspectie/${i.id}`, icoon: '📝', titel: `Concept ${i.soort.toLowerCase()} · ${datumNL(i.datum)}`, object: objectMap.get(i.objectId),
+    href: `#/m/inspectie/${i.id}`, icoon: I.concept, titel: `Concept ${i.soort.toLowerCase()} · ${datumNL(i.datum)}`, object: objectMap.get(i.objectId),
   })).join('')}</ul>` : ''}
       <section id="mijnpakketten"></section>
       <section id="logisch"></section>
@@ -2375,7 +2377,7 @@ async function toonMijnPakketten(el) {
 let laatstePositie = null;
 
 function afstandTekst(m) {
-  if (m < 5) return '📍 hier';
+  if (m < 5) return I.locatie + ' hier';
   return m < 1000 ? `${Math.round(m / 10) * 10} m` : `${(m / 1000).toFixed(m < 10000 ? 1 : 0).replace('.', ',')} km`;
 }
 
@@ -2388,8 +2390,8 @@ async function objectKiezer(doel) {
   const bomen = objecten.filter((o) => /^Boom|beplanting/i.test(o.type ?? ''));
   const kandidaten = doel === 'bvc' && bomen.length ? bomen : objecten;
   const keuzeSoort = doel === 'inspectie' || doel === 'bvc' ? `<div class="segment soortkeuze" role="tablist">
-      <a href="#/m/inspectie" class="${doel === 'inspectie' ? 'actief' : ''}">🔍 Schouw / inspectie</a>
-      <a href="#/m/bvc" class="${doel === 'bvc' ? 'actief' : ''}">🌳 Boomveiligheid</a></div>` : '';
+      <a href="#/m/inspectie" class="${doel === 'inspectie' ? 'actief' : ''}">${I.inspectie} Schouw / inspectie</a>
+      <a href="#/m/bvc" class="${doel === 'bvc' ? 'actief' : ''}">${I.boom} Boomveiligheid</a></div>` : '';
   app.innerHTML = `
     <div class="mkop"><a href="#/" class="mterug" aria-label="Terug">←</a>
       <div><small>${titel}</small><h1>${doel === 'bvc' ? 'Kies een boom' : 'Kies een object'}</h1></div></div>
@@ -2398,7 +2400,7 @@ async function objectKiezer(doel) {
     ${objecten.length ? `
     <div class="mzoek">
       <input type="search" id="zoek" placeholder="Zoek op code, naam of locatie" autocomplete="off" aria-label="Zoeken">
-      <button class="knop" id="dichtbij" type="button">📍 Dichtbij</button>
+      <button class="knop" id="dichtbij" type="button">${I.locatie} Dichtbij</button>
     </div>
     <ul class="mlijst" id="lijst"></ul>` : leegKaart('Er zijn nog geen objecten. Richt de objecten eerst in via de website op de pc.')}`;
   app.querySelector('#nieuweboom')?.addEventListener('click', () => nieuweBoomHier());
@@ -2415,8 +2417,8 @@ async function objectKiezer(doel) {
       <li><a href="#/m/${doel}/nieuw?object=${encodeURIComponent(o.id)}">
         <span><strong>${esc(o.code)} – ${esc(o.naam)}</strong><small>${esc([o.type, o.boomsoort ? soortNaam(o.boomsoort) : o.locatie].filter(Boolean).join(' · '))}</small>
           ${vrijgaven.length || doel === 'vrijgave' ? `<small>${vrijgaveLabel(eco.vrijgaveVoorObject(vrijgaven, o.id, vandaag()))}</small>` : ''}</span>
-        ${afstand != null ? `<span class="mafstand">${afstand === 0 ? '📍 hier' : afstandTekst(afstand)}</span>` : '<span class="mpijl">›</span>'}
-      </a></li>`).join('') + (metAfstand.length > MAX ? `<li class="mleeg">+ ${metAfstand.length - MAX} meer – zoek of gebruik 📍 Dichtbij.</li>` : '')
+        ${afstand != null ? `<span class="mafstand">${afstand === 0 ? I.locatie + ' hier' : afstandTekst(afstand)}</span>` : '<span class="mpijl">›</span>'}
+      </a></li>`).join('') + (metAfstand.length > MAX ? `<li class="mleeg">+ ${metAfstand.length - MAX} meer – zoek of gebruik ${I.locatie} Dichtbij.</li>` : '')
       : '<li class="mleeg">Geen objecten gevonden.</li>';
   };
   zoek.addEventListener('input', toon);
@@ -2424,15 +2426,15 @@ async function objectKiezer(doel) {
     if (!navigator.geolocation) return melding('Locatiebepaling wordt niet ondersteund.', 'fout');
     const knop = app.querySelector('#dichtbij');
     knop.disabled = true;
-    knop.textContent = '📍 Zoeken…';
+    knop.innerHTML = `${I.locatie} Zoeken…`;
     navigator.geolocation.getCurrentPosition((pos) => {
       laatstePositie = [pos.coords.longitude, pos.coords.latitude];
       knop.disabled = false;
-      knop.textContent = '📍 Dichtbij';
+      knop.innerHTML = `${I.locatie} Dichtbij`;
       toon();
     }, (fout) => {
       knop.disabled = false;
-      knop.textContent = '📍 Dichtbij';
+      knop.innerHTML = `${I.locatie} Dichtbij`;
       melding(`Locatie niet beschikbaar: ${fout.message}`, 'fout');
     }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
   };
@@ -2679,7 +2681,7 @@ async function werkpakketKiezer(objectId, { mobiel = false, taakId = null, maatr
     : `Er ${mobiel ? 'is voor jou' : 'is'} geen actieve werkronde.`;
   app.innerHTML = `${kop}
     ${lijst.length ? `<ul class="mlijst pakketlijst ${mobiel ? '' : 'kaart'}">${lijst.map(({ pakket: v, voortgang }) => `
-      <li><a href="${href(v)}"><span class="micoon klein">📦</span>
+      <li><a href="${href(v)}"><span class="micoon klein">${I.pakket}</span>
         <span><strong>${esc(v.naam)}</strong><small>${v.code ? `${esc(v.code)} · ` : ''}${pakketSoortTekst(v)}${periodeTekst(v) ? ` · ${periodeTekst(v)}` : ''}</small>
         ${voortgangBalk(voortgang)}</span></a></li>`).join('')}</ul>`
     : `<div class="kaart leeg"><p>${leeg}</p>
@@ -2739,19 +2741,19 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     const g = vg ? eco.geldigheid(vg, vandaag()) : null;
     if (!vg && !pakket?.vrijgaveVereist) return '';
     if (g === 'geldig') {
-      return `<div class="kaart mhier">🌿 <strong>Flora & fauna:</strong> ${vrijgaveLabel(vg)}${vg.voorwaarden ? `<br><small><strong>Voorwaarden:</strong> ${esc(vg.voorwaarden)}</small>` : ''}</div>`;
+      return `<div class="kaart mhier">${I.blad} <strong>Flora & fauna:</strong> ${vrijgaveLabel(vg)}${vg.voorwaarden ? `<br><small><strong>Voorwaarden:</strong> ${esc(vg.voorwaarden)}</small>` : ''}</div>`;
     }
-    return `<div class="kaart waarschuwingskaart">⚠️ <strong>Geen geldige flora- en fauna-vrijgave</strong> ${vrijgaveLabel(vg)}
+    return `<div class="kaart waarschuwingskaart">${I.let} <strong>Geen geldige flora- en fauna-vrijgave</strong> ${vrijgaveLabel(vg)}
       <br><small>Start de werkzaamheden pas na een veldcheck door de ecologisch deskundige.</small>
       <a href="${mobiel ? '#/m/vrijgave/nieuw' : '#/vrijgaven/nieuw'}?object=${encodeURIComponent(oid)}">Vrijgave aanvragen →</a></div>`;
   };
-  const pakketBanner = pakket ? `<div class="kaart mhier">📦 <strong>Werkpakket:</strong> ${esc(pakket.naam)}${pakket.omschrijving ? `<br><small>${esc(pakket.omschrijving)}</small>` : ''}</div>` : '';
+  const pakketBanner = pakket ? `<div class="kaart mhier">${I.pakket} <strong>Werkpakket:</strong> ${esc(pakket.naam)}${pakket.omschrijving ? `<br><small>${esc(pakket.omschrijving)}</small>` : ''}</div>` : '';
   const maatregelInfo = maatregel ? (() => {
     const [iid, gid] = maatregel.split(':');
     return inspecties.find((i) => i.id === iid)?.gebreken?.find((g) => g.id === gid);
   })() : null;
   const taakBanner = taak || maatregelInfo
-    ? `<div class="kaart mhier">📋 <strong>${taak ? 'Taak' : 'Maatregel'}:</strong> ${esc(taak?.titel ?? maatregelInfo.maatregel ?? '')}
+    ? `<div class="kaart mhier">${I.taak} <strong>${taak ? 'Taak' : 'Maatregel'}:</strong> ${esc(taak?.titel ?? maatregelInfo.maatregel ?? '')}
         ${taak?.omschrijving ? `<br><small>${esc(taak.omschrijving)}</small>` : ''}
         ${maatregelInfo ? `<br><small>${esc(maatregelInfo.bouwdeel || '')} – ${esc(maatregelInfo.gebrek || '')}; wordt bij opslaan op uitgevoerd gezet.</small>` : ''}</div>` : '';
 
@@ -2786,7 +2788,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
       <section class="kaart"><div class="velden">${velden}</div></section>
       <section class="kaart" id="extra-blok" hidden><h2>Extra gegevens</h2><div class="extra-velden"></div></section>
       <section class="kaart" id="maatregelen-blok"></section>
-      <div class="mvoet"><button class="knop primair" type="submit">✓ Opslaan</button></div>
+      <div class="mvoet"><button class="knop primair" type="submit">${I.vink} Opslaan</button></div>
     </form>` : `
     <div class="paginakop"><div><p><a href="${terug}">← Terug</a></p>
       <h1>${bestaand ? 'Werkzaamheid bewerken' : 'Werkzaamheid registreren'}</h1></div></div>
@@ -2812,7 +2814,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     app.querySelector('#fotos').innerHTML = `<div class="fotos">
       ${fotos.map((f, n) => `<div class="foto"><img src="${esc(f.data)}" alt="Foto ${n + 1}" data-lichtbak>
         <button type="button" data-foto-weg="${n}" aria-label="Foto verwijderen">×</button></div>`).join('')}
-      <label class="knop fotoknop">📷 Foto<input type="file" accept="image/*" capture="environment" multiple id="foto-input"></label></div>`;
+      <label class="knop fotoknop">${I.camera} Foto<input type="file" accept="image/*" capture="environment" multiple id="foto-input"></label></div>`;
   };
 
   // Openstaande maatregelen van het gekozen object die met dit werk kunnen worden afgehandeld.
@@ -3010,7 +3012,7 @@ async function projectenPagina() {
         <p>Elk project heeft een eigen inhoud: objecten, GIS-lagen, inspecties, werkzaamheden en taken.</p></div>
       ${beheer ? '<div class="knoppen"><a class="knop primair" href="#/projecten/nieuw">+ Nieuw project</a></div>' : ''}
     </div>
-    ${nietIngelogd ? `<a class="kaart mhint" href="${isMobiel() ? '#/m/account' : '#/instellingen'}">🔑 <span><strong>Log in</strong> om de projecten van je organisatie te zien.</span></a>` : ''}
+    ${nietIngelogd ? `<a class="kaart mhint" href="${isMobiel() ? '#/m/account' : '#/instellingen'}">${I.inloggen} <span><strong>Log in</strong> om de projecten van je organisatie te zien.</span></a>` : ''}
     ${projecten.length ? `<div class="projecten">${projecten.map((p) => {
     const t = tellingen.get(p.id);
     return `
@@ -3139,7 +3141,7 @@ async function gisImport(_, q = new URLSearchParams()) {
       Een nieuwere versie van hetzelfde bestand wordt herkend en bijgewerkt.`}</p></div></div>
     <label class="kaart dropzone" id="dropzone">
       <input type="file" id="bestand" accept=".geojson,.json,.zip,.gpkg" multiple>
-      <span class="dz-icoon">🗺️</span>
+      <span class="dz-icoon">${I.kaart}</span>
       <strong>Sleep GIS-bestanden hierheen of klik om te kiezen</strong>
       <small>GeoPackage (.gpkg, alle lagen tegelijk), Shapefile (.zip) of GeoJSON. RD, WGS84 en Web Mercator worden automatisch herkend.</small>
     </label>
@@ -3148,7 +3150,7 @@ async function gisImport(_, q = new URLSearchParams()) {
   const verwerk = async (bestanden) => {
     if (!bestanden?.length) return;
     const el = app.querySelector('#stap2');
-    el.innerHTML = `<section class="kaart"><p>⏳ ${bestanden.length === 1 ? esc(bestanden[0].name) : `${bestanden.length} bestanden`} lezen…</p></section>`;
+    el.innerHTML = `<section class="kaart"><p>${I.wacht} ${bestanden.length === 1 ? esc(bestanden[0].name) : `${bestanden.length} bestanden`} lezen…</p></section>`;
     const kandidaten = [];
     const fouten = [];
     for (const b of bestanden) {
@@ -3244,7 +3246,7 @@ async function toonImportVoorstel(kandidaten, fouten, { doel = null } = {}) {
     p.verwijderen.length ? `<span class="label-status verlopen">−${p.verwijderen.length} vervallen</span>` : '',
     p.behouden.length ? `<span class="label-status">${p.behouden.length} vervallen maar met historie: blijven als los object</span>` : '',
   ].join('')}</div>` : ''}</div>` : ''}
-      ${meldingen.length ? `<ul class="il-meldingen">${meldingen.map((m) => `<li>⚠ ${esc(m)}</li>`).join('')}</ul>` : ''}
+      ${meldingen.length ? `<ul class="il-meldingen">${meldingen.map((m) => `<li>${I.let} ${esc(m)}</li>`).join('')}</ul>` : ''}
       ${v.actie !== 'overslaan' ? typeKeuze(v) : ''}
       ${v.actie !== 'overslaan' ? `<details class="il-meer"><summary>Instellingen <small>code: ${esc(v.inst.codeveld || `automatisch (${v.inst.voorvoegsel}-001…)`)}${v.inst.naamveld ? ` · naam: ${esc(v.inst.naamveld)}` : ''}</small></summary>
         <div class="velden">
@@ -3509,7 +3511,7 @@ function voegAchtergrondToe(L, map) {
     options: { position: 'bottomleft' },
     onAdd() {
       const div = L.DomUtil.create('div', 'leaflet-bar helderheid');
-      div.innerHTML = `<label title="Sterkte luchtfoto (lager = lichter)">🛰️<input type="range" min="10" max="100" step="10" value="${helderheid}"
+      div.innerHTML = `<label title="Sterkte luchtfoto (lager = lichter)">${I.satelliet}<input type="range" min="10" max="100" step="10" value="${helderheid}"
         aria-label="Sterkte luchtfoto"><span>${helderheid}%</span></label>`;
       L.DomEvent.disableClickPropagation(div);
       L.DomEvent.disableScrollPropagation(div);
@@ -3591,7 +3593,7 @@ async function kaart() {
   app.innerHTML = `
     <div class="paginakop">
       <div><h1>Kaart &amp; GIS</h1><p>Areaal: ${matenTekst(totaal, opKaart.length)}${opKaart.length < objecten.length ? ` (${objecten.length - opKaart.length} objecten zonder geometrie)` : ''}.</p></div>
-      ${magBeheren() ? `<a class="knop ${lagen.length ? '' : 'primair'}" href="#/gis/importeren">🗺️ GIS inladen</a>` : ''}
+      ${magBeheren() ? `<a class="knop ${lagen.length ? '' : 'primair'}" href="#/gis/importeren">${I.kaart} GIS inladen</a>` : ''}
     </div>
     <div class="kaartindeling">
       <div id="kaart" class="kaart"><p class="leeg">Kaart laden…</p></div>
@@ -3607,9 +3609,9 @@ async function kaart() {
             <label><input type="checkbox" data-laag="${esc(g.id)}" checked>
               <span class="kleurvak" style="background:${esc(g.kleur)}"></span>
               <span class="laagtekst"><strong title="${esc(g.naam)}">${esc(g.naam)}</strong><small>${matenTekst(areaalMaten(g.objecten), g.objecten.length)}</small>
-                ${g.laag ? `<small title="${esc(g.laag.bron)}">📄 ${esc(g.laag.bron)}${g.laag.gewijzigd ? ` · ${datumNL(String(g.laag.gewijzigd).slice(0, 10))}` : ''}</small>` : ''}</span></label>
-            ${g.laag && magBeheren() ? `<div class="laagknoppen"><a class="knop klein" href="#/gis/importeren?laag=${esc(g.id)}" title="Nieuwere versie van het bestand inladen; koppelingen blijven">↻</a>
-              <button class="knop klein gevaar" data-laag-weg="${esc(g.id)}" aria-label="Laag verwijderen" title="Laag verwijderen">🗑</button></div>` : ''}
+                ${g.laag ? `<small title="${esc(g.laag.bron)}">${I.bestand} ${esc(g.laag.bron)}${g.laag.gewijzigd ? ` · ${datumNL(String(g.laag.gewijzigd).slice(0, 10))}` : ''}</small>` : ''}</span></label>
+            ${g.laag && magBeheren() ? `<div class="laagknoppen"><a class="knop klein" href="#/gis/importeren?laag=${esc(g.id)}" title="Nieuwere versie van het bestand inladen; koppelingen blijven">${I.vernieuw}</a>
+              <button class="knop klein gevaar" data-laag-weg="${esc(g.id)}" aria-label="Laag verwijderen" title="Laag verwijderen">${I.verwijder}</button></div>` : ''}
           </div>`).join('') : '<p class="leeg">Nog geen lagen. Laad een GIS-bestand in.</p>'}
       </aside>
     </div>`;
@@ -3969,13 +3971,13 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
       const titel = `R${r.nummer} ${r.naam} · ${periodeTekst(v) || 'nog niet ingepland'} · ${vg.gedaan.size + vg.overgeslagen.size}/${vg.totaal}`;
       return `<div class="bord-rij" data-pakket="${esc(p.id)}" data-ronde="${esc(r.id)}">
         <div class="bord-label"><div class="bord-labelregel"><a href="${pakketPagina(v, false)}"><span class="bord-soort" style="background:${kleur}"></span>R${r.nummer} ${esc(r.naam)}</a>
-            <span class="bord-pct ${r.status === 'afgerond' ? 'klaar' : ''}" title="${vg.gedaan.size + vg.overgeslagen.size} van ${vg.totaal} objecten">${r.status === 'afgerond' ? '✓ ' : ''}${vg.percentage}%</span></div>
+            <span class="bord-pct ${r.status === 'afgerond' ? 'klaar' : ''}" title="${vg.gedaan.size + vg.overgeslagen.size} van ${vg.totaal} objecten">${r.status === 'afgerond' ? I.vink + ' ' : ''}${vg.percentage}%</span></div>
           <small>${r.soort === 'inspectie' ? esc(r.inspectiesoort || 'Inspectie') : esc(r.werksoort || 'Werkzaamheid')} · ${PL.duurTekst(PL.duurVan(r))}</small></div>
         <div class="bord-spoor ${beheer ? 'bewerkbaar' : ''}" style="width:${breedte}px">
           ${pos ? `<div class="bord-balk status-${esc(r.status)} ${laat ? 'te-laat' : ''}" style="left:${pos.left}px;width:${Math.max(pos.width, 4)}px;--kleur:${kleur}" title="${esc(titel)}" tabindex="0">
             <span class="bord-voortgang" style="width:${vg.percentage}%"></span>
             ${beheer && !pos.afgekaptLinks ? '<span class="greep begin"></span>' : ''}<span class="bord-tekst">${esc(PL.balkTekst(r, vg.percentage, Math.max(pos.width, 4)))}</span>${beheer && !pos.afgekaptRechts ? '<span class="greep eind"></span>' : ''}
-          </div>${PL.balkTekst(r, vg.percentage, Math.max(pos.width, 4)) ? '' : `<span class="bord-buitentekst" style="left:${pos.left + Math.max(pos.width, 4) + 4}px">${r.status === 'afgerond' ? '✓ ' : ''}R${r.nummer} · ${vg.percentage}%</span>`}` : r.start ? '' : `<span class="bord-leeg">${beheer ? '↔ Sleep hier om in te plannen' : 'Nog niet ingepland'}</span>`}
+          </div>${PL.balkTekst(r, vg.percentage, Math.max(pos.width, 4)) ? '' : `<span class="bord-buitentekst" style="left:${pos.left + Math.max(pos.width, 4) + 4}px">${r.status === 'afgerond' ? I.vink + ' ' : ''}R${r.nummer} · ${vg.percentage}%</span>`}` : r.start ? '' : `<span class="bord-leeg">${beheer ? '↔ Sleep hier om in te plannen' : 'Nog niet ingepland'}</span>`}
         </div></div>`;
     };
 
@@ -3984,14 +3986,14 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
         <div class="knoppen">
           <button class="knop klein" data-nav-bord="-1" aria-label="Eerder">◀</button>
           <button class="knop klein" data-nav-bord="0">Vandaag</button>
-          <button class="knop klein" data-nav-bord="1" aria-label="Later">▶</button>
+          <button class="knop klein" data-nav-bord="1" aria-label="Later">${I.start}</button>
         </div>
         <div class="segment bord-zoom">${Object.entries(PL.ZOOM).map(([kz, z]) => `<label><input type="radio" name="planzoom" value="${kz}" ${kz === zoom ? 'checked' : ''}><span>${z.label}</span></label>`).join('')}</div>
         <select id="bord-soort" aria-label="Soort">${optie('', 'Werk en inspecties', filterSoort)}${optie('werk', 'Werkzaamheden', filterSoort)}${optie('inspectie', 'Inspecties', filterSoort)}</select>
         <span class="bord-legenda"><i style="background:${BORD_KLEUR.werk}"></i>Werkzaamheid <i style="background:${BORD_KLEUR.inspectie}"></i>Inspectie
-          <i class="gepland"></i>Gepland <i class="afgerond">✓</i>Afgerond <i class="telaat"></i>Te laat</span>
+          <i class="gepland"></i>Gepland <i class="afgerond">${I.vink}</i>Afgerond <i class="telaat"></i>Te laat</span>
       </div>
-      ${nietGepland ? `<p class="bord-melding">📌 ${nietGepland} ronde${nietGepland === 1 ? '' : 's'} nog niet ingepland${beheer ? ' – klik in de rij op de startdatum (de duur uit het werkpakket wordt gebruikt), of sleep over de gewenste periode.' : '.'}</p>` : ''}
+      ${nietGepland ? `<p class="bord-melding">${I.punaise} ${nietGepland} ronde${nietGepland === 1 ? '' : 's'} nog niet ingepland${beheer ? ' – klik in de rij op de startdatum (de duur uit het werkpakket wordt gebruikt), of sleep over de gewenste periode.' : '.'}</p>` : ''}
       ${pakketten.length ? `<div class="bord" style="--bord-breedte:${breedte}px">
         <div class="bord-kop">
           <div class="bord-label kopcel">Werkpakket / ronde</div>
@@ -4012,7 +4014,7 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
     return `<div class="bord-pakket ${focusPakket === p.id ? 'focus' : ''}" id="bord-${esc(p.id)}">
             <div class="bord-rij pakketrij">
               <div class="bord-label"><a href="#/werkpakketten/${esc(p.id)}"><strong>${esc(p.code ? `${p.code} · ` : '')}${esc(p.naam)}</strong></a>
-                <small>${(p.objecten ?? []).length} objecten · ${totaal.percentage}% gedaan${p.toegewezen?.length ? ` · 👤 ${p.toegewezen.length}` : ''}</small></div>
+                <small>${(p.objecten ?? []).length} objecten · ${totaal.percentage}% gedaan${p.toegewezen?.length ? ` · ${I.gebruiker} ${p.toegewezen.length}` : ''}</small></div>
               <div class="bord-spoor" style="width:${breedte}px">${som ? `<div class="bord-somlijn" style="left:${som.left}px;width:${som.width}px"></div>` : ''}</div>
             </div>
             ${rondes.map((r) => rondeRij(p, r)).join('')}
@@ -4184,9 +4186,9 @@ async function takenPagina(_, q = new URLSearchParams()) {
     app.querySelector('#rijen').innerHTML = rijen.length ? rijen.map((t) => `
       <tr>
         <td>${rangLabel(t.rang)}</td>
-        <td><strong>${t.soort === 'werk' ? '🛠️' : '🔍'} ${esc(t.titel)}</strong>${t.omschrijving ? `<br><small>${esc(t.omschrijving)}</small>` : ''}</td>
+        <td><strong>${t.soort === 'werk' ? I.werk : I.inspectie} ${esc(t.titel)}</strong>${t.omschrijving ? `<br><small>${esc(t.omschrijving)}</small>` : ''}</td>
         <td><a href="#/objecten/${esc(t.object.id)}">${objectNaam(t.object)}</a></td>
-        <td class="verberg-mobiel">${t.deadline ? `${datumNL(t.deadline)}${t.telaat ? ' ⚠️' : ''}` : '–'}</td>
+        <td class="verberg-mobiel">${t.deadline ? `${datumNL(t.deadline)}${t.telaat ? ` ${I.let}` : ''}` : '–'}</td>
         <td class="verberg-mobiel">${esc(t.toegewezenAan || '–')}</td>
         <td class="verberg-mobiel">${BRON_TEKST[t.bron]}</td>
         <td><div class="knoppen" style="flex-wrap:nowrap">
@@ -4276,7 +4278,7 @@ async function toonLogischNu(el) {
   const { lijst } = await alleTaken({ alleenMijn: true });
   if (!el.isConnected) return;
   if (!lijst.length) {
-    el.innerHTML = '<h2>Logisch nu</h2><p class="mleeg">Geen openstaande taken in dit project. 👍</p>';
+    el.innerHTML = '<h2>Logisch nu</h2><p class="mleeg">Geen openstaande taken in dit project. ' + I.gereed + '</p>';
     return;
   }
   const teken = () => {
@@ -4285,11 +4287,11 @@ async function toonLogischNu(el) {
     const hierObjecten = [...new Map(hier.map((t) => [t.object.id, t.object])).values()];
     el.innerHTML = `
       <div class="mtussen"><h2>Logisch nu</h2>
-        <button class="knop klein" id="locatie" type="button">${laatstePositie ? '📍 Vernieuwen' : '📍 Locatie gebruiken'}</button></div>
-      ${hierObjecten.length ? `<div class="kaart mhier">📍 Je staat in/bij <strong>${hierObjecten.map((o) => esc(`${o.code} – ${o.naam}`)).join(', ')}</strong></div>` : ''}
+        <button class="knop klein" id="locatie" type="button">${laatstePositie ? I.locatie + ' Vernieuwen' : I.locatie + ' Locatie gebruiken'}</button></div>
+      ${hierObjecten.length ? `<div class="kaart mhier">${I.locatie} Je staat in/bij <strong>${hierObjecten.map((o) => esc(`${o.code} – ${o.naam}`)).join(', ')}</strong></div>` : ''}
       <ul class="mlijst">${gesorteerd.slice(0, 6).map((t) => `
         <li><a href="${taakHref(t, true)}">
-          <span class="micoon klein">${t.soort === 'werk' ? '🛠️' : '🔍'}</span>
+          <span class="micoon klein">${t.soort === 'werk' ? I.werk : I.inspectie}</span>
           <span><strong>${esc(t.titel)}</strong><small>${objectNaam(t.object)}</small></span>
           <span class="mmeta">${rangLabel(t.rang)}${t.afstand != null ? `<small>${t.afstand === 0 ? 'hier' : afstandTekst(t.afstand)}</small>` : ''}</span>
         </a></li>`).join('')}</ul>
@@ -4345,7 +4347,7 @@ function extraInvoerHtml(d, waarde, fotos = []) {
     case 'foto':
       return `<div class="fotos">${fotos.map((f, n) => `<div class="foto"><img src="${esc(f.data)}" alt="Foto ${n + 1}" data-lichtbak>
         <button type="button" data-extra-foto-weg="${esc(d.id)}:${n}" aria-label="Foto verwijderen">×</button></div>`).join('')}
-        <label class="knop fotoknop">📷 Foto<input type="file" accept="image/*" capture="environment" multiple data-extra-foto="${esc(d.id)}"></label></div>`;
+        <label class="knop fotoknop">${I.camera} Foto<input type="file" accept="image/*" capture="environment" multiple data-extra-foto="${esc(d.id)}"></label></div>`;
     default:
       return `<input id="${id}" ${attr} type="text" maxlength="500" value="${esc(waarde ?? '')}">`;
   }
@@ -4527,7 +4529,7 @@ async function formulierveldenPagina(id, q) {
                 <button class="knop klein" data-omhoog="${esc(d.id)}" ${i === 0 ? 'disabled' : ''} aria-label="Omhoog">↑</button>
                 <button class="knop klein" data-omlaag="${esc(d.id)}" ${i === eigen.length - 1 ? 'disabled' : ''} aria-label="Omlaag">↓</button>
                 <button class="knop klein" data-bewerk="${esc(d.id)}">Bewerken</button>
-                <button class="knop klein gevaar" data-weg="${esc(d.id)}" aria-label="Verwijderen">🗑</button>
+                <button class="knop klein gevaar" data-weg="${esc(d.id)}" aria-label="Verwijderen">${I.verwijder}</button>
               </div></li>`).join('')}</ol>` : '<p class="leeg">Nog geen extra velden voor dit formulier.</p>'}
         </section>
         <section class="kaart" id="editor" ${bewerk ? '' : 'hidden'}></section>
@@ -4722,8 +4724,8 @@ function pakketStatusLabel(status) {
 }
 
 function pakketSoortTekst(p) {
-  if (p.soort === 'inspectie') return `${p.inspectiesoort === BV.BVC_SOORT ? '🌳' : p.inspectiesoort === ST.STOWA_SOORT ? '🌊' : '🔍'} ${esc(p.inspectiesoort || 'Schouw / inspectie')}`;
-  return `🛠️ ${esc(p.werksoort || 'Werkzaamheid')}`;
+  if (p.soort === 'inspectie') return `${p.inspectiesoort === BV.BVC_SOORT ? I.boom : p.inspectiesoort === ST.STOWA_SOORT ? I.water : I.inspectie} ${esc(p.inspectiesoort || 'Schouw / inspectie')}`;
+  return `${I.werk} ${esc(p.werksoort || 'Werkzaamheid')}`;
 }
 
 function pakketRondesTekst(p) {
@@ -4769,7 +4771,7 @@ async function tekenPakketKaart(el, { pakket, objecten, statusVan, positie = nul
     const knoppen = st === 'open'
       ? `<div class="popupknoppen"><a class="knop klein primair" href="${pakketHref(pakket, o.id, mobiel)}">Uitvoeren</a>
          <button class="knop klein" data-overslaan="${esc(o.id)}">Overslaan</button></div>`
-      : `<small>${st === 'gedaan' ? '✓ Gedaan' : '⏭ Overgeslagen'}</small>`;
+      : `<small>${st === 'gedaan' ? I.vink + ' Gedaan' : I.overslaan + ' Overgeslagen'}</small>`;
     return `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br>${knoppen}${mobiel ? '' : `<br><a href="#/objecten/${esc(o.id)}">Object openen</a>`}`;
   };
   const laag = L.geoJSON(fc, {
@@ -4867,9 +4869,9 @@ async function werkpakkettenLijst() {
     <div class="paginakop">
       <div><h1>Werkpakketten</h1><p>Werkpakket → rondes (taken) → objecten, met voortgang per ronde en per object.</p></div>
       ${magBeheren() ? `<div class="knoppen">
-        <button class="knop" id="xls-sjabloon" title="Leeg Excel-sjabloon met de keuzelijsten van dit project">📥 Excel-sjabloon</button>
-        <button class="knop" id="xls-export" title="Alle werkpakketten van dit project in het Excel-formaat">📤 Naar Excel</button>
-        <label class="knop fotoknop" title="Werkpakketten inladen uit Excel">📂 Excel inladen<input type="file" id="xls-import" accept=".xlsx"></label>
+        <button class="knop" id="xls-sjabloon" title="Leeg Excel-sjabloon met de keuzelijsten van dit project">${I.sjabloon} Excel-sjabloon</button>
+        <button class="knop" id="xls-export" title="Alle werkpakketten van dit project in het Excel-formaat">${I.exporteer} Naar Excel</button>
+        <label class="knop fotoknop" title="Werkpakketten inladen uit Excel">${I.open} Excel inladen<input type="file" id="xls-import" accept=".xlsx"></label>
         <a class="knop primair" href="#/werkpakketten/nieuw">+ Nieuw werkpakket</a></div>` : ''}
     </div>
     ${pakketten.length ? `<div class="pakketten">${pakketten.map((p) => `
@@ -4877,7 +4879,7 @@ async function werkpakkettenLijst() {
         <div class="pakketkop"><strong>${esc(p.naam)}</strong>${pakketStatusLabel(p.status)}</div>
         <small>${p.code ? `${esc(p.code)} · ` : ''}${pakketRondesTekst(p)}</small>
         ${voortgangBalk(voortgangen.get(p.id))}
-        ${p.toegewezen?.length ? `<small>👤 ${p.toegewezen.map(esc).join(', ')}</small>` : ''}
+        ${p.toegewezen?.length ? `<small>${I.gebruiker} ${p.toegewezen.map(esc).join(', ')}</small>` : ''}
       </a>`).join('')}</div>`
     : leegKaart('Nog geen werkpakketten in dit project.', magBeheren() ? '<a class="knop primair" href="#/werkpakketten/nieuw">+ Nieuw werkpakket</a>' : '')}`;
   app.querySelector('#xls-sjabloon')?.addEventListener('click', () => maakPakketExcel({ metGegevens: false }));
@@ -4963,8 +4965,8 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
           <button type="button" class="knop" id="alles-eruit"></button>
         </div>
         <div class="samenstel-kaartbalk">
-          <button type="button" class="knop klein" id="gebied-erin" title="Sleep op de kaart een rechthoek om alle objecten erin toe te voegen">▭ Gebied toevoegen</button>
-          <button type="button" class="knop klein" id="gebied-eruit" title="Sleep op de kaart een rechthoek om die objecten uit het pakket te halen">▭ Gebied eruit</button>
+          <button type="button" class="knop klein" id="gebied-erin" title="Sleep op de kaart een rechthoek om alle objecten erin toe te voegen">${I.gebied} Gebied toevoegen</button>
+          <button type="button" class="knop klein" id="gebied-eruit" title="Sleep op de kaart een rechthoek om die objecten uit het pakket te halen">${I.gebied} Gebied eruit</button>
           <span class="legenda"><span><i style="background:${PAKKET_KLEUR.gedaan}"></i>In pakket</span><span><i style="background:${PAKKET_KLEUR.overgeslagen}"></i>Niet in pakket</span></span>
           <small id="kaart-hint">Klik op een object om het toe te voegen of eruit te halen.</small>
         </div>
@@ -4986,7 +4988,7 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
     $('#rondes').innerHTML = rondes.map((r, i) => `
       <div class="gebrek ronde" style="border-left-color:${r.status === 'actief' ? '#e07b00' : r.status === 'afgerond' ? '#1a7f37' : '#9aa5b1'}">
         <div class="gebrek-kop"><h3 style="margin:0">R${r.nummer}</h3>
-          ${rondes.length > 1 ? `<button type="button" class="knop klein gevaar" data-ronde-weg="${i}" aria-label="Ronde verwijderen">🗑</button>` : ''}</div>
+          ${rondes.length > 1 ? `<button type="button" class="knop klein gevaar" data-ronde-weg="${i}" aria-label="Ronde verwijderen">${I.verwijder}</button>` : ''}</div>
         <div class="velden">
           <div class="veld breed"><label class="vereist">Naam</label><input data-r="${i}" data-veld="naam" value="${esc(r.naam)}" maxlength="80" placeholder="bijv. Maaien april"></div>
           <div class="veld"><label>Soort</label><select data-r="${i}" data-veld="soort">${optie('werk', 'Werkzaamheid', r.soort)}${optie('inspectie', 'Schouw / inspectie', r.soort)}</select></div>
@@ -4998,7 +5000,7 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
           <div class="veld"><label>Duur</label><div class="duurveld">
             <input type="number" min="1" max="${r.duurEenheid === 'dagen' ? 365 : 52}" data-r="${i}" data-duur="aantal" value="${esc(r.duurEenheid === 'dagen' ? PL.duurVan(r) : Math.max(1, Math.round(PL.duurVan(r) / 7)))}">
             <select data-r="${i}" data-duur="eenheid">${optie('weken', 'weken', r.duurEenheid === 'dagen' ? 'dagen' : 'weken')}${optie('dagen', 'dagen', r.duurEenheid === 'dagen' ? 'dagen' : 'weken')}</select></div></div>
-          <div class="veld"><label>Planning</label><div class="planningtekst">${r.start ? `📅 ${periodeTekst({ ...r, eind: r.eind || PL.isoVan(PL.dagNr(r.start) + PL.duurVan(r) - 1) })}` : '<span class="label-status binnenkort">Nog niet ingepland</span>'}
+          <div class="veld"><label>Planning</label><div class="planningtekst">${r.start ? `${I.kalender} ${periodeTekst({ ...r, eind: r.eind || PL.isoVan(PL.dagNr(r.start) + PL.duurVan(r) - 1) })}` : '<span class="label-status binnenkort">Nog niet ingepland</span>'}
             <small>Startdatum kies je in de <a href="#/planning${id ? `?pakket=${esc(id)}` : ''}">Planning</a>.</small></div></div>
           <div class="veld"><label>Status</label><select data-r="${i}" data-veld="status">${Object.entries(PAKKETSTATUS).map(([k, x]) => optie(k, x, r.status)).join('')}</select></div>
           <div class="veld"><label>Objecten</label><div>${r.objectIds?.length
@@ -5236,17 +5238,17 @@ async function pakketDetail(id, q = new URLSearchParams()) {
         <p>${pr.code ? `${esc(pr.code)} · ` : ''}${(pr.objecten ?? []).length} objecten · ${pakketStatusLabel(pr.status)}</p></div>
       <div class="knoppen">
         ${magBeheren() ? `<a class="knop" href="#/werkpakketten/${esc(id)}/bewerken">Bewerken</a>
-          <a class="knop" href="#/planning?pakket=${esc(id)}">📅 Inplannen</a>
+          <a class="knop" href="#/planning?pakket=${esc(id)}">${I.kalender} Inplannen</a>
           <a class="knop" href="#/werkpakketten/${esc(id)}/bewerken?nieuweRonde=1">＋ Volgende ronde</a>
-          <a class="knop" href="#/werkpakketten/nieuw?kopie=${esc(id)}" title="Kopie van het hele pakket">🔁 Kopiëren</a>` : ''}
-        ${pr.vrijgaveVereist ? `<a class="knop" href="#/vrijgaven/nieuw?pakket=${esc(id)}">🌿 Vrijgave</a>` : ''}
+          <a class="knop" href="#/werkpakketten/nieuw?kopie=${esc(id)}" title="Kopie van het hele pakket">${I.kopie} Kopiëren</a>` : ''}
+        ${pr.vrijgaveVereist ? `<a class="knop" href="#/vrijgaven/nieuw?pakket=${esc(id)}">${I.blad} Vrijgave</a>` : ''}
         ${magBeheren() ? '<button class="knop gevaar" id="verwijder">Verwijderen</button>' : ''}
       </div>
     </div>
-    ${alleRondes.some((r) => !r.start) ? `<div class="kaart mhier">📌 ${alleRondes.filter((r) => !r.start).length} ronde(s) nog niet ingepland. <a href="#/planning?pakket=${esc(id)}">Plannen in de planning →</a></div>` : ''}
+    ${alleRondes.some((r) => !r.start) ? `<div class="kaart mhier">${I.punaise} ${alleRondes.filter((r) => !r.start).length} ronde(s) nog niet ingepland. <a href="#/planning?pakket=${esc(id)}">Plannen in de planning →</a></div>` : ''}
     <section class="kaart">
       <h2 style="margin-bottom:.25rem">Totaal</h2>${voortgangBalk(totaal)}
-      ${pr.toegewezen?.length ? `<p style="margin:.5rem 0 0"><small>👤 ${pr.toegewezen.map(esc).join(', ')}</small></p>` : ''}
+      ${pr.toegewezen?.length ? `<p style="margin:.5rem 0 0"><small>${I.gebruiker} ${pr.toegewezen.map(esc).join(', ')}</small></p>` : ''}
       ${pr.omschrijving ? `<p style="white-space:pre-wrap;margin:.5rem 0 0">${esc(pr.omschrijving)}</p>` : ''}
       <div class="tabelhouder" style="margin-top:.75rem"><table class="rondetabel">
         <thead><tr><th>Ronde</th><th>Soort</th><th class="verberg-mobiel">Periode</th><th>Status</th><th>Voortgang</th><th></th></tr></thead>
@@ -5257,12 +5259,12 @@ async function pakketDetail(id, q = new URLSearchParams()) {
           <td>${pakketSoortTekst(rv)}</td><td class="verberg-mobiel">${periodeTekst(rv) || '–'}</td><td>${pakketStatusLabel(r.status)}</td>
           <td style="min-width:160px">${voortgangBalk(g.rondeVoortgang.get(`${id}:${r.id}`))}</td>
           <td>${magBeheren() ? (r.status !== 'actief'
-    ? `<button class="knop klein" data-ronde-status="${esc(r.id)}" data-naar="actief">▶ Actief</button>`
-    : `<button class="knop klein" data-ronde-status="${esc(r.id)}" data-naar="afgerond">✓ Afronden</button>`) : ''}</td></tr>`;
+    ? `<button class="knop klein" data-ronde-status="${esc(r.id)}" data-naar="actief">${I.start} Actief</button>`
+    : `<button class="knop klein" data-ronde-status="${esc(r.id)}" data-naar="afgerond">${I.vink} Afronden</button>`) : ''}</td></tr>`;
   }).join('')}</tbody></table></div>
     </section>
     <div class="mtussen"><h2>R${ronde.nummer} ${esc(ronde.naam)} <small style="font-weight:400">· ${pakketSoortTekst(p)}</small></h2>
-      <div class="knoppen">${p.soort === 'inspectie' ? '<button class="knop" id="resultaten-xls">📊 Resultaten naar Excel</button>' : ''}<button class="knop" id="export">CSV</button>${p.inspectiesoort === BV.BVC_SOORT && p.soort === 'inspectie' ? '<button class="knop" id="suf">SUF-BVC</button>' : ''}</div></div>
+      <div class="knoppen">${p.soort === 'inspectie' ? '<button class="knop" id="resultaten-xls">' + I.excel + ' Resultaten naar Excel</button>' : ''}<button class="knop" id="export">CSV</button>${p.inspectiesoort === BV.BVC_SOORT && p.soort === 'inspectie' ? '<button class="knop" id="suf">SUF-BVC</button>' : ''}</div></div>
     <section class="kaart">${voortgangBalk(v, { groot: true })}</section>
     ${p.inspectiesoort === BV.BVC_SOORT ? bvcSamenvatting(g.inspecties.filter((i) => i.werkpakketId === p.id && (i.rondeId || STANDAARD_RONDE) === (p.rondeId || STANDAARD_RONDE))) : ''}
     <div class="kaartindeling">
@@ -5284,7 +5286,7 @@ async function pakketDetail(id, q = new URLSearchParams()) {
     const r = v.gedaan.get(o.id);
     const ov = v.overgeslagen.get(o.id);
     return `<tr data-id="${esc(o.id)}" data-status="${st}">
-          <td><a href="#/objecten/${esc(o.id)}"><strong>${esc(o.code)}</strong></a>${objectGeometrie(o) ? ` <button type="button" class="kaartpin" data-opkaart="${esc(o.id)}" title="Toon op de kaart" aria-label="${esc(o.code)} op de kaart tonen">📍</button>` : ''}</td><td>${esc(o.naam)}${p.vrijgaveVereist ? `<br>${vrijgaveLabel(eco.vrijgaveVoorObject(vrijgavenProject, o.id, vandaag()))}` : ''}</td>
+          <td><a href="#/objecten/${esc(o.id)}"><strong>${esc(o.code)}</strong></a>${objectGeometrie(o) ? ` <button type="button" class="kaartpin" data-opkaart="${esc(o.id)}" title="Toon op de kaart" aria-label="${esc(o.code)} op de kaart tonen">${I.locatie}</button>` : ''}</td><td>${esc(o.naam)}${p.vrijgaveVereist ? `<br>${vrijgaveLabel(eco.vrijgaveVoorObject(vrijgavenProject, o.id, vandaag()))}` : ''}</td>
           <td><span class="label-status ${st === 'gedaan' ? 'afgerond' : st === 'open' ? 'binnenkort' : ''}">${{ open: 'Open', gedaan: 'Gedaan', overgeslagen: 'Overgeslagen' }[st]}</span></td>
           <td>${r ? `<a href="${regHref(r)}">${datumNL(r.datum)}</a> · ${esc(r.uitvoerder || r.inspecteur || '')}` : ov ? `${datumNL(ov.op)} · ${esc(ov.door)}` : '–'}</td>
           <td class="verberg-mobiel">${ov ? `${esc(ov.reden)}${ov.toelichting ? `: ${esc(ov.toelichting)}` : ''}` : r ? esc(r.omschrijving || r.samenvatting || '') : ''}</td>
@@ -5347,7 +5349,7 @@ async function exporteerResultaten({ lijst, titel, onderdeel = '', filter = '', 
   const d = document.createElement('dialog');
   d.className = 'dialoog';
   d.innerHTML = `<form method="dialog">
-    <h2>📊 Resultaten naar Excel</h2>
+    <h2>${I.excel} Resultaten naar Excel</h2>
     <p>${esc(titel)}<br><small>${lijst.length} regels · bladen: Overzicht, Resultaten, Gebreken, Maatregelen</small></p>
     <label class="vink"><input type="checkbox" id="x-fotos" ${aantalFotos && aantalFotos <= 400 ? 'checked' : ''} ${aantalFotos ? '' : 'disabled'}>
       <span><strong>Foto's opnemen (${aantalFotos})</strong><small>Extra blad met de foto's per object; het bestand wordt groter.</small></span></label>
@@ -5470,10 +5472,10 @@ async function leesPakketExcel(bestand) {
     app.innerHTML = `
       <div class="paginakop"><div><p><a href="#/werkpakketten" data-xls-terug>← Werkpakketten</a></p>
         <h1>Excel inladen</h1><p>${esc(bestand.name)} · ${raw.pakketten.length} pakketten, ${raw.rondes.length} rondes, ${raw.objecten.length} objectregels</p></div></div>
-      ${r.fouten.length ? `<section class="kaart waarschuwing"><h2>❌ ${r.fouten.length} fout${r.fouten.length === 1 ? '' : 'en'} – er is nog niets opgeslagen</h2>
+      ${r.fouten.length ? `<section class="kaart waarschuwing"><h2>${I.fout} ${r.fouten.length} fout${r.fouten.length === 1 ? '' : 'en'} – er is nog niets opgeslagen</h2>
         <p>Pas het Excel-bestand aan en laad het opnieuw in.</p><ul class="importmeldingen">${r.fouten.slice(0, 200).map(regel).join('')}</ul>
         ${r.fouten.length > 200 ? `<p>… en nog ${r.fouten.length - 200} fouten.</p>` : ''}</section>` : ''}
-      ${r.waarschuwingen.length ? `<section class="kaart"><h2>⚠ Let op</h2><ul class="importmeldingen">${r.waarschuwingen.map(regel).join('')}</ul></section>` : ''}
+      ${r.waarschuwingen.length ? `<section class="kaart"><h2>${I.let} Let op</h2><ul class="importmeldingen">${r.waarschuwingen.map(regel).join('')}</ul></section>` : ''}
       <section class="kaart">
         <h2>Wat er gebeurt</h2>
         <div class="tabelhouder"><table>
@@ -5528,7 +5530,7 @@ function mobielPakketRegel(p, v) {
   const href = isRonde ? pakketPagina(p, true) : `#/m/pakket/${esc(p.id)}`;
   const sub = isRonde ? `${pakketSoortTekst(p)}${p.eind ? ` · uiterlijk ${datumNL(p.eind)}` : ''}` : pakketRondesTekst(p);
   return `<li><a href="${href}">
-    <span class="micoon klein">📦</span>
+    <span class="micoon klein">${I.pakket}</span>
     <span><strong>${esc(p.naam)}</strong><small>${sub}${p.status === 'gepland' ? ' · gepland' : ''}</small>
     ${voortgangBalk(v)}</span></a></li>`;
 }
@@ -5551,7 +5553,7 @@ async function mobielPakket(id, q = new URLSearchParams()) {
       <h2 class="mlijstkop">Kies een ronde</h2>
       <ul class="mlijst pakketlijst">${lopend.map((r) => {
     const rv = g.views.get(`${id}:${r.id}`);
-    return `<li><a href="${pakketPagina(rv, true)}"><span class="micoon klein">${r.status === 'actief' ? '▶️' : '🗓️'}</span>
+    return `<li><a href="${pakketPagina(rv, true)}"><span class="micoon klein">${r.status === 'actief' ? I.start : I.kalender}</span>
           <span><strong>R${r.nummer} ${esc(r.naam)}</strong><small>${pakketSoortTekst(rv)}${periodeTekst(rv) ? ` · ${periodeTekst(rv)}` : ''}${r.status === 'gepland' ? ' · gepland' : ''}</small>
           ${voortgangBalk(g.rondeVoortgang.get(`${id}:${r.id}`))}</span></a></li>`;
   }).join('')}</ul>`;
@@ -5565,7 +5567,7 @@ async function mobielPakket(id, q = new URLSearchParams()) {
   const open = objecten.filter((o) => statusVan(o.id) === 'open');
   const bevestiging = opslagKaart(opslagBevestiging(), {
     objectMap: g.objectMap,
-    volgende: open.length ? '<button class="knop primair" type="button" data-volgende>▶ Volgende</button>' : '<span class="mklaar">🎉 Ronde klaar</span>',
+    volgende: open.length ? '<button class="knop primair" type="button" data-volgende>' + I.start + ' Volgende</button>' : '<span class="mklaar">' + I.gereed + ' Ronde klaar</span>',
   });
 
   app.innerHTML = `${bevestiging}
@@ -5574,9 +5576,9 @@ async function mobielPakket(id, q = new URLSearchParams()) {
     ${voortgangBalk(v, { groot: true })}
     ${p.omschrijving ? `<details class="kaart minstructie"><summary>Instructie</summary><p style="white-space:pre-wrap;margin:.5rem 0 0">${esc(p.omschrijving)}</p></details>` : ''}
     ${open.length ? `<div class="knoppen mpakketknoppen">
-      <button class="knop primair" id="volgende" type="button">📍 Volgende dichtbij</button>
-      <button class="knop" id="locatie" type="button">↻ Locatie</button></div>` : '<div class="kaart mhier">🎉 Alle objecten zijn gedaan.</div>'}
-    ${p.vrijgaveVereist && open.length ? `<a class="knop mgroot" href="#/m/vrijgave/nieuw?pakket=${esc(p.id)}">🌿 Flora & fauna vrijgave voor dit pakket</a>` : ''}
+      <button class="knop primair" id="volgende" type="button">${I.locatie} Volgende dichtbij</button>
+      <button class="knop" id="locatie" type="button">${I.vernieuw} Locatie</button></div>` : '<div class="kaart mhier">' + I.gereed + ' Alle objecten zijn gedaan.</div>'}
+    ${p.vrijgaveVereist && open.length ? `<a class="knop mgroot" href="#/m/vrijgave/nieuw?pakket=${esc(p.id)}">${I.blad} Flora & fauna vrijgave voor dit pakket</a>` : ''}
     ${p.soort === 'inspectie' && p.inspectiesoort === BV.BVC_SOORT && p.status === 'actief' ? '<button class="knop mgroot" id="nieuweboom" type="button">＋ Nieuwe boom op mijn locatie</button>' : ''}
     <div id="pakketkaart" class="mkaart"><p class="leeg">Kaart laden…</p></div>
     <h2 class="mlijstkop">Nog te doen (${open.length})</h2>
@@ -5584,9 +5586,9 @@ async function mobielPakket(id, q = new URLSearchParams()) {
     <ul class="mlijst" id="open-lijst"></ul>
     ${v.gedaan.size ? `<details class="mklapper"><summary>Gedaan (${v.gedaan.size})</summary><ul class="mlijst">${objecten.filter((o) => v.gedaan.has(o.id)).map((o) => `
       <li><a href="${p.soort === 'inspectie' ? `#/m/inspectie/${esc(v.gedaan.get(o.id).id)}` : `#/m/werk/${esc(v.gedaan.get(o.id).id)}`}">
-        <span class="micoon klein">✅</span><span><strong>${esc(o.code)} – ${esc(o.naam)}</strong><small>${datumNL(v.gedaan.get(o.id).datum)}</small></span></a></li>`).join('')}</ul></details>` : ''}
+        <span class="micoon klein">${I.gereed}</span><span><strong>${esc(o.code)} – ${esc(o.naam)}</strong><small>${datumNL(v.gedaan.get(o.id).datum)}</small></span></a></li>`).join('')}</ul></details>` : ''}
     ${v.overgeslagen.size ? `<details class="mklapper"><summary>Overgeslagen (${v.overgeslagen.size})</summary><ul class="mlijst">${objecten.filter((o) => v.overgeslagen.has(o.id)).map((o) => `
-      <li><div class="mregel"><span class="micoon klein">⏭</span><span><strong>${esc(o.code)} – ${esc(o.naam)}</strong><small>${esc(v.overgeslagen.get(o.id).reden)}</small></span>
+      <li><div class="mregel"><span class="micoon klein">${I.overslaan}</span><span><strong>${esc(o.code)} – ${esc(o.naam)}</strong><small>${esc(v.overgeslagen.get(o.id).reden)}</small></span>
         <button class="knop klein" data-terug="${esc(o.id)}">Terugzetten</button></div></li>`).join('')}</ul></details>` : ''}`;
 
   const vrijgavenProject = p.vrijgaveVereist ? await inProject('vrijgaven') : [];
@@ -5600,9 +5602,9 @@ async function mobielPakket(id, q = new URLSearchParams()) {
     el.innerHTML = metAfstand.length ? metAfstand.map(({ o, afstand }) => `
       <li><div class="mregel">
         <a href="${pakketHref(p, o.id, true)}" class="mregel-link"><span><strong>${esc(o.code)} – ${esc(o.naam)}</strong>
-          <small>${esc(o.type || '')}${afstand != null ? ` · ${afstand === 0 ? '📍 hier' : afstandTekst(afstand)}` : ''}</small>${vrijgaveChip(o)}</span></a>
-        <button class="knop klein" data-overslaan="${esc(o.id)}" aria-label="${esc(o.code)} overslaan">⏭</button>
-        <a class="knop klein primair" href="${pakketHref(p, o.id, true)}">▶</a></div></li>`).join('')
+          <small>${esc(o.type || '')}${afstand != null ? ` · ${afstand === 0 ? I.locatie + ' hier' : afstandTekst(afstand)}` : ''}</small>${vrijgaveChip(o)}</span></a>
+        <button class="knop klein" data-overslaan="${esc(o.id)}" aria-label="${esc(o.code)} overslaan">${I.overslaan}</button>
+        <a class="knop klein primair" href="${pakketHref(p, o.id, true)}">${I.start}</a></div></li>`).join('')
       : zoek.length ? '<li class="leeg">Geen objecten gevonden.</li>' : '';
     return metAfstand;
   };
@@ -5649,7 +5651,7 @@ async function mobielPakket(id, q = new URLSearchParams()) {
 // ---------------------------------------------------------------------------
 function bvkLabel(bvk) {
   const k = BV.BVK[bvk];
-  return k ? `<span class="score" style="background:${k.kleur}">🌳 ${esc(k.kort)}</span>` : '<span class="label-status">Geen</span>';
+  return k ? `<span class="score" style="background:${k.kleur}">${I.boom} ${esc(k.kort)}</span>` : '<span class="label-status">Geen</span>';
 }
 
 /** Conditie (NEN 2767) of, bij bomen, de boomveiligheidsklasse. */
@@ -5670,7 +5672,7 @@ const segment = (naam, waarde, opties, attr = '') => `<div class="segment" role=
 function fotoRij(fotos, sleutel) {
   return `<div class="fotos">${fotos.map((f, n) => `<div class="foto"><img src="${esc(f.data)}" alt="Foto ${n + 1}" data-lichtbak>
     <button type="button" data-foto-weg="${esc(sleutel)}:${n}" aria-label="Foto verwijderen">×</button></div>`).join('')}
-    <label class="knop fotoknop">📷 Foto<input type="file" accept="image/*" capture="environment" multiple data-foto-bij="${esc(sleutel)}"></label></div>`;
+    <label class="knop fotoknop">${I.camera} Foto<input type="file" accept="image/*" capture="environment" multiple data-foto-bij="${esc(sleutel)}"></label></div>`;
 }
 
 async function bewaarFotoLijsten(lijsten, origineel, meta) {
@@ -5737,7 +5739,7 @@ function digigidsBlok(w, i) {
   if (!opties.length) return '';
   const dg = opties.find((x) => x.id === w.digigids) ?? opties[0];
   return `<div class="veld breed digigids">
-    <label>Beoordeling volgens de Digigids <a href="${esc(dg.url)}" target="_blank" rel="noopener">↗</a></label>
+    <label>Beoordeling volgens de Digigids <a href="${esc(dg.url)}" target="_blank" rel="noopener">${I.extern}</a></label>
     ${opties.length > 1 ? `<select data-w="${i}" data-veld="digigids">${opties.map((x) => optie(x.id, `${x.element}: ${x.naam}`, dg.id)).join('')}</select>` : ''}
     <small>${esc(dg.categorie)} › ${esc(dg.element)} – ${esc(dg.naam)}${dg.omschrijving ? `: ${esc(dg.omschrijving)}` : ''}. Kies het beeld dat het best past.</small>
     <div class="dg-klassen">${dg.klassen.map((k) => `
@@ -5753,7 +5755,7 @@ function digigidsBlok(w, i) {
 const puntBron = (w) => (w.locatieBron === 'gps' ? `(GPS${w.nauwkeurigheid ? ` ± ${w.nauwkeurigheid} m` : ''})` : '(op de kaart gezet)');
 
 const GROEP_ICOON = {
-  Grasbekledingen: '🌱', Steenbekledingen: '🧱', Asfaltbekledingen: '⬛', 'Bijzondere constructies': '🏗️', 'Niet waterkerende elementen': '🚧', Duinen: '🏖️',
+  Grasbekledingen: I.gras, Steenbekledingen: I.steen, Asfaltbekledingen: I.asfalt, 'Bijzondere constructies': I.constructie, 'Niet waterkerende elementen': I.kegel, Duinen: I.duin,
 };
 
 const ZONE_NAAM = (z) => (z ? z.charAt(0).toUpperCase() + z.slice(1) : '');
@@ -5799,12 +5801,12 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
 
   const kop = mobiel
     ? `<div class="mkop"><a href="${terug}" class="mterug" aria-label="Terug">←</a>
-        <div><small>🌊 Inspectie waterkering · STOWA</small><h1>${esc(object.code)} – ${esc(object.naam)}</h1></div></div>`
+        <div><small>${I.water} Inspectie waterkering · STOWA</small><h1>${esc(object.code)} – ${esc(object.naam)}</h1></div></div>`
     : `<div class="paginakop"><div><p><a href="${terug}">← Terug</a></p><h1>Inspectie waterkering (STOWA)</h1><p>${objectNaam(object)}</p></div></div>`;
   app.innerHTML = `${kop}
     <form id="form" novalidate class="${mobiel ? 'mform' : ''}">
-      ${taak ? `<div class="kaart mhier">📋 <strong>Taak:</strong> ${esc(taak.titel)}</div>` : ''}
-      ${pakket ? `<div class="kaart mhier">📦 <strong>Werkpakket:</strong> ${esc(pakket.naam)}</div>` : ''}
+      ${taak ? `<div class="kaart mhier">${I.taak} <strong>Taak:</strong> ${esc(taak.titel)}</div>` : ''}
+      ${pakket ? `<div class="kaart mhier">${I.pakket} <strong>Werkpakket:</strong> ${esc(pakket.naam)}</div>` : ''}
       <section class="kaart">
         <h2>Inspectie</h2>
         <div class="velden">
@@ -5832,7 +5834,7 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
       <div class="${mobiel ? 'mvoet' : 'formvoet kaart'}">
         ${mobiel ? '' : `<a class="knop" href="${terug}">Annuleren</a>`}
         <button class="knop" type="submit" data-status="concept">Concept</button>
-        <button class="knop primair" type="submit" data-status="afgerond">✓ Afronden</button>
+        <button class="knop primair" type="submit" data-status="afgerond">${I.vink} Afronden</button>
       </div>
     </form>`;
 
@@ -5904,7 +5906,7 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
           punt.on('dragend', () => { const p = punt.getLatLng(); zet(p.lat, p.lng, 'kaart'); });
         } else punt.setLatLng([w.lat, w.lng]);
         const t = app.querySelector(`[data-w-coord="${i}"]`);
-        if (t) t.textContent = `📍 ${w.lat.toFixed(6)}, ${w.lng.toFixed(6)} ${puntBron(w)}`;
+        if (t) t.innerHTML = `${I.locatie} ${w.lat.toFixed(6)}, ${w.lng.toFixed(6)} ${puntBron(w)}`;
         vak.closest('.wkaartveld')?.classList.remove('ontbreekt');
       };
       if (w.lat) zet(w.lat, w.lng, w.locatieBron ?? 'kaart');
@@ -5925,7 +5927,7 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
       const titel = w.aard === 'handhaving' ? (w.omschrijving || 'Handhaving') : (it ? `${it.element}: ${it.naam}` : 'Nieuwe waarneming');
       return `<details class="gebrek waarneming" style="border-left-color:${u?.kleur ?? 'var(--rand)'}" ${open.has(i) ? 'open' : ''} data-w-blok="${i}">
         <summary class="gebrek-kop"><h3 style="margin:0">${i + 1}. ${esc(titel)}</h3>
-          <span>${w.lat ? '📍' : '<small class="il-let-op" style="width:auto">geen locatie</small>'} ${w.zone ? `<small>${esc(ZONE_NAAM(w.zone))}</small> ` : ''}${stowaLabel(w.urgentieKleur, { leeg: 'urgentie?' })}</span></summary>
+          <span>${w.lat ? I.locatie : '<small class="il-let-op" style="width:auto">geen locatie</small>'} ${w.zone ? `<small>${esc(ZONE_NAAM(w.zone))}</small> ` : ''}${stowaLabel(w.urgentieKleur, { leeg: 'urgentie?' })}</span></summary>
         ${open.has(i) ? `<div class="velden">
           <div class="veld breed"><label>Categorie</label>${segment(`aard-${i}`, w.aard, [['schadebeeld', '● Schadebeeld'], ['handhaving', '▲ Handhaving']], `data-w="${i}" data-veld="aard"`)}</div>
           <div class="veld"><label class="vereist">Zone</label><select data-w="${i}" data-veld="zone"><option value="">– kies zone –</option>
@@ -5945,18 +5947,18 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
           <div class="veld breed wkaartveld ${w.lat ? '' : 'ontbreekt'}"><label class="vereist">Locatie (punt)</label>
             <div class="wkaart" data-w-kaart="${i}"></div>
             <div class="locatieveld">
-              <button type="button" class="knop" data-gps="${i}">📍 Mijn GPS-locatie</button>
+              <button type="button" class="knop" data-gps="${i}">${I.locatie} Mijn GPS-locatie</button>
               <input data-w="${i}" data-veld="locatie" value="${esc(w.locatie)}" maxlength="120" placeholder="Omschrijving, bijv. dijkpaal 12 + 40 m"></div>
-            <small data-w-coord="${i}">${w.lat ? `📍 ${Number(w.lat).toFixed(6)}, ${Number(w.lng).toFixed(6)} ${puntBron(w)}` : 'Tik op de kaart waar het gebrek zit, of gebruik je GPS-locatie. Het punt is daarna te verslepen.'}</small></div>
+            <small data-w-coord="${i}">${w.lat ? `${I.locatie} ${Number(w.lat).toFixed(6)}, ${Number(w.lng).toFixed(6)} ${puntBron(w)}` : 'Tik op de kaart waar het gebrek zit, of gebruik je GPS-locatie. Het punt is daarna te verslepen.'}</small></div>
           <div class="veld breed"><label class="vereist">Urgentie</label>
             ${segment(`urg-${i}`, w.urgentieKleur, Object.entries(ST.URGENTIE).map(([k, x]) => [k, x.label]), `data-w="${i}" data-veld="urgentieKleur" class="stowa-urgentie"`)}
             <small>${u ? esc(u.uitleg) : 'Groen = geen directe actie · Oranje = binnen 3 maanden · Rood = direct gevaar kerend vermogen'}</small>
-            ${w.urgentieKleur === 'rood' ? '<p class="label-status verlopen" style="white-space:normal;margin-top:.35rem">⚠ Direct melden aan de beheerder en een foto maken.</p>' : ''}</div>
+            ${w.urgentieKleur === 'rood' ? '<p class="label-status verlopen" style="white-space:normal;margin-top:.35rem">' + I.let + ' Direct melden aan de beheerder en een foto maken.</p>' : ''}</div>
           <div class="veld breed"><label>Toelichting</label><textarea data-w="${i}" data-veld="toelichting" maxlength="1000" placeholder="Wat zie je, oorzaak, ontwikkeling">${esc(w.toelichting)}</textarea></div>
           <div class="veld"><label>Maatregel</label><input data-w="${i}" data-veld="maatregel" value="${esc(w.maatregel)}" maxlength="200"></div>
           <div class="veld"><label>Type maatregel</label><select data-w="${i}" data-veld="maatregelSoort"><option value="">–</option>${ST.MAATREGELSOORTEN.map((m) => optie(m, m, w.maatregelSoort)).join('')}</select></div>
           <div class="veld breed"><label>Foto's (overzicht en detail)</label>${fotoRij(w.fotos, `w${i}`)}</div>
-          <div class="veld breed"><button type="button" class="knop klein gevaar" data-w-weg="${i}">🗑 Waarneming verwijderen</button></div>
+          <div class="veld breed"><button type="button" class="knop klein gevaar" data-w-weg="${i}">${I.verwijder} Waarneming verwijderen</button></div>
         </div>` : ''}</details>`;
     }).join('') : '<p class="mleeg">Nog geen waarnemingen.</p>';
     tekenWKaarten();
@@ -6117,7 +6119,7 @@ async function stowaWaarnemingKaart(w, n) {
   return `<article class="gebrekkaart" id="waarneming-${n + 1}" data-bevinding="${esc(String(w.id ?? ''))}" style="--gk:${u?.kleur ?? '#9aa5b1'}">
     <header><span class="gk-nr">${n + 1}</span>
       <div class="gk-titel"><h3>${esc(ST.schadebeeldNaam(w))}</h3>
-        <small>${[it?.groep, ZONE_NAAM(w.zone), wz ? `inspectiewijzer ${wz.nr}` : '', w.locatie ? `📍 ${w.locatie}` : '',
+        <small>${[it?.groep, ZONE_NAAM(w.zone), wz ? `inspectiewijzer ${wz.nr}` : '', w.locatie ? `${I.locatie} ${w.locatie}` : '',
     w.lat ? `${Number(w.lat).toFixed(6)}, ${Number(w.lng).toFixed(6)}` : 'geen locatie'].filter(Boolean).map(esc).join(' · ')}</small></div>
       ${stowaLabel(w.urgentieKleur)}</header>
     <div class="kenmerken">
@@ -6157,7 +6159,7 @@ async function stowaInhoud(i, o) {
           <dt>Inspecteur</dt><dd>${esc(i.inspecteur || '–')}</dd>
           ${i.weer ? `<dt>Weer</dt><dd>${esc(i.weer)}</dd>` : ''}
           <dt>Waarnemingen</dt><dd>${W.length}${tel.length ? ` · ${tel.map(([k, n]) => `${n}× ${ST.URGENTIE[k].label.toLowerCase()}`).join(', ')}` : ''}</dd>
-          ${pakket ? `<dt>Werkpakket</dt><dd><a href="${pakketPagina(pakket, false)}">📦 ${esc(pakket.naam)}</a></dd>` : ''}
+          ${pakket ? `<dt>Werkpakket</dt><dd><a href="${pakketPagina(pakket, false)}">${I.pakket} ${esc(pakket.naam)}</a></dd>` : ''}
         </dl>
       </section>
       ${locatieBlok(o)}
@@ -6206,7 +6208,7 @@ async function stowaDetail(i, { rapport = false } = {}) {
     app.innerHTML = `
       <div class="paginakop">
         <div><p><a href="${o ? `#/objecten/${esc(o.id)}` : '#/inspecties'}">← ${o ? esc(o.code) : 'Inspecties'}</a></p>
-          <h1>🌊 Inspectie waterkering · ${datumNL(i.datum)}</h1><p>${objectNaam(o)} · ${statusLabel(i.status)}</p></div>
+          <h1>${I.water} Inspectie waterkering · ${datumNL(i.datum)}</h1><p>${objectNaam(o)} · ${statusLabel(i.status)}</p></div>
         <div class="knoppen">
           <a class="knop" href="#/inspecties/${esc(i.id)}/rapport">Rapport</a>
           <a class="knop" href="#/inspecties/${esc(i.id)}/bewerken">Bewerken</a>
@@ -6285,13 +6287,13 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
 
   const kop = mobiel
     ? `<div class="mkop"><a href="${terug}" class="mterug" aria-label="Terug">←</a>
-        <div><small>🌳 Boomveiligheidscontrole</small><h1>${esc(object.code)} – ${esc(object.naam)}</h1></div></div>`
+        <div><small>${I.boom} Boomveiligheidscontrole</small><h1>${esc(object.code)} – ${esc(object.naam)}</h1></div></div>`
     : `<div class="paginakop"><div><p><a href="${terug}">← Terug</a></p><h1>Boomveiligheidscontrole</h1><p>${objectNaam(object)} · ${rdTekst(object)}</p></div></div>`;
 
   app.innerHTML = `${kop}
     <form id="form" novalidate class="${mobiel ? 'mform' : ''}">
-      ${taak ? `<div class="kaart mhier">📋 <strong>Taak:</strong> ${esc(taak.titel)}</div>` : ''}
-      ${pakket ? `<div class="kaart mhier">📦 <strong>Werkpakket:</strong> ${esc(pakket.naam)}</div>` : ''}
+      ${taak ? `<div class="kaart mhier">${I.taak} <strong>Taak:</strong> ${esc(taak.titel)}</div>` : ''}
+      ${pakket ? `<div class="kaart mhier">${I.pakket} <strong>Werkpakket:</strong> ${esc(pakket.naam)}</div>` : ''}
       <section class="kaart">
         <h2>Controle</h2>
         <div class="velden">
@@ -6362,7 +6364,7 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
       <div class="${mobiel ? 'mvoet' : 'formvoet kaart'}">
         ${mobiel ? '' : `<a class="knop" href="${terug}">Annuleren</a>`}
         <button class="knop" type="submit" data-status="concept">Concept</button>
-        <button class="knop primair" type="submit" data-status="afgerond">✓ Afronden</button>
+        <button class="knop primair" type="submit" data-status="afgerond">${I.vink} Afronden</button>
       </div>
     </form>`;
 
@@ -6374,7 +6376,7 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
     $('#gebreken').innerHTML = b.gebreken.length ? b.gebreken.map((g, i) => `
       <div class="gebrek" style="border-left-color:${BV.BVK.risico.kleur}">
         <div class="gebrek-kop"><h3 style="margin:0">Gebrek ${i + 1}${g.omschrijving ? ` · <small>${esc(BV.gebrekType(g.omschrijving))}</small>` : ''}</h3>
-          <button type="button" class="knop klein gevaar" data-gebrek-weg="${i}" aria-label="Gebrek verwijderen">🗑</button></div>
+          <button type="button" class="knop klein gevaar" data-gebrek-weg="${i}" aria-label="Gebrek verwijderen">${I.verwijder}</button></div>
         <div class="velden">
           <div class="veld breed"><label class="vereist">Gebrek</label><select data-g="${i}" data-veld="omschrijving"><option value="">– kies –</option>
             ${gebrekOpties.replace(`<option>${esc(g.omschrijving)}</option>`, `<option selected>${esc(g.omschrijving)}</option>`)}</select>
@@ -6389,7 +6391,7 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
     $('#maatregelen').innerHTML = b.maatregelen.length ? b.maatregelen.map((m, i) => `
       <div class="gebrek" style="border-left-color:${m.termijn === 'acuut' ? '#8b1a1a' : '#e07b00'}">
         <div class="gebrek-kop"><h3 style="margin:0">Maatregel ${i + 1}</h3>
-          <button type="button" class="knop klein gevaar" data-maatregel-weg="${i}" aria-label="Maatregel verwijderen">🗑</button></div>
+          <button type="button" class="knop klein gevaar" data-maatregel-weg="${i}" aria-label="Maatregel verwijderen">${I.verwijder}</button></div>
         <div class="velden">
           <div class="veld"><label class="vereist">Maatregel</label><select data-m="${i}" data-veld="bvcMaatregel"><option value="">– kies –</option>
             ${BV.MAATREGELEN.map((x) => optie(x, x, m.bvcMaatregel)).join('')}</select></div>
@@ -6561,7 +6563,7 @@ async function bvcInhoud(i, o) {
     : '<p class="leeg">Geen maatregelen.</p>'}</section>`}
     </div>
     ${b.niet ? '' : `<h2>Boomgebreken${gebreken.length ? ` (${gebreken.length})` : ''}</h2>${gebreken.join('') || leegKaart('Geen boomgebreken.')}`}
-    ${b.beschermdeSoorten ? '<div class="kaart mhier">🦇 Beschermde soorten in de boom: maatregelen alleen na afstemming met een ecologisch deskundige.</div>' : ''}
+    ${b.beschermdeSoorten ? '<div class="kaart mhier">' + I.dier + ' Beschermde soorten in de boom: maatregelen alleen na afstemming met een ecologisch deskundige.</div>' : ''}
     ${b.opmerking || i.fotoIds?.length ? `<section class="kaart"><h2>Opmerkingen en foto's</h2>${b.opmerking ? `<p style="white-space:pre-wrap">${esc(b.opmerking)}</p>` : ''}
       ${b.fotonummer ? `<p><small>Fotonummer: ${esc(b.fotonummer)}</small></p>` : ''}${await fotoGalerij(i.fotoIds, { titel: "Foto's" })}</section>` : ''}`;
 }
@@ -6589,7 +6591,7 @@ async function bvcDetail(i, { rapport = false } = {}) {
   app.innerHTML = `
     <div class="paginakop">
       <div><p><a href="${o ? `#/objecten/${esc(o.id)}` : '#/inspecties'}">← ${o ? esc(o.code) : 'Inspecties'}</a></p>
-        <h1>🌳 Boomveiligheidscontrole · ${datumNL(i.datum)}</h1><p>${objectNaam(o)} · ${statusLabel(i.status)}</p></div>
+        <h1>${I.boom} Boomveiligheidscontrole · ${datumNL(i.datum)}</h1><p>${objectNaam(o)} · ${statusLabel(i.status)}</p></div>
       <div class="knoppen">
         <a class="knop" href="#/inspecties/${esc(i.id)}/rapport">Rapport</a>
         <a class="knop" href="#/inspecties/${esc(i.id)}/bewerken">Bewerken</a>
@@ -6635,7 +6637,7 @@ function bvcSamenvatting(inspecties) {
   let acuut = 0;
   for (const i of bvc) for (const m of i.bvc.maatregelen ?? []) { maatregelen[m.bvcMaatregel] = (maatregelen[m.bvcMaatregel] ?? 0) + 1; if (m.termijn === 'acuut') acuut += 1; }
   const regel = (o) => Object.entries(o).map(([k, n]) => `<li>${esc(k)}: <strong>${n}</strong></li>`).join('');
-  return `<section class="kaart"><h2>🌳 Samenvatting boomveiligheid</h2><div class="raster">
+  return `<section class="kaart"><h2>${I.boom} Samenvatting boomveiligheid</h2><div class="raster">
     <div><h3>${bvc.length} gecontroleerd</h3><ul>${regel(perBvk)}</ul></div>
     <div><h3>Omgevingsrisicoklasse</h3><ul>${regel(perOrk)}</ul></div>
     <div><h3>Maatregelen</h3><ul>${regel(maatregelen) || '<li>Geen</li>'}${acuut ? `<li class="label-status verlopen">${acuut} acuut (48 uur)</li>` : ''}</ul></div></div></section>`;
@@ -6680,11 +6682,11 @@ const VRIJGAVE_STATUS = {
 };
 
 function vrijgaveLabel(v, datum = vandaag()) {
-  if (!v) return '<span class="label-status verlopen">🌿 Geen vrijgave</span>';
+  if (!v) return '<span class="label-status verlopen">' + I.blad + ' Geen vrijgave</span>';
   const g = eco.geldigheid(v, datum);
   const s = VRIJGAVE_STATUS[g];
   const extra = g === 'geldig' ? `${v.besluit === 'voorwaarden' ? ' · voorwaarden' : ''} t/m ${datumNL(v.geldigTot)}` : '';
-  return `<span class="label-status ${s.klasse}">🌿 ${s.label}${extra}</span>`;
+  return `<span class="label-status ${s.klasse}">${I.blad} ${s.label}${extra}</span>`;
 }
 
 async function vrijgaveVoor(objectId) {
@@ -6718,11 +6720,11 @@ async function vrijgaveFormulier(id, q = new URLSearchParams(), { mobiel = false
 
   app.innerHTML = `
     ${mobiel ? `<div class="mkop"><a href="${terug}" class="mterug" aria-label="Terug">←</a>
-      <div><small>🌿 Flora & fauna vrijgave</small><h1>Veldcheck</h1></div></div>`
+      <div><small>${I.blad} Flora & fauna vrijgave</small><h1>Veldcheck</h1></div></div>`
     : `<div class="paginakop"><div><p><a href="${terug}">← Terug</a></p><h1>Flora- en fauna-vrijgave (veldcheck)</h1>
       <p>Controle direct voorafgaand aan de werkzaamheden op de actuele situatie van beschermde soorten en broedgevallen, volgens de Gedragscode Soortenbescherming Rijkswaterstaat 2025–2029.</p></div></div>`}
     <form id="form" novalidate class="${mobiel ? 'mform' : ''}">
-      ${pakket ? `<div class="kaart mhier">📦 <strong>Werkpakket:</strong> ${esc(pakket.naam)}</div>` : ''}
+      ${pakket ? `<div class="kaart mhier">${I.pakket} <strong>Werkpakket:</strong> ${esc(pakket.naam)}</div>` : ''}
       <section class="kaart">
         <h2>Gebied en werkzaamheden</h2>
         <div id="objecten"></div>
@@ -6795,7 +6797,7 @@ async function vrijgaveFormulier(id, q = new URLSearchParams(), { mobiel = false
       <div class="${mobiel ? 'mvoet' : 'formvoet kaart'}">
         ${mobiel ? '' : `<a class="knop" href="${terug}">Annuleren</a>`}
         <button class="knop" type="submit" data-status="concept">Concept</button>
-        <button class="knop primair" type="submit" data-status="afgerond">✓ Afronden</button>
+        <button class="knop primair" type="submit" data-status="afgerond">${I.vink} Afronden</button>
       </div>
     </form>`;
 
@@ -6811,7 +6813,7 @@ async function vrijgaveFormulier(id, q = new URLSearchParams(), { mobiel = false
     $('#waarnemingen').innerHTML = v.waarnemingen.map((w, i) => `
       <div class="gebrek" style="border-left-color:#33a02c">
         <div class="gebrek-kop"><h3 style="margin:0">Waarneming ${i + 1}</h3>
-          <button type="button" class="knop klein gevaar" data-w-weg="${i}" aria-label="Verwijderen">🗑</button></div>
+          <button type="button" class="knop klein gevaar" data-w-weg="${i}" aria-label="Verwijderen">${I.verwijder}</button></div>
         <div class="velden">
           <div class="veld"><label class="vereist">Soortgroep</label><select data-w="${i}" data-veld="soortgroep"><option value="">– kies –</option>${eco.SOORTGROEPEN.map((s) => optie(s, s, w.soortgroep)).join('')}</select></div>
           <div class="veld"><label class="vereist">Soort</label><input data-w="${i}" data-veld="soort" value="${esc(w.soort)}" placeholder="bijv. Wilde eend"></div>
@@ -6820,7 +6822,7 @@ async function vrijgaveFormulier(id, q = new URLSearchParams(), { mobiel = false
           <div class="veld"><label>Bescherming</label><select data-w="${i}" data-veld="bescherming"><option value="">–</option>${eco.BESCHERMING.map((s) => optie(s, s, w.bescherming)).join('')}</select></div>
           <div class="veld"><label>Verstoringsvrije afstand (m)</label><input data-w="${i}" data-veld="afstand" type="number" min="0" inputmode="numeric" value="${esc(w.afstand ?? '')}"></div>
           <div class="veld"><label>&nbsp;</label><label class="vink"><input type="checkbox" data-w="${i}" data-veld="gemarkeerd" ${w.gemarkeerd ? 'checked' : ''}><span>Gemarkeerd in het veld</span></label></div>
-          <div class="veld breed"><label>Locatie</label><div class="knoppen"><button type="button" class="knop" data-w-gps="${i}">📍 Huidige locatie</button>
+          <div class="veld breed"><label>Locatie</label><div class="knoppen"><button type="button" class="knop" data-w-gps="${i}">${I.locatie} Huidige locatie</button>
             <small>${w.lat ? `${Number(w.lat).toFixed(6)}, ${Number(w.lng).toFixed(6)}${w.nauwkeurigheid ? ` (± ${w.nauwkeurigheid} m)` : ''}` : 'Nog niet vastgelegd'}</small></div></div>
           <div class="veld breed"><label>Toelichting</label><input data-w="${i}" data-veld="toelichting" value="${esc(w.toelichting ?? '')}"></div>
           <div class="veld breed"><label>Foto's</label>${fotoRij(w.fotos, `w${i}`)}</div>
@@ -6923,14 +6925,14 @@ async function vrijgaveDetail(id, { mobiel = false } = {}) {
   const objecten = await inProject('objecten');
   const objectMap = new Map(objecten.map((o) => [o.id, o]));
   const besluit = eco.BESLUIT[v.besluit];
-  const controleTekst = { ja: '✓ Ja', nee: '✗ Nee', nvt: 'N.v.t.' };
+  const controleTekst = { ja: I.vink + ' Ja', nee: I.kruis + ' Nee', nvt: 'N.v.t.' };
   const waarnemingen = await Promise.all((v.waarnemingen ?? []).map(async (w) => `<tr>
     <td>${esc(w.soortgroep)}</td><td><strong>${esc(w.soort)}</strong>${w.aantal ? ` (${esc(w.aantal)})` : ''}</td><td>${esc(w.type)}</td><td>${esc(w.bescherming || '–')}</td>
     <td>${w.afstand ? `${esc(w.afstand)} m` : '–'}${w.gemarkeerd ? ' · gemarkeerd' : ''}</td>
     <td>${w.lat ? `${Number(w.lat).toFixed(5)}, ${Number(w.lng).toFixed(5)}` : '–'}</td><td>${esc(w.toelichting ?? '')}${w.fotoIds?.length ? await fotosHtml(w.fotoIds) : ''}</td></tr>`));
   const bewerk = mobiel ? `#/m/vrijgave/${esc(id)}/bewerken` : `#/vrijgaven/${esc(id)}/bewerken`;
   app.innerHTML = `
-    ${mobiel ? `<div class="mkop"><a href="#/" class="mterug" aria-label="Terug">←</a><div><small>🌿 Flora & fauna vrijgave</small><h1>${datumNL(v.datum)} · ${esc(v.werkzaamheid || '')}</h1></div></div>`
+    ${mobiel ? `<div class="mkop"><a href="#/" class="mterug" aria-label="Terug">←</a><div><small>${I.blad} Flora & fauna vrijgave</small><h1>${datumNL(v.datum)} · ${esc(v.werkzaamheid || '')}</h1></div></div>`
     : `<div class="paginakop"><div><p><a href="#/vrijgaven">← Flora & fauna</a></p><h1>Flora- en fauna-vrijgave · ${datumNL(v.datum)}</h1>
       <p>${esc(v.werkzaamheid || '')} · ${esc(v.activiteit || '')}</p></div>
       <div class="knoppen geen-print"><button class="knop" onclick="window.print()">Afdrukken / PDF</button><a class="knop" href="${bewerk}">Bewerken</a>
@@ -6954,7 +6956,7 @@ async function vrijgaveDetail(id, { mobiel = false } = {}) {
         <dt>Deskundige</dt><dd>${esc(v.deskundige || '–')}${v.organisatie ? ` · ${esc(v.organisatie)}` : ''}</dd>
         <dt>Deskundigheid</dt><dd>${esc(eco.DESKUNDIGHEID[v.deskundigheid] ?? '–')}${v.aansturing ? `<br>Onder aansturing van ${esc(v.aansturing)}` : ''}</dd>
         <dt>NDFF</dt><dd>${v.ndff ? 'Wordt doorgegeven' : '–'}</dd>
-        <dt>Verklaring</dt><dd>${v.verklaring ? '✓ Afgegeven' : '–'}</dd>
+        <dt>Verklaring</dt><dd>${v.verklaring ? I.vink + ' Afgegeven' : '–'}</dd>
       </dl></section>
     </div>
     <section class="kaart"><h2>Controles</h2><div class="tabelhouder"><table><tbody>

@@ -411,6 +411,12 @@ veld zonder bereik kunt inspecteren. Ben je ingelogd, dan worden wijzigingen aut
 
 Maak daarnaast af en toe een back-up via **Instellingen → Back-up downloaden**.
 
+## Iconen
+
+De app gebruikt lijn-iconen uit [Lucide](https://lucide.dev) (ISC-licentie) in plaats van emoji, voor een zakelijke,
+rustige uitstraling die op elk toestel hetzelfde oogt. De iconen staan in `js/iconen.js` (gebruik: `${I.pakket}` of
+`ico('pakket')`); ze nemen de tekstkleur over en schalen mee met de lettergrootte.
+
 ## Structuur
 
 ```
