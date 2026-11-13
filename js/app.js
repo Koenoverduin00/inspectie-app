@@ -1108,7 +1108,8 @@ async function fotoOpslagBlok(el) {
   } catch { /* niet ondersteund */ }
   let vast = null;
   try { vast = await navigator.storage?.persisted?.(); } catch { /* niet ondersteund */ }
-  const beheer = magBeheren() && project;
+  // Het fotoformaat stelt de beheerder in op de pc; op de telefoon is het alleen te zien.
+  const beheer = magBeheren() && project && !isMobiel();
   const vooraf = instelling.lees('fotosVooraf', 'project');
 
   el.innerHTML = `
@@ -1119,7 +1120,7 @@ async function fotoOpslagBlok(el) {
           <label class="keuzetegel"><input type="radio" name="fotoformaat" value="${k}" ${k === formaat ? 'checked' : ''}>
             <span><strong>${f.label}</strong><small>${f.zijde} px · ${f.indicatie} per foto</small><small>${f.uitleg}</small></span></label>`).join('')}</div>
           <small>Geldt voor iedereen in dit project, voor nieuwe foto's. Foto's worden altijd verkleind en zonder locatiegegevens (EXIF) opgeslagen.</small>`
-    : `<p style="margin:0"><strong>${FOTOFORMATEN[formaat].label}</strong> · ${FOTOFORMATEN[formaat].zijde} px · ${FOTOFORMATEN[formaat].indicatie} per foto <small>(ingesteld door de beheerder)</small></p>`}</div>
+    : `<p style="margin:0"><strong>${FOTOFORMATEN[formaat].label}</strong> · ${FOTOFORMATEN[formaat].zijde} px · ${FOTOFORMATEN[formaat].indicatie} per foto <small>(${isMobiel() ? 'in te stellen op de pc, door de beheerder' : 'ingesteld door de beheerder'})</small></p>`}</div>
       <div class="veld breed"><label for="f-fotosvooraf">Foto's van collega's op dit apparaat</label>
         <select id="f-fotosvooraf">
           ${optie('project', 'Van het project waarin ik werk vooraf downloaden (aanbevolen)', vooraf)}
@@ -3753,6 +3754,7 @@ async function tekenObjectenKaart(el, { objecten, kleurVan, popup = null, opKlik
   voegAchtergrondToe(L, map);
   const groep = L.featureGroup().addTo(map);
   const lagen = new Map();
+  const kanAanwijzen = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
   const stijl = (o, punt) => {
     const k = kleurVan(o);
     return punt ? { color: '#fff', weight: 2, fillColor: k, fillOpacity: 1 } : { color: k, weight: 2.5, fillColor: k, fillOpacity: 0.4 };
@@ -3768,8 +3770,12 @@ async function tekenObjectenKaart(el, { objecten, kleurVan, popup = null, opKlik
     laag.object = o;
     laag.punt = punt;
     laag.vak = gis.bbox(geom);
-    laag.bindTooltip(`${esc(o.code)}${o.naam ? ` – ${esc(o.naam)}` : ''}`, { sticky: true, direction: 'top' });
-    if (popup) laag.bindPopup(() => popup(o), { maxWidth: 320 });
+    // Naamlabel alleen bij aanwijzen met de muis; op een touchscreen opent een tik direct het venster.
+    if (kanAanwijzen) laag.bindTooltip(`${esc(o.code)}${o.naam ? ` – ${esc(o.naam)}` : ''}`, { sticky: true, direction: 'top' });
+    if (popup) {
+      laag.bindPopup(() => popup(o), { maxWidth: 320 });
+      laag.on('popupopen', () => laag.closeTooltip());
+    }
     if (opKlik) laag.on('click', () => opKlik(o));
     lagen.set(o.id, laag);
     groep.addLayer(laag);
@@ -3804,7 +3810,7 @@ async function tekenObjectenKaart(el, { objecten, kleurVan, popup = null, opKlik
       const b = laag.getBounds();
       if (laag.punt) map.setView(b.getCenter(), Math.max(map.getZoom(), 18), { animate: false });
       else map.fitBounds(b, { padding: [40, 40], maxZoom: 19, animate: false });
-      if (popup) laag.openPopup(b.getCenter()); else laag.openTooltip(b.getCenter());
+      if (popup) laag.openPopup(b.getCenter()); else if (kanAanwijzen) laag.openTooltip(b.getCenter());
       return true;
     },
     /** Sleep een rechthoek; cb krijgt de zichtbare objecten die erin vallen (of het raken). */

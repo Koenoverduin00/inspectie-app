@@ -156,7 +156,7 @@ niet klaar = *te laat*. Ook staat erbij hoeveel objecten per dag nog nodig zijn.
 
 Onder **Instellingen → Foto's en opslag** (op de telefoon onder Account):
 
-- **Fotoformaat per project** (beheerder, geldt voor iedereen): *Compact* 1280 px (~150 kB), *Standaard* 1600 px (~250 kB, standaard)
+- **Fotoformaat per project** (beheerder, alleen in te stellen op de pc, geldt voor iedereen): *Compact* 1280 px (~150 kB), *Standaard* 1600 px (~250 kB, standaard)
   of *Hoog* 2048 px (~500 kB). Elke foto wordt op het toestel verkleind vóór opslaan en versturen; een telefoonfoto van
   5–8 MB wordt zo 100–500 kB. Locatiegegevens (EXIF) gaan er daarbij af.
 - **Foto's van collega's**: alleen die van het project waarin je werkt worden vooraf gedownload (andere projecten pas als
