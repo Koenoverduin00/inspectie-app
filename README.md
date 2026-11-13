@@ -139,6 +139,21 @@ Supabase). Beheerders zelf (toegang tot alle projecten) staan in de tabel `teaml
 4. *Authentication → Sign In / Providers*: laat *Allow new users to sign up* aan staan (nodig om het account bij de
    uitnodiging aan te maken). Toegang tot gegevens krijgt alleen wie in een project of in `teamleden` staat.
 
+## Toewijzen: wie ziet en doet wat (pc, alleen beheerders)
+
+**Werkpakketten → Toewijzen** toont één raster: personen tegenover de lopende werkpakketten.
+- Tik op een vakje om iemand een werkpakket te laten zien of niet. Per pakket: **Alle** / **Geen**; per persoon:
+  **Niets tonen**. Onder elke naam staat precies wat die persoon nu op zijn telefoon ziet.
+- **Strikte toewijzing** (per project): medewerkers zien alléén wat aan hen is toegewezen; een pakket zonder toewijzing
+  ziet niemand. Uit = een pakket zonder toewijzing is voor iedereen in het project.
+- **Wat mag iemand doen**: per persoon *Werk registreren*, *Inspecteren*, *Overslaan*, *Flora & fauna* en *Incident melden*.
+  Zonder recht verdwijnen de knoppen en schermen; ook een directe link wordt geweigerd.
+- Een medewerker zonder toegewezen pakket ziet op zijn startscherm: *"Er is op dit moment geen werkpakket aan jou
+  toegewezen."* Een pakket van een ander openen via een link geeft een melding.
+
+Beheerders zien altijd alles. De server (RLS) dwingt de toegang per project af; binnen een project regelt de app welke
+werkpakketten en knoppen iemand ziet.
+
 ## Inloggen op de telefoon
 
 Op de telefoon start de app (als de online synchronisatie is ingesteld en je niet bent ingelogd) met een

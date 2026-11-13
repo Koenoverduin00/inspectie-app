@@ -1018,3 +1018,35 @@ body.inlogscherm .statusregel { display: none !important; }
 .leaflet-popup .knop { white-space: nowrap; }
 .chipje { display: inline-block; background: var(--primair-licht); color: var(--primair); border-radius: 99px; padding: .1rem .55rem; font-size: .82rem; font-weight: 600; margin: .1rem .15rem .1rem 0; white-space: nowrap; }
 td.acties { white-space: nowrap; }
+
+/* Rechten: knoppen zonder recht verdwijnen */
+body.geen-overslaan [data-overslaan] { display: none !important; }
+body.geen-incident .calamiteitknop { display: none !important; }
+body.geen-vrijgave a[href^="#/m/vrijgave"], body.geen-vrijgave a[href^="#/vrijgaven/nieuw"] { display: none !important; }
+body.geen-werk a.mtegel[href="#/m/werk"], body.geen-werk [data-gereed] { display: none !important; }
+body.geen-inspectie a.mtegel[href="#/m/inspectie"] { display: none !important; }
+
+/* Toewijzen: wie ziet welk werkpakket */
+.toewijs-tabel th, .toewijs-tabel td { text-align: center; vertical-align: middle; }
+.toewijs-tabel th:first-child, .toewijs-tabel td:first-child { text-align: left; position: sticky; left: 0; background: var(--vlak); z-index: 1; min-width: 210px; }
+.toewijs-tabel thead th { text-transform: none; letter-spacing: 0; font-size: .82rem; color: var(--tekst); vertical-align: bottom; min-width: 140px; }
+.toewijs-tabel thead th small { display: block; color: var(--tekst-zacht); font-weight: 400; }
+.toewijs-tabel .kolomknoppen { display: flex; gap: .25rem; justify-content: center; margin-top: .35rem; }
+.toewijs-cel { display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 10px; border: 2px solid var(--rand); cursor: pointer; background: var(--vlak); }
+.toewijs-cel input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.toewijs-cel:has(input:checked) { background: var(--ok); border-color: var(--ok); color: #fff; }
+.toewijs-cel.via-iedereen:has(input:checked) { background: color-mix(in srgb, var(--ok) 25%, var(--vlak)); border-color: color-mix(in srgb, var(--ok) 45%, transparent); color: var(--ok); }
+.toewijs-cel:has(input:focus-visible) { outline: 3px solid color-mix(in srgb, var(--primair) 40%, transparent); }
+.toewijs-cel .ico { width: 1.2rem; height: 1.2rem; stroke-width: 2.5; }
+.toewijs-cel:not(:has(input:checked)) .ico { visibility: hidden; }
+.ziet { display: block; font-size: .78rem; color: var(--tekst-zacht); margin-top: .2rem; max-width: 260px; }
+.ziet.niets { color: var(--gevaar); font-weight: 600; }
+.kolomstatus { display: inline-block; margin-top: .25rem; font-size: .72rem; font-weight: 700; border-radius: 99px; padding: 0 .45rem; }
+.kolomstatus.iedereen { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
+.kolomstatus.niemand { background: color-mix(in srgb, var(--gevaar) 12%, transparent); color: var(--gevaar); }
+.kolomstatus.sommigen { background: var(--primair-licht); color: var(--primair); }
+.striktkaart { display: flex; gap: .9rem; align-items: flex-start; }
+.striktkaart.aan { border-color: color-mix(in srgb, var(--ok) 50%, transparent); background: color-mix(in srgb, var(--ok) 6%, var(--vlak)); }
+.rechten-tabel td, .rechten-tabel th { text-align: center; }
+.rechten-tabel td:first-child, .rechten-tabel th:first-child { text-align: left; }
+.rechten-tabel thead th small { display: block; text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--tekst-zacht); }

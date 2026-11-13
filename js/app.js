@@ -16,7 +16,7 @@ import * as velden from './velden.js';
 import * as eco from './ecologie.js';
 import * as BV from './bvc.js';
 import {
-  PAKKETSTATUS, OVERSLAAN_REDENEN, overslaanId, voortgang as pakketVoortgang, voorMij as pakketVoorMij, filterObjecten,
+  PAKKETSTATUS, OVERSLAAN_REDENEN, overslaanId, voortgang as pakketVoortgang, voorMij as pakketVoorMijBasis, filterObjecten,
   rondesVan, rondeView, rondeVanId, pakketStatus, totaalVoortgang, STANDAARD_RONDE,
 } from './pakketten.js';
 import * as PX from './pakketexcel.js';
@@ -102,16 +102,17 @@ const ROUTES = [
   [/^\/kaart$/, 'kaart', kaart],
   [/^\/instellingen$/, 'instellingen', instellingen],
   [/^\/personen$/, 'personen', personenPagina],
+  [/^\/toewijzen$/, 'toewijzen', toewijzenPagina],
 ];
 
 // Het hoofdmenu is compact: onderdelen vallen onder een hoofdgroep en hebben daar een tabblad.
-const NAV_GROEP = { inspecties: 'werkpakketten', werkzaamheden: 'werkpakketten', maatregelen: 'werkpakketten', taken: 'planning', kaart: 'instellingen', personen: 'instellingen' };
+const NAV_GROEP = { inspecties: 'werkpakketten', werkzaamheden: 'werkpakketten', maatregelen: 'werkpakketten', taken: 'planning', kaart: 'instellingen', personen: 'instellingen', toewijzen: 'werkpakketten' };
 const TABBLADEN = {
-  werkpakketten: () => [['#/werkpakketten', I.pakket + ' Werkpakketten'], ['#/inspecties', I.inspectie + ' Inspecties'], ['#/werkzaamheden', I.werk + ' Werkzaamheden'], ['#/maatregelen', I.let + ' Maatregelen']],
+  werkpakketten: () => [['#/werkpakketten', I.pakket + ' Werkpakketten'], ['#/inspecties', I.inspectie + ' Inspecties'], ['#/werkzaamheden', I.werk + ' Werkzaamheden'], ['#/maatregelen', I.let + ' Maatregelen'], ...(magBeheren() ? [['#/toewijzen', I.personen + ' Toewijzen']] : [])],
   instellingen: () => (magBeheren() ? [['#/instellingen', I.instellingen + ' Algemeen'], ['#/personen', I.personen + ' Personen'], ['#/kaart', I.kaart + ' Kaart & GIS']] : []),
 };
 // Alleen de overzichtspagina's krijgen tabbladen (geen formulieren of details).
-const TAB_PAGINAS = /^\/(werkpakketten|inspecties|werkzaamheden|maatregelen|instellingen|personen|kaart)$/;
+const TAB_PAGINAS = /^\/(werkpakketten|inspecties|werkzaamheden|maatregelen|toewijzen|instellingen|personen|kaart)$/;
 
 function tabbalk(pad, groep) {
   const tabs = TABBLADEN[groep]?.() ?? [];
@@ -1232,6 +1233,8 @@ async function inspectiepakketKiezer(objectId, { mobiel = false, taakId = null, 
 }
 
 async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null, pakketId = null, rondeId = null, calamiteit = false } = {}) {
+  if (!id && calamiteit && !mag('incident')) return geenRecht('incident');
+  if (!id && !calamiteit && !mag('inspectie')) return geenRecht('inspectie');
   if (!id && !pakketId && !calamiteit) return inspectiepakketKiezer(objectId, { mobiel, taakId });
   const objecten = (await inProject('objecten')).sort((a, b) => String(a.code).localeCompare(String(b.code), 'nl', { numeric: true }));
   const bestaand = id ? await db.haal('inspecties', id) : null;
@@ -2506,6 +2509,10 @@ async function toonMijnPakketten(el) {
   const ik = sync.sessie()?.gebruiker?.email ?? '';
   // Per actieve ronde een regel: daar ga je direct mee aan de slag.
   const mijn = actieveRondes(g).filter(({ pakket }) => pakketVoorMij(pakket, ik));
+  if (el.isConnected && !mijn.length && toegangActief()) {
+    el.innerHTML = `<div class="kaart mhier">${I.pakket} <strong>Er is op dit moment geen werkpakket aan jou toegewezen.</strong><br><small>Neem contact op met je beheerder als dit niet klopt.</small></div>`;
+    return;
+  }
   if (!el.isConnected || !mijn.length) return;
   el.innerHTML = `<h2>Mijn werkpakketten</h2><ul class="mlijst pakketlijst">${mijn.slice(0, 4).map(({ pakket, voortgang }) => mobielPakketRegel(pakket, voortgang)).join('')}</ul>
     ${mijn.length > 4 ? '<p><a href="#/m/pakketten">Alle werkpakketten →</a></p>' : ''}`;
@@ -2833,6 +2840,7 @@ async function werkpakketKiezer(objectId, { mobiel = false, taakId = null, maatr
 }
 
 async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maatregel = null, pakketId = null, rondeId = null } = {}) {
+  if (!id && !mag('werk')) return geenRecht('werk');
   if (!id && !pakketId) return werkpakketKiezer(objectId, { mobiel, taakId, maatregel });
   const [objecten, inspecties] = await Promise.all([inProject('objecten'), inProject('inspecties')]);
   objecten.sort((a, b) => String(a.code).localeCompare(String(b.code), 'nl', { numeric: true }));
@@ -3099,6 +3107,53 @@ async function zichtbareProjecten() {
 const magBeheren = () => sync.rol() === 'beheerder';
 
 // ---------------------------------------------------------------------------
+// Toegang binnen een project: wie ziet welk werkpakket, en wie mag wat doen
+// ---------------------------------------------------------------------------
+// Let op: de server (RLS) bepaalt toegang per project; binnen een project regelt de app wat iemand ziet en mag.
+const RECHTEN = {
+  werk: { label: 'Werk registreren', uitleg: 'Werkzaamheden vastleggen en afvinken' },
+  inspectie: { label: 'Inspecteren', uitleg: 'Schouw, NEN, boomveiligheid en waterkering' },
+  overslaan: { label: 'Overslaan', uitleg: 'Een object in een ronde overslaan met een reden' },
+  vrijgave: { label: 'Flora & fauna', uitleg: 'Vrijgaven (veldcheck) vastleggen' },
+  incident: { label: 'Incident melden', uitleg: 'Inspectie na incident of calamiteit, zonder werkpakket' },
+};
+let huidigProject = null; // bijgewerkt bij elke paginawissel
+
+const ikEmail = () => String(sync.sessie()?.gebruiker?.email ?? '').toLowerCase();
+/** Toegangsregels gelden voor ingelogde projectleden; beheerders en lokaal gebruik zien alles. */
+const toegangActief = () => Boolean(ikEmail()) && !magBeheren();
+
+function mijnRechten(p = huidigProject) {
+  const alle = Object.fromEntries(Object.keys(RECHTEN).map((k) => [k, true]));
+  if (!toegangActief()) return alle;
+  return { ...alle, ...(p?.ledenInfo?.[ikEmail()]?.rechten ?? {}) };
+}
+const mag = (recht) => mijnRechten()[recht] !== false;
+
+/** Ziet deze gebruiker dit werkpakket (of deze ronde)? */
+function pakketVoorMij(p, email = ikEmail()) {
+  if (!toegangActief()) return pakketVoorMijBasis(p, email);
+  const lijst = (p.toegewezen ?? []).map((x) => String(x).toLowerCase());
+  if (lijst.length ? !lijst.includes(email) : huidigProject?.striktToewijzen) return false;
+  // Alleen werkpakketten waarvoor je het recht hebt (werk of inspectie).
+  const soorten = p.rondeId ? [p.soort] : rondesVan(p).map((r) => r.soort);
+  return soorten.some((s) => (s === 'inspectie' ? mag('inspectie') : mag('werk')));
+}
+
+/** Melding als een formulier wordt geopend zonder het bijbehorende recht. */
+function geenRecht(recht, terug = '#/') {
+  app.innerHTML = leegKaart(`Je hebt geen recht om dit te doen (${RECHTEN[recht].label.toLowerCase()}).`,
+    `<a class="knop" href="${terug}">Terug</a>`) + '<p class="mleeg" style="text-align:center">Neem contact op met je beheerder als dit niet klopt.</p>';
+}
+
+/** Body-klassen zodat knoppen zonder recht overal verdwijnen. */
+function werkRechtenKlassenBij() {
+  const r = mijnRechten();
+  for (const k of Object.keys(RECHTEN)) document.body.classList.toggle(`geen-${k}`, r[k] === false);
+}
+
+
+// ---------------------------------------------------------------------------
 // Personen (pc, alleen beheerders): mensen toevoegen aan projecten en uitnodigen per e-mail
 // ---------------------------------------------------------------------------
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -3154,6 +3209,136 @@ async function verstuurUitnodiging(email, naam) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Toewijzen (pc, beheerder): in één overzicht bepalen wie welk werkpakket ziet en wat iemand mag
+// ---------------------------------------------------------------------------
+async function toewijzenPagina() {
+  if (!magBeheren()) {
+    app.innerHTML = leegKaart('Alleen beheerders kunnen werkpakketten toewijzen.', '<a class="knop" href="#/">Naar het dashboard</a>');
+    return;
+  }
+  const project = await actiefProject();
+  const g = await pakketGegevens();
+  const leden = [...new Set((project?.leden ?? []).map((x) => String(x).toLowerCase()))];
+  const info = project?.ledenInfo ?? {};
+  const naamVan = (e) => info[e]?.naam || e;
+  const personen = leden.slice().sort((a, b) => naamVan(a).localeCompare(naamVan(b), 'nl'));
+  const strikt = Boolean(project?.striktToewijzen);
+  const pakketten = g.pakketten.filter((p) => p.status !== 'afgerond');
+  const toegewezen = (p) => (p.toegewezen ?? []).map((x) => String(x).toLowerCase());
+  const ziet = (p, e) => (toegewezen(p).length ? toegewezen(p).includes(e) : !strikt);
+  const rechtenVan = (e) => ({ ...Object.fromEntries(Object.keys(RECHTEN).map((k) => [k, true])), ...(info[e]?.rechten ?? {}) });
+  // Wat ziet iemand straks echt op zijn telefoon (toewijzing én rechten)?
+  const zietLijst = (e) => {
+    const r = rechtenVan(e);
+    return pakketten.filter((p) => ziet(p, e) && rondesVan(p).some((x) => (x.soort === 'inspectie' ? r.inspectie : r.werk)));
+  };
+  const actieveRonde = (p) => rondesVan(p).find((r) => r.status === 'actief');
+  const kolomStatus = (p) => (toegewezen(p).length
+    ? `<span class="kolomstatus sommigen">${toegewezen(p).length} ${toegewezen(p).length === 1 ? 'persoon' : 'personen'}</span>`
+    : strikt ? '<span class="kolomstatus niemand">Niemand</span>' : '<span class="kolomstatus iedereen">Iedereen</span>');
+
+  const scroll = window.scrollY;
+  app.innerHTML = `
+    <div class="paginakop"><div><h1>Toewijzen</h1>
+      <p>Bepaal per persoon welke werkpakketten hij in de app ziet en wat hij mag doen. Wijzigingen gelden direct na synchronisatie.</p></div>
+      <div class="knoppen"><a class="knop" href="#/personen">${I.personen} Personen beheren</a></div></div>
+    ${project ? '' : leegKaart('Kies eerst een project.')}
+    <section class="kaart striktkaart ${strikt ? 'aan' : ''}">
+      <label class="vink" style="flex:1"><input type="checkbox" id="strikt" ${strikt ? 'checked' : ''}>
+        <span><strong>Strikte toewijzing</strong>
+        <small>${strikt ? 'Aan: medewerkers zien alléén werkpakketten die aan hen zijn toegewezen. Een pakket zonder toewijzing ziet niemand.'
+    : 'Uit: een werkpakket zonder toewijzing is zichtbaar voor iedereen in het project. Zet aan om de foutmarge in het veld zo klein mogelijk te maken.'}</small></span></label>
+    </section>
+    <section class="kaart" style="padding:0">
+      <div style="padding:1rem 1rem .25rem"><h2 style="margin:0">Wie ziet welk werkpakket</h2>
+        <p style="margin:.25rem 0 0"><small>Tik op een vakje om iemand een werkpakket te laten zien of juist niet. Lichtgroen = ziet het omdat het pakket voor iedereen is.</small></p></div>
+      ${personen.length && pakketten.length ? `<div class="tabelhouder"><table class="toewijs-tabel">
+        <thead><tr><th>Persoon</th>${pakketten.map((p) => {
+    const r = actieveRonde(p);
+    return `<th><a href="#/werkpakketten/${esc(p.id)}">${esc(p.naam)}</a><small>${r ? `R${r.nummer} actief${r.eind ? ` t/m ${datumNL(r.eind)}` : ''}` : 'gepland'}</small>
+            ${kolomStatus(p)}<div class="kolomknoppen"><button class="knop klein" type="button" data-alle="${esc(p.id)}" title="Iedereen in het project ziet dit pakket">Alle</button>
+            <button class="knop klein" type="button" data-geen="${esc(p.id)}" title="Niemand ziet dit pakket">Geen</button></div></th>`;
+  }).join('')}</tr></thead>
+        <tbody>${personen.map((e) => {
+    const lijst = zietLijst(e);
+    return `<tr><td><strong>${esc(naamVan(e))}</strong>${info[e]?.naam ? `<br><small>${esc(e)}</small>` : ''}
+          <span class="ziet ${lijst.length ? '' : 'niets'}">${lijst.length ? `Ziet: ${lijst.map((p) => esc(p.naam)).join(', ')}` : 'Ziet geen enkel werkpakket'}</span>
+          <button class="knop klein" type="button" data-persoon-geen="${esc(e)}" style="margin-top:.35rem">Niets tonen</button></td>
+          ${pakketten.map((p) => `<td><label class="toewijs-cel ${toegewezen(p).length ? '' : 'via-iedereen'}" title="${esc(naamVan(e))} – ${esc(p.naam)}">
+            <input type="checkbox" data-p="${esc(p.id)}" data-e="${esc(e)}" ${ziet(p, e) ? 'checked' : ''} aria-label="${esc(naamVan(e))} ziet ${esc(p.naam)}">${I.vink}</label></td>`).join('')}</tr>`;
+  }).join('')}</tbody></table></div>`
+    : `<p class="leeg">${personen.length ? 'Er zijn geen lopende werkpakketten.' : 'Er zijn nog geen personen in dit project. <a href="#/personen">Nodig iemand uit</a>.'}</p>`}
+    </section>
+    ${personen.length ? `<section class="kaart" style="padding:0">
+      <div style="padding:1rem 1rem .25rem"><h2 style="margin:0">Wat mag iemand doen</h2>
+        <p style="margin:.25rem 0 0"><small>Zonder recht verdwijnen de bijbehorende knoppen en schermen in de app.</small></p></div>
+      <div class="tabelhouder"><table class="rechten-tabel">
+        <thead><tr><th>Persoon</th>${Object.values(RECHTEN).map((r) => `<th>${esc(r.label)}<small>${esc(r.uitleg)}</small></th>`).join('')}</tr></thead>
+        <tbody>${personen.map((e) => {
+    const r = rechtenVan(e);
+    return `<tr><td><strong>${esc(naamVan(e))}</strong></td>${Object.keys(RECHTEN).map((k) => `<td><label class="toewijs-cel"><input type="checkbox" data-recht="${k}" data-e="${esc(e)}" ${r[k] ? 'checked' : ''} aria-label="${esc(naamVan(e))}: ${esc(RECHTEN[k].label)}">${I.vink}</label></td>`).join('')}</tr>`;
+  }).join('')}</tbody></table></div></section>` : ''}
+    <p><small>Beheerders zien altijd alles. De toegang per project wordt door de server afgedwongen; binnen een project regelt de app welke werkpakketten en knoppen iemand ziet.</small></p>`;
+  if (!isMobiel()) app.insertAdjacentHTML('afterbegin', tabbalk('/toewijzen', 'werkpakketten'));
+  window.scrollTo(0, scroll);
+
+  const nu = () => new Date().toISOString();
+  const bewaarPakket = async (pid, lijst) => {
+    const p = await db.haal('werkpakketten', pid);
+    await db.bewaar('werkpakketten', { ...p, toegewezen: [...new Set(lijst)], gewijzigd: nu() });
+  };
+  const bewaarProject = async (wijziging) => {
+    const p = await actiefProject();
+    await db.bewaar('projecten', { ...p, ...wijziging(p), gewijzigd: nu() });
+  };
+  app.querySelector('#strikt')?.addEventListener('change', async (e) => {
+    await bewaarProject(() => ({ striktToewijzen: e.target.checked }));
+    melding(e.target.checked ? 'Strikte toewijzing staat aan' : 'Strikte toewijzing staat uit');
+    toewijzenPagina();
+  });
+  app.querySelector('.toewijs-tabel')?.addEventListener('change', async (e) => {
+    const cb = e.target.closest('input[data-p]');
+    if (!cb) return;
+    const p = pakketten.find((x) => x.id === cb.dataset.p);
+    // Was het pakket 'voor iedereen', dan begint de expliciete lijst met alle personen.
+    const basis = new Set(toegewezen(p).length ? toegewezen(p) : strikt ? [] : personen);
+    if (cb.checked) basis.add(cb.dataset.e); else basis.delete(cb.dataset.e);
+    await bewaarPakket(p.id, [...basis]);
+    toewijzenPagina();
+  });
+  app.querySelector('.toewijs-tabel')?.addEventListener('click', async (e) => {
+    const alle = e.target.closest('[data-alle]');
+    const geen = e.target.closest('[data-geen]');
+    const pg = e.target.closest('[data-persoon-geen]');
+    if (alle) await bewaarPakket(alle.dataset.alle, strikt ? personen : []);
+    else if (geen) {
+      if (!strikt && !confirm('Niemand ziet dit pakket dan nog. Doorgaan? (Tip: zet strikte toewijzing aan.)')) return;
+      await bewaarPakket(geen.dataset.geen, []);
+      if (!strikt) await bewaarProject(() => ({ striktToewijzen: true }));
+    } else if (pg) {
+      const e2 = pg.dataset.persoonGeen;
+      for (const p of pakketten.filter((x) => ziet(x, e2))) {
+        const basis = new Set(toegewezen(p).length ? toegewezen(p) : strikt ? [] : personen);
+        basis.delete(e2);
+        await bewaarPakket(p.id, [...basis]);
+      }
+    } else return;
+    toewijzenPagina();
+  });
+  app.querySelector('.rechten-tabel')?.addEventListener('change', async (e) => {
+    const cb = e.target.closest('input[data-recht]');
+    if (!cb) return;
+    await bewaarProject((p) => {
+      const ledenInfo = { ...(p.ledenInfo ?? {}) };
+      const em = cb.dataset.e;
+      ledenInfo[em] = { ...(ledenInfo[em] ?? {}), rechten: { ...(ledenInfo[em]?.rechten ?? {}), [cb.dataset.recht]: cb.checked } };
+      return { ledenInfo };
+    });
+    toewijzenPagina();
+  });
+}
+
 async function personenPagina() {
   if (!magBeheren()) {
     app.innerHTML = leegKaart('Alleen beheerders kunnen personen toevoegen en uitnodigen.', '<a class="knop" href="#/">Naar het dashboard</a>');
@@ -3168,7 +3353,8 @@ async function personenPagina() {
 
   app.innerHTML = `
     <div class="paginakop"><div><h1>Personen</h1>
-      <p>Voeg medewerkers toe aan projecten en nodig ze uit per e-mail. Alleen beheerders zien deze pagina.</p></div></div>
+      <p>Voeg medewerkers toe aan projecten en nodig ze uit per e-mail. Alleen beheerders zien deze pagina.</p></div>
+      <div class="knoppen"><a class="knop" href="#/toewijzen">${I.pakket} Werkpakketten toewijzen</a></div></div>
     ${kanMailen ? '' : `<div class="kaart waarschuwingskaart">${I.let} <strong>Je bent niet ingelogd.</strong> Je kunt personen toevoegen, maar uitnodigingen worden pas verstuurd als je bent ingelogd.</div>`}
     <form class="kaart" id="uitnodigen" novalidate>
       <h2>${I.mail} Persoon uitnodigen</h2>
@@ -3298,6 +3484,8 @@ async function werkProjectkopBij() {
   const chip = document.getElementById('projectchip');
   if (!chip) return;
   const p = await actiefProject();
+  huidigProject = p;
+  werkRechtenKlassenBij();
   chip.textContent = p ? p.naam : 'Kies een project';
   // Maar één project: op de telefoon valt er niets te kiezen.
   const een = Boolean(p) && (await zichtbareProjecten()).length <= 1 && !magBeheren();
@@ -5169,6 +5357,7 @@ function overslaanDialoog(object) {
 }
 
 async function slaObjectOver(pakket, object) {
+  if (!mag('overslaan')) { melding('Je hebt geen recht om objecten over te slaan.', 'fout'); return false; }
   const keuze = await overslaanDialoog(object);
   if (!keuze) return false;
   const nu = new Date().toISOString();
@@ -5182,7 +5371,9 @@ async function slaObjectOver(pakket, object) {
 
 // --- Overzicht (pc) -----------------------------------------------------------
 async function werkpakkettenLijst() {
-  const { pakketten, voortgangen } = await pakketGegevens();
+  const g0 = await pakketGegevens();
+  const { voortgangen } = g0;
+  const pakketten = g0.pakketten.filter((p) => pakketVoorMij(p));
   app.innerHTML = `
     <div class="paginakop">
       <div><h1>Werkpakketten</h1><p>Werkpakket → rondes (taken) → objecten, met voortgang per ronde en per object.</p></div>
@@ -5536,9 +5727,9 @@ function volgendeRondeNaam(naam) {
 // --- Detail met kaart (pc) ----------------------------------------------------
 async function pakketDetail(id, q = new URLSearchParams()) {
   const g = await pakketGegevens();
-  const pr = g.pakketten.find((x) => x.id === id);
+  const pr = g.pakketten.find((x) => x.id === id && pakketVoorMij(x));
   if (!pr) {
-    app.innerHTML = leegKaart('Werkpakket niet gevonden.', '<a class="knop" href="#/werkpakketten">Terug</a>');
+    app.innerHTML = leegKaart('Werkpakket niet gevonden of niet aan jou toegewezen.', '<a class="knop" href="#/werkpakketten">Terug</a>');
     return;
   }
   const alleRondes = rondesVan(pr);
@@ -5855,9 +6046,9 @@ function mobielPakketRegel(p, v) {
 
 async function mobielPakket(id, q = new URLSearchParams()) {
   const g = await pakketGegevens();
-  const pr = g.pakketten.find((x) => x.id === id);
+  const pr = g.pakketten.find((x) => x.id === id && pakketVoorMij(x));
   if (!pr) {
-    app.innerHTML = leegKaart('Werkpakket niet gevonden.', '<a class="knop" href="#/m/pakketten">Terug</a>');
+    app.innerHTML = leegKaart('Dit werkpakket is niet (meer) aan jou toegewezen.', '<a class="knop" href="#/">Naar vandaag</a>');
     return;
   }
   const lopend = rondesVan(pr).filter((r) => r.status !== 'afgerond');
@@ -6093,6 +6284,7 @@ const GROEP_ICOON = {
 const ZONE_NAAM = (z) => (z ? z.charAt(0).toUpperCase() + z.slice(1) : '');
 
 async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pakketId = null, rondeId = null } = {}) {
+  if (!id && !mag('inspectie')) return geenRecht('inspectie');
   if (!id && !pakketId) return inspectiepakketKiezer(objectId, { mobiel, taakId, alleen: 'stowa' });
   const objecten = (await inProject('objecten')).sort((a, b) => String(a.code).localeCompare(String(b.code), 'nl', { numeric: true }));
   const bestaand = id ? await db.haal('inspecties', id) : null;
@@ -6564,6 +6756,7 @@ async function stowaDetail(i, { rapport = false } = {}) {
 // Boomveiligheidscontrole (Boomveiligheidsprotocol Rijkswaterstaat)
 // ---------------------------------------------------------------------------
 async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakketId = null, rondeId = null } = {}) {
+  if (!id && !mag('inspectie')) return geenRecht('inspectie');
   if (!id && !pakketId) return inspectiepakketKiezer(objectId, { mobiel, taakId, alleen: 'bvc' });
   const objecten = await inProject('objecten');
   const bestaand = id ? await db.haal('inspecties', id) : null;
@@ -7026,6 +7219,7 @@ async function vrijgaveVoor(objectId) {
 }
 
 async function vrijgaveFormulier(id, q = new URLSearchParams(), { mobiel = false } = {}) {
+  if (!id && !mag('vrijgave')) return geenRecht('vrijgave');
   const objecten = (await inProject('objecten')).sort((a, b) => String(a.code).localeCompare(String(b.code), 'nl', { numeric: true }));
   const objectMap = new Map(objecten.map((o) => [o.id, o]));
   const bestaand = id ? await db.haal('vrijgaven', id) : null;
