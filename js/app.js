@@ -923,6 +923,14 @@ async function objectenLijst() {
     if (!k) return;
     const metLocatie = gevonden.filter((o) => objectGeometrie(o));
     const n = k.toon(new Set(metLocatie.map((o) => o.id)), { inzoomen: true });
+    // Nieuwe zoekopdracht: terug naar de resultaten (bij één treffer opent het logboek van dat object vanzelf).
+    if (n !== 1 && !app.querySelector('#logpaneel')?.hidden) {
+      app.querySelector('#logpaneel').hidden = true;
+      app.querySelector('#vindpaneel').hidden = false;
+      app.querySelector('#objectkaart-blok .kaartindeling').classList.remove('met-logboek');
+      k.map.closePopup();
+      k.map.invalidateSize();
+    }
     if (n === 1) k.zoomNaar(metLocatie[0].id);
     const zonder = gevonden.length - metLocatie.length;
     app.querySelector('#okaart-telling small').textContent = `${n} van ${objecten.length} objecten op de kaart${zonder ? ` · ${zonder} zonder locatie` : ''}.`;
