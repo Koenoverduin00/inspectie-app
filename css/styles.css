@@ -1106,3 +1106,30 @@ body.geen-inspectie a.mtegel[href="#/m/inspectie"] { display: none !important; }
   background: var(--primair-licht); border: 1px solid color-mix(in srgb, var(--primair) 30%, transparent); }
 .stappenplanbalk > span { flex: 1; }
 .stappenplanbalk .ico { color: var(--primair); }
+
+/* Planningswijze: vooraf gepland of op afroep */
+.pw-keuze { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .6rem; margin-bottom: .5rem; }
+.pw-optie { position: relative; cursor: pointer; }
+.pw-optie input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.pw-optie > span { display: grid; grid-template-columns: auto 1fr; gap: .1rem .6rem; align-items: center; padding: .85rem 1rem; border: 2px solid var(--rand); border-radius: 12px; }
+.pw-optie > span .ico { grid-row: span 2; width: 1.5rem; height: 1.5rem; color: var(--primair); }
+.pw-optie small { color: var(--tekst-zacht); }
+.pw-optie input:checked + span { border-color: var(--primair); background: var(--primair-licht); }
+.pw-optie input:focus-visible + span { outline: 3px solid color-mix(in srgb, var(--primair) 40%, transparent); }
+form:not(.modus-afroep) .pw-afroep { display: none; }
+form.modus-afroep .pw-gepland { display: none; }
+form.afroep-inspectie .pw-werk { display: none; }
+form:not(.afroep-inspectie) .pw-insp { display: none; }
+.afroepkaart { border-left: 5px solid #7c3aed; }
+.afroeplabel { display: inline-flex; align-items: center; gap: .3rem; font-size: .78rem; font-weight: 700; border-radius: 99px; padding: .1rem .55rem;
+  background: color-mix(in srgb, #7c3aed 12%, transparent); color: #6d28d9; }
+.afroeplabel .ico { width: .95em; height: .95em; }
+.spoedlabel { background: color-mix(in srgb, var(--gevaar) 14%, transparent); color: var(--gevaar); }
+form.afroep-inspectie .a-werk { display: none; }
+form:not(.afroep-inspectie) .a-insp { display: none; }
+.afroepkaart .afroeplabel { margin-right: .35rem; }
+.mafroep { margin-bottom: .75rem; }
+.mafroep small { display: block; color: var(--tekst-zacht); margin-top: .2rem; }
+.zacht { color: var(--tekst-zacht); }
+.afroepblok { border-left: 5px solid #7c3aed; margin-top: 1rem; }
+.afroepblok .paginakop small { color: var(--tekst-zacht); display: block; }

@@ -17,7 +17,7 @@ import * as eco from './ecologie.js';
 import * as BV from './bvc.js';
 import {
   PAKKETSTATUS, OVERSLAAN_REDENEN, overslaanId, voortgang as pakketVoortgang, voorMij as pakketVoorMijBasis, filterObjecten,
-  rondesVan, rondeView, rondeVanId, pakketStatus, totaalVoortgang, STANDAARD_RONDE,
+  rondesVan, rondeView, rondeVanId, pakketStatus, totaalVoortgang, STANDAARD_RONDE, PLANNINGSWIJZEN, isAfroep, AFROEP_REDENEN,
 } from './pakketten.js';
 import * as PX from './pakketexcel.js';
 import * as RX from './resultatenexcel.js';
@@ -93,6 +93,7 @@ const ROUTES = [
   [/^\/taken$/, 'taken', takenPagina],
   [/^\/werkpakketten$/, 'werkpakketten', werkpakkettenLijst],
   [/^\/werkpakketten\/nieuw$/, 'werkpakketten', (_, q) => pakketFormulier(null, q)],
+  [/^\/werkpakketten\/([^/]+)\/afroep$/, 'werkpakketten', afroepFormulier],
   [/^\/werkpakketten\/([^/]+)\/bewerken$/, 'werkpakketten', (id, q) => pakketFormulier(id, q)],
   [/^\/werkpakketten\/([^/]+)$/, 'werkpakketten', pakketDetail],
   [/^\/m\/pakketten$/, 'm-pakket', mobielePakketten],
@@ -672,10 +673,11 @@ const INRICHTING = [
   {
     id: 'pakketten', titel: 'Werkpakketten aanmaken', icoon: 'pakket', verplicht: true,
     doel: 'Werkpakketten zijn de opdrachten in het veld: welk werk of welke inspectie, op welke objecten, in hoeveel rondes.',
-    nodig: ['Lijst met werksoorten en inspectiesoorten uit het bestek', 'Per pakket: de objecten (op type, gebied of kenmerk)', 'Aantal rondes per jaar en de duur van elke ronde',
+    nodig: ['Welk werk vooraf te plannen is en welk werk op afroep gaat (correctief, na afstemming, na storm/melding)', 'Lijst met werksoorten en inspectiesoorten uit het bestek', 'Per pakket: de objecten (op type, gebied of kenmerk)', 'Aantal rondes per jaar en de duur van elke ronde',
       'Waar een flora- en fauna-vrijgave nodig is'],
     snel: 'Veel pakketten? Download het Excel-sjabloon, vul het in en lees het in. Enkele pakketten maak je direct in de app, met objecten via filters of de kaart.',
-    best: ['Geef elk pakket een vaste code (bijv. WP-2027-001); daarmee werk je later via Excel bij zonder dubbele pakketten.',
+    best: ['Kies per pakket de planningswijze: "vooraf gepland" voor vaste rondes, "op afroep" voor correctief werk of werk na afstemming. Een pakket op afroep zet je één keer klaar (objecten, uitvoerders, reactietijd) en roep je af wanneer het nodig is.',
+      'Geef elk pakket een vaste code (bijv. WP-2027-001); daarmee werk je later via Excel bij zonder dubbele pakketten.',
       'Kies werksoort en inspectiesoort uit de lijst, niet als vrije tekst: daarop filter je in de dashboards en exports.',
       'Selecteer objecten met de filters op type en kenmerk in plaats van los aanklikken; zo is de selectie reproduceerbaar.',
       'Geef aan of een flora- en fauna-vrijgave vereist is; de app waarschuwt medewerkers dan automatisch.'],
@@ -687,13 +689,14 @@ const INRICHTING = [
     id: 'planning', titel: 'Rondes inplannen', icoon: 'kalender', verplicht: true,
     doel: 'Pas als een ronde gepland en actief is, ziet de medewerker hem op de telefoon. De planning stuurt ook het dashboard (op schema / achter).',
     nodig: ['Start- en einddatum per ronde (of alleen de start; de duur komt uit het pakket)'],
-    snel: 'Klik in de planning per rij op de startdatum; de duur uit het werkpakket wordt gebruikt.',
+    snel: 'Klik in de planning per rij op de startdatum; de duur uit het werkpakket wordt gebruikt. Pakketten op afroep hoef je niet te plannen.',
     best: ['Plan alle rondes van het jaar direct in; dan ziet de opdrachtgever de hele planning en waarschuwt het dashboard bij achterstand.',
       'Zet een ronde pas op actief als het werk mag starten (bijv. na de vrijgave).'],
     actie: () => ['#/planning', 'Naar de planning'],
-    klaar: ({ rondes }) => rondes.length > 0 && rondes.every((r) => r.start),
-    status: ({ rondes }) => {
-      if (!rondes.length) return 'Eerst werkpakketten maken';
+    klaar: ({ pakketten, rondes }) => pakketten.length > 0 && rondes.every((r) => r.start),
+    status: ({ pakketten, rondes }) => {
+      if (!pakketten.length) return 'Eerst werkpakketten maken';
+      if (!rondes.length) return 'Alleen pakketten op afroep – niets vooruit te plannen';
       const open = rondes.filter((r) => !r.start).length;
       return open ? `${open} van ${rondes.length} rondes nog niet ingepland` : `Alle ${rondes.length} rondes ingepland`;
     },
@@ -728,7 +731,8 @@ const INRICHTING_TERUG = 'inspectie-app:inrichtingTerug';
 function stappenplanBalk(pad) {
   let stap = '';
   try { stap = sessionStorage.getItem(INRICHTING_TERUG) ?? ''; } catch { /* geen opslag */ }
-  if (!stap || pad === '/inrichting' || pad === '/' || !magBeheren()) return;
+  if (pad === '/') { try { sessionStorage.removeItem(INRICHTING_TERUG); } catch { /* */ } return; }
+  if (!stap || pad === '/inrichting' || !magBeheren()) return;
   const s = INRICHTING.find((x) => x.id === stap);
   if (!s || app.querySelector('.stappenplanbalk')) return;
   app.insertAdjacentHTML('afterbegin', `<div class="stappenplanbalk"><span>${I.taak} Je bent bezig met het inrichten: <strong>${esc(s.titel)}</strong></span>
@@ -1005,6 +1009,8 @@ async function objectDetail(id) {
         <a class="knop" href="#/taken/nieuw?object=${esc(id)}">+ Taak</a>
         <a class="knop" href="#/werkzaamheden/nieuw?object=${esc(id)}">+ Werkzaamheid</a>
         <a class="knop primair" href="#/inspecties/nieuw?object=${esc(id)}">+ Nieuwe inspectie</a>
+        ${magBeheren() ? (await inProject('werkpakketten')).filter((p) => isAfroep(p) && !p.gesloten && (p.objecten ?? []).includes(id))
+    .map((p) => `<a class="knop" href="#/werkpakketten/${esc(p.id)}/afroep?object=${encodeURIComponent(id)}" title="Werk afroepen voor dit object">${I.wacht} Afroep: ${esc(p.naam)}</a>`).join('') : ''}
       </div>
     </div>
     <div class="raster-2">
@@ -3384,7 +3390,7 @@ function pakketVoorMij(p, email = ikEmail()) {
   const lijst = (p.toegewezen ?? []).map((x) => String(x).toLowerCase());
   if (lijst.length ? !lijst.includes(email) : huidigProject?.striktToewijzen) return false;
   // Alleen werkpakketten waarvoor je het recht hebt (werk of inspectie).
-  const soorten = p.rondeId ? [p.soort] : rondesVan(p).map((r) => r.soort);
+  const soorten = p.rondeId ? [p.soort] : isAfroep(p) ? [p.afroepSoort ?? 'werk', ...rondesVan(p).map((r) => r.soort)] : rondesVan(p).map((r) => r.soort);
   return soorten.some((s) => (s === 'inspectie' ? mag('inspectie') : mag('werk')));
 }
 
@@ -3479,7 +3485,7 @@ async function toewijzenPagina() {
   // Wat ziet iemand straks echt op zijn telefoon (toewijzing én rechten)?
   const zietLijst = (e) => {
     const r = rechtenVan(e);
-    return pakketten.filter((p) => ziet(p, e) && rondesVan(p).some((x) => (x.soort === 'inspectie' ? r.inspectie : r.werk)));
+    return pakketten.filter((p) => ziet(p, e) && (isAfroep(p) ? [{ soort: p.afroepSoort ?? 'werk' }, ...rondesVan(p)] : rondesVan(p)).some((x) => (x.soort === 'inspectie' ? r.inspectie : r.werk)));
   };
   const actieveRonde = (p) => rondesVan(p).find((r) => r.status === 'actief');
   const kolomStatus = (p) => (toegewezen(p).length
@@ -3504,7 +3510,7 @@ async function toewijzenPagina() {
       ${personen.length && pakketten.length ? `<div class="tabelhouder"><table class="toewijs-tabel">
         <thead><tr><th>Persoon</th>${pakketten.map((p) => {
     const r = actieveRonde(p);
-    return `<th><a href="#/werkpakketten/${esc(p.id)}">${esc(p.naam)}</a><small>${r ? `R${r.nummer} actief${r.eind ? ` t/m ${datumNL(r.eind)}` : ''}` : 'gepland'}</small>
+    return `<th><a href="#/werkpakketten/${esc(p.id)}">${esc(p.naam)}</a><small>${r ? `${r.afroep ? 'A' : 'R'}${r.nummer} actief${r.eind ? ` t/m ${datumNL(r.eind)}` : ''}` : isAfroep(p) ? 'op afroep' : 'gepland'}</small>
             ${kolomStatus(p)}<div class="kolomknoppen"><button class="knop klein" type="button" data-alle="${esc(p.id)}" title="Iedereen in het project ziet dit pakket">Alle</button>
             <button class="knop klein" type="button" data-geen="${esc(p.id)}" title="Niemand ziet dit pakket">Geen</button></div></th>`;
   }).join('')}</tr></thead>
@@ -3809,6 +3815,11 @@ async function projectFormulier(id) {
         <div class="veld"><label for="f-opdrachtgever">Opdrachtgever</label><input id="f-opdrachtgever" name="opdrachtgever" maxlength="120" value="${esc(p.opdrachtgever)}"></div>
         <div class="veld"><label for="f-status">Status</label><select id="f-status" name="status">
           ${optie('actief', 'Actief', p.status)}${optie('afgerond', 'Afgerond', p.status)}</select></div>
+        <div class="veld breed"><label for="f-planningswijze">Planningswijze van dit contract</label><select id="f-planningswijze" name="planningswijze">
+          ${optie('gepland', 'Vooraf gepland – vaste rondes met data', p.planningswijze ?? 'gepland')}
+          ${optie('afroep', 'Op afroep – correctief, na afstemming of na omstandigheden', p.planningswijze ?? 'gepland')}
+          ${optie('gemengd', 'Gemengd – deels gepland, deels op afroep', p.planningswijze ?? 'gepland')}</select>
+          <small>Bepaalt de standaard voor nieuwe werkpakketten; per pakket kun je altijd afwijken.</small></div>
         <div class="veld breed"><label for="f-omschrijving">Omschrijving</label>
           <textarea id="f-omschrijving" name="omschrijving" maxlength="2000">${esc(p.omschrijving)}</textarea></div>
         <div class="veld breed"><label class="vink"><input type="checkbox" name="bevindingenAlsTaak" ${p.bevindingenAlsTaak ? 'checked' : ''}>
@@ -3837,7 +3848,7 @@ async function projectFormulier(id) {
     const nu = new Date().toISOString();
     const opslaan = {
       ...p, id: bestaand?.id ?? nieuwId(), naam: d.naam, opdrachtgever: d.opdrachtgever, omschrijving: d.omschrijving,
-      status: d.status, leden, bevindingenAlsTaak: form.elements.bevindingenAlsTaak.checked, aangemaakt: p.aangemaakt ?? nu, gewijzigd: nu,
+      status: d.status, planningswijze: d.planningswijze || 'gepland', leden, bevindingenAlsTaak: form.elements.bevindingenAlsTaak.checked, aangemaakt: p.aangemaakt ?? nu, gewijzigd: nu,
     };
     await db.bewaar('projecten', opslaan);
     formulierGewijzigd = false;
@@ -4716,7 +4727,17 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
         const eerste = (x2) => Math.min(...x2.rondes.map((r) => PL.dagNr(r.start) ?? 1e9));
         return eerste(a) - eerste(c) || String(a.p.code || a.p.naam).localeCompare(String(c.p.code || c.p.naam), 'nl', { numeric: true });
       });
-    const nietGepland = pakketten.reduce((t, { rondes }) => t + rondes.filter((r) => !r.start).length, 0);
+    const nietGepland = pakketten.reduce((t, { p, rondes }) => t + (isAfroep(p) ? 0 : rondes.filter((r) => !r.start).length), 0);
+    const afroepPakketten = g.pakketten.filter((p) => isAfroep(p) && p.status !== 'afgerond');
+    const afroepBlok = afroepPakketten.length ? `<section class="kaart afroepblok"><div class="paginakop" style="margin-bottom:.5rem">
+        <h2 style="margin:0">${I.wacht} Op afroep</h2><small>Niet vooruit te plannen: werk wordt afgeroepen wanneer het nodig is. Lopende afroepen staan hierboven als balk.</small></div>
+      <div class="tabelhouder"><table><tbody>${afroepPakketten.map((p) => {
+    const lopend = rondesVan(p).filter((r) => r.status === 'actief');
+    return `<tr><td><a href="#/werkpakketten/${esc(p.id)}"><strong>${esc(p.code ? `${p.code} · ` : '')}${esc(p.naam)}</strong></a>
+          <br><small>${p.afroepSoort === 'inspectie' ? esc(p.afroepInspectiesoort || 'Inspectie') : esc(p.afroepWerksoort || 'Werkzaamheid')} · ${(p.objecten ?? []).length} objecten${p.reactietijd !== '' && p.reactietijd != null ? ` · reactietijd ${p.reactietijd} dg` : ''}</small></td>
+          <td>${lopend.length ? `${lopend.length} lopende afroep${lopend.length === 1 ? '' : 'en'}${lopend.some((r) => PL.teLaat(r, vandaag())) ? ' · <b style="color:var(--gevaar)">te laat</b>' : ''}` : '<span class="zacht">Niets afgeroepen</span>'}</td>
+          <td style="text-align:right">${beheer ? `<a class="knop klein primair" href="#/werkpakketten/${esc(p.id)}/afroep">＋ Afroep</a>` : ''}</td></tr>`;
+  }).join('')}</tbody></table></div></section>` : '';
 
     const rondeRij = (p, r) => {
       const v = g.views.get(`${p.id}:${r.id}`);
@@ -4724,9 +4745,10 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
       const pos = PL.balk(r, b);
       const kleur = BORD_KLEUR[r.soort] ?? BORD_KLEUR.werk;
       const laat = PL.teLaat(r, vandaag());
-      const titel = `R${r.nummer} ${r.naam} · ${periodeTekst(v) || 'nog niet ingepland'} · ${vg.gedaan.size + vg.overgeslagen.size}/${vg.totaal}`;
+      const letter = r.afroep ? 'A' : 'R';
+      const titel = `${letter}${r.nummer} ${r.naam} · ${r.afroep ? `afroep (${r.afroep.reden}) · ` : ''}${periodeTekst(v) || 'nog niet ingepland'} · ${vg.gedaan.size + vg.overgeslagen.size}/${vg.totaal}`;
       return `<div class="bord-rij" data-pakket="${esc(p.id)}" data-ronde="${esc(r.id)}">
-        <div class="bord-label"><div class="bord-labelregel"><a href="${pakketPagina(v, false)}"><span class="bord-soort" style="background:${kleur}"></span>R${r.nummer} ${esc(r.naam)}</a>
+        <div class="bord-label"><div class="bord-labelregel"><a href="${pakketPagina(v, false)}"><span class="bord-soort" style="background:${kleur}"></span>${letter}${r.nummer} ${esc(r.naam)}</a>${r.afroep?.spoed ? ' <span class="afroeplabel spoedlabel">Spoed</span>' : ''}
             <span class="bord-pct ${r.status === 'afgerond' ? 'klaar' : ''}" title="${vg.gedaan.size + vg.overgeslagen.size} van ${vg.totaal} objecten">${r.status === 'afgerond' ? I.vink + ' ' : ''}${vg.percentage}%</span></div>
           <small>${r.soort === 'inspectie' ? esc(r.inspectiesoort || 'Inspectie') : esc(r.werksoort || 'Werkzaamheid')} · ${PL.duurTekst(PL.duurVan(r))}</small></div>
         <div class="bord-spoor ${beheer ? 'bewerkbaar' : ''}" style="width:${breedte}px">
@@ -4777,7 +4799,8 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
           </div>`;
   }).join('')}
         </div>
-      </div>` : leegKaart('Er zijn nog geen werkpakketten om te plannen.', beheer ? '<a class="knop primair" href="#/werkpakketten/nieuw">+ Werkpakket maken</a>' : '')}`;
+      </div>` : afroepPakketten.length ? '<p class="leeg">Er zijn geen geplande rondes of lopende afroepen.</p>' : leegKaart('Er zijn nog geen werkpakketten om te plannen.', beheer ? '<a class="knop primair" href="#/werkpakketten/nieuw">+ Werkpakket maken</a>' : '')}
+      ${afroepBlok}`;
 
     // Navigatie, zoom en filters
     el.querySelectorAll('[data-nav-bord]').forEach((k2) => {
@@ -5450,7 +5473,9 @@ function actieveRondes(g) {
       uit.push({ pakket: g.views.get(sleutel), open: g.rondeVoortgang.get(sleutel).open, voortgang: g.rondeVoortgang.get(sleutel) });
     }
   }
-  return uit;
+  // Spoed-afroepen eerst (de rest houdt zijn volgorde).
+  const spoed = (x) => (x.pakket.afroep?.spoed ? 1 : 0);
+  return uit.map((x, i) => [x, i]).sort(([a, i], [b, j]) => spoed(b) - spoed(a) || i - j).map(([x]) => x);
 }
 
 const rondeParam = (v) => (v?.rondeId && v.rondeId !== STANDAARD_RONDE ? v.rondeId : '');
@@ -5462,7 +5487,8 @@ const pakketPagina = (v, mobiel) => {
 /** Pakketweergave (met ronde) uit de database, voor formulieren die vanuit een pakket worden geopend. */
 async function laadPakketView(pakketId, rondeId) {
   const p = pakketId ? await db.haal('werkpakketten', pakketId) : null;
-  return p ? rondeView(p, rondeVanId(p, rondeId)) : null;
+  const r = p ? rondeVanId(p, rondeId) : null;
+  return p && r ? rondeView(p, r) : null;
 }
 
 function voortgangBalk(v, { groot = false } = {}) {
@@ -5486,6 +5512,10 @@ function pakketSoortTekst(p) {
 
 function pakketRondesTekst(p) {
   const rondes = rondesVan(p);
+  if (isAfroep(p)) {
+    const lopend = rondes.filter((r) => r.status === 'actief').length;
+    return `${I.wacht} Op afroep · ${lopend ? `${lopend} lopende afroep${lopend === 1 ? '' : 'en'}` : 'niets afgeroepen'}${rondes.length - lopend ? ` · ${rondes.length - lopend} afgerond` : ''}`;
+  }
   if (!p.rondes?.length) return pakketSoortTekst(rondes[0]);
   const actief = rondes.filter((r) => r.status === 'actief');
   return `${rondes.length} ronde${rondes.length === 1 ? '' : 's'}${actief.length ? ` · actief: ${actief.map((r) => esc(`R${r.nummer} ${r.naam}`)).join(', ')}` : ''}`;
@@ -5672,6 +5702,7 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
   }
   const gekozen = new Set(p.objecten ?? []);
   if (!bron && q.get('object')) gekozen.add(q.get('object'));
+  const planning = p.planning ?? (project?.planningswijze === 'afroep' ? 'afroep' : 'gepland');
   const leden = project?.leden ?? [];
   const terug = id ? `#/werkpakketten/${esc(id)}` : '#/werkpakketten';
 
@@ -5696,7 +5727,27 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
             <textarea id="f-omschrijving" name="omschrijving" maxlength="2000">${esc(p.omschrijving)}</textarea></div>
         </div>
       </section>
-      <section>
+      <section class="kaart planningswijze">
+        <h2>Planningswijze</h2>
+        <div class="pw-keuze">${Object.entries(PLANNINGSWIJZEN).map(([k, w]) => `<label class="pw-optie"><input type="radio" name="planning" value="${k}" ${k === planning ? 'checked' : ''}>
+          <span>${k === 'afroep' ? I.wacht : I.kalender}<strong>${esc(w.label)}</strong><small>${esc(w.uitleg)}</small></span></label>`).join('')}</div>
+        <div class="pw-afroep">
+          <p class="hulptekst">Het pakket staat klaar als structuur: objecten, uitvoerders en instructie. Er wordt niets vooruit gepland.
+            Is er werk nodig, dan maak je op de pakketpagina een <strong>afroep</strong> aan (aanleiding, objecten, gereed vóór); die verschijnt direct bij de uitvoerders.</p>
+          <div class="velden">
+            <div class="veld"><label for="f-afroepsoort">Soort afroepen</label><select id="f-afroepsoort" name="afroepSoort">
+              ${optie('werk', 'Werkzaamheid', p.afroepSoort ?? 'werk')}${optie('inspectie', 'Inspectie / schouw', p.afroepSoort ?? 'werk')}</select></div>
+            <div class="veld pw-werk"><label for="f-afroepwerk">Werksoort</label><select id="f-afroepwerk" name="afroepWerksoort"><option value="">– kies bij de afroep –</option>
+              ${WERKSOORTEN.map((s) => optie(s, s, p.afroepWerksoort)).join('')}</select></div>
+            <div class="veld pw-insp"><label for="f-afroepinsp">Inspectiesoort</label><select id="f-afroepinsp" name="afroepInspectiesoort">
+              ${INSPECTIESOORTEN.filter((s) => s !== CALAMITEIT).map((s) => optie(s, s, p.afroepInspectiesoort ?? 'Schouw')).join('')}</select></div>
+            <div class="veld"><label for="f-reactietijd">Standaard reactietijd (dagen)</label>
+              <input id="f-reactietijd" name="reactietijd" type="number" min="0" max="365" value="${esc(p.reactietijd ?? '')}" placeholder="bijv. 5">
+              <small>Vult bij een afroep de datum "gereed vóór" alvast in (werkafspraak uit het contract).</small></div>
+          </div>
+        </div>
+      </section>
+      <section class="pw-gepland">
         <div class="mtussen"><h2>Rondes / taken</h2>
           <div class="knoppen"><label class="aantal-rondes">Aantal rondes <input type="number" id="aantal-rondes" min="1" max="52" value="${rondes.length}"></label>
             <button type="button" class="knop" id="ronde-plus">＋ Ronde</button></div></div>
@@ -5743,6 +5794,13 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
   const form = app.querySelector('#form');
   const $ = (s) => app.querySelector(s);
   const laagNaam = new Map(lagen.map((l) => [l.id, l.naam]));
+  const zetPlanningswijze = () => {
+    const afroep = form.elements.planning.value === 'afroep';
+    form.classList.toggle('modus-afroep', afroep);
+    form.classList.toggle('afroep-inspectie', form.elements.afroepSoort.value === 'inspectie');
+  };
+  form.querySelectorAll('input[name=planning], #f-afroepsoort').forEach((x) => x.addEventListener('change', zetPlanningswijze));
+  zetPlanningswijze();
   const tekenRondes = () => {
     $('#rondes').innerHTML = rondes.map((r, i) => `
       <div class="gebrek ronde" style="border-left-color:${r.status === 'actief' ? '#e07b00' : r.status === 'afgerond' ? '#1a7f37' : '#9aa5b1'}">
@@ -5936,12 +5994,13 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
     const code = d.code || await volgendePakketcode();
     const bestaandeCode = (await inProject('werkpakketten')).find((x) => x.code && x.code.toLowerCase() === code.toLowerCase() && x.id !== id);
     if (bestaandeCode) return melding(`Pakketcode ${code} is al in gebruik.`, 'fout');
-    for (const r of rondes) {
+    const afroep = form.elements.planning.value === 'afroep';
+    for (const r of afroep ? [] : rondes) {
       if (!String(r.naam ?? '').trim()) return melding(`Geef ronde R${r.nummer} een naam.`, 'fout');
       if (r.start && r.eind && r.eind < r.start) return melding(`Ronde R${r.nummer}: einddatum ligt vóór de start.`, 'fout');
     }
     const nu = new Date().toISOString();
-    const opgeslagenRondes = rondes.map((r) => ({
+    const opgeslagenRondes = afroep ? (id && isAfroep(bron) ? (bron.rondes ?? []) : []) : rondes.map((r) => ({
       id: r.id, nummer: Number(r.nummer) || 1, naam: String(r.naam).trim(), soort: r.soort,
       werksoort: r.soort === 'werk' ? r.werksoort : '', inspectiesoort: r.soort === 'inspectie' ? r.inspectiesoort : '',
       start: r.start, eind: r.eind, status: r.status, objectIds: r.objectIds?.length ? r.objectIds : null,
@@ -5949,7 +6008,10 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
     }));
     const opslaan = {
       ...(id ? bron : {}), id: id ?? nieuwId(), projectId: (id ? bron.projectId : null) ?? projectId(), code, naam: d.naam,
-      rondes: opgeslagenRondes, status: pakketStatus({ rondes: opgeslagenRondes }), omschrijving: d.omschrijving,
+      rondes: opgeslagenRondes, status: pakketStatus({ planning: afroep ? 'afroep' : 'gepland', rondes: opgeslagenRondes }), omschrijving: d.omschrijving,
+      planning: afroep ? 'afroep' : 'gepland',
+      afroepSoort: form.elements.afroepSoort.value, afroepWerksoort: form.elements.afroepWerksoort.value,
+      afroepInspectiesoort: form.elements.afroepInspectiesoort.value, reactietijd: form.elements.reactietijd.value === '' ? '' : Number(form.elements.reactietijd.value),
       toegewezen: [...form.querySelectorAll('input[name=toegewezen]:checked')].map((c) => c.value),
       vrijgaveVereist: form.elements.vrijgaveVereist.checked,
       objecten: objecten.filter((o) => gekozen.has(o.id)).map((o) => o.id), // vaste volgorde (op code)
@@ -5957,9 +6019,141 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
     };
     await db.bewaar('werkpakketten', opslaan);
     formulierGewijzigd = false;
-    const ongepland = opgeslagenRondes.filter((r) => !r.start).length;
+    const ongepland = afroep ? 0 : opgeslagenRondes.filter((r) => !r.start).length;
     melding(ongepland ? `Werkpakket opgeslagen – plan ${ongepland === 1 ? 'de ronde' : `de ${ongepland} rondes`} nu in de planning` : 'Werkpakket opgeslagen');
     ga(ongepland ? `#/planning?pakket=${opslaan.id}` : `#/werkpakketten/${opslaan.id}`);
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Werkpakketten op afroep: staande structuur, werk wordt afgeroepen wanneer het nodig is
+// ---------------------------------------------------------------------------
+function afroepLabel(r) {
+  if (!r?.afroep) return '';
+  return `<span class="afroeplabel ${r.afroep.spoed ? 'spoedlabel' : ''}">${I.wacht} ${r.afroep.spoed ? 'Spoed-afroep' : 'Afroep'}</span>`;
+}
+
+/** Pakketpagina van een pakket op afroep zonder (lopende) afroepen. */
+function afroepPakketLeeg(pr) {
+  app.innerHTML = `
+    <div class="paginakop">
+      <div><p><a href="#/werkpakketten">← Werkpakketten</a></p><h1>${esc(pr.naam)}</h1>
+        <p>${pr.code ? `${esc(pr.code)} · ` : ''}${(pr.objecten ?? []).length} objecten · <span class="afroeplabel">${I.wacht} Op afroep</span></p></div>
+      <div class="knoppen">${magBeheren() ? `<a class="knop" href="#/werkpakketten/${esc(pr.id)}/bewerken">Bewerken</a>
+        <a class="knop" href="#/werkpakketten/nieuw?kopie=${esc(pr.id)}">${I.kopie} Kopiëren</a>` : ''}</div>
+    </div>
+    <section class="kaart leeg afroepkaart">
+      <h2>Staat klaar voor afroep</h2>
+      <p>Dit werkpakket wordt niet vooruit gepland. Is er werk nodig – na afstemming met de opdrachtgever, een melding of na bijvoorbeeld een storm –
+        maak dan een afroep aan. De uitvoerders van dit pakket zien hem direct in de app.</p>
+      <p><small>${pr.afroepSoort === 'inspectie' ? esc(pr.afroepInspectiesoort || 'Inspectie') : esc(pr.afroepWerksoort || 'Werkzaamheid')}
+        ${pr.reactietijd !== '' && pr.reactietijd != null ? ` · reactietijd ${pr.reactietijd} dagen` : ''}
+        · ${(pr.toegewezen ?? []).length ? `${pr.toegewezen.length} uitvoerder(s)` : 'alle projectleden'}</small></p>
+      ${magBeheren() ? `<div class="knoppen" style="justify-content:center"><a class="knop primair" href="#/werkpakketten/${esc(pr.id)}/afroep">＋ Afroep maken</a></div>` : ''}
+      ${pr.omschrijving ? `<p style="white-space:pre-wrap;text-align:left;margin-top:1rem"><strong>Instructie:</strong> ${esc(pr.omschrijving)}</p>` : ''}
+    </section>`;
+}
+
+async function afroepFormulier(id, q = new URLSearchParams()) {
+  if (!magBeheren()) {
+    app.innerHTML = leegKaart('Alleen beheerders kunnen werk afroepen.', `<a class="knop" href="#/werkpakketten/${esc(id)}">Terug</a>`);
+    return;
+  }
+  const p = await db.haal('werkpakketten', id);
+  if (!p) { app.innerHTML = leegKaart('Werkpakket niet gevonden.', '<a class="knop" href="#/werkpakketten">Terug</a>'); return; }
+  const g = await pakketGegevens();
+  const objecten = (p.objecten ?? []).map((oid) => g.objectMap.get(oid)).filter(Boolean);
+  const gekozen = new Set(q.get('object') ? [q.get('object')] : []);
+  const dag = (n) => PL.isoVan(PL.dagNr(vandaag()) + n);
+  const standaardGereed = dag(Number(p.reactietijd) >= 0 && p.reactietijd !== '' && p.reactietijd != null ? Number(p.reactietijd) : 7);
+  const soort = p.afroepSoort ?? 'werk';
+
+  app.innerHTML = `
+    <div class="paginakop"><div><p><a href="#/werkpakketten/${esc(id)}">← ${esc(p.naam)}</a></p><h1>Afroep maken</h1>
+      <p>Werk dat niet vooruit te plannen is: leg vast waarom, waar en wanneer het klaar moet zijn. De uitvoerders zien de afroep direct.</p></div></div>
+    <form id="form" novalidate>
+      <section class="kaart">
+        <div class="velden">
+          <div class="veld breed"><label for="a-naam" class="vereist">Aanleiding</label>
+            <input id="a-naam" name="naam" maxlength="120" required placeholder="bijv. Omgewaaide boom Parkweg, of: Na afstemming – extra maaibeurt"></div>
+          <div class="veld"><label for="a-reden" class="vereist">Reden</label><select id="a-reden" name="reden">
+            ${AFROEP_REDENEN.map((r) => optie(r, r, q.get('reden') ?? AFROEP_REDENEN[0])).join('')}</select></div>
+          <div class="veld"><label for="a-gereed" class="vereist">Gereed vóór</label><input id="a-gereed" name="eind" type="date" required value="${standaardGereed}" min="${vandaag()}">
+            <small>${p.reactietijd !== '' && p.reactietijd != null ? `Reactietijd volgens het pakket: ${p.reactietijd} dagen.` : 'Standaard over 7 dagen.'}</small></div>
+          <div class="veld"><label for="a-soort">Soort</label><select id="a-soort" name="soort">${optie('werk', 'Werkzaamheid', soort)}${optie('inspectie', 'Inspectie / schouw', soort)}</select></div>
+          <div class="veld a-werk"><label for="a-werksoort">Werksoort</label><select id="a-werksoort" name="werksoort"><option value="">– vrij te kiezen –</option>
+            ${WERKSOORTEN.map((s) => optie(s, s, p.afroepWerksoort)).join('')}</select></div>
+          <div class="veld a-insp"><label for="a-inspectiesoort">Inspectiesoort</label><select id="a-inspectiesoort" name="inspectiesoort">
+            ${INSPECTIESOORTEN.filter((s) => s !== CALAMITEIT).map((s) => optie(s, s, p.afroepInspectiesoort ?? 'Schouw')).join('')}</select></div>
+          <div class="veld breed"><label class="vink"><input type="checkbox" name="spoed"><span><strong>Spoed</strong><small>Wordt bovenaan en in rood getoond bij de uitvoerders.</small></span></label></div>
+          <div class="veld breed"><label for="a-toelichting">Toelichting voor de uitvoerder</label>
+            <textarea id="a-toelichting" name="toelichting" maxlength="2000" placeholder="Wat moet er gebeuren, afspraken met de opdrachtgever, bijzonderheden ter plaatse"></textarea></div>
+        </div>
+      </section>
+      <section class="kaart">
+        <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">Objecten</h2><span class="label-status afgerond" id="a-teller"></span></div>
+        <div class="filters"><input type="search" id="a-zoek" placeholder="Zoek op code, naam of kenmerk…" aria-label="Objecten zoeken">
+          <button type="button" class="knop" id="a-alle">Alle objecten van het pakket</button><button type="button" class="knop" id="a-geen">Niets</button></div>
+        <div id="afroepkaart" class="samenstelkaart"><p class="leeg">Kaart laden…</p></div>
+        <div class="tabelhouder" style="max-height:340px;overflow:auto;border:1px solid var(--rand);border-radius:8px"><table>
+          <thead><tr><th style="width:42px"></th><th>Code</th><th>Naam</th><th class="verberg-mobiel">Type</th></tr></thead><tbody id="a-rijen"></tbody></table></div>
+      </section>
+      <div class="formvoet kaart"><a class="knop" href="#/werkpakketten/${esc(id)}">Annuleren</a><button class="knop primair" type="submit">${I.start} Afroep versturen</button></div>
+    </form>`;
+
+  const form = app.querySelector('#form');
+  const $ = (s) => app.querySelector(s);
+  const zetSoort = () => form.classList.toggle('afroep-inspectie', form.elements.soort.value === 'inspectie');
+  form.elements.soort.addEventListener('change', zetSoort);
+  zetSoort();
+  form.addEventListener('input', () => { formulierGewijzigd = true; });
+  const kaartKlaar = tekenObjectenKaart($('#afroepkaart'), {
+    objecten,
+    kleurVan: (o) => (gekozen.has(o.id) ? '#7c3aed' : PAKKET_KLEUR.overgeslagen),
+    opKlik: (o) => { if (gekozen.has(o.id)) gekozen.delete(o.id); else gekozen.add(o.id); toon(); },
+  });
+  const toon = () => {
+    const termen = zoekTermen($('#a-zoek').value);
+    const zichtbaar = objecten.filter((o) => objectPast(o, termen));
+    $('#a-rijen').innerHTML = zichtbaar.slice(0, 400).map((o) => `<tr class="${gekozen.has(o.id) ? 'gekozen' : ''}">
+      <td><input type="checkbox" data-kies="${esc(o.id)}" ${gekozen.has(o.id) ? 'checked' : ''} aria-label="${esc(o.code)}"></td>
+      <td><strong>${esc(o.code)}</strong></td><td>${esc(o.naam)}</td><td class="verberg-mobiel">${esc(o.type || '–')}</td></tr>`).join('')
+      || '<tr><td colspan="4" class="leeg">Geen objecten gevonden.</td></tr>';
+    $('#a-teller').textContent = `${gekozen.size} van ${objecten.length} objecten`;
+    kaartKlaar.then((k) => { if (!k) return; k.toon(new Set(zichtbaar.map((o) => o.id))); k.herkleur(); });
+  };
+  $('#a-zoek').addEventListener('input', toon);
+  $('#a-rijen').addEventListener('change', (e) => {
+    const k = e.target.dataset.kies;
+    if (!k) return;
+    if (e.target.checked) gekozen.add(k); else gekozen.delete(k);
+    toon();
+  });
+  $('#a-alle').onclick = () => { objecten.forEach((o) => gekozen.add(o.id)); toon(); };
+  $('#a-geen').onclick = () => { gekozen.clear(); toon(); };
+  toon();
+
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const d = formulierData(form);
+    if (!String(d.naam ?? '').trim()) return melding('Vul de aanleiding in.', 'fout');
+    if (!d.eind) return melding('Vul in wanneer het gereed moet zijn.', 'fout');
+    if (!gekozen.size) return melding('Kies minstens één object.', 'fout');
+    const actueel = await db.haal('werkpakketten', id);
+    const rondes = actueel.rondes ?? [];
+    const nu = new Date().toISOString();
+    const alle = gekozen.size === objecten.length;
+    const r = {
+      id: nieuwId(), nummer: rondes.reduce((m, x) => Math.max(m, Number(x.nummer) || 0), 0) + 1, naam: d.naam.trim(),
+      soort: d.soort, werksoort: d.soort === 'werk' ? d.werksoort : '', inspectiesoort: d.soort === 'inspectie' ? d.inspectiesoort : '',
+      start: vandaag(), eind: d.eind < vandaag() ? vandaag() : d.eind, status: 'actief', objectIds: alle ? null : [...gekozen],
+      afroep: { reden: d.reden, toelichting: d.toelichting ?? '', spoed: form.elements.spoed.checked, op: nu, door: ikEmail() },
+    };
+    const lijst = [...rondes, r];
+    await db.bewaar('werkpakketten', { ...actueel, rondes: lijst, status: pakketStatus({ ...actueel, rondes: lijst }), gewijzigd: nu });
+    formulierGewijzigd = false;
+    melding(`Afroep verstuurd: ${r.naam}`);
+    ga(`#/werkpakketten/${id}?ronde=${r.id}`);
   };
 }
 
@@ -5983,6 +6177,8 @@ async function pakketDetail(id, q = new URLSearchParams()) {
     return;
   }
   const alleRondes = rondesVan(pr);
+  const afroep = isAfroep(pr);
+  if (afroep && !alleRondes.length) return afroepPakketLeeg(pr);
   const ronde = rondeVanId(pr, q.get('ronde'));
   const p = g.views.get(`${id}:${ronde.id}`);
   const v = g.rondeVoortgang.get(`${id}:${ronde.id}`);
@@ -5994,35 +6190,37 @@ async function pakketDetail(id, q = new URLSearchParams()) {
   app.innerHTML = `
     <div class="paginakop">
       <div><p><a href="#/werkpakketten">← Werkpakketten</a></p><h1>${esc(pr.naam)}</h1>
-        <p>${pr.code ? `${esc(pr.code)} · ` : ''}${(pr.objecten ?? []).length} objecten · ${pakketStatusLabel(pr.status)}</p></div>
+        <p>${pr.code ? `${esc(pr.code)} · ` : ''}${(pr.objecten ?? []).length} objecten · ${pakketStatusLabel(pr.status)}${afroep ? ` <span class="afroeplabel">${I.wacht} Op afroep</span>` : ''}</p></div>
       <div class="knoppen">
         ${magBeheren() ? `<a class="knop" href="#/werkpakketten/${esc(id)}/bewerken">Bewerken</a>
-          <a class="knop" href="#/planning?pakket=${esc(id)}">${I.kalender} Inplannen</a>
-          <a class="knop" href="#/werkpakketten/${esc(id)}/bewerken?nieuweRonde=1">＋ Volgende ronde</a>
+          ${afroep ? `<a class="knop primair" href="#/werkpakketten/${esc(id)}/afroep">＋ Afroep</a>` : `<a class="knop" href="#/planning?pakket=${esc(id)}">${I.kalender} Inplannen</a>
+          <a class="knop" href="#/werkpakketten/${esc(id)}/bewerken?nieuweRonde=1">＋ Volgende ronde</a>`}
           <a class="knop" href="#/werkpakketten/nieuw?kopie=${esc(id)}" title="Kopie van het hele pakket">${I.kopie} Kopiëren</a>` : ''}
         ${pr.vrijgaveVereist ? `<a class="knop" href="#/vrijgaven/nieuw?pakket=${esc(id)}">${I.blad} Vrijgave</a>` : ''}
         ${magBeheren() ? '<button class="knop gevaar" id="verwijder">Verwijderen</button>' : ''}
       </div>
     </div>
-    ${alleRondes.some((r) => !r.start) ? `<div class="kaart mhier">${I.punaise} ${alleRondes.filter((r) => !r.start).length} ronde(s) nog niet ingepland. <a href="#/planning?pakket=${esc(id)}">Plannen in de planning →</a></div>` : ''}
+    ${!afroep && alleRondes.some((r) => !r.start) ? `<div class="kaart mhier">${I.punaise} ${alleRondes.filter((r) => !r.start).length} ronde(s) nog niet ingepland. <a href="#/planning?pakket=${esc(id)}">Plannen in de planning →</a></div>` : ''}
     <section class="kaart">
       <h2 style="margin-bottom:.25rem">Totaal</h2>${voortgangBalk(totaal)}
       ${pr.toegewezen?.length ? `<p style="margin:.5rem 0 0"><small>${I.gebruiker} ${pr.toegewezen.map(esc).join(', ')}</small></p>` : ''}
       ${pr.omschrijving ? `<p style="white-space:pre-wrap;margin:.5rem 0 0">${esc(pr.omschrijving)}</p>` : ''}
       <div class="tabelhouder" style="margin-top:.75rem"><table class="rondetabel">
-        <thead><tr><th>Ronde</th><th>Soort</th><th class="verberg-mobiel">Periode</th><th>Status</th><th>Voortgang</th><th></th></tr></thead>
-        <tbody>${alleRondes.map((r) => {
+        <thead><tr><th>${afroep ? 'Afroep' : 'Ronde'}</th><th>${afroep ? 'Reden' : 'Soort'}</th><th class="verberg-mobiel">${afroep ? 'Afgeroepen · gereed vóór' : 'Periode'}</th><th>Status</th><th>Voortgang</th><th></th></tr></thead>
+        <tbody>${alleRondes.slice().sort((a, b) => (afroep ? (a.status === 'actief' ? 0 : 1) - (b.status === 'actief' ? 0 : 1) || (Number(b.nummer) || 0) - (Number(a.nummer) || 0) : 0)).map((r) => {
     const rv = g.views.get(`${id}:${r.id}`);
     return `<tr class="${r.id === ronde.id ? 'gekozen' : ''}">
-          <td><a href="${pakketPagina(rv, false)}"><strong>R${r.nummer}</strong> ${esc(r.naam)}</a>${rv.deelselectie ? ' <small>(deelselectie)</small>' : ''}</td>
-          <td>${pakketSoortTekst(rv)}</td><td class="verberg-mobiel">${periodeTekst(rv) || '–'}</td><td>${pakketStatusLabel(r.status)}</td>
+          <td><a href="${pakketPagina(rv, false)}"><strong>${afroep ? `A${r.nummer}` : `R${r.nummer}`}</strong> ${esc(r.naam)}</a>${rv.deelselectie ? ` <small>(${(r.objectIds ?? []).length} object${(r.objectIds ?? []).length === 1 ? '' : 'en'})</small>` : ''}${r.afroep?.spoed ? ' <span class="afroeplabel spoedlabel">Spoed</span>' : ''}</td>
+          <td>${afroep ? `${esc(r.afroep?.reden ?? '–')}<br><small>${pakketSoortTekst(rv)}</small>` : pakketSoortTekst(rv)}</td>
+          <td class="verberg-mobiel">${afroep ? `${datumNL(r.start)}${r.afroep?.door ? ` · ${esc(r.afroep.door)}` : ''}<br><small>gereed vóór ${r.eind ? datumNL(r.eind) : '–'}${PL.teLaat(r, vandaag()) ? ` · <b style="color:var(--gevaar)">te laat</b>` : ''}</small>` : periodeTekst(rv) || '–'}</td><td>${pakketStatusLabel(r.status)}</td>
           <td style="min-width:160px">${voortgangBalk(g.rondeVoortgang.get(`${id}:${r.id}`))}</td>
           <td>${magBeheren() ? (r.status !== 'actief'
     ? `<button class="knop klein" data-ronde-status="${esc(r.id)}" data-naar="actief">${I.start} Actief</button>`
     : `<button class="knop klein" data-ronde-status="${esc(r.id)}" data-naar="afgerond">${I.vink} Afronden</button>`) : ''}</td></tr>`;
   }).join('')}</tbody></table></div>
     </section>
-    <div class="mtussen"><h2>R${ronde.nummer} ${esc(ronde.naam)} <small style="font-weight:400">· ${pakketSoortTekst(p)}</small></h2>
+    ${afroep && ronde.afroep?.toelichting ? `<div class="kaart afroepkaart"><strong>${esc(ronde.afroep.reden ?? 'Afroep')}</strong><p style="white-space:pre-wrap;margin:.35rem 0 0">${esc(ronde.afroep.toelichting)}</p></div>` : ''}
+    <div class="mtussen"><h2>${afroep ? 'A' : 'R'}${ronde.nummer} ${esc(ronde.naam)} <small style="font-weight:400">· ${pakketSoortTekst(p)}</small></h2>
       <div class="knoppen">${p.soort === 'inspectie' ? '<button class="knop" id="resultaten-xls">' + I.excel + ' Resultaten naar Excel</button>' : ''}<button class="knop" id="export">CSV</button>${p.inspectiesoort === BV.BVC_SOORT && p.soort === 'inspectie' ? '<button class="knop" id="suf">SUF-BVC</button>' : ''}</div></div>
     <section class="kaart">${voortgangBalk(v, { groot: true })}</section>
     ${p.inspectiesoort === BV.BVC_SOORT ? bvcSamenvatting(g.inspecties.filter((i) => i.werkpakketId === p.id && (i.rondeId || STANDAARD_RONDE) === (p.rondeId || STANDAARD_RONDE))) : ''}
@@ -6289,8 +6487,8 @@ function mobielPakketRegel(p, v) {
   const href = isRonde ? pakketPagina(p, true) : `#/m/pakket/${esc(p.id)}`;
   const sub = isRonde ? `${pakketSoortTekst(p)}${p.eind ? ` · uiterlijk ${datumNL(p.eind)}` : ''}` : pakketRondesTekst(p);
   return `<li><a href="${href}">
-    <span class="micoon klein">${I.pakket}</span>
-    <span><strong>${esc(p.naam)}</strong><small>${sub}${p.status === 'gepland' ? ' · gepland' : ''}</small>
+    <span class="micoon klein">${p.afroep || isAfroep(p) ? I.wacht : I.pakket}</span>
+    <span><strong>${esc(p.naam)}</strong>${p.afroep ? afroepLabel(p) : ''}<small>${sub}${p.status === 'gepland' ? ' · gepland' : p.status === 'paraat' ? ' · op afroep, nu niets afgeroepen' : ''}</small>
     ${voortgangBalk(v)}</span></a></li>`;
 }
 
@@ -6302,6 +6500,11 @@ async function mobielPakket(id, q = new URLSearchParams()) {
     return;
   }
   const lopend = rondesVan(pr).filter((r) => r.status !== 'afgerond');
+  if (isAfroep(pr) && !lopend.length) {
+    app.innerHTML = `<div class="mkop"><a href="#/m/pakketten" class="mterug" aria-label="Terug">←</a><div><small>Werkpakket op afroep</small><h1>${esc(pr.naam)}</h1></div></div>
+      <div class="kaart mhier">${I.wacht} Er is op dit moment geen werk afgeroepen. Zodra de beheerder een afroep maakt, staat hij hier.</div>`;
+    return;
+  }
   const actief = lopend.filter((r) => r.status === 'actief');
   if (q.get('kies') || (!q.get('ronde') && actief.length > 1)) {
     // Meerdere actieve rondes (of zelf gekozen): eerst kiezen welke ronde je gaat doen.
@@ -6342,6 +6545,9 @@ async function mobielPakket(id, q = new URLSearchParams()) {
   app.innerHTML = `${bevestiging}
     <div class="mkop"><a href="#/m/pakketten" class="mterug" aria-label="Terug">←</a>
       <div style="flex:1;min-width:0"><small>${pakketSoortTekst(p)}${lopend.length > 1 ? ` · <a href="#/m/pakket/${esc(id)}?kies=1">andere ronde</a>` : ''}</small><h1>${esc(p.naam)}</h1></div></div>
+    ${p.afroep ? `<div class="kaart afroepkaart mafroep">${afroepLabel(p)}<strong>${esc(p.afroep.reden)}</strong>
+      <small>Gereed vóór ${datumNL(p.eind)}${PL.teLaat(p, vandaag()) ? ' · <b style="color:var(--gevaar)">te laat</b>' : ''}</small>
+      ${p.afroep.toelichting ? `<p style="white-space:pre-wrap;margin:.4rem 0 0">${esc(p.afroep.toelichting)}</p>` : ''}</div>` : ''}
     ${voortgangBalk(v, { groot: true })}
     ${p.omschrijving ? `<details class="kaart minstructie"><summary>Instructie</summary><p style="white-space:pre-wrap;margin:.5rem 0 0">${esc(p.omschrijving)}</p></details>` : ''}
     ${open.length ? `<div class="knoppen mpakketknoppen">

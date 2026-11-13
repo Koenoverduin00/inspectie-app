@@ -3,7 +3,25 @@
 // (werkpakketId) en uit overgeslagen objecten (aparte records, zodat meerdere
 // uitvoerders tegelijk kunnen werken zonder elkaars wijzigingen te overschrijven).
 
-export const PAKKETSTATUS = { gepland: 'Gepland', actief: 'Actief', afgerond: 'Afgerond' };
+export const PAKKETSTATUS = { gepland: 'Gepland', actief: 'Actief', afgerond: 'Afgerond', paraat: 'Op afroep' };
+
+/** Planningswijze: vooraf gepland in rondes, of op afroep (correctief, na afstemming of na omstandigheden). */
+export const PLANNINGSWIJZEN = {
+  gepland: { label: 'Vooraf gepland', uitleg: 'Vaste rondes met data, vooraf in te plannen' },
+  afroep: { label: 'Op afroep', uitleg: 'Correctief: je roept werk af wanneer het nodig is' },
+};
+export const isAfroep = (p) => p?.planning === 'afroep';
+
+export const AFROEP_REDENEN = [
+  'Na afstemming met opdrachtgever',
+  'Melding (bewoner, gebruiker, derde)',
+  'Na storm of extreem weer',
+  'Na hoogwater of droogte',
+  'Schade of vandalisme',
+  'Calamiteit',
+  'Uit eigen inspectie / constatering',
+  'Anders',
+];
 
 export const OVERSLAAN_REDENEN = [
   'Niet bereikbaar',
@@ -26,6 +44,8 @@ export const overslaanId = (pakketId, objectId, rondeId = STANDAARD_RONDE) => (
  * Een ronde zonder objectIds geldt voor alle objecten van het pakket.
  */
 export function rondesVan(p) {
+  // Een pakket op afroep heeft alleen de afroepen die zijn aangemaakt (eventueel geen).
+  if (isAfroep(p)) return [...(p.rondes ?? [])].sort((a, b) => (Number(a.nummer) || 0) - (Number(b.nummer) || 0));
   if (p?.rondes?.length) return [...p.rondes].sort((a, b) => (Number(a.nummer) || 0) - (Number(b.nummer) || 0));
   return [{
     id: STANDAARD_RONDE, nummer: 1, naam: p?.naam ?? 'Ronde 1', soort: p?.soort ?? 'werk', werksoort: p?.werksoort ?? '',
@@ -54,6 +74,7 @@ export function rondeVanId(p, rondeId) {
 /** Status van het pakket volgt uit de rondes. */
 export function pakketStatus(p) {
   const st = rondesVan(p).map((r) => r.status);
+  if (isAfroep(p)) return p.gesloten ? 'afgerond' : st.includes('actief') ? 'actief' : 'paraat';
   if (st.includes('actief')) return 'actief';
   if (st.length && st.every((x) => x === 'afgerond')) return 'afgerond';
   return 'gepland';

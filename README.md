@@ -118,6 +118,23 @@ gevraagd wordt:
 - **Installeren**: het startscherm legt uit hoe je de app op het beginscherm zet (iPhone: Deel → Zet op beginscherm;
   Android: knop *Installeren*). Met *Later* verdwijnt de uitleg 14 dagen.
 
+## Werk op afroep (niet vooruit te plannen)
+
+Niet al het werk is vooraf te plannen: correctief onderhoud, werk na afstemming met de opdrachtgever, na een melding of
+na een storm. Daarvoor heeft elk werkpakket een **planningswijze**:
+
+- **Vooraf gepland** – rondes met data (zoals voorheen).
+- **Op afroep** – het pakket staat klaar als structuur: objecten, uitvoerders, instructie, soort werk en een standaard
+  **reactietijd**. Er wordt niets vooruit gepland. Is er werk nodig, dan maakt de beheerder een **afroep** (knop
+  *＋ Afroep* op het pakket, in de planning of op de objectpagina): aanleiding, reden (afstemming opdrachtgever, melding,
+  storm, schade, calamiteit…), objecten (lijst of kaart), *gereed vóór* (standaard vandaag + reactietijd), toelichting en
+  eventueel **spoed**. De afroep staat direct bij de uitvoerders op de telefoon (spoed bovenaan) en als balk A1, A2… in
+  de planning; voortgang, toewijzen en "op schema" werken net als bij rondes.
+
+In de projectgegevens leg je de **planningswijze van het contract** vast (vooraf gepland, op afroep of gemengd); dat is de
+standaard voor nieuwe werkpakketten. De planning toont pakketten op afroep in een apart blok *Op afroep*. Bij een
+Excel-import blijven de afroepen van een pakket op afroep ongemoeid.
+
 ## Project inrichten (stappenplan)
 
 Na het aanmaken van een project opent het **stappenplan** (ook via de balk op het dashboard en *Project inrichten*).

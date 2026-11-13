@@ -1,7 +1,7 @@
 // Werkpakketten via Excel: een 'idiot-proof' sjabloon (keuzelijsten, controles, beveiligde
 // bladen) en het inlezen + controleren ervan. Structuur: werkpakket → rondes (taken) → objecten.
 // ExcelJS wordt pas geladen als het nodig is; de controle (verwerkImport) is puur en testbaar.
-import { rondesVan, rondeView, rondeCode } from './pakketten.js';
+import { rondesVan, rondeView, rondeCode, isAfroep } from './pakketten.js';
 
 export const BLAD = { uitleg: 'Uitleg', pakketten: 'Werkpakketten', rondes: 'Rondes', objecten: 'Objecten', lijsten: 'Lijsten' };
 
@@ -598,6 +598,8 @@ export function verwerkImport(raw, c) {
       omschrijving: p.omschrijving, objecten: sorteer(objecten),
       rondes: rondes.map(({ _oud, _nieuw, ...r }) => r),
     };
+    // Een pakket op afroep: de afroepen worden in de app beheerd en blijven bij een Excel-import ongemoeid.
+    if (isAfroep(oud)) record.rondes = oud.rondes ?? [];
     // Oude losse velden (van vóór de rondes) zijn nu overbodig.
     for (const k of ['soort', 'werksoort', 'inspectiesoort', 'start', 'eind']) delete record[k];
     resultaat.push({
