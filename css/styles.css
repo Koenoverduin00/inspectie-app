@@ -987,3 +987,32 @@ body.inlogscherm .statusregel { display: none !important; }
 .kaartpin .ico { color: var(--primair); }
 .statusregel .ico { margin-right: .3rem; }
 .paginakop h2 .ico, .kaart h2 .ico { color: var(--primair); margin-right: .2rem; }
+
+/* Meerdere werkpakketten op één locatie */
+.kaartbadge span {
+  display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: #0b4f6c; color: #fff;
+  font-weight: 800; font-size: .85rem; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.35); cursor: pointer;
+}
+.veldmelding { margin: .45rem 0 .25rem; color: #8a4b00; font-size: .9rem; }
+.veldmelding .ico { color: #b45309; }
+.veldrondes { list-style: none; margin: 0 0 .5rem; padding: 0; font-size: .85rem; }
+.veldrondes li { display: flex; align-items: center; gap: .4rem; padding: .1rem 0; }
+.stip { width: 10px; height: 10px; border-radius: 50%; flex: none; background: #e07b00; }
+.stip.gedaan { background: #1a7f37; } .stip.overgeslagen { background: #8a96a3; }
+.locmelding { display: flex; gap: .75rem; align-items: flex-start; background: color-mix(in srgb, #e07b00 10%, var(--vlak)); border-color: color-mix(in srgb, #e07b00 45%, transparent); }
+.locmelding > .ico { color: #b45309; width: 1.5rem; height: 1.5rem; margin-top: .1rem; }
+.locmelding small { display: block; color: var(--tekst-zacht); margin-top: .2rem; }
+.loclijst { list-style: none; margin: 0 0 1rem; padding: 0; display: flex; flex-direction: column; gap: .65rem; }
+.locregel { background: var(--vlak); border: 1px solid var(--rand); border-left: 5px solid #e07b00; border-radius: 12px; padding: .8rem .9rem; box-shadow: var(--schaduw); }
+.locregel.gedaan { border-left-color: #1a7f37; }
+.locregel.overgeslagen { border-left-color: #8a96a3; }
+.locregel-kop { display: flex; gap: .7rem; align-items: center; }
+.locregel-kop strong { display: block; }
+.locregel-kop small { display: block; color: var(--tekst-zacht); }
+.locregel-knoppen { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .7rem; }
+.locregel-knoppen .knop { flex: 1 1 auto; min-height: 46px; }
+.locregel-status { margin-top: .6rem; display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; font-size: .9rem; }
+.meerhier { display: inline-flex; align-items: center; gap: .3rem; margin-top: .25rem; font-size: .78rem; font-weight: 600; color: #8a4b00;
+  background: color-mix(in srgb, #e07b00 12%, transparent); border-radius: 99px; padding: .1rem .5rem; }
+.leaflet-popup .popupknoppen { display: flex; flex-wrap: wrap; gap: .4rem; }
+.leaflet-popup .knop { white-space: nowrap; }

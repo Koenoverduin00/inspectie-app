@@ -56,6 +56,7 @@ const ROUTES = [
   [/^\/m\/inspectie\/([^/]+)$/, 'm-inspectie', (id) => inspectieFormulier(id, null, { mobiel: true })],
   [/^\/m\/account$/, 'm-account', mobielAccount],
   [/^\/m\/kaart$/, 'm-kaart', mobielKaart],
+  [/^\/m\/locatie\/([^/]+)$/, 'm-kaart', mobielLocatie],
   [/^\/m\/vrijgave$/, 'm-vrijgave', () => objectKiezer('vrijgave')],
   [/^\/m\/vrijgave\/nieuw$/, 'm-vrijgave', (_, q) => vrijgaveFormulier(null, q, { mobiel: true })],
   [/^\/m\/vrijgave\/([^/]+)\/bewerken$/, 'm-vrijgave', (id, q) => vrijgaveFormulier(id, q, { mobiel: true })],
@@ -2161,14 +2162,37 @@ async function mobielKaart() {
   const kaart = await tekenObjectenKaart(app.querySelector('#veldkaart'), {
     objecten: lijst.map((x) => x.o),
     kleurVan: (o) => PAKKET_KLEUR[statusVan(o.id)],
-    popup: (o) => `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br><small>${esc(o.type || '')}</small>
-      <div class="veldpopup">${perObject.get(o.id).rondes.map(({ v, st }) => `<div class="veldronde"><small>${esc(v.naam)}</small>
+    popup: (o) => {
+      const rr = perObject.get(o.id).rondes;
+      const nOpen = rr.filter((x) => x.st === 'open').length;
+      if (rr.length > 1) {
+        return `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br><small>${esc(o.type || '')}</small>
+          <div class="veldmelding">${I.let} <strong>${rr.length} werkpakketten op deze locatie</strong>${nOpen ? ` · ${nOpen} open` : ''}</div>
+          <ul class="veldrondes">${rr.map(({ v, st }) => `<li><span class="stip ${st}"></span>${esc(v.naam)}</li>`).join('')}</ul>
+          <div class="popupknoppen"><a class="knop klein primair" href="${locatiePagina(o.id)}">${nOpen ? `${I.start} Afmelden op deze locatie` : 'Bekijken'}</a>
+          <a class="knop klein" href="${navigeer(o)}" target="_blank" rel="noopener">${I.navigeer} Navigeer</a></div>`;
+      }
+      return `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br><small>${esc(o.type || '')}</small>
+      <div class="veldpopup">${rr.map(({ v, st }) => `<div class="veldronde"><small>${esc(v.naam)}</small>
         ${st === 'open' ? `<div class="popupknoppen"><a class="knop klein primair" href="${pakketHref(v, o.id, true)}">${I.start} Start</a>
           <button class="knop klein" data-overslaan="${esc(o.id)}" data-pakket="${esc(v.id)}:${esc(v.rondeId)}">${I.overslaan} Overslaan</button></div>`
     : `<span class="label-status ${st === 'gedaan' ? 'afgerond' : ''}">${st === 'gedaan' ? I.vink + ' Gedaan' : I.overslaan + ' Overgeslagen'}</span>`}</div>`).join('')}</div>
-      <a class="knop klein" href="${navigeer(o)}" target="_blank" rel="noopener">${I.navigeer} Navigeer erheen</a>`,
+      <a class="knop klein" href="${navigeer(o)}" target="_blank" rel="noopener">${I.navigeer} Navigeer erheen</a>`;
+    },
   });
   if (!kaart) return;
+  const L = window.L;
+  for (const { o, rondes: rr } of lijst) {
+    const nOpen = rr.filter((x) => x.st === 'open').length;
+    if (nOpen < 2) continue;
+    const geom = objectGeometrie(o);
+    if (!geom) continue;
+    const [lng, lat] = geom.type === 'Point' ? geom.coordinates : gis.middelpunt(geom);
+    L.marker([lat, lng], {
+      icon: L.divIcon({ className: 'kaartbadge', html: `<span title="${nOpen} werkpakketten open op deze locatie">${nOpen}</span>`, iconSize: [26, 26], iconAnchor: [-4, 30] }),
+      keyboard: false,
+    }).on('click', () => { location.hash = locatiePagina(o.id); }).addTo(kaart.map);
+  }
   app.querySelector('#veldkaart').addEventListener('click', async (e) => {
     const over = e.target.closest('[data-overslaan]');
     if (!over) return;
@@ -2185,6 +2209,115 @@ async function mobielKaart() {
   if (navigator.permissions?.query) {
     navigator.permissions.query({ name: 'geolocation' }).then((s) => { if (s.state === 'granted') toonLocatie(true); }).catch(() => {});
   }
+}
+
+// ---------------------------------------------------------------------------
+// Mobiel: meerdere werkpakketten tegelijk op één locatie (object)
+// ---------------------------------------------------------------------------
+/** Alle actieve rondes van mij waar dit object in zit, met de status van het object in die ronde. */
+function rondesOpObject(g, objectId, ik) {
+  return actieveRondes(g)
+    .filter(({ pakket: v }) => pakketVoorMij(v, ik) && v.objecten.includes(objectId))
+    .map(({ pakket: v, voortgang: vg }) => ({
+      v, vg, st: vg.gedaan.has(objectId) ? 'gedaan' : vg.overgeslagen.has(objectId) ? 'overgeslagen' : 'open',
+    }));
+}
+
+const locatiePagina = (objectId) => `#/m/locatie/${encodeURIComponent(objectId)}`;
+const VAN_LOCATIE = 'inspectie-app:vanLocatie';
+
+/** Snel afvinken van werk: een werkzaamheid 'gereed' zonder formulier (alleen als er geen verplichte extra velden zijn). */
+async function magSnelAfvinken(v, objectId) {
+  if (v.soort !== 'werk') return false;
+  const p = await actiefProject();
+  const verplicht = velden.zichtbareVelden(p?.velden ?? [], 'werk', v.werksoort || '').some((d) => d.verplicht);
+  if (verplicht) return false;
+  if (v.vrijgaveVereist) {
+    const vg = eco.vrijgaveVoorObject(await inProject('vrijgaven'), objectId, vandaag());
+    // Alleen bij een geldige vrijgave zonder voorwaarden; anders via het formulier (met de voorwaarden in beeld).
+    if (eco.geldigheid(vg, vandaag()) !== 'geldig' || vg.besluit !== 'vrij') return false;
+  }
+  return true;
+}
+
+async function snelGereed(v, object) {
+  const nu = new Date().toISOString();
+  await db.bewaar('werkzaamheden', {
+    id: nieuwId(), projectId: projectId(), objectId: object.id, datum: vandaag(), soort: v.werksoort || 'Werkzaamheid',
+    omschrijving: 'Afgevinkt op locatie', uren: '', uitvoerder: instelling.lees('inspecteur'), status: 'gereed', vervolg: '', materiaal: '',
+    werkpakketId: v.id, rondeId: v.rondeId && v.rondeId !== STANDAARD_RONDE ? v.rondeId : '', maatregelen: [], fotoIds: [],
+    extra: {}, extraLabels: {}, extraFotoIds: [], aangemaakt: nu, gewijzigd: nu,
+  });
+}
+
+async function mobielLocatie(objectId) {
+  const g = await pakketGegevens();
+  const o = g.objectMap.get(objectId);
+  if (!o) {
+    app.innerHTML = leegKaart('Object niet gevonden.', '<a class="knop" href="#/m/kaart">Naar de kaart</a>');
+    return;
+  }
+  const ik = sync.sessie()?.gebruiker?.email ?? '';
+  const lijst = rondesOpObject(g, objectId, ik);
+  const open = lijst.filter((x) => x.st === 'open');
+  const snel = new Map(await Promise.all(open.map(async (x) => [`${x.v.id}:${x.v.rondeId}`, await magSnelAfvinken(x.v, objectId)])));
+  const geom = objectGeometrie(o);
+  const [lng, lat] = geom ? (geom.type === 'Point' ? geom.coordinates : gis.middelpunt(geom)) : [null, null];
+  const regHref = (x) => {
+    const r = x.vg.gedaan.get(objectId);
+    return r ? (x.v.soort === 'inspectie' ? `#/m/inspectie/${esc(r.id)}` : `#/m/werk/${esc(r.id)}`) : '';
+  };
+  const regel = (x) => {
+    const sleutel = `${x.v.id}:${x.v.rondeId}`;
+    const r = x.vg.gedaan.get(objectId);
+    const ov = x.vg.overgeslagen.get(objectId);
+    return `<li class="locregel ${x.st}" data-ronde="${esc(sleutel)}">
+      <div class="locregel-kop"><span class="micoon klein">${x.v.soort === 'inspectie' ? (x.v.inspectiesoort === BV.BVC_SOORT ? I.boom : x.v.inspectiesoort === ST.STOWA_SOORT ? I.water : I.inspectie) : I.werk}</span>
+        <span><strong>${esc(x.v.naam)}</strong><small>${pakketSoortTekst(x.v)}${periodeTekst(x.v) ? ` · ${periodeTekst(x.v)}` : ''}</small></span></div>
+      ${x.st === 'open' ? `<div class="locregel-knoppen">
+          ${snel.get(sleutel) ? `<button class="knop primair" type="button" data-gereed="${esc(sleutel)}">${I.vink} Gereed</button>` : ''}
+          <a class="knop ${snel.get(sleutel) ? '' : 'primair'}" href="${pakketHref(x.v, objectId, true)}">${x.v.soort === 'inspectie' ? `${I.start} Inspecteren` : `${I.concept} Formulier`}</a>
+          <button class="knop" type="button" data-overslaan="${esc(sleutel)}">${I.overslaan} Overslaan</button></div>`
+    : x.st === 'gedaan' ? `<div class="locregel-status"><span class="label-status afgerond">${I.vink} Gedaan</span> <a href="${regHref(x)}">${datumNL(r.datum)}${r.uitvoerder || r.inspecteur ? ` · ${esc(r.uitvoerder || r.inspecteur)}` : ''}</a></div>`
+      : `<div class="locregel-status"><span class="label-status">${I.overslaan} Overgeslagen</span> <small>${esc(ov?.reden ?? '')}</small>
+          <button class="knop klein" type="button" data-terug="${esc(sleutel)}">Terugzetten</button></div>`}
+    </li>`;
+  };
+  app.innerHTML = `
+    ${opslagKaart(opslagBevestiging(), { objectMap: g.objectMap })}
+    <div class="mkop"><a href="#/m/kaart" class="mterug" aria-label="Terug naar de kaart">←</a>
+      <div style="flex:1;min-width:0"><small>${I.locatie} Locatie</small><h1>${esc(o.code)} – ${esc(o.naam)}</h1></div></div>
+    ${open.length > 1 ? `<div class="kaart locmelding">${I.let}<div><strong>${open.length} werkpakketten tegelijk gepland op deze locatie</strong>
+      <small>Meld ze hier na elkaar af. Per werkpakket leg je bewust vast of het werk is gedaan of overgeslagen.</small></div></div>` : ''}
+    ${!open.length && lijst.length ? `<div class="kaart mhier">${I.gereed} Alles op deze locatie is afgemeld.</div>` : ''}
+    ${lijst.length ? `<ul class="loclijst">${lijst.map(regel).join('')}</ul>` : '<p class="mleeg">Dit object zit in geen actieve ronde voor jou.</p>'}
+    <div class="knoppen mpakketknoppen">
+      ${lat != null ? `<a class="knop" href="https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}" target="_blank" rel="noopener">${I.navigeer} Navigeer erheen</a>` : ''}
+      <a class="knop" href="#/m/kaart">${I.kaart} Naar de kaart</a></div>`;
+
+  const ronde = (sleutel) => lijst.find((x) => `${x.v.id}:${x.v.rondeId}` === sleutel);
+  app.querySelector('.loclijst')?.addEventListener('click', async (e) => {
+    // Formulier geopend vanaf deze locatie: na opslaan hierheen terug.
+    if (e.target.closest('a[href^="#/m/"]')) {
+      try { sessionStorage.setItem(VAN_LOCATIE, objectId); } catch { /* geen opslag */ }
+      return;
+    }
+    const knop = e.target.closest('[data-gereed], [data-overslaan], [data-terug]');
+    if (!knop) return;
+    const x = ronde(knop.dataset.gereed ?? knop.dataset.overslaan ?? knop.dataset.terug);
+    if (!x) return;
+    if (knop.dataset.gereed) {
+      knop.disabled = true;
+      await snelGereed(x.v, o);
+      onthoudOpslag(`Afgevinkt: ${x.v.naam}`, objectId);
+      router();
+    } else if (knop.dataset.overslaan) {
+      if (await slaObjectOver(x.v, o)) router();
+    } else {
+      await db.verwijder('overgeslagen', overslaanId(x.v.id, objectId, x.v.rondeId));
+      router();
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -5571,7 +5704,17 @@ async function mobielPakket(id, q = new URLSearchParams()) {
   const objecten = (p.objecten ?? []).map((oid) => g.objectMap.get(oid)).filter(Boolean);
   const statusVan = (oid) => (v.gedaan.has(oid) ? 'gedaan' : v.overgeslagen.has(oid) ? 'overgeslagen' : 'open');
   const open = objecten.filter((o) => statusVan(o.id) === 'open');
-  const bevestiging = opslagKaart(opslagBevestiging(), {
+  const ikZelf = sync.sessie()?.gebruiker?.email ?? '';
+  const opgeslagen = opslagBevestiging();
+  let vanLocatie = '';
+  try { vanLocatie = sessionStorage.getItem(VAN_LOCATIE) ?? ''; sessionStorage.removeItem(VAN_LOCATIE); } catch { /* geen opslag */ }
+  if (opgeslagen?.objectId && (vanLocatie === opgeslagen.objectId || rondesOpObject(g, opgeslagen.objectId, ikZelf).some((x) => x.st === 'open'))) {
+    // Op deze locatie staat nog een ander werkpakket open: daar meteen verder.
+    onthoudOpslag(opgeslagen.tekst, opgeslagen.objectId);
+    location.replace(locatiePagina(opgeslagen.objectId));
+    return;
+  }
+  const bevestiging = opslagKaart(opgeslagen, {
     objectMap: g.objectMap,
     volgende: open.length ? '<button class="knop primair" type="button" data-volgende>' + I.start + ' Volgende</button>' : '<span class="mklaar">' + I.gereed + ' Ronde klaar</span>',
   });
@@ -5599,6 +5742,10 @@ async function mobielPakket(id, q = new URLSearchParams()) {
 
   const vrijgavenProject = p.vrijgaveVereist ? await inProject('vrijgaven') : [];
   const vrijgaveChip = (o) => (p.vrijgaveVereist ? `<small>${vrijgaveLabel(eco.vrijgaveVoorObject(vrijgavenProject, o.id, vandaag()))}</small>` : '');
+  const meerHier = (o) => {
+    const n = rondesOpObject(g, o.id, ikZelf).filter((x) => x.st === 'open').length;
+    return n > 1 ? `<span class="meerhier">${I.pakket} ${n} werkpakketten op deze locatie</span>` : '';
+  };
   const tekenLijst = () => {
     const zoek = zoekTermen(app.querySelector('#m-zoek')?.value);
     const metAfstand = open.filter((o) => objectPast(o, zoek)).map((o) => ({ o, afstand: laatstePositie ? gis.afstandTot(laatstePositie, objectGeometrie(o)) : null }));
@@ -5608,7 +5755,7 @@ async function mobielPakket(id, q = new URLSearchParams()) {
     el.innerHTML = metAfstand.length ? metAfstand.map(({ o, afstand }) => `
       <li><div class="mregel">
         <a href="${pakketHref(p, o.id, true)}" class="mregel-link"><span><strong>${esc(o.code)} – ${esc(o.naam)}</strong>
-          <small>${esc(o.type || '')}${afstand != null ? ` · ${afstand === 0 ? I.locatie + ' hier' : afstandTekst(afstand)}` : ''}</small>${vrijgaveChip(o)}</span></a>
+          <small>${esc(o.type || '')}${afstand != null ? ` · ${afstand === 0 ? I.locatie + ' hier' : afstandTekst(afstand)}` : ''}</small>${vrijgaveChip(o)}${meerHier(o)}</span></a>
         <button class="knop klein" data-overslaan="${esc(o.id)}" aria-label="${esc(o.code)} overslaan">${I.overslaan}</button>
         <a class="knop klein primair" href="${pakketHref(p, o.id, true)}">${I.start}</a></div></li>`).join('')
       : zoek.length ? '<li class="leeg">Geen objecten gevonden.</li>' : '';

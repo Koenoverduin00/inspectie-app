@@ -105,6 +105,11 @@ gevraagd wordt:
 - **Onderbalk met drie knoppen**: *Vandaag* (startscherm, werkpakketten, registreren), *Kaart* en *Ik* (account, foto's en opslag).
 - **Kaart**: alle objecten van jouw actieve rondes (oranje = te doen, groen = gedaan, grijs = overgeslagen) met je eigen
   locatie. Tik op een object voor **▶ Start**, **⏭ Overslaan** of **🧭 Navigeer erheen** (opent de routeplanner).
+- **Meerdere werkpakketten op één locatie**: staat een object in meer dan één actieve ronde, dan toont de kaart een
+  badge met het aantal en meldt het kaartvenster *"2 werkpakketten op deze locatie"*. Met **Afmelden op deze locatie**
+  open je een scherm met één regel per werkpakket. Elke regel meld je bewust los af: **Gereed** (werk zonder verplichte
+  extra velden en zonder voorwaarden in de vrijgave), **Formulier** of **Overslaan**. Na opslaan kom je terug op dit scherm
+  zolang er op de locatie nog iets open staat. In de lijst *Nog te doen* staat bij zo'n object een label.
 - **Statusregel** onder de kop: *✓ Alles verstuurd*, *⏳ 3 registraties wachten*, *📴 Offline – alles wordt bewaard*,
   *🔑 Niet ingelogd* of *⚠️ Versturen lukt niet*. Tik erop voor details.
 - **Na opslaan** een groene bevestiging met het object en de knop **▶ Volgende** (volgend object dichtbij).
