@@ -118,6 +118,22 @@ gevraagd wordt:
 - **Installeren**: het startscherm legt uit hoe je de app op het beginscherm zet (iPhone: Deel → Zet op beginscherm;
   Android: knop *Installeren*). Met *Later* verdwijnt de uitleg 14 dagen.
 
+## Goedkeuren: inbox
+
+Elke registratie van uitgevoerd werk en elke afgeronde inspectie krijgt een beoordelingsstatus:
+**Ingediend** → **Goedgekeurd** (of **Afgekeurd** met een reden). Concepten worden nog niet ingediend.
+
+- **Inbox** (menu, met teller): alles wat op beoordeling wacht, met filters op soort, werkpakket, uitvoerder en zoeken.
+  Goedkeuren of afkeuren per regel of in één keer voor een selectie; mappen *Te beoordelen*, *Afgekeurd* en
+  *Goedgekeurd (30 dagen)*.
+- **Afkeuren** vraagt altijd een reden. De medewerker ziet afgekeurde registraties bovenaan zijn startscherm op de
+  telefoon, met de reden; in het formulier staat de reden bovenaan. Na opslaan is de registratie opnieuw ingediend.
+- Op de detailpagina van een werkzaamheid of inspectie staat de beoordeling (wie, wanneer, opmerking) met de knoppen.
+- Beoordelen mogen beheerders, en projectleden met het recht **Goedkeuren** (Werkpakketten → Toewijzen; standaard uit).
+- Registraties van vóór deze functie gelden als goedgekeurd. Voortgang en dashboard tellen ingediend werk al mee.
+
+Het overzicht *Werkzaamheden* toont geen uren en aantal foto's meer; de kolom Status toont de beoordeling.
+
 ## Planning wijzigen met bevestiging
 
 Elke wijziging door slepen op het planbord (verplaatsen, randen verlengen/inkorten, een periode trekken of in een lege rij

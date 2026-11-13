@@ -1143,3 +1143,21 @@ form:not(.afroep-inspectie) .a-insp { display: none; }
 .planletop { list-style: none; margin: .75rem 0 0; padding: .6rem .75rem; border-radius: 10px; background: color-mix(in srgb, #e07b00 10%, var(--vlak)); }
 .planletop li { display: flex; gap: .45rem; margin: .2rem 0; font-size: .92rem; }
 .planletop .ico { color: #b45309; flex: none; margin-top: .15rem; }
+
+/* Beoordelen: inbox en status */
+.navbadge { display: inline-grid; place-items: center; min-width: 1.35rem; height: 1.35rem; padding: 0 .35rem; margin-left: .25rem; border-radius: 99px;
+  background: var(--accent); color: #1d2733; font-size: .75rem; font-weight: 800; }
+.navbadge[hidden] { display: none; }
+.inboxmappen .teller { display: inline-block; min-width: 1.4rem; text-align: center; border-radius: 99px; padding: 0 .35rem; margin-left: .3rem; font-size: .78rem; background: var(--achtergrond); color: var(--tekst-zacht); }
+.inboxmappen a.actief .teller { background: var(--primair); color: #fff; }
+.inboxacties { align-items: center; margin-bottom: .75rem; }
+.inboxtabel td.acties { white-space: nowrap; }
+.beoordelingblok { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; border-left: 5px solid #e07b00; }
+.beoordelingblok.goedgekeurd { border-left-color: var(--ok); }
+.beoordelingblok.afgekeurd { border-left-color: var(--gevaar); }
+.beoordelingblok small { display: block; color: var(--tekst-zacht); margin-top: .2rem; }
+.beoordeling-opmerking { margin: .4rem 0 0; padding: .4rem .6rem; border-radius: 8px; background: var(--achtergrond); white-space: pre-wrap; }
+.mafgekeurd h2 { color: var(--gevaar) !important; display: flex; align-items: center; gap: .35rem; }
+.mafgekeurd .reden { color: var(--gevaar) !important; font-weight: 600; }
+.mafgekeurd .mlijst a { border-left: 4px solid var(--gevaar); }
+.inboxtabel td:nth-child(2), .inboxtabel td:nth-child(7) { white-space: nowrap; }

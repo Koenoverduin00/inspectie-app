@@ -73,7 +73,7 @@ const ROUTES = [
   [/^\/werkzaamheden$/, 'werkzaamheden', werkzaamhedenLijst],
   [/^\/werkzaamheden\/nieuw$/, 'werkzaamheden', (_, q) => werkFormulier(null, q.get('object'), { taakId: q.get('taak'), maatregel: q.get('maatregel'), pakketId: q.get('pakket'), rondeId: q.get('ronde') })],
   [/^\/werkzaamheden\/([^/]+)\/bewerken$/, 'werkzaamheden', (id) => werkFormulier(id)],
-  [/^\/werkzaamheden\/([^/]+)$/, 'werkzaamheden', werkDetail],
+  [/^\/werkzaamheden\/([^/]+)$/, 'werkzaamheden', async (id) => { await werkDetail(id); toonBeoordelingBlok('werkzaamheden', await db.haal('werkzaamheden', id)); }],
   [/^\/objecten$/, 'objecten', objectenLijst],
   [/^\/objecten\/nieuw$/, 'objecten', () => objectFormulier()],
   [/^\/objecten\/([^/]+)\/bewerken$/, 'objecten', objectFormulier],
@@ -82,7 +82,7 @@ const ROUTES = [
   [/^\/inspecties\/nieuw$/, 'inspecties', (_, q) => inspectieFormulier(null, q.get('object'), { taakId: q.get('taak'), pakketId: q.get('pakket'), rondeId: q.get('ronde'), calamiteit: q.get('calamiteit') === '1' })],
   [/^\/inspecties\/([^/]+)\/bewerken$/, 'inspecties', (id) => inspectieFormulier(id)],
   [/^\/inspecties\/([^/]+)\/rapport$/, 'inspecties', inspectieRapport],
-  [/^\/inspecties\/([^/]+)$/, 'inspecties', inspectieDetail],
+  [/^\/inspecties\/([^/]+)$/, 'inspecties', async (id) => { await inspectieDetail(id); toonBeoordelingBlok('inspecties', await db.haal('inspecties', id)); }],
   [/^\/maatregelen$/, 'maatregelen', maatregelen],
   [/^\/projecten$/, 'projecten', projectenPagina],
   [/^\/projecten\/nieuw$/, 'projecten', () => projectFormulier()],
@@ -105,6 +105,7 @@ const ROUTES = [
   [/^\/personen$/, 'personen', personenPagina],
   [/^\/toewijzen$/, 'toewijzen', toewijzenPagina],
   [/^\/inrichting$/, 'inrichting', inrichtingPagina],
+  [/^\/inbox$/, 'inbox', inboxPagina],
 ];
 
 // Het hoofdmenu is compact: onderdelen vallen onder een hoofdgroep en hebben daar een tabblad.
@@ -190,6 +191,7 @@ async function toonRoute() {
       app.insertAdjacentHTML('afterbegin', tabbalk(pad, sectie));
     }
     if (!mobiel && location.hash.split('?')[0] === `#${pad}`) stappenplanBalk(pad);
+    await afgekeurdBanner(pad);
   } catch (fout) {
     console.error(fout);
     app.innerHTML = `<div class="kaart"><h1>Er ging iets mis</h1><p>${esc(fout.message)}</p><a class="knop" href="#/">Naar dashboard</a></div>`;
@@ -1050,7 +1052,7 @@ async function objectDetail(id) {
         <tbody>${eigen.map((i) => `
           <tr class="klikbaar" data-href="#/inspecties/${esc(i.id)}">
             <td>${datumNL(i.datum)}</td><td>${esc(i.soort)}</td><td class="verberg-mobiel">${esc(i.inspecteur)}</td>
-            <td>${i.gebreken?.length ?? 0}</td><td>${inspectieOordeel(i)}</td><td>${statusLabel(i.status)}</td>
+            <td>${i.gebreken?.length ?? 0}</td><td>${inspectieOordeel(i)}</td><td>${i.status === 'afgerond' ? beoordelingLabel(i) : statusLabel(i.status)}</td>
           </tr>`).join('')}</tbody></table></div>` : '<p class="leeg">Er zijn nog geen inspecties voor dit object.</p>'}
     </section>
     <section class="kaart">
@@ -1262,7 +1264,7 @@ async function inspectiesLijst() {
       <tr class="klikbaar" data-href="#/inspecties/${esc(i.id)}">
         <td>${datumNL(i.datum)}</td><td>${objectNaam(objectMap.get(i.objectId))}</td>
         <td class="verberg-mobiel">${esc(i.soort)}</td><td class="verberg-mobiel">${esc(i.inspecteur)}</td>
-        <td>${i.gebreken?.length ?? 0}</td><td>${inspectieOordeel(i)}</td><td>${statusLabel(i.status)}</td>
+        <td>${i.gebreken?.length ?? 0}</td><td>${inspectieOordeel(i)}</td><td>${i.status === 'afgerond' ? beoordelingLabel(i) : statusLabel(i.status)}</td>
       </tr>`).join('') : `<tr><td colspan="7" class="leeg">${inspecties.length ? 'Geen inspecties gevonden met deze filters.' : 'Nog geen inspecties. <a href="#/inspecties/nieuw">Start de eerste inspectie</a>.'}</td></tr>`;
     if (kaartKlaar) werkKaartBij();
   };
@@ -1816,6 +1818,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
         kostenraming: g.kostenraming === '' ? '' : Number(g.kostenraming),
         fotoIds: fotos.map((f) => f.id),
       })),
+      beoordeling: beoordelingBijOpslaan(bestaand, status === 'afgerond'),
       aangemaakt: bestaand?.aangemaakt ?? nu,
       gewijzigd: nu,
     };
@@ -2509,7 +2512,7 @@ async function snelGereed(v, object) {
     id: nieuwId(), projectId: projectId(), objectId: object.id, datum: vandaag(), soort: v.werksoort || 'Werkzaamheid',
     omschrijving: 'Afgevinkt op locatie', uren: '', uitvoerder: instelling.lees('inspecteur'), status: 'gereed', vervolg: '', materiaal: '',
     werkpakketId: v.id, rondeId: v.rondeId && v.rondeId !== STANDAARD_RONDE ? v.rondeId : '', maatregelen: [], fotoIds: [],
-    extra: {}, extraLabels: {}, extraFotoIds: [], aangemaakt: nu, gewijzigd: nu,
+    extra: {}, extraLabels: {}, extraFotoIds: [], beoordeling: beoordelingBijOpslaan(null, true), aangemaakt: nu, gewijzigd: nu,
   });
 }
 
@@ -2722,6 +2725,7 @@ async function mobielStart() {
   const ik = sync.sessie()?.gebruiker?.email ?? '';
   const vrijgaveNodig = actieveRondes(g).some(({ pakket }) => pakket.vrijgaveVereist && pakketVoorMij(pakket, ik))
     || (await inProject('vrijgaven')).some((v) => v.status === 'concept');
+  const afgekeurd = await mijnAfgekeurd();
   const loginHint = sync.isIngesteld() && !sync.sessie()
     ? `<a class="kaart mhint" href="#/m/account">${I.inloggen} <span><strong>Log in</strong> zodat je werk ook op kantoor zichtbaar is.</span></a>` : '';
   const regel = (x) => `<li><a href="${x.href}"><span class="micoon klein">${x.icoon}</span>
@@ -2730,6 +2734,9 @@ async function mobielStart() {
   app.innerHTML = `
     <div class="mstart">
       ${opslagKaart(opslagBevestiging(), { objectMap })}
+      ${afgekeurd.length ? `<section class="mafgekeurd"><h2>${I.let} Afgekeurd – aanpassen nodig</h2><ul class="mlijst">${afgekeurd.map((x) => `
+        <li><a href="${x.href}"><span class="micoon klein">${I.concept}</span><span><strong>${esc(x.titel)} · ${datumNL(x.r.datum)}</strong>
+          <small>${objectNaam(objectMap.get(x.r.objectId))}</small><small class="reden">${esc(x.r.beoordeling?.opmerking || 'Geen reden opgegeven')}</small></span></a></li>`).join('')}</ul></section>` : ''}
       <p class="mgroet">${groet()}${naam ? `, ${esc(naam)}` : ''}</p>
       ${installKaart()}
       ${loginHint}
@@ -2909,7 +2916,7 @@ async function werkzaamhedenLijst() {
     </div>
     <div id="totaal" class="kaart"></div>
     <div class="kaart" style="padding:0"><div class="tabelhouder"><table>
-      <thead><tr><th>Datum</th><th>Object</th><th>Soort</th><th class="verberg-mobiel">Uitvoerder</th><th>Uren</th><th class="verberg-mobiel">Foto's</th><th>Status</th></tr></thead>
+      <thead><tr><th>Datum</th><th>Object</th><th>Soort</th><th class="verberg-mobiel">Uitvoerder</th><th>Status</th></tr></thead>
       <tbody id="rijen"></tbody></table></div></div>`;
 
   const filters = ['zoek', 'soort', 'status', 'maand'].map((id) => app.querySelector(`#${id}`));
@@ -2929,9 +2936,9 @@ async function werkzaamhedenLijst() {
     app.querySelector('#rijen').innerHTML = zichtbaar.length ? zichtbaar.map((w) => `
       <tr class="klikbaar" data-href="#/werkzaamheden/${esc(w.id)}">
         <td>${datumNL(w.datum)}</td><td>${objectNaam(objectMap.get(w.objectId))}</td><td>${esc(w.soort || '–')}</td>
-        <td class="verberg-mobiel">${esc(w.uitvoerder || '–')}</td><td>${urenTekst(w.uren)}</td>
-        <td class="verberg-mobiel">${w.fotoIds?.length ?? 0}</td><td>${werkStatusLabel(w.status)}</td>
-      </tr>`).join('') : `<tr><td colspan="7" class="leeg">${werk.length ? 'Geen werkzaamheden gevonden met deze filters.' : 'Nog geen werkzaamheden geregistreerd.'}</td></tr>`;
+        <td class="verberg-mobiel">${esc(w.uitvoerder || '–')}</td>
+        <td>${beoordelingLabel(w)}${w.status === 'vervolg' ? ` ${werkStatusLabel(w.status)}` : ''}</td>
+      </tr>`).join('') : `<tr><td colspan="5" class="leeg">${werk.length ? 'Geen werkzaamheden gevonden met deze filters.' : 'Nog geen werkzaamheden geregistreerd.'}</td></tr>`;
   };
   filters.forEach((f) => f.addEventListener('input', toon));
   toon();
@@ -3317,6 +3324,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
       extra: extraB.waarden(),
       extraLabels: extraB.labels(),
       extraFotoIds,
+      beoordeling: beoordelingBijOpslaan(bestaand, true),
       aangemaakt: bestaand?.aangemaakt ?? nu,
       gewijzigd: nu,
     });
@@ -3370,6 +3378,7 @@ const RECHTEN = {
   overslaan: { label: 'Overslaan', uitleg: 'Een object in een ronde overslaan met een reden' },
   vrijgave: { label: 'Flora & fauna', uitleg: 'Vrijgaven (veldcheck) vastleggen' },
   incident: { label: 'Incident melden', uitleg: 'Inspectie na incident of calamiteit, zonder werkpakket' },
+  goedkeuren: { label: 'Goedkeuren', uitleg: 'Registraties in de inbox beoordelen (standaard uit)', standaardUit: true },
 };
 let huidigProject = null; // bijgewerkt bij elke paginawissel
 
@@ -3378,8 +3387,8 @@ const ikEmail = () => String(sync.sessie()?.gebruiker?.email ?? '').toLowerCase(
 const toegangActief = () => Boolean(ikEmail()) && !magBeheren();
 
 function mijnRechten(p = huidigProject) {
-  const alle = Object.fromEntries(Object.keys(RECHTEN).map((k) => [k, true]));
-  if (!toegangActief()) return alle;
+  const alle = Object.fromEntries(Object.keys(RECHTEN).map((k) => [k, !RECHTEN[k].standaardUit]));
+  if (!toegangActief()) return Object.fromEntries(Object.keys(RECHTEN).map((k) => [k, true]));
   return { ...alle, ...(p?.ledenInfo?.[ikEmail()]?.rechten ?? {}) };
 }
 const mag = (recht) => mijnRechten()[recht] !== false;
@@ -3481,7 +3490,7 @@ async function toewijzenPagina() {
   const pakketten = g.pakketten.filter((p) => p.status !== 'afgerond');
   const toegewezen = (p) => (p.toegewezen ?? []).map((x) => String(x).toLowerCase());
   const ziet = (p, e) => (toegewezen(p).length ? toegewezen(p).includes(e) : !strikt);
-  const rechtenVan = (e) => ({ ...Object.fromEntries(Object.keys(RECHTEN).map((k) => [k, true])), ...(info[e]?.rechten ?? {}) });
+  const rechtenVan = (e) => ({ ...Object.fromEntries(Object.keys(RECHTEN).map((k) => [k, !RECHTEN[k].standaardUit])), ...(info[e]?.rechten ?? {}) });
   // Wat ziet iemand straks echt op zijn telefoon (toewijzing én rechten)?
   const zietLijst = (e) => {
     const r = rechtenVan(e);
@@ -3591,6 +3600,256 @@ async function toewijzenPagina() {
     });
     toewijzenPagina();
   });
+}
+
+// ---------------------------------------------------------------------------
+// Beoordelen: registraties (werk en inspecties) worden ingediend en daarna goedgekeurd of afgekeurd
+// ---------------------------------------------------------------------------
+const BEOORDELING = {
+  ingediend: { label: 'Ingediend', klasse: 'binnenkort' },
+  goedgekeurd: { label: 'Goedgekeurd', klasse: 'afgerond' },
+  afgekeurd: { label: 'Afgekeurd', klasse: 'verlopen' },
+};
+
+/** Registraties van vóór de goedkeuring gelden als goedgekeurd. */
+const beoordelingVan = (r) => r?.beoordeling?.status ?? 'goedgekeurd';
+const teBeoordelen = (r) => beoordelingVan(r) === 'ingediend' && (r.status !== 'concept');
+
+/** Mag deze gebruiker registraties goedkeuren? Beheerders altijd; projectleden alleen met het recht 'goedkeuren'. */
+function magGoedkeuren() {
+  if (magBeheren()) return true;
+  return huidigProject?.ledenInfo?.[ikEmail()]?.rechten?.goedkeuren === true;
+}
+
+/** Beoordeling bij het opslaan van een registratie (ingediend = afgerond/verstuurd, niet als concept). */
+function beoordelingBijOpslaan(bestaand, ingediend) {
+  const huidig = bestaand?.beoordeling ?? null;
+  if (!ingediend) return huidig;
+  // Een beoordelaar die een goedgekeurde registratie bijwerkt, laat die goedgekeurd.
+  if (huidig?.status === 'goedgekeurd' && magGoedkeuren()) return huidig;
+  return {
+    status: 'ingediend', ingediendOp: new Date().toISOString(), ingediendDoor: ikEmail() || instelling.lees('inspecteur') || '',
+    ...(huidig?.status === 'afgekeurd' ? { eerderAfgekeurd: { op: huidig.op, door: huidig.door, opmerking: huidig.opmerking } } : {}),
+  };
+}
+
+function beoordelingLabel(r) {
+  const b = BEOORDELING[beoordelingVan(r)];
+  const titel = r?.beoordeling?.opmerking ? ` title="${esc(r.beoordeling.opmerking)}"` : '';
+  return `<span class="label-status ${b.klasse}"${titel}>${b.label}</span>`;
+}
+
+async function beoordeel(store, id, status, opmerking = '') {
+  const r = await db.haal(store, id);
+  if (!r) return;
+  await db.bewaar(store, {
+    ...r, beoordeling: { ...(r.beoordeling ?? {}), status, op: new Date().toISOString(), door: ikEmail() || instelling.lees('inspecteur') || 'beheerder', opmerking },
+    gewijzigd: new Date().toISOString(),
+  });
+}
+
+function afkeurDialoog(aantal = 1) {
+  return new Promise((resolve) => {
+    const d = document.createElement('dialog');
+    d.className = 'dialoog';
+    d.innerHTML = `<form method="dialog"><h2>${aantal === 1 ? 'Registratie afkeuren' : `${aantal} registraties afkeuren`}</h2>
+      <p>De medewerker ziet de reden en kan de registratie aanpassen en opnieuw indienen.</p>
+      <div class="veld"><label for="afk-reden" class="vereist">Reden</label><textarea id="afk-reden" required maxlength="1000" placeholder="bijv. Foto ontbreekt, verkeerd object, werk niet volledig"></textarea></div>
+      <div class="knoppen" style="justify-content:flex-end;margin-top:1rem"><button class="knop" value="nee">Annuleren</button><button class="knop gevaar" value="ja">Afkeuren</button></div></form>`;
+    document.body.append(d);
+    d.querySelector('button[value=ja]').addEventListener('click', (e) => {
+      if (!d.querySelector('#afk-reden').value.trim()) { e.preventDefault(); d.querySelector('#afk-reden').focus(); }
+    });
+    d.addEventListener('close', () => { const ok = d.returnValue === 'ja'; const reden = d.querySelector('#afk-reden').value.trim(); d.remove(); resolve(ok ? reden : null); });
+    d.showModal();
+  });
+}
+
+/** Blok bovenaan een detailpagina: status van de beoordeling en (voor beoordelaars) de knoppen. */
+function toonBeoordelingBlok(store, r) {
+  if (!r || (store === 'inspecties' && r.status !== 'afgerond')) return;
+  const st = beoordelingVan(r);
+  const b = r.beoordeling ?? {};
+  const kop = app.querySelector('.paginakop');
+  if (!kop) return;
+  kop.insertAdjacentHTML('afterend', `<section class="kaart beoordelingblok ${st}">
+    <div><strong>Beoordeling:</strong> ${beoordelingLabel(r)}
+      ${b.ingediendOp ? `<small>Ingediend ${datumNL(b.ingediendOp.slice(0, 10))}${b.ingediendDoor ? ` door ${esc(b.ingediendDoor)}` : ''}</small>` : ''}
+      ${st !== 'ingediend' && b.op ? `<small>${BEOORDELING[st].label} ${datumNL(b.op.slice(0, 10))}${b.door ? ` door ${esc(b.door)}` : ''}</small>` : ''}
+      ${b.opmerking ? `<p class="beoordeling-opmerking">${esc(b.opmerking)}</p>` : ''}</div>
+    ${magGoedkeuren() ? `<div class="knoppen">${st !== 'goedgekeurd' ? `<button class="knop primair" type="button" data-beoordeel="goedgekeurd">${I.vink} Goedkeuren</button>` : ''}
+      ${st !== 'afgekeurd' ? `<button class="knop gevaar" type="button" data-beoordeel="afgekeurd">${I.kruis} Afkeuren</button>` : ''}</div>` : ''}
+  </section>`);
+  app.querySelectorAll('[data-beoordeel]').forEach((k) => {
+    k.onclick = async () => {
+      let opmerking = '';
+      if (k.dataset.beoordeel === 'afgekeurd') {
+        opmerking = await afkeurDialoog();
+        if (opmerking === null) return;
+      }
+      await beoordeel(store, r.id, k.dataset.beoordeel, opmerking);
+      melding(k.dataset.beoordeel === 'goedgekeurd' ? 'Goedgekeurd' : 'Afgekeurd – de medewerker kan het aanpassen');
+      router();
+    };
+  });
+}
+
+/** Bij het aanpassen van een afgekeurde registratie: de reden bovenaan het formulier. */
+async function afgekeurdBanner(pad) {
+  const m = pad.match(/^\/(?:m\/(werk|inspectie)\/([^/]+)|(werkzaamheden|inspecties)\/([^/]+)\/bewerken)$/);
+  if (!m || app.querySelector('.afgekeurdbanner')) return;
+  const store = (m[1] ?? m[3]) === 'werk' || m[3] === 'werkzaamheden' ? 'werkzaamheden' : 'inspecties';
+  const r = await db.haal(store, decodeURIComponent(m[2] ?? m[4]));
+  if (beoordelingVan(r) !== 'afgekeurd' || !app.querySelector('form')) return;
+  app.querySelector('form').insertAdjacentHTML('beforebegin', `<div class="kaart waarschuwingskaart afgekeurdbanner">${I.let} <strong>Afgekeurd${r.beoordeling.door ? ` door ${esc(r.beoordeling.door)}` : ''}:</strong>
+    ${esc(r.beoordeling.opmerking || 'geen reden opgegeven')}<br><small>Pas de registratie aan en sla op; ze wordt dan opnieuw ingediend.</small></div>`);
+}
+
+/** Aantal registraties dat op beoordeling wacht (voor de badge in het menu). */
+async function aantalTeBeoordelen() {
+  const [werk, insp] = await Promise.all([inProject('werkzaamheden'), inProject('inspecties')]);
+  return werk.filter(teBeoordelen).length + insp.filter(teBeoordelen).length;
+}
+
+async function werkInboxBadgeBij() {
+  const a = document.getElementById('nav-inbox');
+  if (!a) return;
+  const mag = Boolean(huidigProject) && magGoedkeuren();
+  a.hidden = !mag;
+  if (!mag) return;
+  const n = await aantalTeBeoordelen();
+  a.querySelector('.navbadge').textContent = n ? String(n) : '';
+  a.querySelector('.navbadge').hidden = !n;
+}
+
+async function inboxPagina(_, q = new URLSearchParams()) {
+  if (!magGoedkeuren()) {
+    app.innerHTML = leegKaart('Je hebt geen recht om registraties te beoordelen.', '<a class="knop" href="#/">Naar het dashboard</a>');
+    return;
+  }
+  const { objectMap } = await laadAlles();
+  const g = await pakketGegevens();
+  const [werk, insp] = await Promise.all([inProject('werkzaamheden'), inProject('inspecties')]);
+  const map = q.get('map') ?? 'ingediend';
+  const grens = PL.isoVan(PL.dagNr(vandaag()) - 30);
+  const items = [
+    ...werk.map((r) => ({ r, store: 'werkzaamheden', soort: 'werk' })),
+    ...insp.filter((i) => i.status === 'afgerond').map((r) => ({ r, store: 'inspecties', soort: 'inspectie' })),
+  ].filter(({ r }) => {
+    const st = beoordelingVan(r);
+    if (map === 'goedgekeurd') return st === 'goedgekeurd' && r.beoordeling && String(r.beoordeling.op ?? '').slice(0, 10) >= grens;
+    return st === map;
+  }).sort((a, b) => String(b.r.beoordeling?.ingediendOp ?? b.r.datum).localeCompare(String(a.r.beoordeling?.ingediendOp ?? a.r.datum)));
+  const tel = (st) => [...werk, ...insp.filter((i) => i.status === 'afgerond')].filter((r) => beoordelingVan(r) === st && (st !== 'goedgekeurd' || (r.beoordeling && String(r.beoordeling.op ?? '').slice(0, 10) >= grens))).length;
+  const pakketNaam = (r) => {
+    const p = g.pakketten.find((x) => x.id === r.werkpakketId);
+    if (!p) return r.soort === CALAMITEIT ? 'Incident / calamiteit' : '–';
+    const ronde = rondesVan(p).find((x) => x.id === r.rondeId);
+    return `${p.naam}${ronde && p.rondes?.length ? ` · ${ronde.afroep ? 'A' : 'R'}${ronde.nummer}` : ''}`;
+  };
+  const omschrijving = ({ r, soort }) => (soort === 'werk' ? (r.soort || 'Werkzaamheid') : r.bvc ? 'Boomveiligheidscontrole' : r.stowa ? 'Inspectie waterkering' : (r.soort || 'Inspectie'));
+  const wie = ({ r, soort }) => (soort === 'werk' ? r.uitvoerder : r.inspecteur) || r.beoordeling?.ingediendDoor || '–';
+  const uitvoerders = [...new Set(items.map(wie))].sort();
+  const pakketten = [...new Set(items.map(({ r }) => pakketNaam(r)))].sort();
+  const detailHref = ({ r, soort }) => (soort === 'werk' ? `#/werkzaamheden/${esc(r.id)}` : `#/inspecties/${esc(r.id)}`);
+
+  app.innerHTML = `
+    <div class="paginakop"><div><h1>Inbox</h1><p>Uitgevoerde werkzaamheden en inspecties beoordelen. Een registratie is eerst <em>ingediend</em> en wordt na jouw controle <em>goedgekeurd</em>.</p></div></div>
+    <nav class="tabbalk inboxmappen" aria-label="Mappen">
+      ${[['ingediend', 'Te beoordelen'], ['afgekeurd', 'Afgekeurd'], ['goedgekeurd', 'Goedgekeurd (30 dagen)']].map(([k, l]) => `<a href="#/inbox?map=${k}" class="${k === map ? 'actief' : ''}">${l} <span class="teller">${tel(k)}</span></a>`).join('')}</nav>
+    <div class="filters">
+      <input type="search" id="ib-zoek" placeholder="Zoek op object, omschrijving of uitvoerder…" aria-label="Zoeken">
+      <select id="ib-soort" aria-label="Soort">${optie('', 'Werk en inspecties')}${optie('werk', 'Werkzaamheden')}${optie('inspectie', 'Inspecties')}</select>
+      <select id="ib-pakket" aria-label="Werkpakket"><option value="">Alle werkpakketten</option>${pakketten.map((p) => optie(p, p)).join('')}</select>
+      <select id="ib-wie" aria-label="Uitvoerder"><option value="">Alle uitvoerders</option>${uitvoerders.map((u) => optie(u, u)).join('')}</select>
+    </div>
+    ${map === 'ingediend' ? `<div class="knoppen inboxacties"><label class="vink"><input type="checkbox" id="ib-alles"><span>Alles selecteren</span></label>
+      <button class="knop primair" id="ib-goed" disabled>${I.vink} Geselecteerde goedkeuren</button>
+      <button class="knop gevaar" id="ib-af" disabled>${I.kruis} Geselecteerde afkeuren</button></div>` : ''}
+    <section class="kaart" style="padding:0"><div class="tabelhouder"><table class="inboxtabel">
+      <thead><tr>${map === 'ingediend' ? '<th style="width:42px"></th>' : ''}<th>Datum</th><th>Registratie</th><th>Object</th><th class="verberg-mobiel">Werkpakket</th><th>Uitvoerder</th><th>${map === 'ingediend' ? 'Ingediend' : 'Beoordeling'}</th><th></th></tr></thead>
+      <tbody id="ib-rijen"></tbody></table></div></section>`;
+
+  const $ = (s) => app.querySelector(s);
+  let zichtbaar = [];
+  const geselecteerd = new Set();
+  const toon = () => {
+    const termen = zoekTermen($('#ib-zoek').value);
+    zichtbaar = items.filter((x) => (!$('#ib-soort').value || x.soort === $('#ib-soort').value)
+      && (!$('#ib-pakket').value || pakketNaam(x.r) === $('#ib-pakket').value)
+      && (!$('#ib-wie').value || wie(x) === $('#ib-wie').value)
+      && (!termen.length || termen.every((t) => `${omschrijving(x)} ${objectMap.get(x.r.objectId)?.code} ${objectMap.get(x.r.objectId)?.naam} ${wie(x)} ${x.r.omschrijving ?? ''} ${x.r.samenvatting ?? ''}`.toLowerCase().includes(t))));
+    $('#ib-rijen').innerHTML = zichtbaar.length ? zichtbaar.map((x) => {
+      const b = x.r.beoordeling ?? {};
+      const sleutel = `${x.store}:${x.r.id}`;
+      return `<tr data-sleutel="${esc(sleutel)}">
+        ${map === 'ingediend' ? `<td><input type="checkbox" data-kies="${esc(sleutel)}" ${geselecteerd.has(sleutel) ? 'checked' : ''} aria-label="Selecteren"></td>` : ''}
+        <td>${datumNL(x.r.datum)}</td>
+        <td><a href="${detailHref(x)}">${x.soort === 'werk' ? I.werk : I.inspectie} ${esc(omschrijving(x))}</a>
+          ${x.soort === 'inspectie' ? `<br><small>${inspectieOordeel(x.r)}</small>` : x.r.omschrijving ? `<small class="subregel">${esc(String(x.r.omschrijving).slice(0, 90))}</small>` : ''}</td>
+        <td>${objectNaam(objectMap.get(x.r.objectId))}</td>
+        <td class="verberg-mobiel">${esc(pakketNaam(x.r))}</td>
+        <td>${esc(wie(x))}</td>
+        <td>${map === 'ingediend' ? (b.ingediendOp ? datumNL(b.ingediendOp.slice(0, 10)) : '–') + (b.eerderAfgekeurd ? '<br><small class="zacht">opnieuw ingediend</small>' : '')
+    : `${beoordelingLabel(x.r)}${b.door ? `<br><small>${esc(b.door)}</small>` : ''}${b.opmerking ? `<small class="subregel">${esc(b.opmerking)}</small>` : ''}`}</td>
+        <td class="acties">${map !== 'goedgekeurd' ? `<button class="knop klein primair" data-goed="${esc(sleutel)}" title="Goedkeuren">${I.vink}</button>` : ''}
+          ${map !== 'afgekeurd' ? `<button class="knop klein gevaar" data-af="${esc(sleutel)}" title="Afkeuren">${I.kruis}</button>` : ''}
+          <a class="knop klein" href="${detailHref(x)}">Openen</a></td></tr>`;
+    }).join('') : `<tr><td colspan="8" class="leeg">${map === 'ingediend' ? `${I.gereed} Niets te beoordelen. Alles is bijgewerkt.` : 'Geen registraties in deze map.'}</td></tr>`;
+    const n = [...geselecteerd].filter((s) => zichtbaar.some((x) => `${x.store}:${x.r.id}` === s)).length;
+    if ($('#ib-goed')) {
+      $('#ib-goed').disabled = !n; $('#ib-af').disabled = !n;
+      $('#ib-goed').innerHTML = `${I.vink} ${n ? `${n} goedkeuren` : 'Geselecteerde goedkeuren'}`;
+      $('#ib-af').innerHTML = `${I.kruis} ${n ? `${n} afkeuren` : 'Geselecteerde afkeuren'}`;
+    }
+  };
+  ['#ib-zoek', '#ib-soort', '#ib-pakket', '#ib-wie'].forEach((s) => $(s).addEventListener('input', toon));
+  const verwerk = async (sleutels, status) => {
+    let opmerking = '';
+    if (status === 'afgekeurd') {
+      opmerking = await afkeurDialoog(sleutels.length);
+      if (opmerking === null) return;
+    }
+    for (const s of sleutels) {
+      const [store, id] = s.split(':');
+      await beoordeel(store, id, status, opmerking);
+    }
+    melding(`${sleutels.length} registratie${sleutels.length === 1 ? '' : 's'} ${status === 'goedgekeurd' ? 'goedgekeurd' : 'afgekeurd'}`);
+    router();
+  };
+  $('#ib-rijen').addEventListener('change', (e) => {
+    const k = e.target.dataset.kies;
+    if (!k) return;
+    if (e.target.checked) geselecteerd.add(k); else geselecteerd.delete(k);
+    toon();
+  });
+  $('#ib-rijen').addEventListener('click', (e) => {
+    const goed = e.target.closest('[data-goed]');
+    const af = e.target.closest('[data-af]');
+    if (goed) verwerk([goed.dataset.goed], 'goedgekeurd');
+    if (af) verwerk([af.dataset.af], 'afgekeurd');
+  });
+  $('#ib-alles')?.addEventListener('change', (e) => {
+    zichtbaar.forEach((x) => { const s = `${x.store}:${x.r.id}`; if (e.target.checked) geselecteerd.add(s); else geselecteerd.delete(s); });
+    toon();
+  });
+  const selectie = () => [...geselecteerd].filter((s) => zichtbaar.some((x) => `${x.store}:${x.r.id}` === s));
+  $('#ib-goed')?.addEventListener('click', () => verwerk(selectie(), 'goedgekeurd'));
+  $('#ib-af')?.addEventListener('click', () => verwerk(selectie(), 'afgekeurd'));
+  toon();
+}
+
+/** Telefoon: afgekeurde registraties van deze medewerker, om aan te passen en opnieuw in te dienen. */
+async function mijnAfgekeurd() {
+  const ik = ikEmail();
+  const naam = instelling.lees('inspecteur');
+  const van = (r) => (r.beoordeling?.ingediendDoor && (r.beoordeling.ingediendDoor === ik || r.beoordeling.ingediendDoor === naam))
+    || (naam && (r.uitvoerder === naam || r.inspecteur === naam));
+  const [werk, insp] = await Promise.all([inProject('werkzaamheden'), inProject('inspecties')]);
+  return [
+    ...werk.filter((r) => beoordelingVan(r) === 'afgekeurd' && van(r)).map((r) => ({ r, href: `#/m/werk/${r.id}`, titel: r.soort || 'Werkzaamheid' })),
+    ...insp.filter((r) => beoordelingVan(r) === 'afgekeurd' && van(r)).map((r) => ({ r, href: `#/m/inspectie/${r.id}`, titel: r.bvc ? 'Boomveiligheidscontrole' : r.stowa ? 'Inspectie waterkering' : r.soort })),
+  ];
 }
 
 async function personenPagina() {
@@ -3740,6 +3999,7 @@ async function werkProjectkopBij() {
   const p = await actiefProject();
   huidigProject = p;
   werkRechtenKlassenBij();
+  werkInboxBadgeBij();
   chip.textContent = p ? p.naam : 'Kies een project';
   // Maar één project: op de telefoon valt er niets te kiezen.
   const een = Boolean(p) && (await zichtbareProjecten()).length <= 1 && !magBeheren();
@@ -7103,7 +7363,7 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
     await bewaarFotoLijsten([staat.fotos, ...W.map((w) => w.fotos)], origineel, { inspectieId, projectId: pid, datum: nu });
     const waarnemingen = W.map(({ fotos, groepKeuze, elementKeuze, wijzigen, ...w }) => ST.alsGebrek({ ...w, fotoIds: fotos.map((f) => f.id) }));
     await db.bewaar('inspecties', {
-      ...(bestaand ?? {}), id: inspectieId, projectId: pid, objectId: object.id,
+      ...(bestaand ?? {}), id: inspectieId, beoordeling: beoordelingBijOpslaan(bestaand, status === 'afgerond'), projectId: pid, objectId: object.id,
       werkpakketId: staat.werkpakketId, rondeId: staat.werkpakketId ? staat.rondeId : '',
       soort: ST.STOWA_SOORT, datum, inspecteur, status, weer: staat.weer, samenvatting: staat.samenvatting,
       fotoIds: staat.fotos.map((f) => f.id), gebreken: [],
@@ -7515,7 +7775,7 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
       volgendeControle: b.niet ? '' : volgendeInspectie(datum, jaren),
     };
     await db.bewaar('inspecties', {
-      ...(bestaand ?? {}), id: inspectieId, projectId: pid, objectId: object.id, werkpakketId: staat.werkpakketId, rondeId: staat.werkpakketId ? staat.rondeId : '',
+      ...(bestaand ?? {}), id: inspectieId, beoordeling: beoordelingBijOpslaan(bestaand, status === 'afgerond'), projectId: pid, objectId: object.id, werkpakketId: staat.werkpakketId, rondeId: staat.werkpakketId ? staat.rondeId : '',
       soort: BV.BVC_SOORT, datum, inspecteur, status, weer: '', samenvatting: b.opmerking, fotoIds: staat.fotos.map((f) => f.id),
       gebreken: [], bvc: bvcData, aangemaakt: bestaand?.aangemaakt ?? nu, gewijzigd: nu,
     });

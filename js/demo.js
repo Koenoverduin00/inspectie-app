@@ -134,7 +134,14 @@ export function demoData() {
     aangemaakt: nu, gewijzigd: nu,
   };
   werkpakketten.push(reparatie);
-  const inRonde = (p, i, object, dagen, velden) => werk(object, dag(-dagen), { werkpakketId: p.id, rondeId: p.rondes[i].id, ...velden });
+  // Recent werk wacht nog op goedkeuring (inbox); ouder werk is al goedgekeurd.
+  const inRonde = (p, i, object, dagen, velden) => werk(object, dag(-dagen), {
+    werkpakketId: p.id, rondeId: p.rondes[i].id,
+    beoordeling: dagen <= 9
+      ? { status: 'ingediend', ingediendOp: new Date(Date.now() - dagen * 864e5).toISOString(), ingediendDoor: velden.uitvoerder ?? 'P. Jansen' }
+      : { status: 'goedgekeurd', op: new Date(Date.now() - (dagen - 2) * 864e5).toISOString(), door: 'beheerder' },
+    ...velden,
+  });
   werkzaamheden.push(
     inRonde(groen, 0, vakken[0], 4, { soort: 'Groenonderhoud', uren: 6, uitvoerder: 'Groenploeg 1', omschrijving: 'Gazon gemaaid, randen gestoken, maaisel afgevoerd.' }),
     inRonde(reparatie, 0, fietsbrug, 2, { soort: 'Klein onderhoud', uren: 3, uitvoerder: 'R. Bakker', omschrijving: 'Losse leuningregel vastgezet.' }),
