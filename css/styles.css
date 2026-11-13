@@ -1193,3 +1193,15 @@ form:not(.afroep-inspectie) .a-insp { display: none; }
 .log-inhoud p { margin: .35rem 0 0; font-size: .9rem; }
 .log-inhoud small { display: block; color: var(--tekst-zacht); margin-top: .3rem; }
 .objectlogboek .tijdlijn { max-width: 900px; }
+
+/* Bovenbalk op de pc: altijd één regel; bij krappe ruimte verdwijnt eerst de merknaam, daarna schuift het menu */
+@media (min-width: 761px) {
+  .kop { flex-wrap: nowrap; }
+  .nav { flex: 1 1 auto; min-width: 0; }
+  .syncstatus { flex: none; }
+}
+@media (min-width: 761px) and (max-width: 1560px) {
+  .kop { gap: .5rem 1rem; }
+  .merk span { display: none; }
+  .nav a { padding: .4rem .6rem; }
+}
