@@ -118,6 +118,14 @@ gevraagd wordt:
 - **Installeren**: het startscherm legt uit hoe je de app op het beginscherm zet (iPhone: Deel → Zet op beginscherm;
   Android: knop *Installeren*). Met *Later* verdwijnt de uitleg 14 dagen.
 
+## Logboek per object (pc)
+
+Klik op de **objectenkaart** op een object: rechts naast de kaart opent het **logboek**, de volledige geschiedenis als
+tijdlijn (nieuwste eerst, per maand): uitgevoerd onderhoud (met beoordeling), inspecties (met oordeel en open
+maatregelen), afroepen, overgeslagen bezoeken (met reden) en flora- en fauna-vrijgaven, met datum, wie, werkpakket/ronde
+en een link naar de registratie. Filteren op soort en jaar, en exporteren naar CSV. Hetzelfde logboek staat onderaan de
+objectpagina.
+
 ## Goedkeuren: inbox
 
 Elke registratie van uitgevoerd werk en elke afgeronde inspectie krijgt een beoordelingsstatus:

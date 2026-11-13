@@ -77,7 +77,12 @@ const ROUTES = [
   [/^\/objecten$/, 'objecten', objectenLijst],
   [/^\/objecten\/nieuw$/, 'objecten', () => objectFormulier()],
   [/^\/objecten\/([^/]+)\/bewerken$/, 'objecten', objectFormulier],
-  [/^\/objecten\/([^/]+)$/, 'objecten', objectDetail],
+  [/^\/objecten\/([^/]+)$/, 'objecten', async (id) => {
+    await objectDetail(id);
+    if (isMobiel() || !app.querySelector('.paginakop')) return;
+    app.insertAdjacentHTML('beforeend', '<section class="kaart objectlogboek" id="objectlogboek"><h2 style="margin-top:0">Logboek</h2><div></div></section>');
+    toonLogboek(app.querySelector('#objectlogboek > div'), id, { kop: false });
+  }],
   [/^\/inspecties$/, 'inspecties', inspectiesLijst],
   [/^\/inspecties\/nieuw$/, 'inspecties', (_, q) => inspectieFormulier(null, q.get('object'), { taakId: q.get('taak'), pakketId: q.get('pakket'), rondeId: q.get('ronde'), calamiteit: q.get('calamiteit') === '1' })],
   [/^\/inspecties\/([^/]+)\/bewerken$/, 'inspecties', (id) => inspectieFormulier(id)],
@@ -875,10 +880,14 @@ async function objectenLijst() {
     <div id="objectkaart-blok" ${weergave === 'kaart' ? '' : 'hidden'}>
       <div class="kaartindeling">
         <div id="objectkaart" class="kaart objectenkaart"><p class="leeg">Kaart laden…</p></div>
-        <aside class="kaart lagenpaneel">
-          <h2>Gevonden</h2>
-          <p id="okaart-telling"><small></small></p>
-          <ul class="vindlijst" id="vindlijst"></ul>
+        <aside class="kaart lagenpaneel objectpaneel">
+          <div id="vindpaneel">
+            <h2>Gevonden</h2>
+            <p id="okaart-telling"><small></small></p>
+            <ul class="vindlijst" id="vindlijst"></ul>
+            <p class="zacht"><small>Klik op een object op de kaart om het logboek te openen.</small></p>
+          </div>
+          <div id="logpaneel" hidden></div>
         </aside>
       </div>
     </div>
@@ -933,10 +942,27 @@ async function objectenLijst() {
       popup: (o) => {
         const s = status.get(o.id);
         return `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br><small>${esc(o.type || '')}${o.locatie ? ` · ${esc(o.locatie)}` : ''}</small><br>
-          ${oordeelLabel(s)} ${s?.laatste ? `<small>laatste inspectie ${datumNL(s.laatste.datum)}</small>` : ''}<br><a href="#/objecten/${esc(o.id)}">Object openen</a>`;
+          ${oordeelLabel(s)} ${s?.laatste ? `<small>laatste inspectie ${datumNL(s.laatste.datum)}</small>` : ''}<br><a href="#/objecten/${esc(o.id)}">Object openen</a> · <small>logboek staat rechts</small>`;
       },
+      opOpen: (o) => openLogboek(o.id),
     });
     werkKaartBij();
+  };
+  const openLogboek = (oid) => {
+    const vind = app.querySelector('#vindpaneel');
+    const log = app.querySelector('#logpaneel');
+    if (!log) return;
+    vind.hidden = true;
+    log.hidden = false;
+    app.querySelector('#objectkaart-blok .kaartindeling').classList.add('met-logboek');
+    kaartKlaar?.then((k) => k?.map.invalidateSize());
+    log.onclick = (e) => {
+      if (!e.target.closest('[data-log-terug]')) return;
+      log.hidden = true; vind.hidden = false;
+      app.querySelector('#objectkaart-blok .kaartindeling').classList.remove('met-logboek');
+      kaartKlaar?.then((k) => { k?.map.closePopup(); k?.map.invalidateSize(); });
+    };
+    toonLogboek(log, oid, { terug: 'Zoekresultaten' });
   };
   const zetWeergave = (w) => {
     weergave = w;
@@ -981,6 +1007,123 @@ async function objectenLijst() {
     }
     download(`objecten-${vandaag()}.csv`, csv(rijen), 'text/csv;charset=utf-8');
   };
+}
+
+// ---------------------------------------------------------------------------
+// Logboek per object: de volledige onderhouds- en inspectiegeschiedenis als tijdlijn
+// ---------------------------------------------------------------------------
+const LOG_SOORTEN = {
+  onderhoud: { label: 'Onderhoud', icoon: 'werk', kleur: '#e07b00' },
+  inspectie: { label: 'Inspectie', icoon: 'inspectie', kleur: '#1f6feb' },
+  afroep: { label: 'Afroep', icoon: 'wacht', kleur: '#7c3aed' },
+  overgeslagen: { label: 'Overgeslagen', icoon: 'overslaan', kleur: '#8a96a3' },
+  vrijgave: { label: 'Flora & fauna', icoon: 'blad', kleur: '#1a7f37' },
+};
+
+/** Alle gebeurtenissen voor één object, nieuwste eerst. */
+async function objectLogboek(objectId) {
+  const [werk, insp, over, vrij, pakketten] = await Promise.all([
+    inProject('werkzaamheden'), inProject('inspecties'), inProject('overgeslagen'), inProject('vrijgaven'), inProject('werkpakketten'),
+  ]);
+  const pakketNaam = (pid, rid) => {
+    const p = pakketten.find((x) => x.id === pid);
+    if (!p) return '';
+    const r = rondesVan(p).find((x) => x.id === rid);
+    return `${p.naam}${r && p.rondes?.length ? ` · ${r.afroep ? 'A' : 'R'}${r.nummer} ${r.naam}` : ''}`;
+  };
+  const uit = [];
+  for (const w of werk.filter((x) => x.objectId === objectId)) {
+    uit.push({
+      soort: 'onderhoud', datum: w.datum, titel: w.soort || 'Werkzaamheid', wie: w.uitvoerder, href: `#/werkzaamheden/${w.id}`,
+      tekst: w.omschrijving, pakket: pakketNaam(w.werkpakketId, w.rondeId),
+      labels: [beoordelingLabel(w), w.status === 'vervolg' ? werkStatusLabel(w.status) : ''].join(' '),
+      extra: [w.vervolg ? `Vervolg: ${w.vervolg}` : '', (w.maatregelen ?? []).length ? `${w.maatregelen.length} maatregel(en) afgehandeld` : ''].filter(Boolean).join(' · '),
+      export: [w.soort, w.omschrijving, BEOORDELING[beoordelingVan(w)].label],
+    });
+  }
+  for (const i of insp.filter((x) => x.objectId === objectId)) {
+    const items = ST.gebrekItems ? ST.gebrekItems(i) : (i.gebreken ?? []);
+    uit.push({
+      soort: 'inspectie', datum: i.datum, titel: i.bvc ? 'Boomveiligheidscontrole' : i.stowa ? 'Inspectie waterkering' : (i.soort || 'Inspectie'),
+      wie: i.inspecteur, href: `#/inspecties/${i.id}`, tekst: i.samenvatting, pakket: pakketNaam(i.werkpakketId, i.rondeId),
+      labels: `${i.status === 'afgerond' ? `${inspectieOordeel(i)} ${beoordelingLabel(i)}` : statusLabel(i.status)}`,
+      extra: items.length ? `${items.length} bevinding${items.length === 1 ? '' : 'en'}${items.filter((g) => g.maatregelStatus !== 'uitgevoerd' && g.maatregel).length ? ` · ${items.filter((g) => g.maatregelStatus !== 'uitgevoerd' && g.maatregel).length} maatregel(en) open` : ''}` : 'Geen bevindingen',
+      export: [i.soort, i.samenvatting, i.status === 'afgerond' ? BEOORDELING[beoordelingVan(i)].label : 'Concept'],
+    });
+  }
+  for (const o of over.filter((x) => x.objectId === objectId)) {
+    uit.push({
+      soort: 'overgeslagen', datum: String(o.op ?? '').slice(0, 10), titel: `Overgeslagen: ${o.reden ?? ''}`, wie: o.door, tekst: o.toelichting,
+      pakket: pakketNaam(o.pakketId, o.rondeId), labels: '', extra: '', href: o.pakketId ? `#/werkpakketten/${o.pakketId}` : '',
+      export: ['Overgeslagen', `${o.reden ?? ''}${o.toelichting ? `: ${o.toelichting}` : ''}`, ''],
+    });
+  }
+  for (const v of vrij.filter((x) => (x.objectIds ?? [x.objectId]).includes(objectId))) {
+    uit.push({
+      soort: 'vrijgave', datum: v.datum, titel: `Vrijgave: ${eco.BESLUIT[v.besluit]?.label ?? 'concept'}`, wie: v.ecoloog || v.inspecteur || '', href: `#/vrijgaven/${v.id}`,
+      tekst: v.voorwaarden ? `Voorwaarden: ${v.voorwaarden}` : v.werkzaamheid, pakket: '', labels: v.geldigTot ? `<small>geldig t/m ${datumNL(v.geldigTot)}</small>` : '', extra: '',
+      export: ['Flora & fauna', v.werkzaamheid ?? '', eco.BESLUIT[v.besluit]?.label ?? 'concept'],
+    });
+  }
+  for (const p of pakketten) {
+    for (const r of rondesVan(p).filter((x) => x.afroep)) {
+      if (!rondeView(p, r).objecten.includes(objectId)) continue;
+      uit.push({
+        soort: 'afroep', datum: String(r.afroep.op ?? r.start ?? '').slice(0, 10), titel: `Afgeroepen: ${r.naam}`, wie: r.afroep.door, href: `#/werkpakketten/${p.id}?ronde=${r.id}`,
+        tekst: r.afroep.toelichting, pakket: `${p.naam} · A${r.nummer}`,
+        labels: `${r.afroep.spoed ? '<span class="afroeplabel spoedlabel">Spoed</span> ' : ''}${pakketStatusLabel(r.status)}`, extra: `${r.afroep.reden}${r.eind ? ` · gereed vóór ${datumNL(r.eind)}` : ''}`,
+        export: ['Afroep', `${r.naam} (${r.afroep.reden})`, PAKKETSTATUS[r.status] ?? r.status],
+      });
+    }
+  }
+  return uit.sort((a, b) => String(b.datum).localeCompare(String(a.datum)));
+}
+
+/** Tekent het logboek in een element; filters op soort en jaar, export naar CSV. */
+async function toonLogboek(el, objectId, { kop = true, terug = null } = {}) {
+  const o = await db.haal('objecten', objectId);
+  if (!o || !el.isConnected) return;
+  const alle = await objectLogboek(objectId);
+  let filter = '';
+  const jaren = [...new Set(alle.map((x) => String(x.datum).slice(0, 4)).filter(Boolean))];
+  let jaar = '';
+  const maandNaam = (d) => new Date(`${String(d).slice(0, 7)}-01T12:00:00`).toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' });
+  const teken = () => {
+    const lijst = alle.filter((x) => (!filter || x.soort === filter) && (!jaar || String(x.datum).startsWith(jaar)));
+    let maand = '';
+    const regels = lijst.map((x) => {
+      const m = String(x.datum).slice(0, 7);
+      const kopje = m !== maand ? `<li class="log-maand">${esc(maandNaam(x.datum))}</li>` : '';
+      maand = m;
+      const s = LOG_SOORTEN[x.soort];
+      return `${kopje}<li class="log-item" style="--logkleur:${s.kleur}">
+        <span class="log-bol">${I[s.icoon]}</span>
+        <div class="log-inhoud">
+          <div class="log-kop"><strong>${x.href ? `<a href="${x.href}">${esc(x.titel)}</a>` : esc(x.titel)}</strong><span class="log-datum">${datumNL(x.datum)}</span></div>
+          <div class="log-labels">${x.labels}</div>
+          ${x.tekst ? `<p>${esc(String(x.tekst).slice(0, 220))}${String(x.tekst).length > 220 ? '…' : ''}</p>` : ''}
+          <small>${[x.wie ? `${esc(x.wie)}` : '', x.pakket ? esc(x.pakket) : '', x.extra ? esc(x.extra) : ''].filter(Boolean).join(' · ')}</small>
+        </div></li>`;
+    }).join('');
+    const tel = (k) => alle.filter((x) => x.soort === k && (!jaar || String(x.datum).startsWith(jaar))).length;
+    el.innerHTML = `
+      ${kop ? `<div class="log-hoofd">${terug ? `<button type="button" class="linkknop" data-log-terug>← ${esc(terug)}</button>` : ''}
+        <h2>${I.taak} Logboek</h2><p><a href="#/objecten/${esc(o.id)}"><strong>${esc(o.code)}</strong> – ${esc(o.naam)}</a><br><small>${esc(o.type || '')}</small></p></div>` : ''}
+      <div class="log-filters">
+        <div class="log-chips">${[['', `Alles (${alle.filter((x) => !jaar || String(x.datum).startsWith(jaar)).length})`], ...Object.entries(LOG_SOORTEN).filter(([k]) => alle.some((x) => x.soort === k)).map(([k, s]) => [k, `${s.label} (${tel(k)})`])]
+    .map(([k, l]) => `<button type="button" class="log-chip ${k === filter ? 'actief' : ''}" data-log-filter="${k}">${esc(l)}</button>`).join('')}</div>
+        <div class="log-acties">${jaren.length > 1 ? `<select data-log-jaar aria-label="Jaar">${optie('', 'Alle jaren', jaar)}${jaren.map((j) => optie(j, j, jaar)).join('')}</select>` : ''}
+          <button type="button" class="knop klein" data-log-export>${I.exporteer} CSV</button></div>
+      </div>
+      ${lijst.length ? `<ol class="tijdlijn">${regels}</ol>` : `<p class="leeg">${alle.length ? 'Geen gebeurtenissen met dit filter.' : 'Nog geen onderhoud of inspecties vastgelegd voor dit object.'}</p>`}`;
+    el.querySelectorAll('[data-log-filter]').forEach((b) => { b.onclick = () => { filter = b.dataset.logFilter; teken(); }; });
+    el.querySelector('[data-log-jaar]')?.addEventListener('change', (e) => { jaar = e.target.value; teken(); });
+    el.querySelector('[data-log-export]').onclick = () => {
+      const rijen = [['Datum', 'Soort', 'Titel', 'Omschrijving', 'Status', 'Door', 'Werkpakket'], ...lijst.map((x) => [x.datum, LOG_SOORTEN[x.soort].label, x.titel, x.export[1] ?? '', x.export[2] ?? '', x.wie ?? '', x.pakket ?? ''])];
+      download(`logboek-${o.code}-${vandaag()}.csv`, csv(rijen), 'text/csv;charset=utf-8');
+    };
+  };
+  teken();
 }
 
 async function objectDetail(id) {
@@ -4760,7 +4903,7 @@ async function tekenGisKaart(el, { groepen, kleur, groepVan }) {
  * @param {{ objecten: object[], kleurVan: (o) => string, popup?: (o) => string, opKlik?: (o) => void }} opties
  * @returns {Promise<null | { map, toon(ids:Set), herkleur(), zoomNaar(id), gebied(cb), aantal: number }>}
  */
-async function tekenObjectenKaart(el, { objecten, kleurVan, popup = null, opKlik = null }) {
+async function tekenObjectenKaart(el, { objecten, kleurVan, popup = null, opKlik = null, opOpen = null }) {
   let L;
   try {
     L = await laadLeaflet();
@@ -4795,7 +4938,7 @@ async function tekenObjectenKaart(el, { objecten, kleurVan, popup = null, opKlik
     if (kanAanwijzen) laag.bindTooltip(`${esc(o.code)}${o.naam ? ` – ${esc(o.naam)}` : ''}`, { sticky: true, direction: 'top' });
     if (popup) {
       laag.bindPopup(() => popup(o), { maxWidth: 320 });
-      laag.on('popupopen', () => laag.closeTooltip());
+      laag.on('popupopen', () => { laag.closeTooltip(); opOpen?.(o); });
     }
     if (opKlik) laag.on('click', () => opKlik(o));
     lagen.set(o.id, laag);
