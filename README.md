@@ -371,6 +371,15 @@ Rijkswaterstaat** (Loo Plan, 8 februari 2017, definitief) en het CROW **Standaar
 - **Rapport** per boom (bijlage 5) en **SUF-BVC export** (boom, boomgebreken, maatregelen) per project of werkpakket;
   bij een BVC-werkpakket een samenvatting per klasse en maatregel.
 
+## Mijn geschiedenis (telefoon, Ik-pagina)
+
+Op de Ik-pagina staat **Mijn geschiedenis**: alles wat je in het actieve project hebt vastgelegd – werkzaamheden, inspecties, vrijgaven en
+overgeslagen objecten – nieuwste eerst en per dag gegroepeerd. Per regel zie je het object, het werkpakket en de status (Ingediend,
+Goedgekeurd, Afgekeurd met de reden, of Concept), bij inspecties ook het oordeel. Filter met de knoppen bovenaan; tik op een regel om hem te
+openen of aan te passen. "Van jou" is wat je met je account hebt ingediend, of wat op jouw naam (inspecteur/uitvoerder) staat.
+
+De knop **Mijn locatie** op de kaart verschijnt alleen als er een ronde voor je loopt.
+
 ## GPS-locatie per gebrek of bevinding
 
 Elk gebrek (NEN 2767, boomveiligheidscontrole), elke bevinding (oordeel) en elk controlepunt dat niet in orde is, heeft standaard een veld

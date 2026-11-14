@@ -1362,3 +1362,14 @@ form:not(.afroep-inspectie) .a-insp { display: none; }
 /* GPS-locatie per gebrek of bevinding */
 .gpsregel { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; }
 .gpsregel > svg { width: 18px; height: 18px; color: var(--primair); }
+
+/* Mijn geschiedenis (Ik-pagina) */
+.geschfilters { display: flex; gap: .4rem; overflow-x: auto; padding-bottom: .4rem; margin-bottom: .4rem; }
+.gfchip { flex: 0 0 auto; border: 1px solid var(--rand); background: var(--vlak); color: var(--tekst); border-radius: 999px; padding: .35rem .75rem; font: inherit; font-size: .85rem; cursor: pointer; }
+.gfchip b { font-weight: 700; color: var(--tekst-zacht); margin-left: .15rem; }
+.gfchip.actief { background: var(--primair); border-color: var(--primair); color: #fff; }
+.gfchip.actief b { color: #fff; }
+.geschlijst .geschdag { list-style: none; font-size: .8rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--tekst-zacht); padding: .6rem .9rem .2rem; border: 0; background: var(--achtergrond); }
+.geschlijst .geschstatus { display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; margin-top: .2rem; }
+.geschlijst .reden { color: var(--gevaar); }
+.geschregel { display: flex; gap: .75rem; align-items: flex-start; padding: .6rem .2rem; }

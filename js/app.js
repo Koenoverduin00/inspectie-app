@@ -3936,7 +3936,7 @@ async function mobielKaart() {
   const open = lijst.filter(({ o }) => statusVan(o.id) === 'open').length;
   app.innerHTML = `
     <div class="mkaartkop"><div><h1>Kaart</h1><small>${rondes.length ? `${open} open · ${lijst.length - open} klaar · ${rondes.length} ronde${rondes.length === 1 ? '' : 's'}` : 'Geen actieve rondes'}</small></div>
-      <button class="knop" id="mijnlocatie" type="button">${I.locatie} Mijn locatie</button></div>
+      ${rondes.length ? `<button class="knop" id="mijnlocatie" type="button">${I.locatie} Mijn locatie</button>` : ''}</div>
     <div class="mlegenda"><span><i style="background:${PAKKET_KLEUR.open}"></i>Te doen</span><span><i style="background:${PAKKET_KLEUR.gedaan}"></i>Gedaan</span><span><i style="background:${PAKKET_KLEUR.overgeslagen}"></i>Overgeslagen</span></div>
     ${rondes.length ? '<div id="veldkaart" class="veldkaart"><p class="leeg">Kaart laden…</p></div>'
     : '<div class="kaart leeg"><p>Er loopt op dit moment geen ronde voor jou.</p><p><small>Zodra de beheerder een ronde actief zet, zie je de objecten hier.</small></p></div>'}`;
@@ -4437,6 +4437,7 @@ async function mobielAccount() {
         <input id="f-naam" name="naam" value="${esc(instelling.lees('inspecteur'))}" autocomplete="name"></div>
       <div class="formvoet"><button class="knop primair" type="submit">Opslaan</button></div>
     </form>
+    <section class="kaart" id="geschiedenis"><p class="leeg">Laden…</p></section>
     <section class="kaart" id="fotoopslag"><p class="leeg">Laden…</p></section>
     <section class="kaart">
       <h2>Weergave</h2>
@@ -4444,6 +4445,7 @@ async function mobielAccount() {
       <button class="knop" id="volledig" type="button">Volledige versie openen</button>
     </section>`;
   toonAccount(app.querySelector('#account'));
+  toonGeschiedenis(app.querySelector('#geschiedenis'));
   fotoOpslagBlok(app.querySelector('#fotoopslag'));
   app.querySelector('#naam').onsubmit = (e) => {
     e.preventDefault();
@@ -5422,6 +5424,85 @@ async function inboxPagina(_, q = new URLSearchParams()) {
 }
 
 /** Telefoon: afgekeurde registraties van deze medewerker, om aan te passen en opnieuw in te dienen. */
+/** Alles wat ik in dit project heb vastgelegd en ingediend, nieuwste eerst. */
+async function mijnRegistraties() {
+  const ik = ikEmail();
+  const naam = instelling.lees('inspecteur');
+  const isIk = (x) => Boolean(x) && (x === ik || x === naam);
+  const van = (r) => isIk(r.beoordeling?.ingediendDoor) || (naam && (r.uitvoerder === naam || r.inspecteur === naam));
+  const [werk, insp, vrij, over, objecten, pakketten] = await Promise.all([inProject('werkzaamheden'), inProject('inspecties'),
+    inProject('vrijgaven'), inProject('overgeslagen'), inProject('objecten'), inProject('werkpakketten')]);
+  const objectMap = new Map(objecten.map((o) => [o.id, o]));
+  const pakketNaam = new Map(pakketten.map((p) => [p.id, p.naam]));
+  const tijd = (r) => r.beoordeling?.ingediendOp || r.gewijzigd || r.datum || '';
+  return [
+    ...werk.filter(van).map((r) => ({ r, icoon: I.werk, titel: r.soort || 'Werkzaamheid', href: `#/m/werk/${r.id}`, status: beoordelingVan(r), tijd: tijd(r) })),
+    ...insp.filter(van).map((r) => ({
+      r, icoon: r.bvc ? I.boom : r.stowa ? I.water : I.inspectie,
+      titel: r.bvc ? 'Boomveiligheidscontrole' : r.stowa ? 'Inspectie waterkering' : r.soort,
+      href: r.bvc || r.stowa ? `#/inspecties/${r.id}` : `#/m/inspectie/${r.id}`,
+      status: r.status === 'afgerond' ? beoordelingVan(r) : 'concept', oordeel: r.status === 'afgerond' ? inspectieOordeel(r) : '', tijd: tijd(r),
+    })),
+    ...vrij.filter((v) => isIk(v.deskundige)).map((r) => ({ r, icoon: I.blad, titel: `Vrijgave · ${eco.BESLUIT[r.besluit]?.label ?? 'concept'}`,
+      href: `#/m/vrijgave/${r.id}`, status: r.status === 'afgerond' ? 'vastgelegd' : 'concept', tijd: r.gewijzigd || r.datum || '', objectId: r.objectIds?.[0] })),
+    ...over.filter((x) => isIk(x.door)).map((r) => ({ r, icoon: I.overslaan, titel: `Overgeslagen${r.reden ? ` · ${r.reden}` : ''}`,
+      href: r.objectId ? `#/m/locatie/${r.objectId}` : '', status: 'vastgelegd', tijd: r.gewijzigd || r.op || '', pakketId: r.pakketId })),
+  ].map((x) => ({ ...x, object: objectMap.get(x.objectId ?? x.r.objectId), pakket: pakketNaam.get(x.pakketId ?? x.r.werkpakketId) ?? '' }))
+    .sort((a, b) => String(b.tijd).localeCompare(String(a.tijd)));
+}
+
+const GESCH_FILTERS = [['alles', 'Alles'], ['ingediend', 'Ingediend'], ['goedgekeurd', 'Goedgekeurd'], ['afgekeurd', 'Afgekeurd'], ['concept', 'Concept']];
+const GESCH_STATUS = {
+  ingediend: '<span class="label-status binnenkort">Ingediend</span>', goedgekeurd: '<span class="label-status afgerond">Goedgekeurd</span>',
+  afgekeurd: '<span class="label-status verlopen">Afgekeurd</span>', concept: '<span class="label-status">Concept</span>', vastgelegd: '<span class="label-status">Vastgelegd</span>',
+};
+
+async function toonGeschiedenis(el) {
+  if (!el) return;
+  if (!huidigProject) { el.innerHTML = '<h2>Mijn geschiedenis</h2><p class="mleeg">Kies eerst een project.</p>'; return; }
+  const lijst = await mijnRegistraties();
+  let filter = 'alles';
+  let aantal = 25;
+  const lokaal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const dagLabel = (iso) => {
+    if (!iso) return 'Onbekende datum';
+    const d = /T/.test(iso) ? lokaal(new Date(iso)) : String(iso).slice(0, 10);
+    const g = new Date();
+    const v = lokaal(g);
+    g.setDate(g.getDate() - 1);
+    return d === v ? 'Vandaag' : d === lokaal(g) ? 'Gisteren' : datumNL(d);
+  };
+  const teken = () => {
+    const gefilterd = lijst.filter((x) => filter === 'alles' || x.status === filter);
+    const tel = (k) => lijst.filter((x) => x.status === k).length;
+    const getoond = gefilterd.slice(0, aantal);
+    let vorigeDag = '';
+    el.innerHTML = `<h2>Mijn geschiedenis <small>(${lijst.length})</small></h2>
+      <p style="margin:.1rem 0 .6rem"><small>Wat je in ${esc(huidigProject.naam)} hebt vastgelegd en ingediend, met de status van de beoordeling.</small></p>
+      <div class="geschfilters">${GESCH_FILTERS.map(([k, l]) => {
+    const n = k === 'alles' ? lijst.length : tel(k);
+    return k === 'alles' || n ? `<button type="button" class="gfchip${filter === k ? ' actief' : ''}" data-gf="${k}">${l} <b>${n}</b></button>` : '';
+  }).join('')}</div>
+      ${getoond.length ? `<ul class="mlijst geschlijst">${getoond.map((x) => {
+    const dag = dagLabel(x.tijd || x.r.datum);
+    const kop = dag !== vorigeDag ? `<li class="geschdag">${esc(dag)}</li>` : '';
+    vorigeDag = dag;
+    const inhoud = `<span class="micoon klein">${x.icoon}</span>
+      <span><strong>${esc(x.titel)}</strong><small>${objectNaam(x.object)}${x.pakket ? ` · ${esc(x.pakket)}` : ''}</small>
+        <small class="geschstatus">${GESCH_STATUS[x.status] ?? ''} ${x.oordeel ?? ''}</small>
+        ${x.status === 'afgekeurd' ? `<small class="reden">${esc(x.r.beoordeling?.opmerking || 'Geen reden opgegeven')}</small>` : ''}</span>`;
+    return `${kop}<li>${x.href ? `<a href="${x.href}">${inhoud}</a>` : `<div class="geschregel">${inhoud}</div>`}</li>`;
+  }).join('')}</ul>` : `<p class="mleeg">${lijst.length ? 'Niets met deze status.' : 'Je hebt in dit project nog niets vastgelegd.'}</p>`}
+      ${gefilterd.length > aantal ? `<button type="button" class="knop" data-meer style="width:100%">Meer tonen (${gefilterd.length - aantal})</button>` : ''}`;
+  };
+  el.addEventListener('click', (e) => {
+    const f = e.target.closest('[data-gf]');
+    if (f) { filter = f.dataset.gf; aantal = 25; teken(); return; }
+    if (e.target.closest('[data-meer]')) { aantal += 25; teken(); }
+  });
+  teken();
+}
+
 async function mijnAfgekeurd() {
   const ik = ikEmail();
   const naam = instelling.lees('inspecteur');
