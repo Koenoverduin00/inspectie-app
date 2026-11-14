@@ -1210,6 +1210,58 @@ async function bibliotheekPagina() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// GPS-locatie per gebrek of bevinding (lat, lng, nauwkeurigheid, locatieBron, locatieOp)
+// ---------------------------------------------------------------------------
+const heeftGps = (x) => x?.lat !== '' && x?.lat != null && x?.lng !== '' && x?.lng != null && Number.isFinite(Number(x.lat));
+const gpsLink = (x) => `<a href="https://www.google.com/maps?q=${encodeURIComponent(x.lat)},${encodeURIComponent(x.lng)}" target="_blank" rel="noopener">${Number(x.lat).toFixed(6)}, ${Number(x.lng).toFixed(6)}</a>${x.nauwkeurigheid ? ` <small>±${esc(x.nauwkeurigheid)} m</small>` : ''}`;
+function gpsVeldHtml(x, sleutel) {
+  const heeft = heeftGps(x);
+  return `<div class="veld breed gpsveld" data-gpsveld="${esc(sleutel)}"><label>Locatie (GPS)</label>
+    <div class="gpsregel">${heeft ? `${I.locatie} ${gpsLink(x)}` : '<small>Nog niet vastgelegd</small>'}
+      <button type="button" class="knop klein" data-gpsvast="${esc(sleutel)}">${I.gps} ${heeft ? 'Opnieuw bepalen' : 'Locatie vastleggen'}</button>
+      ${heeft ? `<button type="button" class="knop klein" data-gpswis="${esc(sleutel)}" aria-label="Locatie wissen">${I.kruis}</button>` : ''}</div></div>`;
+}
+/** Bepaalt de huidige positie en zet die op het doel; stil = geen foutmelding (automatisch vastleggen). */
+function bepaalGps(doel, klaar, { knop = null, stil = false } = {}) {
+  if (!doel) return;
+  if (!navigator.geolocation) { if (!stil) melding('Locatiebepaling wordt niet ondersteund op dit apparaat.', 'fout'); return; }
+  if (knop) { knop.disabled = true; knop.innerHTML = `${I.gps} Bepalen…`; }
+  navigator.geolocation.getCurrentPosition((pos) => {
+    Object.assign(doel, {
+      lat: Number(pos.coords.latitude.toFixed(7)), lng: Number(pos.coords.longitude.toFixed(7)),
+      nauwkeurigheid: Math.round(pos.coords.accuracy), locatieBron: 'gps', locatieOp: new Date().toISOString(),
+    });
+    formulierGewijzigd = true;
+    klaar();
+  }, (fout) => {
+    if (knop) { knop.disabled = false; knop.innerHTML = `${I.gps} Locatie vastleggen`; }
+    if (!stil) melding(fout.code === 1 ? 'Geen toestemming voor locatie. Sta locatie toe in de instellingen van je browser.' : `Locatie niet beschikbaar: ${fout.message}`, 'fout');
+  }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 });
+}
+/** Knoppen "Locatie vastleggen" en "wissen" in een formulier; vind(sleutel) geeft het gebrek/de bevinding. */
+function koppelGpsVelden(root, vind) {
+  const ververs = (sleutel) => {
+    const el = root.querySelector(`[data-gpsveld="${CSS.escape(sleutel)}"]`);
+    if (el) el.outerHTML = gpsVeldHtml(vind(sleutel), sleutel);
+  };
+  root.addEventListener('click', (e) => {
+    const wis = e.target.closest('[data-gpswis]');
+    if (wis) {
+      const d = vind(wis.dataset.gpswis);
+      for (const k of ['lat', 'lng', 'nauwkeurigheid', 'locatieBron', 'locatieOp']) delete d[k];
+      formulierGewijzigd = true;
+      ververs(wis.dataset.gpswis);
+      return;
+    }
+    const vast = e.target.closest('[data-gpsvast]');
+    if (vast) bepaalGps(vind(vast.dataset.gpsvast), () => ververs(vast.dataset.gpsvast), { knop: vast });
+  });
+  return { ververs, automatisch: (sleutel) => bepaalGps(vind(sleutel), () => ververs(sleutel), { stil: true }) };
+}
+const GPS_VELDEN = ['lat', 'lng', 'nauwkeurigheid', 'locatieBron', 'locatieOp'];
+const gpsVan = (x) => Object.fromEntries(GPS_VELDEN.filter((k) => x?.[k] !== undefined && x?.[k] !== '').map((k) => [k, x[k]]));
+
 function alleMaatregelen(inspecties, objectMap) {
   const lijst = [];
   for (const insp of inspecties) {
@@ -1340,7 +1392,8 @@ async function nenGebrekKaart(g, n, i = null) {
       ${g.urgentie || g.maatregel || (toonKosten() && g.kostenraming !== '' && g.kostenraming != null) ? `<div class="kenmerken">
         ${g.urgentie ? kenmerk('Urgentie', urgentieLabel(g.urgentie)) : ''}
         ${toonKosten() && g.kostenraming !== '' && g.kostenraming != null ? kenmerk('Raming', euro(g.kostenraming)) : ''}
-        ${g.maatregel || g.urgentie ? kenmerk('Maatregel', g.maatregelStatus === 'uitgevoerd' ? '<span class="label-status uitgevoerd">Uitgevoerd</span>' : '<span class="label-status binnenkort">Open</span>') : ''}</div>` : ''}
+        ${g.maatregel || g.urgentie ? kenmerk('Maatregel', g.maatregelStatus === 'uitgevoerd' ? '<span class="label-status uitgevoerd">Uitgevoerd</span>' : '<span class="label-status binnenkort">Open</span>') : ''}
+        ${heeftGps(g) ? kenmerk('GPS', gpsLink(g)) : ''}</div>` : heeftGps(g) ? `<div class="kenmerken">${kenmerk('GPS', gpsLink(g))}</div>` : ''}
       ${g.toelichting || g.maatregel ? `<div class="gk-tekst">
         ${g.toelichting ? `<div><h4>Waarneming</h4><p>${esc(g.toelichting)}</p></div>` : ''}
         ${g.maatregel ? `<div><h4>Maatregel</h4><p>${esc(g.maatregel)}</p></div>` : ''}</div>` : ''}
@@ -1360,6 +1413,7 @@ async function nenGebrekKaart(g, n, i = null) {
       ${toonKosten() && g.kostenraming !== '' && g.kostenraming != null ? kenmerk('Raming', euro(g.kostenraming)) : ''}
       ${g.maatregel || g.urgentie ? kenmerk('Maatregel', g.maatregelStatus === 'uitgevoerd' ? '<span class="label-status uitgevoerd">Uitgevoerd</span>' : '<span class="label-status binnenkort">Open</span>') : ''}
       ${g.conditieHandmatig ? kenmerk('Conditie', 'handmatig') : ''}
+      ${heeftGps(g) ? kenmerk('GPS', gpsLink(g)) : ''}
     </div>
     ${g.toelichting || g.maatregel ? `<div class="gk-tekst">
       ${g.toelichting ? `<div><h4>Waarneming</h4><p>${esc(g.toelichting)}</p></div>` : ''}
@@ -1373,7 +1427,7 @@ async function bvcGebrekKaart(g, n) {
   return `<article class="gebrekkaart" style="--gk:#d1452f">
     <header><span class="gk-nr">${n + 1}</span>
       <div class="gk-titel"><h3>${esc(g.omschrijving || 'Gebrek')}</h3><small>${esc(g.type || BV.gebrekType(g.omschrijving))}</small></div></header>
-    <div class="kenmerken">${kenmerk('Plaats', esc(g.plaats || '–'))}${kenmerk('Mogelijk gevolg', esc(g.gevolg || '–'))}</div>
+    <div class="kenmerken">${kenmerk('Plaats', esc(g.plaats || '–'))}${kenmerk('Mogelijk gevolg', esc(g.gevolg || '–'))}${heeftGps(g) ? kenmerk('GPS', gpsLink(g)) : ''}</div>
     ${g.toelichting ? `<div class="gk-tekst"><div><h4>Toelichting</h4><p>${esc(g.toelichting)}</p></div></div>` : ''}
     ${await fotoGalerij(g.fotoIds, { titel: "Foto's" })}
   </article>`;
@@ -2751,7 +2805,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     staat.checklist = (type?.punten ?? []).map((punt) => oud.get(punt) ?? {
       id: details.get(punt)?.id ?? nieuwId(), punt, status: (bestaand?.checklist ?? []).find((c) => c.punt === punt)?.status ?? '',
       toelichting: details.get(punt)?.toelichting ?? '', maatregel: details.get(punt)?.maatregel ?? '', urgentie: details.get(punt)?.urgentie ?? '',
-      kostenraming: details.get(punt)?.kostenraming ?? '', maatregelStatus: details.get(punt)?.maatregelStatus ?? 'open',
+      kostenraming: details.get(punt)?.kostenraming ?? '', maatregelStatus: details.get(punt)?.maatregelStatus ?? 'open', ...gpsVan(details.get(punt)),
       fotos: staat.gebreken.find((g) => g.checkpunt === punt)?.fotos ?? [],
     });
   };
@@ -2941,14 +2995,15 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
       status: `<div class="veld"><label>Status maatregel</label><select data-g="${i}" data-veld="maatregelStatus">
         ${optie('open', 'Open', g.maatregelStatus)}${optie('uitgevoerd', 'Uitgevoerd', g.maatregelStatus)}</select></div>`,
       fotos: `<div class="veld breed"><label>Foto's</label>${fotoBlok(g.fotos, `g${i}`)}</div>`,
+      gps: gpsVeldHtml(g, `g${i}`),
     };
     const sleutel = `advies-${g.id}`;
     const inhoud = mobiel
-      ? `<div class="velden">${v.fotos}${v.bouwdeel}${v.gebrek}${v.ernst}${v.intensiteit}${v.omvang}${v.toelichting}</div>
+      ? `<div class="velden">${v.fotos}${v.gps}${v.bouwdeel}${v.gebrek}${v.ernst}${v.intensiteit}${v.omvang}${v.toelichting}</div>
          <details data-details="${sleutel}" ${openDetails.has(sleutel) ? 'open' : ''}><summary>Plaats, advies en urgentie</summary>
            <div class="velden" style="margin-top:.75rem">${v.locatie}${v.maatregel}${v.urgentie}${v.kosten}${v.conditie}${v.status}</div></details>`
       : `<div class="velden">${v.bouwdeel}${v.gebrek}${v.locatie}${v.ernst}${v.intensiteit}${v.omvang}${v.conditie}${v.toelichting}
-           ${v.maatregel}${v.urgentie}${v.kosten}${v.status}${v.fotos}</div>`;
+           ${v.maatregel}${v.urgentie}${v.kosten}${v.status}${v.gps}${v.fotos}</div>`;
     return `
     <div class="gebrek" data-gebrek="${i}" style="border-left-color:${CONDITIES[gebrekScore(g)].kleur}">
       <div class="gebrek-kop"><h3 style="margin:0">Gebrek ${i + 1}</h3>
@@ -2980,13 +3035,14 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
       locatie: `<div class="veld"><label>Plaats</label><input data-g="${i}" data-veld="locatie" value="${esc(g.locatie ?? '')}" maxlength="200" placeholder="bijv. huisnr. 12, noordzijde"></div>`,
       toelichting: `<div class="veld breed"><label>Toelichting / waarneming</label><textarea data-g="${i}" data-veld="toelichting" maxlength="4000">${esc(g.toelichting ?? '')}</textarea></div>`,
       fotos: `<div class="veld breed"><label>Foto's</label>${fotoBlok(g.fotos, `g${i}`)}</div>`,
+      gps: gpsVeldHtml(g, `g${i}`),
     };
     const sleutel = `advies-${g.id}`;
     const inhoud = mobiel
-      ? `<div class="velden">${v.fotos}${v.onderdeel}${v.gebrek}${v.oordeel}${v.toelichting}</div>
+      ? `<div class="velden">${v.fotos}${v.gps}${v.onderdeel}${v.gebrek}${v.oordeel}${v.toelichting}</div>
          <details data-details="${sleutel}" ${openDetails.has(sleutel) ? 'open' : ''}><summary>Plaats, advies en urgentie</summary>
            <div class="velden" style="margin-top:.75rem">${v.locatie}${a.maatregel}${a.urgentie}${a.kosten}${a.status}</div></details>`
-      : `<div class="velden">${v.onderdeel}${v.gebrek}${v.locatie}${v.oordeel}${v.toelichting}${a.maatregel}${a.urgentie}${a.kosten}${a.status}${v.fotos}</div>`;
+      : `<div class="velden">${v.onderdeel}${v.gebrek}${v.locatie}${v.oordeel}${v.toelichting}${a.maatregel}${a.urgentie}${a.kosten}${a.status}${v.gps}${v.fotos}</div>`;
     return `<div class="gebrek" data-gebrek="${i}" style="border-left-color:${esc(o.kleur)}">
       <div class="gebrek-kop"><h3 style="margin:0">Bevinding ${i + 1}</h3>
         <div class="knoppen"><span data-score="${i}">${oordeelChip(o)}</span>
@@ -3003,6 +3059,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
       ${c.status === 'nok' ? `<div class="velden" style="margin-top:.6rem">
         <div class="veld breed"><label>Wat is er niet in orde?</label><textarea data-c="${n}" data-cveld="toelichting" maxlength="2000" style="min-height:60px">${esc(c.toelichting)}</textarea></div>
         <div class="veld breed"><label>Foto's</label>${fotoBlok(c.fotos, `c${n}`)}</div>
+        ${gpsVeldHtml(c, `c${n}`)}
         ${a.maatregel}${a.urgentie}${a.kosten}${a.status}</div>` : ''}</div>`;
   }).join('');
   const toonOordeelBlok = () => {
@@ -3049,6 +3106,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
   toonAlgemeneFotos();
   toonBouwdelen();
   toonGebreken();
+  const gpsV = koppelGpsVelden(form, (k) => (k[0] === 'c' ? staat.checklist[Number(k.slice(1))] : staat.gebreken[Number(k.slice(1))]));
   if (!bestaand) {
     // Ander object gekozen: de bouwdelen volgen het nieuwe object.
     form.elements.objectId?.addEventListener?.('change', () => {
@@ -3089,6 +3147,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
       c[el.dataset.cveld] = el.value;
       if (el.dataset.cveld === 'status') {
         toonGebreken();
+        if (el.value === 'nok' && mobiel && !heeftGps(c)) gpsV.automatisch(`c${el.dataset.c}`);
         if (el.value === 'nok') app.querySelector(`[data-c="${el.dataset.c}"][data-cveld=toelichting]`)?.focus({ preventScroll: true });
       }
       return;
@@ -3152,6 +3211,8 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     staat.gebreken.push(g);
     formulierGewijzigd = true;
     toonGebreken();
+    // Op de telefoon sta je meestal bij het gebrek: locatie direct vastleggen (aan te passen of te wissen).
+    if (mobiel) gpsV.automatisch(`g${staat.gebreken.length - 1}`);
     const nieuw = app.querySelector(`[data-gebrek="${staat.gebreken.length - 1}"]`);
     nieuw?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     if (mobiel) nieuw?.querySelector('input[type=file]')?.closest('label')?.focus();
@@ -3206,7 +3267,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     if (methodiek() === 'checklist') {
       staat.gebreken = staat.checklist.filter((c) => c.status === 'nok').map((c) => ({
         id: c.id, checkpunt: c.punt, bouwdeel: c.punt, gebrek: TY.CHECK.nok, locatie: '', toelichting: c.toelichting ?? '', maatregel: c.maatregel ?? '',
-        urgentie: c.urgentie ?? '', kostenraming: c.kostenraming ?? '', maatregelStatus: c.maatregelStatus ?? 'open', fotos: c.fotos ?? [],
+        urgentie: c.urgentie ?? '', kostenraming: c.kostenraming ?? '', maatregelStatus: c.maatregelStatus ?? 'open', fotos: c.fotos ?? [], ...gpsVan(c),
       }));
     }
     const alleFotos = [...staat.fotos, ...staat.gebreken.flatMap((g) => g.fotos)];
@@ -3239,7 +3300,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
         id: g.id, bouwdeel: g.bouwdeel ?? '', gebrek: g.gebrek ?? '', ...(g.checkpunt ? { checkpunt: g.checkpunt } : { oordeel: Number(g.oordeel) || '' }),
         locatie: g.locatie ?? '', toelichting: g.toelichting ?? '', maatregel: g.maatregel ?? '', urgentie: g.urgentie ?? '',
         kostenraming: g.kostenraming === '' || g.kostenraming == null ? '' : Number(g.kostenraming), maatregelStatus: g.maatregelStatus ?? 'open',
-        fotoIds: fotos.map((f) => f.id),
+        ...gpsVan(g), fotoIds: fotos.map((f) => f.id),
       })) : staat.gebreken.map(({ fotos, ...g }) => ({
         ...g,
         intensiteit: Number(g.intensiteit) || 1,
@@ -9387,6 +9448,7 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
   const form = app.querySelector('#form');
   const $ = (s) => app.querySelector(s);
   const fotoLijst = (k) => (k === 'alg' ? staat.fotos : b.gebreken[Number(k.slice(1))].fotos);
+  const bvcGps = koppelGpsVelden(form, (k) => b.gebreken[Number(k.slice(1))]);
 
   const tekenGebreken = () => {
     $('#gebreken').innerHTML = b.gebreken.length ? b.gebreken.map((g, i) => `
@@ -9401,6 +9463,7 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
           <div class="veld breed"><label class="vereist">Gevolg</label>${segment(`gevolg-${i}`, g.gevolg, BV.GEVOLG.map((p) => [p, p]), `data-g="${i}" data-veld="gevolg"`)}</div>
           <div class="veld breed"><label>Toelichting</label><input data-g="${i}" data-veld="toelichting" value="${esc(g.toelichting ?? '')}" maxlength="200"></div>
           <div class="veld breed"><label>Foto's</label>${fotoRij(g.fotos, `g${i}`)}</div>
+          ${gpsVeldHtml(g, `g${i}`)}
         </div></div>`).join('') : '<p class="mleeg">Geen gebreken vastgelegd.</p>';
   };
   const tekenMaatregelen = () => {
@@ -9474,6 +9537,7 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
   });
   $('#gebrek-plus').onclick = () => {
     b.gebreken.push({ id: nieuwId(), omschrijving: '', plaats: '', gevolg: '', toelichting: '', fotos: [] });
+    if (mobiel) setTimeout(() => bvcGps.automatisch(`g${b.gebreken.length - 1}`), 0);
     tekenGebreken();
     $('#gebreken').lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };

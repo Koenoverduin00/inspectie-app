@@ -155,7 +155,7 @@ export function resultaatRijen({ lijst, laagNaam = new Map(), extra = () => [] }
       });
     } else if (b) {
       (b.gebreken ?? []).forEach((g, n) => {
-        gebreken.push({ waarden: [o.code, o.naam, datum(i.datum), n + 1, g.plaats ?? '', g.omschrijving ?? '', g.type || BV.gebrekType(g.omschrijving), g.gevolg ?? '', '', '', '', '', g.toelichting ?? '', '', '', (g.fotoIds ?? []).length || ''], kleur: '' });
+        gebreken.push({ waarden: [o.code, o.naam, datum(i.datum), n + 1, g.plaats ?? '', g.omschrijving ?? '', g.type || BV.gebrekType(g.omschrijving), g.gevolg ?? '', '', '', '', '', g.toelichting ?? '', '', '', (g.fotoIds ?? []).length || '', ...puntCoord(g)], kleur: '' });
         for (const fid of g.fotoIds ?? []) fotos.push({ objectcode: o.code, onderwerp: `Gebrek ${n + 1}: ${g.omschrijving ?? ''}`, fotoId: fid });
       });
       for (const m of bvcMaatregelen) {
@@ -174,7 +174,7 @@ export function resultaatRijen({ lijst, laagNaam = new Map(), extra = () => [] }
           const bo = TY.bevindingOordeel(i, g);
           gebreken.push({
             waarden: [o.code, o.naam, datum(i.datum), n + 1, g.locatie ? `${g.bouwdeel ?? ''} (${g.locatie})` : g.bouwdeel ?? '', g.checkpunt ? TY.CHECK.nok : g.gebrek ?? '', i.type?.naam ?? '', '',
-              '', '', '', bo.label, g.toelichting ?? '', g.maatregel ?? '', URGENTIES.find((u) => u.id === g.urgentie)?.label ?? '', (g.fotoIds ?? []).length || ''],
+              '', '', '', bo.label, g.toelichting ?? '', g.maatregel ?? '', URGENTIES.find((u) => u.id === g.urgentie)?.label ?? '', (g.fotoIds ?? []).length || '', ...puntCoord(g)],
             kleur: bo.kleur,
           });
           if (g.maatregel || g.urgentie) {
@@ -189,7 +189,7 @@ export function resultaatRijen({ lijst, laagNaam = new Map(), extra = () => [] }
         gebreken.push({
           waarden: [o.code, o.naam, datum(i.datum), n + 1, g.locatie ? `${g.bouwdeel ?? ''} (${g.locatie})` : g.bouwdeel ?? '', g.gebrek ?? '', '', '',
             ERNST[g.ernst]?.label ?? '', INTENSITEIT[g.intensiteit] ?? '', getal(g.omvang), s || '', g.toelichting ?? '', g.maatregel ?? '',
-            URGENTIES.find((u) => u.id === g.urgentie)?.label ?? '', (g.fotoIds ?? []).length || ''],
+            URGENTIES.find((u) => u.id === g.urgentie)?.label ?? '', (g.fotoIds ?? []).length || '', ...puntCoord(g)],
           kleur: s ? CONDITIES[s].kleur : '',
         });
         if (g.maatregel || g.urgentie) {

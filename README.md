@@ -371,6 +371,14 @@ Rijkswaterstaat** (Loo Plan, 8 februari 2017, definitief) en het CROW **Standaar
 - **Rapport** per boom (bijlage 5) en **SUF-BVC export** (boom, boomgebreken, maatregelen) per project of werkpakket;
   bij een BVC-werkpakket een samenvatting per klasse en maatregel.
 
+## GPS-locatie per gebrek of bevinding
+
+Elk gebrek (NEN 2767, boomveiligheidscontrole), elke bevinding (oordeel) en elk controlepunt dat niet in orde is, heeft standaard een veld
+**Locatie (GPS)**. Op de telefoon wordt de positie automatisch vastgelegd zodra je de bevinding toevoegt (je staat er meestal naast);
+met **Opnieuw bepalen** of het kruisje pas je het aan of wis je het. Op de pc leg je de locatie vast met de knop. De nauwkeurigheid (± m) wordt
+bewaard. Detailpagina en rapport tonen de coördinaten met een link naar de kaart; de Excel-export vult per gebrek X/Y (RD) en breedte-/lengtegraad.
+Waterkeringinspecties (STOWA) hadden dit al per waarneming.
+
 ## Inspectietypen en formulierenbibliotheek
 
 Niet elke inspectie volgt NEN 2767. Per **inspectietype** kies je de methodiek (Instellingen → Inspectietypen, alleen beheerders, pc):

@@ -1358,3 +1358,7 @@ form:not(.afroep-inspectie) .a-insp { display: none; }
   .schaalrij .schaalchip { display: none; }
   .checkseg { flex-basis: 100%; }
 }
+
+/* GPS-locatie per gebrek of bevinding */
+.gpsregel { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; }
+.gpsregel > svg { width: 18px; height: 18px; color: var(--primair); }
