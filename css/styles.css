@@ -1317,3 +1317,44 @@ form:not(.afroep-inspectie) .a-insp { display: none; }
   .vastgelegd, .vastgelegd-kaart, .vastgelegd-vink circle { animation: none; }
   .vastgelegd-vink path { animation: none; stroke-dashoffset: 0; }
 }
+
+/* Inspectietypen en formulierenbibliotheek */
+.methodiekchip { display: inline-block; font-size: .72rem; font-weight: 700; letter-spacing: .02em; padding: .05rem .5rem; border-radius: 999px;
+  background: var(--achtergrond); border: 1px solid var(--rand); color: var(--tekst-zacht); white-space: nowrap; }
+.methodiekchip.m-nen { color: #0b4f6c; border-color: #0b4f6c; }
+.methodiekchip.m-oordeel { color: #7a4d00; border-color: #d99a00; }
+.methodiekchip.m-checklist { color: #1a7f37; border-color: #1a7f37; }
+.schaalchip { display: inline-block; font-size: .75rem; font-weight: 600; color: #fff; background: var(--k); border-radius: 999px; padding: 0 .5rem; margin: .1rem .15rem 0 0; }
+.typedetail { margin-top: .25rem; }
+.typetabel td { vertical-align: top; }
+.typetabel tr.vast td { color: var(--tekst-zacht); }
+.methodieken { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .75rem; }
+.methodiek { display: flex; gap: .6rem; align-items: flex-start; border: 2px solid var(--rand); border-radius: 12px; padding: .8rem; cursor: pointer; }
+.methodiek:has(input:checked) { border-color: var(--primair); background: var(--primair-licht); }
+.methodiek input { margin-top: .25rem; }
+.methodiek span { display: flex; flex-direction: column; gap: .2rem; }
+.schaalrij { display: grid; grid-template-columns: 1.6rem minmax(120px, 1fr) 9rem auto auto; gap: .5rem; align-items: center; margin-bottom: .4rem; }
+.schaalnr { font-weight: 700; color: var(--tekst-zacht); text-align: center; }
+.schaalsegment { flex-wrap: wrap; }
+.schaalsegment label { flex: 1 1 5rem; }
+.schaalsegment input:checked + span { background: var(--k); border-color: var(--k); color: #fff; }
+.checkpunt { border: 1px solid var(--rand); border-left: 5px solid var(--rand); border-radius: 10px; padding: .7rem .8rem; margin-bottom: .6rem; background: var(--vlak); }
+.checkpunt.ok { border-left-color: #1a7f37; }
+.checkpunt.nok { border-left-color: #e8710a; }
+.checkpunt.nvt { border-left-color: #8a96a3; }
+.checkpunt-kop { display: flex; justify-content: space-between; align-items: center; gap: .75rem; flex-wrap: wrap; }
+.checkseg { flex: 0 1 22rem; }
+.checkseg .cs-ok input:checked + span { background: #1a7f37; border-color: #1a7f37; }
+.checkseg .cs-nok input:checked + span { background: #e8710a; border-color: #e8710a; }
+.checkseg .cs-nvt input:checked + span { background: #5b6875; border-color: #5b6875; }
+.checktabel td:first-child { width: 2rem; color: var(--tekst-zacht); }
+.dialoog.breed { width: min(560px, calc(100vw - 32px)); }
+.kieslijst { display: grid; gap: .35rem; max-height: 55vh; overflow: auto; margin: .75rem 0; }
+.kieslijst .vink { border: 1px solid var(--rand); border-radius: 8px; padding: .5rem .6rem; }
+.kieslijst .vink.uit { opacity: .6; }
+.kieslijst .vink small { display: block; color: var(--tekst-zacht); }
+@media (max-width: 560px) {
+  .schaalrij { grid-template-columns: 1.4rem 1fr 7rem auto; }
+  .schaalrij .schaalchip { display: none; }
+  .checkseg { flex-basis: 100%; }
+}

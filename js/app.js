@@ -27,6 +27,7 @@ import * as DG from './digigids.js';
 import * as PL from './planning.js';
 import * as DB from './dashboard.js';
 import * as D from './decompositie.js';
+import * as TY from './inspectietypen.js';
 import { I, ico } from './iconen.js';
 import { takenLijst, sorteerTaken, objectGeometrie, PRIORITEITEN } from './taken.js';
 
@@ -111,18 +112,22 @@ const ROUTES = [
   [/^\/personen$/, 'personen', personenPagina],
   [/^\/toewijzen$/, 'toewijzen', toewijzenPagina],
   [/^\/decompositie$/, 'decompositie', decompositiePagina],
+  [/^\/inspectietypen$/, 'inspectietypen', inspectietypenPagina],
+  [/^\/inspectietypen\/([^/]+)$/, 'inspectietypen', (id) => inspectietypeEditor(id)],
+  [/^\/bibliotheek$/, 'bibliotheek', bibliotheekPagina],
+  [/^\/bibliotheek\/([^/]+)$/, 'bibliotheek', (id) => inspectietypeEditor(id, { bibliotheek: true })],
   [/^\/inrichting$/, 'inrichting', inrichtingPagina],
   [/^\/inbox$/, 'inbox', inboxPagina],
 ];
 
 // Het hoofdmenu is compact: onderdelen vallen onder een hoofdgroep en hebben daar een tabblad.
-const NAV_GROEP = { inspecties: 'werkpakketten', werkzaamheden: 'werkpakketten', maatregelen: 'werkpakketten', taken: 'planning', kaart: 'instellingen', personen: 'instellingen', decompositie: 'instellingen', toewijzen: 'werkpakketten' };
+const NAV_GROEP = { inspecties: 'werkpakketten', werkzaamheden: 'werkpakketten', maatregelen: 'werkpakketten', taken: 'planning', kaart: 'instellingen', personen: 'instellingen', decompositie: 'instellingen', inspectietypen: 'instellingen', bibliotheek: 'instellingen', toewijzen: 'werkpakketten' };
 const TABBLADEN = {
   werkpakketten: () => [['#/werkpakketten', I.pakket + ' Werkpakketten'], ['#/inspecties', I.inspectie + ' Inspecties'], ['#/werkzaamheden', I.werk + ' Werkzaamheden'], ['#/maatregelen', I.let + ' Maatregelen'], ...(magBeheren() ? [['#/toewijzen', I.personen + ' Toewijzen']] : [])],
-  instellingen: () => (magBeheren() ? [['#/instellingen', I.instellingen + ' Algemeen'], ['#/personen', I.personen + ' Personen'], ['#/kaart', I.kaart + ' Kaart & GIS'], ['#/decompositie', I.lagen + ' Decompositie']] : []),
+  instellingen: () => (magBeheren() ? [['#/instellingen', I.instellingen + ' Algemeen'], ['#/personen', I.personen + ' Personen'], ['#/kaart', I.kaart + ' Kaart & GIS'], ['#/inspectietypen', I.inspectie + ' Inspectietypen'], ['#/bibliotheek', I.lijst + ' Bibliotheek'], ['#/decompositie', I.lagen + ' Decompositie']] : []),
 };
 // Alleen de overzichtspagina's krijgen tabbladen (geen formulieren of details).
-const TAB_PAGINAS = /^\/(werkpakketten|inspecties|werkzaamheden|maatregelen|toewijzen|instellingen|personen|kaart|decompositie)$/;
+const TAB_PAGINAS = /^\/(werkpakketten|inspecties|werkzaamheden|maatregelen|toewijzen|instellingen|personen|kaart|decompositie|inspectietypen|bibliotheek)$/;
 
 function tabbalk(pad, groep) {
   const tabs = TABBLADEN[groep]?.() ?? [];
@@ -231,7 +236,7 @@ function objectStatus(object, inspecties) {
   // Een GIS-object dat aan een bouwdeel is gekoppeld, telt ook inspecties mee die dat bouwdeel scoorden.
   const bd = object.decomp && decompIndex()?.perId.get(object.decomp)?.niveau === 'bouwdeel' ? object.decomp : null;
   const dekt = (i) => i.objectId === object.id || (bd && (i.bouwdelen ?? []).some((b) => b.id === bd && !b.nietGeinspecteerd));
-  const conditieVan = (i) => (D.perBouwdeel(i) ? (bd ? laatsteScores(inspecties).get(bd)?.score ?? null : null) : inspectieScore(i));
+  const conditieVan = (i) => (TY.oordeelVan(i) ? null : D.perBouwdeel(i) ? (bd ? laatsteScores(inspecties).get(bd)?.score ?? null : null) : inspectieScore(i));
   const laatste = inspecties
     .filter((i) => dekt(i) && i.status === 'afgerond')
     .sort((a, b) => String(b.datum).localeCompare(String(a.datum)))[0];
@@ -248,9 +253,9 @@ function objectStatus(object, inspecties) {
     return { laatste, conditie: null, stowa: ST.zwaarste(laatste.stowa.waarnemingen), volgende, planning: periodiek ? planningStatus(volgende, vandaag()) : 'geen' };
   }
   if (!laatste) return { laatste: null, conditie: null, volgende: null, planning: periodiek ? 'nooit' : 'geen' };
-  if (!periodiek) return { laatste, conditie: conditieVan(laatste), volgende: null, planning: 'geen' };
+  if (!periodiek) return { laatste, conditie: conditieVan(laatste), oordeel: TY.oordeelVan(laatste), volgende: null, planning: 'geen' };
   const volgende = volgendeInspectie(laatste.datum, object.inspectieInterval);
-  return { laatste, conditie: conditieVan(laatste), volgende, planning: planningStatus(volgende, vandaag()) };
+  return { laatste, conditie: conditieVan(laatste), oordeel: TY.oordeelVan(laatste), volgende, planning: planningStatus(volgende, vandaag()) };
 }
 
 // ---------------------------------------------------------------------------
@@ -735,6 +740,476 @@ async function decompositiePagina(_, q) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Inspectietypen (per project) en de formulierenbibliotheek (per bedrijf)
+// Een project krijgt een kópie van een bibliotheekformulier (met versie), zodat lopende projecten niet ongemerkt
+// veranderen. Elke inspectie bewaart een momentopname van haar type. De bibliotheek staat als aparte records in de
+// projectentabel zonder leden: alleen beheerders zien en wijzigen ze (bestaande beveiliging, geen database-update).
+// ---------------------------------------------------------------------------
+const PROTOCOLLEN = [BV.BVC_SOORT, ST.STOWA_SOORT];
+const isBibliotheek = (p) => p?.soort === 'bibliotheek';
+const inspectieTypen = (p = huidigProject, opties = {}) => TY.typenVan(p, INSPECTIESOORTEN, PROTOCOLLEN, opties);
+/** Alle kiesbare inspectiesoorten: de typen van het project plus de vaste protocollen. */
+const inspectieSoorten = (p = huidigProject) => [...inspectieTypen(p).map((t) => t.naam), ...PROTOCOLLEN];
+const methodiekChip = (m) => `<span class="methodiekchip m-${esc(m)}">${esc(TY.METHODIEKEN[m]?.kort ?? m)}</span>`;
+const oordeelChip = (o) => (o ? `<span class="score" style="background:${esc(o.kleur)}" title="${esc(o.tekst || o.label)}">${esc(o.label)}</span>` : '');
+const schaalChips = (schaal) => (schaal ?? []).map((x) => `<span class="schaalchip" style="--k:${esc(x.kleur)}">${esc(x.label)}</span>`).join('');
+
+async function bibliotheekItems() {
+  return (await db.alle('projecten')).filter((p) => isBibliotheek(p) && !p.verwijderd)
+    .sort((a, b) => String(a.naam).localeCompare(String(b.naam), 'nl'));
+}
+
+async function bewaarActiefProject(wijziging) {
+  const p = await actiefProject();
+  const nieuw = { ...p, ...wijziging(p), gewijzigd: new Date().toISOString() };
+  await db.bewaar('projecten', nieuw);
+  huidigProject = nieuw;
+  return nieuw;
+}
+
+/** Kiesvenster met vinkjes; geeft de gekozen ids terug (of null bij annuleren). */
+function kiesDialoog({ titel, uitleg = '', items, knop = 'Toevoegen', leeg = 'Niets om te kiezen.', kop = '' }) {
+  return new Promise((resolve) => {
+    const d = document.createElement('dialog');
+    d.className = 'dialoog breed';
+    d.innerHTML = `<form method="dialog" novalidate>
+      <h2>${esc(titel)}</h2>${uitleg ? `<p><small>${uitleg}</small></p>` : ''}${kop}
+      <div class="kieslijst">${items.length ? items.map((x) => `<label class="vink${x.disabled ? ' uit' : ''}"><input type="checkbox" value="${esc(x.id)}" ${x.checked ? 'checked' : ''} ${x.disabled ? 'disabled' : ''}>
+        <span>${x.label}${x.sub ? `<small>${x.sub}</small>` : ''}</span></label>`).join('') : `<p class="leeg">${esc(leeg)}</p>`}</div>
+      <div class="formvoet"><button class="knop" type="button" data-weg>Annuleren</button>
+        <button class="knop primair" type="submit">${esc(knop)}</button></div></form>`;
+    document.body.append(d);
+    const klaar = (w) => { d.close(); d.remove(); resolve(w); };
+    d.querySelector('[data-weg]').onclick = () => klaar(null);
+    d.addEventListener('cancel', (e) => { e.preventDefault(); klaar(null); });
+    d.querySelector('form').onsubmit = (e) => {
+      e.preventDefault();
+      klaar([...d.querySelectorAll('input[type=checkbox]:checked:not(:disabled)')].map((x) => x.value));
+    };
+    d.showModal();
+  });
+}
+
+/** Andere namen van inspectietypen in het project (voor de controle op dubbele namen). */
+function andereTypeNamen(p, id) {
+  return [...inspectieTypen(p, { ookVerborgen: true }).filter((t) => t.id !== id).map((t) => t.naam), ...PROTOCOLLEN];
+}
+
+/** Hernoemen van een type: werkpakketten, afroepen en formuliervelden gaan mee. */
+async function hernoemSoort(oud, nieuw) {
+  if (!oud || oud === nieuw) return;
+  const nu = new Date().toISOString();
+  const pakketten = (await inProject('werkpakketten')).map((p) => {
+    let w = false;
+    const r = { ...p };
+    if (r.inspectiesoort === oud) { r.inspectiesoort = nieuw; w = true; }
+    if (r.afroepInspectiesoort === oud) { r.afroepInspectiesoort = nieuw; w = true; }
+    if (Array.isArray(r.rondes)) r.rondes = r.rondes.map((x) => (x.inspectiesoort === oud ? (w = true, { ...x, inspectiesoort: nieuw }) : x));
+    return w ? { ...r, gewijzigd: nu } : null;
+  }).filter(Boolean);
+  if (pakketten.length) await db.bewaarVeel('werkpakketten', pakketten);
+  await bewaarActiefProject((p) => ({ velden: (p.velden ?? []).map((d) => (d.alleenBij?.includes(oud) ? { ...d, alleenBij: d.alleenBij.map((s) => (s === oud ? nieuw : s)) } : d)) }));
+}
+
+/** Waar wordt een soort gebruikt (werkpakketten en inspecties)? */
+async function soortGebruik(naam) {
+  const pakketten = (await inProject('werkpakketten')).filter((p) => p.inspectiesoort === naam || p.afroepInspectiesoort === naam
+    || (p.rondes ?? []).some((r) => r.inspectiesoort === naam));
+  const inspecties = (await inProject('inspecties')).filter((i) => i.soort === naam);
+  return { pakketten, inspecties };
+}
+
+async function inspectietypenPagina() {
+  if (!magBeheren()) { app.innerHTML = leegKaart('Alleen beheerders kunnen inspectietypen instellen.'); return; }
+  const project = await actiefProject();
+  if (!project) { app.innerHTML = leegKaart('Kies eerst een project.'); return; }
+  const alle = inspectieTypen(project, { ookVerborgen: true });
+  const items = await bibliotheekItems();
+  const [pakketten, inspecties] = await Promise.all([inProject('werkpakketten'), inProject('inspecties')]);
+  const gebruik = (naam) => ({
+    p: pakketten.filter((p) => p.inspectiesoort === naam || p.afroepInspectiesoort === naam || (p.rondes ?? []).some((r) => r.inspectiesoort === naam)).length,
+    i: inspecties.filter((x) => x.soort === naam).length,
+  });
+  const bronTekst = (t) => {
+    const item = t.bron?.bibId ? items.find((x) => x.id === t.bron.bibId) : null;
+    const nieuwer = TY.nieuwereVersie(t, items);
+    if (t.bron?.bibId) {
+      return `${I.lijst} Bibliotheek v${esc(t.bron.versie)}${t.bron.aangepast ? ' · <em>aangepast in dit project</em>' : ''}${!item ? ' <small>(niet meer in bibliotheek)</small>' : ''}
+        ${nieuwer ? `<br><button class="knop klein primair" data-bijwerk="${esc(t.id)}">${I.vernieuw} Bijwerken naar v${esc(nieuwer.versie)}</button>` : ''}`;
+    }
+    return t.standaard ? 'Standaard' : 'Eigen type';
+  };
+  const rij = (t) => {
+    const g = gebruik(t.naam);
+    const nVelden = TY.veldenVanType(project.velden, t.naam).length;
+    return `<tr data-id="${esc(t.id)}">
+      <td><strong>${esc(t.naam)}</strong>${t.omschrijving ? `<br><small>${esc(t.omschrijving)}</small>` : ''}</td>
+      <td>${methodiekChip(t.methodiek)}<div class="typedetail">${t.methodiek === 'oordeel' ? schaalChips(t.schaal)
+    : t.methodiek === 'checklist' ? `<small>${t.punten.length} controlepunt${t.punten.length === 1 ? '' : 'en'}</small>` : '<small>conditie 1–6</small>'}
+        ${nVelden ? `<small> · ${nVelden} extra veld${nVelden === 1 ? '' : 'en'}</small>` : ''}</div></td>
+      <td><small>${bronTekst(t)}</small></td>
+      <td><small>${g.p} pakket${g.p === 1 ? '' : 'ten'} · ${g.i} inspectie${g.i === 1 ? '' : 's'}</small></td>
+      <td class="knoppen" style="justify-content:flex-end">
+        <a class="knop klein" href="#/inspectietypen/${encodeURIComponent(t.id)}">${I.concept} Bewerken</a>
+        <button class="knop klein" data-naarbib="${esc(t.id)}" title="Opslaan in de formulierenbibliotheek van het bedrijf">${I.exporteer} Naar bibliotheek</button>
+        ${t.naam === CALAMITEIT ? '' : `<button class="knop klein gevaar" data-weg="${esc(t.id)}" title="${t.standaard ? 'Verbergen in dit project' : 'Verwijderen uit dit project'}">${t.standaard ? 'Verbergen' : I.verwijder}</button>`}</td></tr>`;
+  };
+  const zichtbaar = alle.filter((t) => !t.verborgen);
+  const verborgen = alle.filter((t) => t.verborgen);
+  app.innerHTML = `
+    <div class="paginakop"><div><h1>Inspectietypen</h1>
+      <p>Per inspectietype kies je de methodiek: <strong>NEN 2767</strong> (ernst, intensiteit, omvang en conditiescore), een <strong>oordeel met eigen schaal</strong>
+      of een <strong>checklist</strong>. Bij een werkpakket kies je het type; de medewerker krijgt dan automatisch het juiste formulier.</p></div>
+      <div class="knoppen">
+        <a class="knop primair" href="#/inspectietypen/nieuw">＋ Nieuw inspectietype</a>
+        <button class="knop" id="uit-bib">${I.lijst} Uit bibliotheek</button>
+        <button class="knop" id="uit-project">${I.kopie} Uit ander project</button>
+        <a class="knop" href="#/bibliotheek">${I.lijst} Bibliotheek beheren</a></div></div>
+    <section class="kaart" style="padding:0"><div class="tabelhouder"><table class="typetabel">
+      <thead><tr><th>Inspectietype</th><th>Methodiek</th><th>Herkomst</th><th>Gebruik</th><th></th></tr></thead>
+      <tbody>${zichtbaar.map(rij).join('')}
+        ${PROTOCOLLEN.map((s) => `<tr class="vast"><td><strong>${esc(s)}</strong></td><td><span class="methodiekchip">Vast protocol</span></td><td><small>Ingebouwd</small></td><td></td><td></td></tr>`).join('')}</tbody>
+    </table></div></section>
+    ${verborgen.length ? `<details class="kaart"><summary>${verborgen.length} verborgen standaardtype${verborgen.length === 1 ? '' : 'n'}</summary>
+      <ul>${verborgen.map((t) => `<li>${esc(t.naam)} <button class="knop klein" data-toon="${esc(t.id)}">Weer tonen</button></li>`).join('')}</ul></details>` : ''}
+    <p><small>${I.let} Bestaande inspecties houden het formulier waarmee ze zijn gedaan. Een wijziging geldt voor nieuwe inspecties.</small></p>`;
+
+  const typeVan = (id) => alle.find((t) => t.id === id);
+  const opnieuw = () => inspectietypenPagina();
+  app.querySelector('.typetabel').addEventListener('click', async (e) => {
+    const k = e.target.closest('[data-bijwerk], [data-naarbib], [data-weg]');
+    if (!k) return;
+    if (k.dataset.bijwerk) {
+      const t = typeVan(k.dataset.bijwerk);
+      const item = TY.nieuwereVersie(t, items);
+      if (t.bron?.aangepast && !confirm(`"${t.naam}" is in dit project aangepast. Bijwerken naar bibliotheekversie ${item.versie} overschrijft die aanpassingen. Doorgaan?`)) return;
+      await zetTypeInProject(item.type, item.velden, { bibId: item.id, versie: item.versie }, t.naam);
+      melding(`${t.naam} bijgewerkt naar versie ${item.versie}`);
+      return opnieuw();
+    }
+    if (k.dataset.naarbib) {
+      await typeNaarBibliotheek(typeVan(k.dataset.naarbib), items);
+      return opnieuw();
+    }
+    if (k.dataset.weg) {
+      const t = typeVan(k.dataset.weg);
+      const g = await soortGebruik(t.naam);
+      const actief = g.pakketten.filter((p) => !p.gesloten && pakketStatus(p) !== 'afgerond');
+      if (actief.length) return melding(`"${t.naam}" wordt gebruikt in ${actief.length} lopend${actief.length === 1 ? '' : 'e'} werkpakket${actief.length === 1 ? '' : 'ten'} (${actief.slice(0, 3).map((p) => p.naam).join(', ')}). Kies daar eerst een ander type.`, 'fout');
+      if (!confirm(t.standaard ? `"${t.naam}" verbergen in dit project? Je kunt het later weer tonen.` : `"${t.naam}" verwijderen uit dit project? Bestaande inspecties blijven bewaard.`)) return;
+      await bewaarActiefProject((p) => {
+        const lijst = [...(p.inspectietypen ?? [])];
+        const i = lijst.findIndex((x) => x.id === t.id);
+        if (t.standaard) {
+          const { standaard, ...rest } = t;
+          if (i >= 0) lijst[i] = { ...lijst[i], verborgen: true }; else lijst.push({ ...rest, verborgen: true });
+          return { inspectietypen: lijst };
+        }
+        return { inspectietypen: lijst.filter((x) => x.id !== t.id) };
+      });
+      melding(t.standaard ? `${t.naam} verborgen` : `${t.naam} verwijderd`);
+      return opnieuw();
+    }
+  });
+  app.querySelectorAll('[data-toon]').forEach((k) => k.addEventListener('click', async () => {
+    await bewaarActiefProject((p) => ({ inspectietypen: (p.inspectietypen ?? []).map((x) => (x.id === k.dataset.toon ? { ...x, verborgen: false } : x)) }));
+    opnieuw();
+  }));
+  app.querySelector('#uit-bib').onclick = async () => {
+    if (!items.length) return melding('De bibliotheek is nog leeg. Sla eerst een type op in de bibliotheek, of voeg daar de voorbeelden toe.', 'fout');
+    const ids = await kiesDialoog({
+      titel: 'Uit de bibliotheek toevoegen', uitleg: 'Het project krijgt een kopie. Bestaat er al een type met dezelfde naam, dan wordt dat vervangen.',
+      items: items.map((x) => {
+        const hier = alle.find((t) => t.bron?.bibId === x.id);
+        const actueel = hier && Number(hier.bron.versie) === Number(x.versie) && !hier.bron.aangepast;
+        return { id: x.id, label: `${esc(x.naam)} ${methodiekChip(x.type.methodiek)}`, sub: actueel ? 'Al in dit project (actuele versie)' : `Versie ${x.versie}${x.type.omschrijving ? ` · ${esc(x.type.omschrijving)}` : ''}${hier ? ' · vervangt de kopie in dit project' : ''}`, disabled: actueel };
+      }),
+    });
+    if (!ids?.length) return;
+    for (const id of ids) {
+      const x = items.find((y) => y.id === id);
+      await zetTypeInProject(x.type, x.velden, { bibId: x.id, versie: x.versie });
+    }
+    melding(`${ids.length} inspectietype${ids.length === 1 ? '' : 'n'} toegevoegd`);
+    opnieuw();
+  };
+  app.querySelector('#uit-project').onclick = async () => {
+    const projecten = (await zichtbareProjecten()).filter((p) => p.id !== project.id);
+    const kandidaten = projecten.flatMap((p) => (p.inspectietypen ?? []).filter((t) => !t.verborgen).map((t) => ({ p, t })));
+    const ids = await kiesDialoog({
+      titel: 'Uit een ander project kopiëren', uitleg: 'Alleen eigen of aangepaste inspectietypen. Extra velden van het type gaan mee.',
+      leeg: 'Andere projecten hebben geen eigen of aangepaste inspectietypen.',
+      items: kandidaten.map(({ p, t }) => ({ id: `${p.id}|${t.id}`, label: `${esc(t.naam)} ${methodiekChip(t.methodiek)}`, sub: `uit ${esc(p.naam)}` })),
+    });
+    if (!ids?.length) return;
+    for (const sleutel of ids) {
+      const { p, t } = kandidaten.find((k) => `${k.p.id}|${k.t.id}` === sleutel);
+      await zetTypeInProject(t, TY.veldenVoorBibliotheek(p.velden, t.naam), t.bron ?? null);
+    }
+    melding(`${ids.length} inspectietype${ids.length === 1 ? '' : 'n'} gekopieerd`);
+    opnieuw();
+  };
+}
+
+/** Zet een type in het actieve project (vervangt een gelijknamig type of het type met oudeNaam). */
+async function zetTypeInProject(type, typeVelden, bron, oudeNaam = null) {
+  const p = await actiefProject();
+  if (oudeNaam && oudeNaam !== type.naam) {
+    const t = (p.inspectietypen ?? []).find((x) => x.naam === oudeNaam);
+    if (t) {
+      await bewaarActiefProject((q) => ({ inspectietypen: q.inspectietypen.map((x) => (x.naam === oudeNaam ? { ...x, naam: type.naam } : x)) }));
+      await hernoemSoort(oudeNaam, type.naam);
+    }
+  }
+  const std = inspectieTypen(p, { ookVerborgen: true }).find((t) => t.standaard && t.naam === type.naam);
+  const r = TY.zetInProject(await actiefProject(), std ? { ...type, id: std.id } : type, { velden: typeVelden ?? [], bron, nieuwId });
+  await bewaarActiefProject(() => ({ inspectietypen: r.inspectietypen, velden: r.velden }));
+  return r.type;
+}
+
+/** Slaat een projecttype op in de bibliotheek (nieuw item, of nieuwe versie van het item waar het vandaan komt). */
+async function typeNaarBibliotheek(t, items) {
+  const project = await actiefProject();
+  const schoonType = TY.controleer({ ...t, id: undefined, standaard: undefined, verborgen: undefined, bron: undefined }).type;
+  delete schoonType.id; delete schoonType.standaard; delete schoonType.verborgen; delete schoonType.bron;
+  const typeVelden = TY.veldenVoorBibliotheek(project.velden, t.naam);
+  let item = t.bron?.bibId ? items.find((x) => x.id === t.bron.bibId) : null;
+  const zelfdeNaam = items.find((x) => x.naam.toLowerCase() === t.naam.toLowerCase() && x.id !== item?.id);
+  if (!item && zelfdeNaam) {
+    if (!confirm(`De bibliotheek heeft al een formulier "${zelfdeNaam.naam}" (versie ${zelfdeNaam.versie}). Vervangen door deze versie?`)) return;
+    item = zelfdeNaam;
+  } else if (item && !confirm(`Bibliotheekformulier "${item.naam}" bijwerken van versie ${item.versie} naar ${Number(item.versie) + 1}? Andere projecten krijgen een melding dat er een nieuwere versie is.`)) return;
+  const nu = new Date().toISOString();
+  const nieuw = {
+    ...(item ?? { id: nieuwId(), soort: 'bibliotheek', aangemaakt: nu }),
+    naam: schoonType.naam, type: schoonType, velden: typeVelden, versie: item ? Number(item.versie) + 1 : 1, gewijzigd: nu, door: ikEmail() || instelling.lees('inspecteur') || '',
+  };
+  await db.bewaar('projecten', nieuw);
+  await bewaarActiefProject((p) => ({ inspectietypen: (p.inspectietypen ?? []).some((x) => x.id === t.id)
+    ? p.inspectietypen.map((x) => (x.id === t.id ? { ...x, bron: { bibId: nieuw.id, versie: nieuw.versie, aangepast: false } } : x))
+    : [...(p.inspectietypen ?? []), { ...t, standaard: undefined, bron: { bibId: nieuw.id, versie: nieuw.versie, aangepast: false } }] }));
+  gedaan(item ? `Bibliotheek bijgewerkt naar versie ${nieuw.versie}` : 'Opgeslagen in de bibliotheek', { extra: nieuw.naam });
+}
+
+const KLEUR_OPTIES = (gekozen) => TY.KLEUREN.map(([k, l]) => `<option value="${k}" ${k === gekozen ? 'selected' : ''}>${l}</option>`).join('');
+
+/** Bewerken van een inspectietype: in het project (#/inspectietypen/:id) of in de bibliotheek (#/bibliotheek/:id). */
+async function inspectietypeEditor(id, { bibliotheek = false } = {}) {
+  if (!magBeheren()) { app.innerHTML = leegKaart('Alleen beheerders kunnen inspectietypen instellen.'); return; }
+  const project = bibliotheek ? null : await actiefProject();
+  if (!bibliotheek && !project) { app.innerHTML = leegKaart('Kies eerst een project.'); return; }
+  const items = await bibliotheekItems();
+  const item = bibliotheek && id !== 'nieuw' ? items.find((x) => x.id === id) : null;
+  const bestaand = bibliotheek ? item?.type ?? null : (id === 'nieuw' ? null : inspectieTypen(project, { ookVerborgen: true }).find((t) => t.id === id));
+  if (id !== 'nieuw' && !bestaand) { app.innerHTML = leegKaart('Inspectietype niet gevonden.', `<a class="knop" href="${bibliotheek ? '#/bibliotheek' : '#/inspectietypen'}">Terug</a>`); return; }
+  const t = bestaand ?? { naam: '', methodiek: 'oordeel', schaal: TY.STANDAARD_SCHAAL.map((x) => ({ ...x })), onderdelen: [], gebreken: [], punten: [], oordeelRegel: 'slechtste', omschrijving: '' };
+  let schaal = (t.schaal?.length ? t.schaal : TY.STANDAARD_SCHAAL).map((x) => ({ ...x }));
+  const terug = bibliotheek ? '#/bibliotheek' : '#/inspectietypen';
+  const typeVelden = bibliotheek ? (item?.velden ?? []) : TY.veldenVanType(project.velden, t.naam);
+  const naamVast = Boolean(t.standaard);
+
+  app.innerHTML = `
+    <div class="paginakop"><div><p><a href="${terug}">← ${bibliotheek ? 'Formulierenbibliotheek' : 'Inspectietypen'}</a></p>
+      <h1>${bestaand ? esc(t.naam) : 'Nieuw inspectietype'}</h1>
+      <p>${bibliotheek ? `${I.lijst} Formulier in de bibliotheek van het bedrijf${item ? ` · versie ${esc(item.versie)}` : ''}. Projecten krijgen een kopie.`
+    : `In project <strong>${esc(project.naam)}</strong>${t.bron?.bibId ? ` · kopie van bibliotheekversie ${esc(t.bron.versie)}` : ''}.`}</p></div></div>
+    <form id="typeform" novalidate>
+      <section class="kaart"><h2>Algemeen</h2><div class="velden">
+        <div class="veld"><label for="t-naam" class="vereist">Naam</label><input id="t-naam" name="naam" value="${esc(t.naam)}" maxlength="80" ${naamVast ? 'readonly' : ''} placeholder="bijv. Staat verhardingen">
+          ${naamVast ? '<small>De naam van een standaardtype ligt vast.</small>' : ''}</div>
+        <div class="veld breed"><label for="t-omschrijving">Omschrijving</label><input id="t-omschrijving" name="omschrijving" value="${esc(t.omschrijving ?? '')}" maxlength="200" placeholder="Waar is deze inspectie voor?"></div>
+      </div></section>
+      <section class="kaart"><h2>Methodiek</h2>
+        <div class="methodieken">${Object.entries(TY.METHODIEKEN).map(([k, m]) => `
+          <label class="methodiek"><input type="radio" name="methodiek" value="${k}" ${t.methodiek === k ? 'checked' : ''}>
+            <span><strong>${esc(m.label)}</strong><small>${esc(m.uitleg)}</small></span></label>`).join('')}</div>
+      </section>
+      <section class="kaart" data-m="oordeel"><h2>Schaal</h2>
+        <p><small>Van best naar slechtst, 2 tot 6 niveaus. Het slechtste niveau onderaan.</small></p>
+        <div id="schaal"></div>
+        <button type="button" class="knop klein" id="schaal-bij">＋ Niveau</button>
+        <div class="velden" style="margin-top:1rem">
+          <div class="veld"><label for="t-onderdelen">Onderdelen</label><textarea id="t-onderdelen" name="onderdelen" placeholder="Eén per regel, bijv.&#10;Rijbaan&#10;Fietspad&#10;Trottoir">${esc((t.onderdelen ?? []).join('\n'))}</textarea>
+            <small>Keuzelijst voor de inspecteur. Leeg = vrij invullen.</small></div>
+          <div class="veld"><label for="t-gebreken">Gebreken</label><textarea id="t-gebreken" name="gebreken" placeholder="Eén per regel, bijv.&#10;Rafeling&#10;Scheurvorming">${esc((t.gebreken ?? []).join('\n'))}</textarea>
+            <small>Keuzelijst. Leeg = vrij invullen.</small></div>
+          <div class="veld breed"><label>Oordeel van de hele inspectie</label>
+            ${segment('oordeelRegel', t.oordeelRegel ?? 'slechtste', [['slechtste', 'Slechtste bevinding (automatisch)'], ['handmatig', 'Inspecteur kiest zelf']])}</div>
+        </div>
+      </section>
+      <section class="kaart" data-m="checklist"><h2>Controlepunten</h2>
+        <div class="veld"><label for="t-punten" class="vereist">Controlepunten</label><textarea id="t-punten" name="punten" style="min-height:160px" placeholder="Eén per regel, bijv.&#10;Bord aanwezig en juist&#10;Reflectie voldoende&#10;Paal recht en stevig">${esc((t.punten ?? []).join('\n'))}</textarea>
+          <small>Per punt kiest de inspecteur: in orde, niet in orde of n.v.t. Het oordeel is het aantal punten dat niet in orde is.</small></div>
+      </section>
+      <section class="kaart" data-m="nen"><h2>NEN 2767</h2>
+        <p>Gebreken met bouwdeel, ernst, intensiteit en omvang; de conditiescore (1–6) wordt berekend. Heeft het object een gekoppelde
+          <a href="#/decompositie">decompositie</a>, dan scoort de inspecteur per bouwdeel.</p></section>
+      <section class="kaart"><h2>Extra velden</h2>
+        ${typeVelden.length ? `<ul>${typeVelden.map((d) => `<li>${esc(d.label)} <small>(${esc(velden.VELDTYPEN[d.type] ?? d.type)}${d.verplicht ? ', verplicht' : ''})</small></li>`).join('')}</ul>` : '<p class="leeg" style="margin:0">Geen extra velden.</p>'}
+        <p><small>${bibliotheek ? 'Extra velden komen mee als je een type vanuit een project in de bibliotheek opslaat, en gaan mee naar elk project dat het formulier krijgt.'
+    : `Extra velden (bijv. een handtekening, meetwaarde of keuzelijst) stel je in bij <a href="#/projecten/${encodeURIComponent(project.id)}/velden?formulier=inspectie">Formuliervelden</a> met "Alleen bij: ${esc(t.naam || 'dit type')}". Ze gaan mee naar de bibliotheek.`}</small></p>
+      </section>
+      <div class="formvoet kaart"><a class="knop" href="${terug}">Annuleren</a><button class="knop primair" type="submit">${I.vink} Opslaan</button></div>
+    </form>`;
+
+  const form = app.querySelector('#typeform');
+  const tekenSchaal = () => {
+    app.querySelector('#schaal').innerHTML = schaal.map((x, n) => `<div class="schaalrij">
+      <span class="schaalnr">${n + 1}</span><input data-s="${n}" data-k="label" value="${esc(x.label)}" maxlength="30" placeholder="Naam niveau" aria-label="Naam niveau ${n + 1}">
+      <select data-s="${n}" data-k="kleur" aria-label="Kleur niveau ${n + 1}">${KLEUR_OPTIES(x.kleur)}</select>
+      <span class="schaalchip" style="--k:${esc(x.kleur)}">${esc(x.label || '…')}</span>
+      <button type="button" class="knop klein" data-s-weg="${n}" ${schaal.length <= 2 ? 'disabled' : ''} aria-label="Niveau verwijderen">${I.kruis}</button></div>`).join('');
+    app.querySelector('#schaal-bij').disabled = schaal.length >= 6;
+  };
+  const toonMethodiek = () => {
+    const m = form.elements.methodiek.value;
+    form.querySelectorAll('[data-m]').forEach((s) => { s.hidden = s.dataset.m !== m; });
+  };
+  tekenSchaal();
+  toonMethodiek();
+  form.addEventListener('change', (e) => { if (e.target.name === 'methodiek') toonMethodiek(); if (e.target.dataset.k === 'kleur') tekenSchaal(); });
+  form.addEventListener('input', (e) => {
+    formulierGewijzigd = true;
+    const s = e.target.dataset.s;
+    if (s === undefined) return;
+    schaal[Number(s)][e.target.dataset.k] = e.target.value;
+    if (e.target.dataset.k === 'kleur') tekenSchaal();
+    else e.target.parentElement.querySelector('.schaalchip').textContent = e.target.value || '…';
+  });
+  form.addEventListener('click', (e) => {
+    const w = e.target.closest('[data-s-weg]');
+    if (w) { schaal.splice(Number(w.dataset.sWeg), 1); tekenSchaal(); }
+  });
+  app.querySelector('#schaal-bij').onclick = () => {
+    const kleur = TY.KLEUREN[Math.min(schaal.length, TY.KLEUREN.length - 2)][0];
+    schaal.push({ label: '', kleur });
+    tekenSchaal();
+    app.querySelector(`[data-s="${schaal.length - 1}"][data-k=label]`).focus();
+  };
+
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const d = formulierData(form);
+    const regels = (s) => String(s ?? '').split(/\r?\n/);
+    const andere = bibliotheek ? items.filter((x) => x.id !== item?.id).map((x) => x.naam) : andereTypeNamen(project, bestaand?.id);
+    const { type, fouten } = TY.controleer({
+      ...(bestaand ?? {}), naam: naamVast ? t.naam : d.naam, omschrijving: d.omschrijving, methodiek: d.methodiek,
+      schaal, onderdelen: regels(d.onderdelen), gebreken: regels(d.gebreken), punten: regels(d.punten), oordeelRegel: d.oordeelRegel,
+    }, { andereNamen: andere });
+    if (fouten.length) return melding(fouten[0], 'fout');
+    const nu = new Date().toISOString();
+    if (bibliotheek) {
+      const { id: _i, standaard, verborgen, bron, ...schoon } = type;
+      const nieuw = { ...(item ?? { id: nieuwId(), soort: 'bibliotheek', aangemaakt: nu, velden: [] }), naam: schoon.naam, type: schoon,
+        versie: item ? Number(item.versie) + 1 : 1, gewijzigd: nu, door: ikEmail() || instelling.lees('inspecteur') || '' };
+      await db.bewaar('projecten', nieuw);
+      formulierGewijzigd = false;
+      // Projecten met een niet-aangepaste kopie van een oudere versie: meteen meenemen?
+      const projecten = (await zichtbareProjecten()).filter((p) => (p.inspectietypen ?? []).some((x) => x.bron?.bibId === nieuw.id && !x.bron.aangepast && Number(x.bron.versie) < nieuw.versie));
+      if (item && projecten.length && confirm(`Versie ${nieuw.versie} opgeslagen.\n\n${projecten.length} project(en) gebruiken een ongewijzigde kopie van een oudere versie:\n${projecten.map((p) => `• ${p.naam}`).join('\n')}\n\nOok daar bijwerken? (Bestaande inspecties blijven ongewijzigd.)`)) {
+        for (const p of projecten) {
+          const oud = p.inspectietypen.find((x) => x.bron?.bibId === nieuw.id);
+          if (oud.naam !== nieuw.naam && p.id !== projectId()) continue; // hernoemen alleen binnen het actieve project
+          const r = TY.zetInProject({ ...p, inspectietypen: p.inspectietypen.map((x) => (x.id === oud.id ? { ...x, naam: nieuw.naam } : x)) },
+            { ...nieuw.type, id: oud.id }, { velden: nieuw.velden, bron: { bibId: nieuw.id, versie: nieuw.versie }, nieuwId });
+          await db.bewaar('projecten', { ...p, inspectietypen: r.inspectietypen, velden: r.velden, gewijzigd: nu });
+        }
+      }
+      gedaan(item ? `Formulier opgeslagen (versie ${nieuw.versie})` : 'Formulier toegevoegd aan de bibliotheek', { extra: nieuw.naam });
+      return ga('#/bibliotheek');
+    }
+    const oudNaam = bestaand?.naam;
+    const { standaard, ...opslaan } = type;
+    if (opslaan.bron?.bibId) opslaan.bron = { ...opslaan.bron, aangepast: true };
+    const nieuwType = { ...opslaan, id: bestaand?.id ?? nieuwId(), verborgen: Boolean(bestaand?.verborgen) };
+    await bewaarActiefProject((p) => {
+      const lijst = [...(p.inspectietypen ?? [])];
+      const i = lijst.findIndex((x) => x.id === nieuwType.id);
+      if (i >= 0) lijst[i] = nieuwType; else lijst.push(nieuwType);
+      return { inspectietypen: lijst };
+    });
+    if (oudNaam && oudNaam !== nieuwType.naam) await hernoemSoort(oudNaam, nieuwType.naam);
+    formulierGewijzigd = false;
+    gedaan(bestaand ? 'Inspectietype opgeslagen' : 'Inspectietype toegevoegd', { extra: `${nieuwType.naam} · ${TY.METHODIEKEN[nieuwType.methodiek].label}` });
+    ga('#/inspectietypen');
+  };
+}
+
+async function bibliotheekPagina() {
+  if (!magBeheren()) { app.innerHTML = leegKaart('Alleen beheerders kunnen de formulierenbibliotheek beheren.'); return; }
+  const items = await bibliotheekItems();
+  const projecten = await zichtbareProjecten();
+  const gebruiktIn = (x) => projecten.filter((p) => (p.inspectietypen ?? []).some((t) => t.bron?.bibId === x.id));
+  const ontbrekend = TY.VOORBEELDEN.filter((v) => !items.some((x) => x.naam.toLowerCase() === v.naam.toLowerCase()));
+  app.innerHTML = `
+    <div class="paginakop"><div><h1>Formulierenbibliotheek</h1>
+      <p>De inspectieformulieren van het bedrijf. Zet ze in een project als kopie; pas je een formulier hier aan, dan krijgt het een nieuwe versie
+      en zien projecten dat er een update is. Alleen beheerders zien de bibliotheek.</p></div>
+      <div class="knoppen"><a class="knop primair" href="#/bibliotheek/nieuw">＋ Nieuw formulier</a>
+        ${ontbrekend.length ? `<button class="knop" id="voorbeelden">${I.sjabloon} Voorbeelden toevoegen (${ontbrekend.length})</button>` : ''}
+        <a class="knop" href="#/inspectietypen">${I.inspectie} Inspectietypen van dit project</a></div></div>
+    ${items.length ? `<section class="kaart" style="padding:0"><div class="tabelhouder"><table class="typetabel">
+      <thead><tr><th>Formulier</th><th>Methodiek</th><th>Versie</th><th>Gebruikt in</th><th></th></tr></thead>
+      <tbody>${items.map((x) => {
+    const g = gebruiktIn(x);
+    const oud = g.filter((p) => p.inspectietypen.some((t) => t.bron?.bibId === x.id && Number(t.bron.versie) < Number(x.versie))).length;
+    return `<tr><td><strong>${esc(x.naam)}</strong>${x.type.omschrijving ? `<br><small>${esc(x.type.omschrijving)}</small>` : ''}</td>
+      <td>${methodiekChip(x.type.methodiek)}<div class="typedetail">${x.type.methodiek === 'oordeel' ? schaalChips(x.type.schaal) : x.type.methodiek === 'checklist' ? `<small>${x.type.punten.length} controlepunten</small>` : ''}
+        ${x.velden?.length ? `<small> · ${x.velden.length} extra veld${x.velden.length === 1 ? '' : 'en'}</small>` : ''}</div></td>
+      <td>v${esc(x.versie)}<br><small>${datumNL(String(x.gewijzigd).slice(0, 10))}${x.door ? ` · ${esc(x.door)}` : ''}</small></td>
+      <td><small>${g.length ? g.map((p) => esc(p.naam)).join(', ') : '–'}${oud ? `<br>${I.let} ${oud} met oudere versie` : ''}</small></td>
+      <td class="knoppen" style="justify-content:flex-end">
+        <a class="knop klein" href="#/bibliotheek/${encodeURIComponent(x.id)}">${I.concept} Bewerken</a>
+        <button class="knop klein" data-naar="${esc(x.id)}">${I.kopie} Naar projecten</button>
+        <button class="knop klein gevaar" data-weg="${esc(x.id)}" aria-label="Verwijderen">${I.verwijder}</button></td></tr>`;
+  }).join('')}</tbody></table></div></section>`
+    : leegKaart('De bibliotheek is nog leeg. Maak een nieuw formulier, voeg de voorbeelden toe (Staat verhardingen, Bebording, Eenvoudige schouw), of sla vanuit Inspectietypen een type van een project op in de bibliotheek.')}`;
+
+  app.querySelector('#voorbeelden')?.addEventListener('click', async () => {
+    const nu = new Date().toISOString();
+    for (const v of ontbrekend) {
+      const { type } = TY.controleer(v);
+      await db.bewaar('projecten', { id: nieuwId(), soort: 'bibliotheek', naam: type.naam, type, velden: [], versie: 1, aangemaakt: nu, gewijzigd: nu, door: ikEmail() || '' });
+    }
+    melding(`${ontbrekend.length} voorbeeld${ontbrekend.length === 1 ? '' : 'en'} toegevoegd`);
+    bibliotheekPagina();
+  });
+  app.querySelector('.typetabel')?.addEventListener('click', async (e) => {
+    const weg = e.target.closest('[data-weg]');
+    if (weg) {
+      const x = items.find((y) => y.id === weg.dataset.weg);
+      if (!confirm(`"${x.naam}" uit de bibliotheek verwijderen? Projecten houden hun kopie.`)) return;
+      await db.verwijder('projecten', x.id);
+      melding(`${x.naam} verwijderd uit de bibliotheek`);
+      return bibliotheekPagina();
+    }
+    const naar = e.target.closest('[data-naar]');
+    if (!naar) return;
+    const x = items.find((y) => y.id === naar.dataset.naar);
+    const ids = await kiesDialoog({
+      titel: `"${x.naam}" naar projecten`, uitleg: 'Elk gekozen project krijgt een kopie van versie ' + x.versie + '. Een type met dezelfde naam wordt vervangen; bestaande inspecties blijven ongewijzigd.',
+      items: projecten.map((p) => {
+        const t = (p.inspectietypen ?? []).find((y) => y.bron?.bibId === x.id);
+        const actueel = t && Number(t.bron.versie) === Number(x.versie) && !t.bron.aangepast;
+        return { id: p.id, label: esc(p.naam), sub: actueel ? 'Heeft de actuele versie' : t ? `Heeft versie ${t.bron.versie}${t.bron.aangepast ? ' (aangepast)' : ''}` : '', disabled: actueel };
+      }),
+      knop: 'Kopiëren',
+    });
+    if (!ids?.length) return;
+    const nu = new Date().toISOString();
+    for (const pid of ids) {
+      const p = await db.haal('projecten', pid);
+      const std = inspectieTypen(p, { ookVerborgen: true }).find((t) => t.standaard && t.naam === x.type.naam);
+      const r = TY.zetInProject(p, std ? { ...x.type, id: std.id } : x.type, { velden: x.velden ?? [], bron: { bibId: x.id, versie: x.versie }, nieuwId });
+      await db.bewaar('projecten', { ...p, inspectietypen: r.inspectietypen, velden: r.velden, gewijzigd: nu });
+      if (pid === projectId()) huidigProject = await db.haal('projecten', pid);
+    }
+    gedaan(`Gekopieerd naar ${ids.length} project${ids.length === 1 ? '' : 'en'}`, { extra: `${x.naam} · versie ${x.versie}` });
+    bibliotheekPagina();
+  });
+}
+
 function alleMaatregelen(inspecties, objectMap) {
   const lijst = [];
   for (const insp of inspecties) {
@@ -855,7 +1330,23 @@ const kenmerk = (label, waarde) => (waarde === '' || waarde === null || waarde =
   : `<span class="kenmerk"><small>${esc(label)}</small>${waarde}</span>`);
 
 /** Eén NEN 2767-gebrek als overzichtelijke kaart. */
-async function nenGebrekKaart(g, n) {
+async function nenGebrekKaart(g, n, i = null) {
+  if (i && TY.methodiekVan(i) !== 'nen') {
+    const o = TY.bevindingOordeel(i, g);
+    return `<article class="gebrekkaart" data-bevinding="${esc(String(g.id ?? ''))}" style="--gk:${esc(o.kleur)}">
+      <header><span class="gk-nr">${n + 1}</span>
+        <div class="gk-titel"><h3>${esc([g.bouwdeel, g.checkpunt ? '' : g.gebrek].filter(Boolean).join(' – ') || 'Bevinding')}</h3>${g.locatie ? `<small>${I.locatie} ${esc(g.locatie)}</small>` : ''}</div>
+        ${oordeelChip(o)}</header>
+      ${g.urgentie || g.maatregel || (toonKosten() && g.kostenraming !== '' && g.kostenraming != null) ? `<div class="kenmerken">
+        ${g.urgentie ? kenmerk('Urgentie', urgentieLabel(g.urgentie)) : ''}
+        ${toonKosten() && g.kostenraming !== '' && g.kostenraming != null ? kenmerk('Raming', euro(g.kostenraming)) : ''}
+        ${g.maatregel || g.urgentie ? kenmerk('Maatregel', g.maatregelStatus === 'uitgevoerd' ? '<span class="label-status uitgevoerd">Uitgevoerd</span>' : '<span class="label-status binnenkort">Open</span>') : ''}</div>` : ''}
+      ${g.toelichting || g.maatregel ? `<div class="gk-tekst">
+        ${g.toelichting ? `<div><h4>Waarneming</h4><p>${esc(g.toelichting)}</p></div>` : ''}
+        ${g.maatregel ? `<div><h4>Maatregel</h4><p>${esc(g.maatregel)}</p></div>` : ''}</div>` : ''}
+      ${await fotoGalerij(g.fotoIds, { titel: "Foto's" })}
+    </article>`;
+  }
   const s = gebrekScore(g);
   return `<article class="gebrekkaart" data-bevinding="${esc(String(g.id ?? ''))}" style="--gk:${CONDITIES[s]?.kleur ?? '#9aa5b1'}">
     <header><span class="gk-nr">${n + 1}</span>
@@ -889,12 +1380,21 @@ async function bvcGebrekKaart(g, n) {
 }
 
 /** Kort overzicht boven de gebreken: aantal per conditie en totale raming. */
-function gebrekSamenvatting(gebreken) {
+function gebrekSamenvatting(gebreken, i = null) {
   if (!gebreken.length) return '';
-  const per = {};
-  for (const g of gebreken) { const s = gebrekScore(g); per[s] = (per[s] ?? 0) + 1; }
   const raming = gebreken.reduce((t, g) => t + (Number(g.kostenraming) || 0), 0);
   const open = gebreken.filter((g) => (g.maatregel || g.urgentie) && g.maatregelStatus !== 'uitgevoerd').length;
+  if (i && TY.methodiekVan(i) === 'oordeel') {
+    const per = new Map();
+    for (const g of gebreken) { const o = TY.bevindingOordeel(i, g); const k = `${Number(g.oordeel) || 0}`; per.set(k, { o, n: (per.get(k)?.n ?? 0) + 1 }); }
+    return `<div class="gebrekbalk">${[...per.entries()].sort((a, b) => b[0] - a[0]).map(([, x]) => `${oordeelChip(x.o)}<span class="gb-aantal">× ${x.n}</span>`).join('')}
+      <span class="gb-rest">${open} open maatregel${open === 1 ? '' : 'en'}${raming && toonKosten() ? ` · raming ${euro(raming)}` : ''}</span></div>`;
+  }
+  if (i && TY.methodiekVan(i) === 'checklist') {
+    return `<div class="gebrekbalk"><span class="gb-rest">${open} open maatregel${open === 1 ? '' : 'en'}${raming && toonKosten() ? ` · raming ${euro(raming)}` : ''}</span></div>`;
+  }
+  const per = {};
+  for (const g of gebreken) { const s = gebrekScore(g); per[s] = (per[s] ?? 0) + 1; }
   return `<div class="gebrekbalk">${Object.keys(per).sort((a, b) => b - a).map((s) => `${scoreLabel(Number(s))}<span class="gb-aantal">× ${per[s]}</span>`).join('')}
     <span class="gb-rest">${open} open maatregel${open === 1 ? '' : 'en'}${raming && toonKosten() ? ` · raming ${euro(raming)}` : ''}</span></div>`;
 }
@@ -1129,6 +1629,22 @@ const INRICHTING = [
       const zonder = objecten.filter((o) => !o.type).length;
       const typen = new Set(objecten.map((o) => o.type).filter(Boolean)).size;
       return zonder ? `${zonder} object${zonder === 1 ? '' : 'en'} zonder type` : `${typen} objecttype${typen === 1 ? '' : 'n'}, alle objecten ingedeeld`;
+    },
+  },
+  {
+    id: 'inspectietypen', titel: 'Inspectietypen kiezen', icoon: 'inspectie', verplicht: false,
+    doel: 'Bepaal per soort inspectie de methodiek: NEN 2767 waar de opdrachtgever dat eist, en een eenvoudig oordeel of checklist voor de rest. Zo blijven formulieren in het veld kort.',
+    nodig: ['Welke inspecties in het bestek staan (bijv. schouw, verhardingen, bebording)', 'Per inspectie: volgens NEN 2767, met een eigen schaal of als checklist?'],
+    snel: 'Haal formulieren uit de bibliotheek van het bedrijf, of gebruik de standaardtypen zoals ze zijn.',
+    best: ['Gebruik bedrijfsformulieren uit de bibliotheek; dan zijn rapportages tussen projecten vergelijkbaar.',
+      'Pas je een formulier aan voor alle projecten, doe dat in de bibliotheek. Projecten zien dan dat er een nieuwe versie is.',
+      'Verberg standaardtypen die je niet gebruikt, zodat medewerkers niet het verkeerde formulier kiezen.'],
+    actie: () => ['#/inspectietypen', 'Inspectietypen instellen'],
+    klaar: ({ p }) => (p.inspectietypen ?? []).length > 0,
+    status: ({ p }) => {
+      const n = (p.inspectietypen ?? []).filter((t) => !t.verborgen).length;
+      const bib = (p.inspectietypen ?? []).filter((t) => t.bron?.bibId).length;
+      return n ? `${n} eigen of aangepast type${n === 1 ? '' : 'n'}${bib ? `, ${bib} uit de bibliotheek` : ''}` : 'Standaardtypen (optioneel aanpassen)';
     },
   },
   {
@@ -1701,7 +2217,7 @@ async function objectDetail(id) {
     const sc = laatsteScores(inspecties).get(b.id);
     return `<li><span>${b.code ? `<small>${esc(b.code)}</small> ` : ''}${esc(b.naam)}</span>${sc ? `<a href="#/inspecties/${esc(sc.inspectieId)}" title="${datumNL(sc.datum)}">${scoreLabel(sc.score)}</a>` : '<span class="label-status">Nog niet</span>'}</li>`;
   }).join('')}</ul>`
-    : `<p>${scoreLabel(s.conditie, true)}</p>`}
+    : `<p>${s.oordeel ? oordeelChip(s.oordeel) : scoreLabel(s.conditie, true)}</p>`}
         <dl class="gegevens">
           <dt>Laatste inspectie</dt><dd>${s.laatste ? `<a href="#/inspecties/${esc(s.laatste.id)}">${datumNL(s.laatste.datum)}</a>` : 'Nog niet uitgevoerd'}</dd>
           <dt>Interval</dt><dd>${Number(o.inspectieInterval) > 0 ? `${esc(o.inspectieInterval)} jaar` : 'Geen periodieke inspectie'}</dd>
@@ -1882,7 +2398,7 @@ async function inspectiesLijst() {
     </div>
     <div class="filters">
       <input type="search" id="zoek" placeholder="Zoek op object, inspecteur…" aria-label="Zoeken">
-      <select id="soort" aria-label="Soort"><option value="">Alle soorten</option>${INSPECTIESOORTEN.map((s) => optie(s, s)).join('')}</select>
+      <select id="soort" aria-label="Soort"><option value="">Alle soorten</option>${inspectieSoorten().map((s) => optie(s, s)).join('')}</select>
       <select id="status" aria-label="Status"><option value="">Alle statussen</option>${optie('concept', 'Concept')}${optie('afgerond', 'Afgerond')}</select>
       <select id="jaar" aria-label="Jaar"><option value="">Alle jaren</option>
         ${[...new Set(inspecties.map((i) => String(i.datum).slice(0, 4)))].map((j) => optie(j, j)).join('')}</select>
@@ -2187,7 +2703,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     }
     : {
       objectId: objectId ?? '', datum: vandaag(), inspecteur: instelling.lees('inspecteur'), werkpakketId: pakketId ?? '', rondeId: rondeId ?? '',
-      soort: mobiel ? 'Schouw' : INSPECTIESOORTEN[0],
+      soort: inspectieSoorten().includes(mobiel ? 'Schouw' : 'Visuele inspectie') ? (mobiel ? 'Schouw' : 'Visuele inspectie') : inspectieSoorten()[0],
       weer: '', status: 'concept', samenvatting: '', fotos: [], gebreken: [],
     };
   const origineleFotoIds = new Set([...(bestaand?.fotoIds ?? []), ...(bestaand?.gebreken ?? []).flatMap((g) => g.fotoIds ?? [])]);
@@ -2223,7 +2739,25 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     const sc = scopeVan(staat.objectId);
     staat.bouwdelen = sc.length ? sc : null;
   }
-  const perBd = () => Array.isArray(staat.bouwdelen) && staat.bouwdelen.length > 0;
+  // Inspectietype: bepaalt de methodiek (NEN 2767, oordeel met eigen schaal of checklist). Een bestaande inspectie
+  // houdt het type waarmee ze is gedaan; oude inspecties zonder type zijn NEN 2767.
+  const typeVanSoort = (soort) => (bestaand && bestaand.soort === soort ? bestaand.type ?? null : TY.typeVoor(inspectieTypen(), soort));
+  let type = bestaand ? bestaand.type ?? null : typeVanSoort(staat.soort);
+  const methodiek = () => type?.methodiek ?? 'nen';
+  const perBd = () => methodiek() === 'nen' && Array.isArray(staat.bouwdelen) && staat.bouwdelen.length > 0;
+  const maakChecklist = () => {
+    const oud = new Map((staat.checklist ?? []).map((c) => [c.punt, c]));
+    const details = new Map((bestaand?.gebreken ?? []).filter((g) => g.checkpunt).map((g) => [g.checkpunt, g]));
+    staat.checklist = (type?.punten ?? []).map((punt) => oud.get(punt) ?? {
+      id: details.get(punt)?.id ?? nieuwId(), punt, status: (bestaand?.checklist ?? []).find((c) => c.punt === punt)?.status ?? '',
+      toelichting: details.get(punt)?.toelichting ?? '', maatregel: details.get(punt)?.maatregel ?? '', urgentie: details.get(punt)?.urgentie ?? '',
+      kostenraming: details.get(punt)?.kostenraming ?? '', maatregelStatus: details.get(punt)?.maatregelStatus ?? 'open',
+      fotos: staat.gebreken.find((g) => g.checkpunt === punt)?.fotos ?? [],
+    });
+  };
+  if (methodiek() === 'checklist') maakChecklist();
+  staat.oordeelHandmatig = bestaand?.oordeelHandmatig ?? '';
+  const alsInspectie = () => ({ type: TY.momentopname(type), gebreken: staat.gebreken, checklist: staat.checklist, oordeelHandmatig: staat.oordeelHandmatig });
 
   const objectVeld = mobiel && object
     ? `<input type="hidden" name="objectId" value="${esc(object.id)}">`
@@ -2233,7 +2767,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
   const veldDatum = `<div class="veld"><label for="f-datum" class="vereist">Datum</label>
       <input id="f-datum" name="datum" type="date" required value="${esc(staat.datum)}"></div>`;
   const veldSoort = `<div class="veld"><label for="f-soort">Soort</label>
-      <select id="f-soort" name="soort">${(losseCalamiteit && !bestaand ? [CALAMITEIT] : INSPECTIESOORTEN.filter((s) => s !== BV.BVC_SOORT && (pakket || bestaand || s !== ST.STOWA_SOORT))).map((s) => optie(s, s, staat.soort)).join('')}</select>
+      <select id="f-soort" name="soort">${(losseCalamiteit && !bestaand ? [CALAMITEIT] : [...new Set([...inspectieSoorten(), ...(bestaand?.soort ? [bestaand.soort] : [])])].filter((s) => s !== BV.BVC_SOORT && (pakket || bestaand || s !== ST.STOWA_SOORT))).map((s) => optie(s, s, staat.soort)).join('')}</select>
       <small>Waterkering? Kies "${ST.STOWA_SOORT}" voor de STOWA-inspectiewijzers.</small></div>`;
   const veldInspecteur = `<div class="veld"><label for="f-inspecteur">Inspecteur</label>
       <input id="f-inspecteur" name="inspecteur" value="${esc(staat.inspecteur)}" maxlength="100"></div>`;
@@ -2258,7 +2792,8 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
       </section>
       <section class="kaart" id="extra-blok" hidden><h2>Extra gegevens</h2><div class="extra-velden"></div></section>
       <section class="kaart" id="bouwdelen-blok" hidden></section>
-      <div class="mtussen"><h2>Gebreken</h2><div id="totaal"></div></div>
+      <section class="kaart" id="oordeel-blok" hidden></section>
+      <div class="mtussen"><h2 id="gebreken-kop">Gebreken</h2><div id="totaal"></div></div>
       <div id="gebreken"></div>
       <button type="button" class="knop mgroot" id="gebrek-toevoegen">＋ Gebrek vastleggen</button>
       <div class="mvoet">
@@ -2280,7 +2815,8 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
       <section class="kaart" id="extra-blok" hidden><h2>Extra gegevens</h2><div class="extra-velden"></div></section>
       <section class="kaart" id="bouwdelen-blok" hidden></section>
       <section>
-        <div class="paginakop"><h2 style="margin:0">Gebreken</h2>
+        <section class="kaart" id="oordeel-blok" hidden></section>
+        <div class="paginakop"><h2 style="margin:0" id="gebreken-kop">Gebreken</h2>
           <button type="button" class="knop" id="gebrek-toevoegen">+ Gebrek toevoegen</button></div>
         <div id="gebreken"></div>
       </section>
@@ -2308,7 +2844,18 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
       ga(`${mobiel ? '#/m/stowa' : '#/stowa'}/nieuw?${q}`);
       return;
     }
+    const nieuwType = typeVanSoort(e.target.value);
+    if ((nieuwType?.methodiek ?? 'nen') !== methodiek() && staat.gebreken.length
+      && !confirm('Dit inspectietype gebruikt een andere methodiek. Bevindingen houden onderdeel, gebrek, toelichting en foto\'s, maar oordeel of conditie moet je opnieuw kiezen. Doorgaan?')) {
+      e.target.value = staat.soort;
+      return;
+    }
+    staat.soort = e.target.value;
+    type = nieuwType;
+    if (methodiek() === 'checklist') maakChecklist();
     extraB.teken();
+    toonBouwdelen();
+    toonGebreken();
   });
 
   const fotoBlok = (fotos, sleutel) => `
@@ -2321,6 +2868,13 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
 
   const scoreVoor = (g) => scoreLabel(gebrekScore(g));
   const toonTotaal = () => {
+    if (methodiek() !== 'nen') {
+      const o = TY.oordeelVan(alsInspectie());
+      const t = methodiek() === 'checklist' ? TY.checklistTelling(alsInspectie()) : null;
+      app.querySelector('#totaal').innerHTML = mobiel ? oordeelChip(o)
+        : `<div style="text-align:right"><small>${esc(type.naam)} · ${esc(TY.METHODIEKEN[methodiek()].kort)}</small><br>${oordeelChip(o)}${t ? `<br><small>${t.ok + t.nok + t.nvt} van ${t.totaal} beantwoord</small>` : ''}</div>`;
+      return;
+    }
     if (perBd()) {
       // Geen totaalscore: alleen bouwdelen krijgen een conditie.
       app.querySelector('#totaal').innerHTML = mobiel ? verdelingLabel(staat)
@@ -2404,7 +2958,80 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     </div>`;
   };
 
+  const keuzeOfTekst = (i, veld, opties, waarde, label, voorbeeld) => (opties?.length
+    ? `<div class="veld"><label>${label}</label><select data-g="${i}" data-veld="${veld}"><option value="">– kies –</option>
+        ${[...new Set([...opties, ...(waarde && !opties.includes(waarde) ? [waarde] : [])])].map((x) => optie(x, x, waarde)).join('')}</select></div>`
+    : `<div class="veld"><label>${label}</label><input data-g="${i}" data-veld="${veld}" value="${esc(waarde ?? '')}" maxlength="120" placeholder="${esc(voorbeeld)}"></div>`);
+  const adviesVelden = (attr, x) => ({
+    maatregel: `<div class="veld breed"><label>Advies maatregel</label><textarea ${attr}="maatregel" maxlength="2000" style="min-height:60px">${esc(x.maatregel ?? '')}</textarea></div>`,
+    urgentie: `<div class="veld"><label>Urgentie</label><select ${attr}="urgentie"><option value="">–</option>${URGENTIES.map((u) => optie(u.id, u.label, x.urgentie)).join('')}</select></div>`,
+    kosten: toonKosten() ? `<div class="veld"><label>Kostenraming (€)</label><input type="number" min="0" step="100" inputmode="numeric" ${attr}="kostenraming" value="${esc(x.kostenraming ?? '')}"></div>` : '',
+    status: `<div class="veld"><label>Status maatregel</label><select ${attr}="maatregelStatus">${optie('open', 'Open', x.maatregelStatus)}${optie('uitgevoerd', 'Uitgevoerd', x.maatregelStatus)}</select></div>`,
+  });
+  // Methodiek "oordeel": onderdeel, gebrek en een oordeel uit de eigen schaal.
+  const bevindingHtml = (g, i) => {
+    const o = TY.bevindingOordeel(alsInspectie(), g);
+    const a = adviesVelden(`data-g="${i}" data-veld`, g);
+    const v = {
+      onderdeel: keuzeOfTekst(i, 'bouwdeel', type.onderdelen, g.bouwdeel, 'Onderdeel', 'bijv. rijbaan'),
+      gebrek: keuzeOfTekst(i, 'gebrek', type.gebreken, g.gebrek, 'Gebrek', 'bijv. scheurvorming'),
+      oordeel: `<div class="veld breed"><label class="vereist">Oordeel</label><div class="segment schaalsegment" role="radiogroup">${(type.schaal ?? []).map((x) => `
+        <label><input type="radio" name="oordeel-${esc(g.id)}" data-g="${i}" data-veld="oordeel" value="${x.waarde}" ${Number(g.oordeel) === Number(x.waarde) ? 'checked' : ''}><span style="--k:${esc(x.kleur)}">${esc(x.label)}</span></label>`).join('')}</div></div>`,
+      locatie: `<div class="veld"><label>Plaats</label><input data-g="${i}" data-veld="locatie" value="${esc(g.locatie ?? '')}" maxlength="200" placeholder="bijv. huisnr. 12, noordzijde"></div>`,
+      toelichting: `<div class="veld breed"><label>Toelichting / waarneming</label><textarea data-g="${i}" data-veld="toelichting" maxlength="4000">${esc(g.toelichting ?? '')}</textarea></div>`,
+      fotos: `<div class="veld breed"><label>Foto's</label>${fotoBlok(g.fotos, `g${i}`)}</div>`,
+    };
+    const sleutel = `advies-${g.id}`;
+    const inhoud = mobiel
+      ? `<div class="velden">${v.fotos}${v.onderdeel}${v.gebrek}${v.oordeel}${v.toelichting}</div>
+         <details data-details="${sleutel}" ${openDetails.has(sleutel) ? 'open' : ''}><summary>Plaats, advies en urgentie</summary>
+           <div class="velden" style="margin-top:.75rem">${v.locatie}${a.maatregel}${a.urgentie}${a.kosten}${a.status}</div></details>`
+      : `<div class="velden">${v.onderdeel}${v.gebrek}${v.locatie}${v.oordeel}${v.toelichting}${a.maatregel}${a.urgentie}${a.kosten}${a.status}${v.fotos}</div>`;
+    return `<div class="gebrek" data-gebrek="${i}" style="border-left-color:${esc(o.kleur)}">
+      <div class="gebrek-kop"><h3 style="margin:0">Bevinding ${i + 1}</h3>
+        <div class="knoppen"><span data-score="${i}">${oordeelChip(o)}</span>
+        <button type="button" class="knop klein gevaar" data-gebrek-weg="${i}">${mobiel ? I.verwijder : 'Verwijderen'}</button></div></div>
+      ${inhoud}</div>`;
+  };
+  // Methodiek "checklist": per controlepunt in orde / niet in orde / n.v.t.
+  const checklistHtml = () => staat.checklist.map((c, n) => {
+    const a = adviesVelden(`data-c="${n}" data-cveld`, c);
+    return `<div class="checkpunt ${esc(c.status)}" data-cp="${n}">
+      <div class="checkpunt-kop"><strong>${n + 1}. ${esc(c.punt)}</strong>
+        <div class="segment checkseg" role="radiogroup">${Object.entries(TY.CHECK).map(([k, l]) => `
+          <label class="cs-${k}"><input type="radio" name="cp-${n}" data-c="${n}" data-cveld="status" value="${k}" ${c.status === k ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div></div>
+      ${c.status === 'nok' ? `<div class="velden" style="margin-top:.6rem">
+        <div class="veld breed"><label>Wat is er niet in orde?</label><textarea data-c="${n}" data-cveld="toelichting" maxlength="2000" style="min-height:60px">${esc(c.toelichting)}</textarea></div>
+        <div class="veld breed"><label>Foto's</label>${fotoBlok(c.fotos, `c${n}`)}</div>
+        ${a.maatregel}${a.urgentie}${a.kosten}${a.status}</div>` : ''}</div>`;
+  }).join('');
+  const toonOordeelBlok = () => {
+    const blok = app.querySelector('#oordeel-blok');
+    const handmatig = methodiek() === 'oordeel' && type?.oordeelRegel === 'handmatig';
+    blok.hidden = !handmatig;
+    blok.innerHTML = handmatig ? `<h2 style="margin-top:0">Oordeel van de inspectie</h2>
+      <div class="segment schaalsegment" role="radiogroup">${type.schaal.map((x) => `<label><input type="radio" name="oordeelHandmatig" data-oh value="${x.waarde}" ${Number(staat.oordeelHandmatig) === Number(x.waarde) ? 'checked' : ''}><span style="--k:${esc(x.kleur)}">${esc(x.label)}</span></label>`).join('')}</div>` : '';
+  };
+
   const toonGebreken = () => {
+    const kop = app.querySelector('#gebreken-kop');
+    const knop = app.querySelector('#gebrek-toevoegen');
+    toonOordeelBlok();
+    if (methodiek() !== 'nen') {
+      kop.textContent = methodiek() === 'checklist' ? 'Controlepunten' : 'Bevindingen';
+      knop.hidden = methodiek() === 'checklist';
+      knop.textContent = mobiel ? '＋ Bevinding vastleggen' : '+ Bevinding toevoegen';
+      app.querySelector('#gebreken').innerHTML = methodiek() === 'checklist'
+        ? (staat.checklist.length ? checklistHtml() : leegKaart('Dit inspectietype heeft geen controlepunten.'))
+        : staat.gebreken.length ? staat.gebreken.map(bevindingHtml).join('')
+          : leegKaart(type.oordeelRegel === 'handmatig' ? 'Geen bevindingen vastgelegd. Kies hierboven het oordeel van de inspectie.'
+            : `Geen bevindingen vastgelegd. Zonder bevindingen is het oordeel "${type.schaal[0]?.label ?? 'goed'}".`);
+      toonTotaal();
+      return;
+    }
+    kop.textContent = 'Gebreken';
+    knop.hidden = false;
+    knop.textContent = mobiel ? '＋ Gebrek vastleggen' : '+ Gebrek toevoegen';
     app.querySelector('#gebreken').innerHTML = staat.gebreken.length
       ? staat.gebreken.map(gebrekHtml).join('')
       : leegKaart(perBd()
@@ -2415,7 +3042,8 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     toonTotaal();
   };
   const toonAlgemeneFotos = () => { app.querySelector('#algemene-fotos').innerHTML = fotoBlok(staat.fotos, 'alg'); };
-  const fotoLijst = (sleutel) => (sleutel === 'alg' ? staat.fotos : staat.gebreken[Number(sleutel.slice(1))].fotos);
+  const fotoLijst = (sleutel) => (sleutel === 'alg' ? staat.fotos
+    : sleutel[0] === 'c' ? staat.checklist[Number(sleutel.slice(1))].fotos : staat.gebreken[Number(sleutel.slice(1))].fotos);
   const herteken = (sleutel) => (sleutel === 'alg' ? toonAlgemeneFotos() : toonGebreken());
 
   toonAlgemeneFotos();
@@ -2455,9 +3083,27 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
       if (el.checked) app.querySelector(`.bd-reden[data-bd="${el.dataset.bd}"]`)?.focus();
       return;
     }
+    if (el.dataset.oh !== undefined) { staat.oordeelHandmatig = Number(el.value); toonTotaal(); return; }
+    if (el.dataset.c !== undefined) {
+      const c = staat.checklist[Number(el.dataset.c)];
+      c[el.dataset.cveld] = el.value;
+      if (el.dataset.cveld === 'status') {
+        toonGebreken();
+        if (el.value === 'nok') app.querySelector(`[data-c="${el.dataset.c}"][data-cveld=toelichting]`)?.focus({ preventScroll: true });
+      }
+      return;
+    }
     if (el.dataset.g === undefined) return;
     const i = Number(el.dataset.g);
     const g = staat.gebreken[i];
+    if (methodiek() !== 'nen') {
+      g[el.dataset.veld] = el.dataset.veld === 'oordeel' ? Number(el.value) : el.value;
+      const o = TY.bevindingOordeel(alsInspectie(), g);
+      app.querySelector(`[data-score="${i}"]`).innerHTML = oordeelChip(o);
+      app.querySelector(`[data-gebrek="${i}"]`).style.borderLeftColor = o.kleur;
+      toonTotaal();
+      return;
+    }
     g[el.dataset.veld] = el.dataset.veld === 'intensiteit' ? Number(el.value) : el.value;
     if (el.dataset.veld === 'bouwdeelId') g.bouwdeel = staat.bouwdelen.find((b) => b.id === el.value)?.naam ?? '';
     app.querySelector(`[data-score="${i}"]`).innerHTML = scoreVoor(g);
@@ -2518,6 +3164,24 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     if (!data.datum) return melding('Vul de inspectiedatum in.', 'fout');
     if (!bestaand && !staat.werkpakketId && data.soort !== CALAMITEIT) return melding('Zonder werkpakket kan alleen een inspectie na incident of calamiteit worden vastgelegd.', 'fout');
     const status = e.submitter?.dataset.status ?? staat.status ?? 'concept';
+    if (status === 'afgerond' && methodiek() === 'oordeel') {
+      const zonder = staat.gebreken.findIndex((g) => !Number(g.oordeel));
+      if (zonder >= 0 && type.oordeelRegel !== 'handmatig') {
+        app.querySelector(`[data-gebrek="${zonder}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return melding(`Kies bij bevinding ${zonder + 1} een oordeel.`, 'fout');
+      }
+      if (type.oordeelRegel === 'handmatig' && !Number(staat.oordeelHandmatig)) {
+        app.querySelector('#oordeel-blok').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return melding('Kies het oordeel van de inspectie.', 'fout');
+      }
+    }
+    if (status === 'afgerond' && methodiek() === 'checklist') {
+      const open = staat.checklist.findIndex((c) => !c.status);
+      if (open >= 0) {
+        app.querySelector(`[data-cp="${open}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return melding(`Controlepunt ${open + 1} ("${staat.checklist[open].punt}") is nog niet beantwoord.`, 'fout');
+      }
+    }
     if (status === 'afgerond' && perBd()) {
       const zonder = staat.gebreken.findIndex((g) => !g.bouwdeelId);
       if (zonder >= 0) {
@@ -2538,6 +3202,13 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     const extraFotoIds = await extraB.bewaarFotos({ inspectieId, projectId: staat.projectId ?? projectId(), datum: nu });
 
     // Foto's opslaan en verwijderde foto's opruimen.
+    // Checklist: alleen punten die niet in orde zijn worden bevindingen (met foto's en maatregel).
+    if (methodiek() === 'checklist') {
+      staat.gebreken = staat.checklist.filter((c) => c.status === 'nok').map((c) => ({
+        id: c.id, checkpunt: c.punt, bouwdeel: c.punt, gebrek: TY.CHECK.nok, locatie: '', toelichting: c.toelichting ?? '', maatregel: c.maatregel ?? '',
+        urgentie: c.urgentie ?? '', kostenraming: c.kostenraming ?? '', maatregelStatus: c.maatregelStatus ?? 'open', fotos: c.fotos ?? [],
+      }));
+    }
     const alleFotos = [...staat.fotos, ...staat.gebreken.flatMap((g) => g.fotos)];
     await db.bewaarVeel('fotos', alleFotos
       .filter((f) => !origineleFotoIds.has(f.id))
@@ -2561,7 +3232,15 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
       extraLabels: extraB.labels(),
       extraFotoIds,
       bouwdelen: perBd() ? staat.bouwdelen.map((b) => ({ id: b.id, code: b.code ?? '', naam: b.naam, nietGeinspecteerd: Boolean(b.nietGeinspecteerd), reden: b.nietGeinspecteerd ? b.reden ?? '' : '' })) : undefined,
-      gebreken: staat.gebreken.map(({ fotos, ...g }) => ({
+      ...(type ? { type: TY.momentopname(type) } : {}),
+      ...(methodiek() === 'checklist' ? { checklist: staat.checklist.map((c) => ({ punt: c.punt, status: c.status })) } : {}),
+      ...(methodiek() === 'oordeel' && type.oordeelRegel === 'handmatig' ? { oordeelHandmatig: Number(staat.oordeelHandmatig) || '' } : {}),
+      gebreken: methodiek() !== 'nen' ? staat.gebreken.map(({ fotos, ...g }) => ({
+        id: g.id, bouwdeel: g.bouwdeel ?? '', gebrek: g.gebrek ?? '', ...(g.checkpunt ? { checkpunt: g.checkpunt } : { oordeel: Number(g.oordeel) || '' }),
+        locatie: g.locatie ?? '', toelichting: g.toelichting ?? '', maatregel: g.maatregel ?? '', urgentie: g.urgentie ?? '',
+        kostenraming: g.kostenraming === '' || g.kostenraming == null ? '' : Number(g.kostenraming), maatregelStatus: g.maatregelStatus ?? 'open',
+        fotoIds: fotos.map((f) => f.id),
+      })) : staat.gebreken.map(({ fotos, ...g }) => ({
         ...g,
         intensiteit: Number(g.intensiteit) || 1,
         omvang: g.omvang === '' ? '' : Number(g.omvang),
@@ -2584,6 +3263,12 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
   };
 }
 
+function checklistTabel(i) {
+  const kleur = { ok: '#1a7f37', nok: '#e8710a', nvt: '#8a96a3' };
+  return `<div class="tabelhouder"><table class="checktabel"><tbody>${(i.checklist ?? []).map((c, n) => `<tr><td>${n + 1}.</td><td>${esc(c.punt)}</td>
+    <td>${c.status ? `<span class="label-status" style="background:${kleur[c.status]};color:#fff">${esc(TY.CHECK[c.status])}</span>` : '<span class="label-status">Niet beantwoord</span>'}</td></tr>`).join('')}</tbody></table></div>`;
+}
+
 async function inspectieDetail(id) {
   const i = await db.haal('inspecties', id);
   if (!i) {
@@ -2596,8 +3281,11 @@ async function inspectieDetail(id) {
   const gebreken = i.gebreken ?? [];
   const score = inspectieScore(i);
   const perBd = D.perBouwdeel(i);
+  const m = TY.methodiekVan(i);
+  const typeOordeel = TY.oordeelVan(i);
   const pakket = i.werkpakketId ? await laadPakketView(i.werkpakketId, i.rondeId) : null;
-  const gebrekKaarten = await Promise.all(gebreken.map((g, n) => nenGebrekKaart(g, n)));
+  const gebrekKaarten = await Promise.all(gebreken.map((g, n) => nenGebrekKaart(g, n, i)));
+  const kopTekst = m === 'checklist' ? 'Niet in orde' : m === 'oordeel' ? 'Bevindingen' : 'Gebreken';
 
   app.innerHTML = `
     <div class="paginakop">
@@ -2611,7 +3299,10 @@ async function inspectieDetail(id) {
     </div>
     <div class="raster-2 detailkop">
       <section class="kaart">
-        ${perBd ? `<div class="oordeelblok" style="--gk:#0b4f6c">
+        ${typeOordeel ? `<div class="oordeelblok" style="--gk:${esc(typeOordeel.kleur)}">
+          <div><small>${esc(i.type.naam)} · ${esc(TY.METHODIEKEN[m].label)}</small>${oordeelChip(typeOordeel)}</div>
+          <p>${esc(typeOordeel.tekst || (m === 'oordeel' ? (i.type.oordeelRegel === 'handmatig' ? 'Oordeel gekozen door de inspecteur' : 'De slechtste bevinding bepaalt het oordeel') : ''))}</p>
+        </div>` : perBd ? `<div class="oordeelblok" style="--gk:#0b4f6c">
           <div><small>Conditie per bouwdeel (NEN 2767)</small>${verdelingLabel(i)}</div>
           <p>${i.bouwdelen.length} bouwde${i.bouwdelen.length === 1 ? 'el' : 'len'} uit de decompositie. Alleen bouwdelen krijgen een conditiescore.</p>
         </div>` : `<div class="oordeelblok" style="--gk:${CONDITIES[score]?.kleur ?? '#9aa5b1'}">
@@ -2623,7 +3314,7 @@ async function inspectieDetail(id) {
           <dt>Datum</dt><dd>${datumNL(i.datum)}</dd>
           <dt>Inspecteur</dt><dd>${esc(i.inspecteur || '–')}</dd>
           ${i.weer ? `<dt>Weer</dt><dd>${esc(i.weer)}</dd>` : ''}
-          <dt>Gebreken</dt><dd>${gebreken.length}</dd>
+          <dt>${kopTekst}</dt><dd>${gebreken.length}</dd>
           ${o?.inspectieInterval ? `<dt>Volgende inspectie</dt><dd>${datumNL(volgendeInspectie(i.datum, o.inspectieInterval))}</dd>` : ''}
           ${pakket ? `<dt>Werkpakket</dt><dd><a href="${pakketPagina(pakket, false)}">${I.pakket} ${esc(pakket.naam)}</a></dd>` : ''}
         </dl>
@@ -2634,11 +3325,12 @@ async function inspectieDetail(id) {
       ${i.samenvatting ? `<p style="white-space:pre-wrap">${esc(i.samenvatting)}</p>` : ''}${await fotoGalerij(i.fotoIds, { titel: "Foto's" })}</section>` : ''}
     ${await extraDetailHtml(i, 'inspectie')}
     ${perBd ? `<section class="kaart"><h2>Conditie per bouwdeel</h2>${bouwdeelScoreTabel(i)}</section>` : ''}
-    <div class="mtussen"><h2>Gebreken${gebreken.length ? ` (${gebreken.length})` : ''}</h2></div>
-    ${gebrekSamenvatting(gebreken)}
-    ${gebrekKaarten.join('') || leegKaart('Geen gebreken geconstateerd.')}`;
+    ${m === 'checklist' ? `<section class="kaart"><h2>Controlepunten</h2>${checklistTabel(i)}</section>` : ''}
+    <div class="mtussen"><h2>${kopTekst}${gebreken.length ? ` (${gebreken.length})` : ''}</h2></div>
+    ${gebrekSamenvatting(gebreken, i)}
+    ${gebrekKaarten.join('') || leegKaart(m === 'checklist' ? 'Alle beoordeelde punten zijn in orde.' : m === 'oordeel' ? 'Geen bevindingen vastgelegd.' : 'Geen gebreken geconstateerd.')}`;
 
-  tekenObjectKaartje(app.querySelector('#objectkaartje'), o, perBd ? '#0b4f6c' : CONDITIES[score]?.kleur ?? '#0b4f6c');
+  tekenObjectKaartje(app.querySelector('#objectkaartje'), o, typeOordeel ? typeOordeel.kleur : perBd ? '#0b4f6c' : CONDITIES[score]?.kleur ?? '#0b4f6c');
   bevindingKnoppen(i);
   app.querySelector('#verwijder').onclick = async () => {
     if (!confirm('Deze inspectie inclusief foto\'s definitief verwijderen?')) return;
@@ -2667,7 +3359,9 @@ async function inspectieRapport(id) {
   const score = inspectieScore(i);
   const organisatie = instelling.lees('organisatie');
   const gebreken = i.gebreken ?? [];
-  const details = await Promise.all(gebreken.map((g, n) => nenGebrekKaart(g, n)));
+  const details = await Promise.all(gebreken.map((g, n) => nenGebrekKaart(g, n, i)));
+  const m = TY.methodiekVan(i);
+  const typeOordeel = TY.oordeelVan(i);
 
   app.innerHTML = `
     <div class="paginakop geen-print">
@@ -2679,7 +3373,7 @@ async function inspectieRapport(id) {
         <div><small>${esc(organisatie || 'Inspectierapport')}</small>
           <h1 style="margin:.25rem 0">Inspectierapport ${esc(o.code ?? '')}</h1>
           <div>${esc(o.naam ?? '')} · ${esc(i.soort)}</div></div>
-        <div style="text-align:right">${D.perBouwdeel(i) ? `<small>Conditie per bouwdeel</small><br>${verdelingLabel(i)}` : `<small>Conditie</small><br>${scoreLabel(score, true)}`}</div>
+        <div style="text-align:right">${typeOordeel ? `<small>Oordeel</small><br>${oordeelChip(typeOordeel)}` : D.perBouwdeel(i) ? `<small>Conditie per bouwdeel</small><br>${verdelingLabel(i)}` : `<small>Conditie</small><br>${scoreLabel(score, true)}`}</div>
       </div>
       <div class="raster-2">
         <div><h2>Object</h2><dl class="gegevens">
@@ -2696,8 +3390,14 @@ async function inspectieRapport(id) {
       ${await fotoGalerij(i.fotoIds, { titel: "Foto's" })}
       <div class="rapport-extra">${await extraDetailHtml(i, 'inspectie')}</div>
       ${D.perBouwdeel(i) ? `<h2 style="margin-top:1rem">Conditie per bouwdeel</h2>${bouwdeelScoreTabel(i)}` : ''}
-      <h2 style="margin-top:1rem">Overzicht gebreken en maatregelen</h2>
-      ${gebreken.length ? `<div class="tabelhouder"><table>
+      ${m === 'checklist' ? `<h2 style="margin-top:1rem">Controlepunten</h2>${checklistTabel(i)}` : ''}
+      <h2 style="margin-top:1rem">Overzicht ${m === 'nen' ? 'gebreken' : 'bevindingen'} en maatregelen</h2>
+      ${gebreken.length && m !== 'nen' ? `<div class="tabelhouder"><table>
+        <thead><tr><th>#</th><th>${m === 'checklist' ? 'Controlepunt' : 'Onderdeel'}</th>${m === 'oordeel' ? '<th>Gebrek</th><th>Oordeel</th>' : ''}<th>Maatregel</th><th>Urgentie</th>${toonKosten() ? '<th>Raming</th>' : ''}</tr></thead>
+        <tbody>${gebreken.map((g, n) => `<tr><td>${n + 1}</td><td>${esc(g.bouwdeel)}</td>${m === 'oordeel' ? `<td>${esc(g.gebrek)}</td><td>${oordeelChip(TY.bevindingOordeel(i, g))}</td>` : ''}
+          <td>${esc(g.maatregel || '–')}</td><td>${esc(URGENTIES.find((u) => u.id === g.urgentie)?.label ?? '–')}</td>${toonKosten() ? `<td>${euro(g.kostenraming)}</td>` : ''}</tr>`).join('')}</tbody></table></div>
+        <h2 style="margin-top:1rem">Detailbevindingen</h2>${details.join('')}`
+    : gebreken.length ? `<div class="tabelhouder"><table>
         <thead><tr><th>#</th><th>Bouwdeel</th><th>Gebrek</th><th>E/I/O</th><th>Conditie</th><th>Urgentie</th>${toonKosten() ? '<th>Raming</th>' : ''}</tr></thead>
         <tbody>${gebreken.map((g, n) => `<tr><td>${n + 1}</td><td>${esc(g.bouwdeel)}</td><td>${esc(g.gebrek)}</td>
           <td>${esc(ERNST[g.ernst]?.label ?? '–')} / ${esc(g.intensiteit)} / ${g.omvang === '' || g.omvang == null ? '–' : `${esc(g.omvang)}%`}</td>
@@ -2705,15 +3405,15 @@ async function inspectieRapport(id) {
           ${toonKosten() ? `<tr><td colspan="6"><strong>Totaal raming</strong></td><td><strong>${euro(gebreken.reduce((t, g) => t + (Number(g.kostenraming) || 0), 0))}</strong></td></tr>` : ''}
         </tbody></table></div>
         <h2 style="margin-top:1rem">Detailbevindingen</h2>${details.join('')}` : '<p>Er zijn geen gebreken geconstateerd.</p>'}
-      <p style="margin-top:2rem;color:#555;font-size:.85rem">Conditiescores volgens de systematiek van NEN 2767 (1 = uitstekend, 6 = zeer slecht);
+      ${m === 'nen' ? `<p style="margin-top:2rem;color:#555;font-size:.85rem">Conditiescores volgens de systematiek van NEN 2767 (1 = uitstekend, 6 = zeer slecht);
         ${D.perBouwdeel(i) ? 'de conditie wordt per bouwdeel uit de decompositie bepaald door het maatgevende gebrek op dat bouwdeel en niet opgeteld naar element of object.'
-    : 'de objectconditie is gelijk aan het maatgevende gebrek.'} E/I/O = ernst / intensiteit / omvang.</p>
+    : 'de objectconditie is gelijk aan het maatgevende gebrek.'} E/I/O = ernst / intensiteit / omvang.</p>` : `<p style="margin-top:2rem;color:#555;font-size:.85rem">Inspectie volgens het formulier "${esc(i.type?.naam ?? '')}" (${esc(TY.METHODIEKEN[m]?.label ?? '')}).</p>`}
       <div class="raster-2" style="margin-top:2rem">
         <div>Handtekening inspecteur:<br><br><br>_____________________________<br>${esc(i.inspecteur || '')}</div>
         <div>Datum rapport: ${datumNL(vandaag())}</div>
       </div>
     </article>`;
-  tekenObjectKaartje(app.querySelector('#objectkaartje'), o.id ? o : null, D.perBouwdeel(i) ? '#0b4f6c' : CONDITIES[score]?.kleur ?? '#0b4f6c');
+  tekenObjectKaartje(app.querySelector('#objectkaartje'), o.id ? o : null, typeOordeel ? typeOordeel.kleur : D.perBouwdeel(i) ? '#0b4f6c' : CONDITIES[score]?.kleur ?? '#0b4f6c');
 }
 
 // ---------------------------------------------------------------------------
@@ -2881,7 +3581,7 @@ async function maatregelen() {
         <td><a href="#/objecten/${esc(o?.id ?? '')}">${objectNaam(o)}</a></td>
         <td><a href="#/inspecties/${esc(i.id)}">${esc(g.bouwdeel)} – ${esc(g.gebrek)}</a><br><small>${datumNL(i.datum)}</small></td>
         <td class="verberg-mobiel">${esc(g.maatregel || '–')}</td>
-        <td>${g.urgentieKleur ? stowaLabel(g.urgentieKleur) : g.bvcMaatregel ? bvkLabel(i.bvc?.bvk) : scoreLabel(gebrekScore(g))}</td>${toonKosten() ? `<td>${euro(g.kostenraming)}</td>` : ''}
+        <td>${g.urgentieKleur ? stowaLabel(g.urgentieKleur) : g.bvcMaatregel ? bvkLabel(i.bvc?.bvk) : TY.methodiekVan(i) !== 'nen' ? oordeelChip(TY.bevindingOordeel(i, g)) : scoreLabel(gebrekScore(g))}</td>${toonKosten() ? `<td>${euro(g.kostenraming)}</td>` : ''}
         <td>${taken.has(bevindingSleutel(i, g)) ? taakStatusLabel(taken.get(bevindingSleutel(i, g)))
     : g.maatregelStatus === 'uitgevoerd' ? '–' : auto ? '<small>automatisch</small>' : `<button class="knop klein" data-als-taak="${n}">${I.door} Als taak</button>`}</td>
         <td><button class="knop klein" data-wissel="${n}">${g.maatregelStatus === 'uitgevoerd' ? 'Heropenen' : I.vink + ' Uitgevoerd'}</button></td>
@@ -2922,7 +3622,7 @@ async function maatregelen() {
     const rijen = [['Objectcode', 'Object', 'Inspectiedatum', 'Bouwdeel', 'Gebrek', 'Plaats', 'Conditie', 'Maatregel', 'Urgentie', 'Kostenraming', 'Status', 'Uitgevoerd op']];
     const kostenKolom = toonKosten() ? -1 : 9;
     for (const { gebrek: g, inspectie: i, object: o } of zichtbaar) {
-      rijen.push([o?.code, o?.naam, i.datum, g.bouwdeel, g.gebrek, g.locatie, g.urgentieKleur ? `STOWA ${ST.URGENTIE[g.urgentieKleur]?.label ?? ''}` : g.bvcMaatregel ? (BV.BVK[i.bvc?.bvk]?.kort ?? '') : gebrekScore(g), g.maatregel,
+      rijen.push([o?.code, o?.naam, i.datum, g.bouwdeel, g.gebrek, g.locatie, g.urgentieKleur ? `STOWA ${ST.URGENTIE[g.urgentieKleur]?.label ?? ''}` : g.bvcMaatregel ? (BV.BVK[i.bvc?.bvk]?.kort ?? '') : TY.methodiekVan(i) !== 'nen' ? TY.bevindingOordeel(i, g).label : gebrekScore(g), g.maatregel,
         URGENTIES.find((u) => u.id === g.urgentie)?.label ?? '', g.kostenraming, g.maatregelStatus ?? 'open', g.uitgevoerdOp ?? '']);
     }
     download(`maatregelen-${vandaag()}.csv`, csv(kostenKolom < 0 ? rijen : rijen.map((r) => r.filter((_, k) => k !== kostenKolom))), 'text/csv;charset=utf-8');
@@ -4176,11 +4876,11 @@ async function inProject(store) {
 async function actiefProject() {
   const pid = projectId();
   const p = pid ? await db.haal('projecten', pid) : null;
-  return p && !p.verwijderd ? p : null;
+  return p && !p.verwijderd && !isBibliotheek(p) ? p : null;
 }
 
 async function zichtbareProjecten() {
-  return (await db.alle('projecten')).filter((p) => !p.verwijderd)
+  return (await db.alle('projecten')).filter((p) => !p.verwijderd && !isBibliotheek(p))
     .sort((a, b) => String(a.naam).localeCompare(String(b.naam), 'nl', { numeric: true }));
 }
 
@@ -5733,6 +6433,7 @@ function oordeelKleur(i) {
   if (i.status !== 'afgerond') return '#8a96a3';
   if (i.stowa) return ST.URGENTIE[ST.zwaarste(i.stowa.waarnemingen)]?.kleur ?? '#1a7f37';
   if (i.bvc) return i.bvc.niet ? '#8a96a3' : BV.BVK[i.bvc.bvk]?.kleur ?? '#8a96a3';
+  if (TY.oordeelVan(i)) return TY.oordeelVan(i).kleur;
   if (D.perBouwdeel(i)) return '#0b4f6c';
   return CONDITIES[inspectieScore(i)]?.kleur ?? '#8a96a3';
 }
@@ -6562,7 +7263,7 @@ async function extraDetailHtml(record, formulier) {
 // ---------------------------------------------------------------------------
 const SOORTEN_PER_FORMULIER = {
   werk: () => WERKSOORTEN,
-  inspectie: () => INSPECTIESOORTEN,
+  inspectie: () => inspectieSoorten(),
   taak: () => ['inspectie', 'werk'],
 };
 const SOORT_LABEL = { inspectie: 'Schouw / inspectie', werk: 'Werkzaamheid' };
@@ -7070,7 +7771,7 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
             <div class="veld pw-werk"><label for="f-afroepwerk">Werksoort</label><select id="f-afroepwerk" name="afroepWerksoort"><option value="">– kies bij de afroep –</option>
               ${WERKSOORTEN.map((s) => optie(s, s, p.afroepWerksoort)).join('')}</select></div>
             <div class="veld pw-insp"><label for="f-afroepinsp">Inspectiesoort</label><select id="f-afroepinsp" name="afroepInspectiesoort">
-              ${INSPECTIESOORTEN.filter((s) => s !== CALAMITEIT).map((s) => optie(s, s, p.afroepInspectiesoort ?? 'Schouw')).join('')}</select></div>
+              ${inspectieSoorten().filter((s) => s !== CALAMITEIT).map((s) => optie(s, s, p.afroepInspectiesoort ?? 'Schouw')).join('')}</select></div>
             <div class="veld"><label for="f-reactietijd">Standaard reactietijd (dagen)</label>
               <input id="f-reactietijd" name="reactietijd" type="number" min="0" max="365" value="${esc(p.reactietijd ?? '')}" placeholder="bijv. 5">
               <small>Vult bij een afroep de datum "gereed vóór" alvast in (werkafspraak uit het contract).</small></div>
@@ -7141,7 +7842,7 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
           <div class="veld"><label>Soort</label><select data-r="${i}" data-veld="soort">${optie('werk', 'Werkzaamheid', r.soort)}${optie('inspectie', 'Schouw / inspectie', r.soort)}</select></div>
           <div class="veld"><label>${r.soort === 'inspectie' ? 'Soort inspectie' : 'Werksoort'}</label>
             ${r.soort === 'inspectie'
-    ? `<select data-r="${i}" data-veld="inspectiesoort">${INSPECTIESOORTEN.map((s) => optie(s, s, r.inspectiesoort)).join('')}</select>
+    ? `<select data-r="${i}" data-veld="inspectiesoort">${[...new Set([...inspectieSoorten(), ...(r.inspectiesoort ? [r.inspectiesoort] : [])])].map((s) => optie(s, s, r.inspectiesoort)).join('')}</select>
               <small>Kies "${BV.BVC_SOORT}" voor een bomeninspectie: uitvoerders openen dan het BVC-formulier volgens het RWS-protocol.</small>`
     : `<select data-r="${i}" data-veld="werksoort"><option value="">– vrij te kiezen –</option>${WERKSOORTEN.map((s) => optie(s, s, r.werksoort)).join('')}</select>`}</div>
           <div class="veld"><label>Duur</label><div class="duurveld">
@@ -7249,7 +7950,7 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
       <tr class="${gekozen.has(o.id) ? 'gekozen' : ''}">
         <td><input type="checkbox" data-kies="${esc(o.id)}" ${gekozen.has(o.id) ? 'checked' : ''} aria-label="${esc(o.code)} in pakket"></td>
         <td><strong>${esc(o.code)}</strong></td><td>${esc(o.naam)}</td><td class="verberg-mobiel">${esc(o.type || '–')}</td>
-        <td class="verberg-mobiel">${esc(laagNaam.get(o.laagId) ?? '–')}</td><td>${scoreLabel(status.get(o.id)?.conditie)}</td></tr>`).join('')
+        <td class="verberg-mobiel">${esc(laagNaam.get(o.laagId) ?? '–')}</td><td>${oordeelLabel(status.get(o.id))}</td></tr>`).join('')
       + (zichtbaar.length > max ? `<tr><td colspan="6" class="leeg">+ ${zichtbaar.length - max} meer (verfijn het filter om ze te zien; "alle toevoegen" neemt ze wel mee)</td></tr>` : '')
       : '<tr><td colspan="6" class="leeg">Geen objecten met dit filter.</td></tr>';
     const erin = zichtbaar.filter((o) => !gekozen.has(o.id)).length;
@@ -7414,7 +8115,7 @@ async function afroepFormulier(id, q = new URLSearchParams()) {
           <div class="veld a-werk"><label for="a-werksoort">Werksoort</label><select id="a-werksoort" name="werksoort"><option value="">– vrij te kiezen –</option>
             ${WERKSOORTEN.map((s) => optie(s, s, p.afroepWerksoort)).join('')}</select></div>
           <div class="veld a-insp"><label for="a-inspectiesoort">Inspectiesoort</label><select id="a-inspectiesoort" name="inspectiesoort">
-            ${INSPECTIESOORTEN.filter((s) => s !== CALAMITEIT).map((s) => optie(s, s, p.afroepInspectiesoort ?? 'Schouw')).join('')}</select></div>
+            ${inspectieSoorten().filter((s) => s !== CALAMITEIT).map((s) => optie(s, s, p.afroepInspectiesoort ?? 'Schouw')).join('')}</select></div>
           <div class="veld breed"><label class="vink"><input type="checkbox" name="spoed"><span><strong>Spoed</strong><small>Wordt bovenaan en in rood getoond bij de uitvoerders.</small></span></label></div>
           <div class="veld breed"><label for="a-toelichting">Toelichting voor de uitvoerder</label>
             <textarea id="a-toelichting" name="toelichting" maxlength="2000" placeholder="Wat moet er gebeuren, afspraken met de opdrachtgever, bijzonderheden ter plaatse"></textarea></div>
@@ -7695,7 +8396,7 @@ async function excelContext() {
   ]);
   return {
     project, objecten, lagen, pakketten, leden: (project?.leden ?? []).map((l) => String(l).toLowerCase()),
-    werksoorten: WERKSOORTEN, inspectiesoorten: INSPECTIESOORTEN,
+    werksoorten: WERKSOORTEN, inspectiesoorten: inspectieSoorten(),
   };
 }
 
@@ -7966,11 +8667,13 @@ function bvkLabel(bvk) {
 /** Conditie (NEN 2767) of, bij bomen, de boomveiligheidsklasse. */
 function oordeelLabel(s) {
   if (s?.laatste?.stowa) return stowaLabel(s.stowa);
+  if (s?.oordeel) return oordeelChip(s.oordeel);
   return s?.bvk ? bvkLabel(s.bvk) : scoreLabel(s?.conditie);
 }
 
 function inspectieOordeel(i) {
   if (i.stowa) return stowaLabel(ST.zwaarste(i.stowa.waarnemingen));
+  if (TY.oordeelVan(i)) return oordeelChip(TY.oordeelVan(i));
   if (D.perBouwdeel(i)) return verdelingLabel(i);
   if (!i.bvc) return scoreLabel(inspectieScore(i));
   return i.bvc.niet ? '<span class="label-status">Niet aangetroffen</span>' : bvkLabel(i.bvc.bvk);

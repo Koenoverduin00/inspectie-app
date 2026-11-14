@@ -371,6 +371,32 @@ Rijkswaterstaat** (Loo Plan, 8 februari 2017, definitief) en het CROW **Standaar
 - **Rapport** per boom (bijlage 5) en **SUF-BVC export** (boom, boomgebreken, maatregelen) per project of werkpakket;
   bij een BVC-werkpakket een samenvatting per klasse en maatregel.
 
+## Inspectietypen en formulierenbibliotheek
+
+Niet elke inspectie volgt NEN 2767. Per **inspectietype** kies je de methodiek (Instellingen → Inspectietypen, alleen beheerders, pc):
+
+| Methodiek | Formulier | Oordeel |
+|---|---|---|
+| **NEN 2767** | Bouwdeel, gebrek, ernst / intensiteit / omvang (met decompositie per bouwdeel) | Conditie 1–6 |
+| **Oordeel met eigen schaal** | Onderdeel en gebrek (eigen keuzelijsten of vrij), oordeel uit de schaal, toelichting, maatregel, foto's | Slechtste bevinding, of de inspecteur kiest zelf |
+| **Checklist** | Vaste controlepunten: in orde / niet in orde / n.v.t.; bij "niet in orde" toelichting, foto's en maatregel | Aantal punten niet in orde |
+
+- **Eigen inspectie maken**: naam, methodiek, schaal (2–6 niveaus met eigen namen en kleuren), onderdelen, gebreken of controlepunten.
+  Extra velden (handtekening, meetwaarde, …) stel je in bij Formuliervelden met "Alleen bij: <type>".
+- **Standaardtypen**: de vaste soorten blijven bestaan. *Conditiemeting NEN 2767*, *Nadere / specialistische inspectie* en *Duikinspectie*
+  gebruiken NEN 2767; de overige (bijv. *Schouw*, *Visuele inspectie*) standaard een eenvoudig oordeel goed / matig / slecht. Per project aan te
+  passen of te verbergen. Boomveiligheidscontrole en waterkering (STOWA) blijven vaste protocollen.
+- **Werkpakket**: bij een inspectieronde kies je het type; de medewerker krijgt automatisch het juiste formulier.
+- **Bestaande inspecties** houden het formulier waarmee ze zijn gedaan: elke inspectie bewaart een momentopname van haar type. Oude inspecties
+  zonder type worden als NEN 2767 getoond.
+- **Formulierenbibliotheek (per bedrijf)**, Instellingen → Bibliotheek: formulieren die je in elk project kunt zetten. Alleen beheerders zien de
+  bibliotheek. Een project krijgt een **kopie met versienummer**: lopende projecten veranderen dus niet ongemerkt. Pas je een formulier in de
+  bibliotheek aan, dan krijgt het een nieuwe versie; projecten met een ongewijzigde kopie kun je direct meenemen, andere projecten tonen
+  "Bijwerken naar vN". Een type uit een project zet je met **Naar bibliotheek** in de bibliotheek (inclusief extra velden). Ook kopiëren
+  **uit een ander project** kan. Voorbeelden: *Staat verhardingen*, *Bebording* en *Eenvoudige schouw*.
+- Technisch: bibliotheekformulieren staan als aparte records (`soort: 'bibliotheek'`, zonder leden) in de projectentabel. De bestaande
+  beveiliging zorgt dat alleen beheerders ze lezen en wijzigen; er is geen database-update nodig.
+
 ## NEN 2767-decompositie (scores per bouwdeel)
 
 Voor opdrachtgevers die volgens NEN 2767 werken met een eigen decompositie (object → element → bouwdeel).

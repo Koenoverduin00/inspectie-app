@@ -7,6 +7,7 @@ import { middelpunt } from './gis.js';
 import * as ST from './stowa.js';
 import * as DG from './digigids.js';
 import * as D from './decompositie.js';
+import * as TY from './inspectietypen.js';
 
 const STATUS_TEKST = { afgerond: 'Gedaan', concept: 'Concept (niet afgerond)', overgeslagen: 'Overgeslagen', open: 'Open' };
 
@@ -45,6 +46,8 @@ export function oordeel(i) {
     const k = BV.BVK[i.bvc.bvk];
     return { code: k?.kort ?? '', tekst: k?.label ?? '', kleur: k?.kleur ?? '' };
   }
+  const ty = TY.oordeelVan(i);
+  if (ty) return { code: ty.label, tekst: ty.tekst || i.type?.naam || '', kleur: ty.waarde === null ? '' : ty.kleur };
   if (D.perBouwdeel(i)) {
     const v = D.scoreVerdeling(i);
     const delen = [1, 2, 3, 4, 5, 6].filter((n) => v[n]).map((n) => `${v[n]}× ${n}`);
@@ -164,6 +167,22 @@ export function resultaatRijen({ lijst, laagNaam = new Map(), extra = () => [] }
           waarden: [o.code, o.naam, datum(i.datum), bd.code, bd.naam, bd.score ?? '', bd.score ? CONDITIES[bd.score].label : 'Niet geïnspecteerd', bd.nietGeinspecteerd ? '' : bd.gebreken, bd.reden],
           kleur: bd.score ? CONDITIES[bd.score].kleur : '',
         });
+      }
+      const typeM = TY.methodiekVan(i);
+      if (typeM !== 'nen') {
+        nenGebreken.forEach((g, n) => {
+          const bo = TY.bevindingOordeel(i, g);
+          gebreken.push({
+            waarden: [o.code, o.naam, datum(i.datum), n + 1, g.locatie ? `${g.bouwdeel ?? ''} (${g.locatie})` : g.bouwdeel ?? '', g.checkpunt ? TY.CHECK.nok : g.gebrek ?? '', i.type?.naam ?? '', '',
+              '', '', '', bo.label, g.toelichting ?? '', g.maatregel ?? '', URGENTIES.find((u) => u.id === g.urgentie)?.label ?? '', (g.fotoIds ?? []).length || ''],
+            kleur: bo.kleur,
+          });
+          if (g.maatregel || g.urgentie) {
+            maatregelen.push({ waarden: [o.code, o.naam, datum(i.datum), g.maatregel || `${g.bouwdeel} – ${g.gebrek}`, URGENTIES.find((u) => u.id === g.urgentie)?.label ?? '', null, getal(g.kostenraming), g.maatregelStatus === 'uitgevoerd' ? 'Uitgevoerd' : 'Open'], kleur: g.urgentie === 'direct' ? '#d1452f' : '' });
+          }
+          for (const fid of g.fotoIds ?? []) fotos.push({ objectcode: o.code, onderwerp: `Bevinding ${n + 1}: ${g.bouwdeel ?? ''}${g.gebrek ? ` – ${g.gebrek}` : ''}`, fotoId: fid });
+        });
+        continue;
       }
       nenGebreken.forEach((g, n) => {
         const s = gebrekScore(g);
