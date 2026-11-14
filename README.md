@@ -361,6 +361,13 @@ Rijkswaterstaat** (Loo Plan, 8 februari 2017, definitief) en het CROW **Standaar
 - **Rapport** per boom (bijlage 5) en **SUF-BVC export** (boom, boomgebreken, maatregelen) per project of werkpakket;
   bij een BVC-werkpakket een samenvatting per klasse en maatregel.
 
+## Kosten en uren uitzetten
+
+In de projectgegevens staan twee schakelaars: **Kostenramingen gebruiken** en **Uren registreren**. Loopt dit bij een
+bedrijf via een ander proces (ERP- of urensysteem), zet het dan uit: het veld wordt niet meer gevraagd en bedragen of
+uren verdwijnen uit formulieren, overzichten, dashboard, inspectierapport, CSV- en Excel-exports. Al ingevulde waarden
+blijven bewaard en komen terug als je het weer aanzet.
+
 ## Eigen formuliervelden per project
 
 Via **Projecten → Formuliervelden** stelt een beheerder per project extra regels in voor *werkzaamheden*,

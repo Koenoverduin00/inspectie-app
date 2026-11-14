@@ -219,7 +219,12 @@ export function maakWerkboek(ExcelJS, r, meta) {
   info.getCell(regels.length + 4, 1).value = 'Oordeel: conditie volgens NEN 2767 (1 = uitstekend … 6 = zeer slecht) of boomveiligheidsklasse volgens het Boomveiligheidsprotocol RWS.';
   info.getCell(regels.length + 4, 1).font = { italic: true, color: { argb: 'FF555555' } };
 
-  const blad = (naam, kolommen, rijen, kleurKolom) => {
+  const blad = (naam, alleKolommen, alleRijen, alleKleurKolom) => {
+    // Zonder kosten (projectinstelling): alle bedragkolommen weglaten.
+    const weg = new Set(meta.zonderKosten ? alleKolommen.map(([, , s], n) => (s === 'euro' ? n : -1)).filter((n) => n >= 0) : []);
+    const kolommen = alleKolommen.filter((_, n) => !weg.has(n));
+    const rijen = weg.size ? alleRijen.map((r) => ({ ...r, waarden: r.waarden.filter((_, n) => !weg.has(n)) })) : alleRijen;
+    const kleurKolom = alleKleurKolom ? alleKleurKolom - [...weg].filter((n) => n < alleKleurKolom - 1).length : alleKleurKolom;
     const ws = wb.addWorksheet(naam, { views: [{ state: 'frozen', ySplit: 1, xSplit: 2 }] });
     ws.columns = kolommen.map(([k, w]) => ({ header: k, width: w }));
     ws.getRow(1).eachCell((c) => { c.style = kop; });

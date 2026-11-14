@@ -1236,3 +1236,4 @@ form:not(.afroep-inspectie) .a-insp { display: none; }
 .toonals-regel { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
 .toonals-regel select { width: auto; min-width: 12rem; }
 .toonals { border-top: 1px dashed var(--rand); padding-top: .75rem; }
+.vinkjes-onder { display: flex; flex-direction: column; gap: .5rem; width: 100%; }

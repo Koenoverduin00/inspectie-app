@@ -378,7 +378,7 @@ async function nenGebrekKaart(g, n) {
       ${kenmerk('Intensiteit', esc(INTENSITEIT[g.intensiteit] ?? '–'))}
       ${kenmerk('Omvang', g.omvang === '' || g.omvang == null ? '–' : `${esc(g.omvang)}% · ${esc(OMVANG_KLASSEN[omvangKlasse(g.omvang) - 1].label)}`)}
       ${g.urgentie ? kenmerk('Urgentie', urgentieLabel(g.urgentie)) : ''}
-      ${g.kostenraming !== '' && g.kostenraming != null ? kenmerk('Raming', euro(g.kostenraming)) : ''}
+      ${toonKosten() && g.kostenraming !== '' && g.kostenraming != null ? kenmerk('Raming', euro(g.kostenraming)) : ''}
       ${g.maatregel || g.urgentie ? kenmerk('Maatregel', g.maatregelStatus === 'uitgevoerd' ? '<span class="label-status uitgevoerd">Uitgevoerd</span>' : '<span class="label-status binnenkort">Open</span>') : ''}
       ${g.conditieHandmatig ? kenmerk('Conditie', 'handmatig') : ''}
     </div>
@@ -408,7 +408,7 @@ function gebrekSamenvatting(gebreken) {
   const raming = gebreken.reduce((t, g) => t + (Number(g.kostenraming) || 0), 0);
   const open = gebreken.filter((g) => (g.maatregel || g.urgentie) && g.maatregelStatus !== 'uitgevoerd').length;
   return `<div class="gebrekbalk">${Object.keys(per).sort((a, b) => b - a).map((s) => `${scoreLabel(Number(s))}<span class="gb-aantal">× ${per[s]}</span>`).join('')}
-    <span class="gb-rest">${open} open maatregel${open === 1 ? '' : 'en'}${raming ? ` · raming ${euro(raming)}` : ''}</span></div>`;
+    <span class="gb-rest">${open} open maatregel${open === 1 ? '' : 'en'}${raming && toonKosten() ? ` · raming ${euro(raming)}` : ''}</span></div>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -481,11 +481,11 @@ async function dashboard() {
       <div>
         <div class="werkstand">
           <div><span class="groot">${dezeWeek.aantal}</span><small>deze week (wk ${dezeWeek.week})${trend !== null ? ` · <b class="${trend >= 0 ? 'plus' : 'min'}">${trend >= 0 ? '▲' : '▼'} ${Math.abs(trend)}%</b> t.o.v. vorige week` : ''}</small></div>
-          <div><span class="groot">${urenTekst(dezeWeek.uren)}</span><small>uren deze week</small></div>
-          <div><span class="groot">${recent.length}</span><small>laatste 4 weken · ${urenTekst(recent.reduce((t, w) => t + (Number(w.uren) || 0), 0))}</small></div>
+          ${toonUren() ? `<div><span class="groot">${urenTekst(dezeWeek.uren)}</span><small>uren deze week</small></div>` : ''}
+          <div><span class="groot">${recent.length}</span><small>laatste 4 weken${toonUren() ? ` · ${urenTekst(recent.reduce((t, w) => t + (Number(w.uren) || 0), 0))}` : ''}</small></div>
         </div>
         <div class="weekgrafiek" role="img" aria-label="Uitgevoerde werkzaamheden per week, laatste ${weken.length} weken">
-          ${weken.map((w, i) => `<div class="weekkolom ${i === weken.length - 1 ? 'nu' : ''}" title="Week ${w.week}: ${w.aantal} werkzaamheden, ${urenTekst(w.uren)}">
+          ${weken.map((w, i) => `<div class="weekkolom ${i === weken.length - 1 ? 'nu' : ''}" title="Week ${w.week}: ${w.aantal} werkzaamheden${toonUren() ? `, ${urenTekst(w.uren)}` : ''}">
             <span class="weekaantal">${w.aantal || ''}</span>
             <div class="weekbalk" style="height:${(w.aantal / maxWeek) * 100}%"></div>
             <small>wk ${w.week}</small></div>`).join('')}
@@ -530,7 +530,7 @@ async function dashboard() {
     ${werkzaamheden.length ? `<div class="tabelhouder"><table><tbody>
       ${werkzaamheden.slice(0, 8).map((w) => `
         <tr class="klikbaar" data-href="#/werkzaamheden/${esc(w.id)}">
-          <td class="nowrap">${datumNL(w.datum)}</td><td>${objectNaam(objectMap.get(w.objectId))}<small class="subregel">${esc(w.soort || '–')}${w.uitvoerder ? ` · ${esc(w.uitvoerder)}` : ''}${w.uren ? ` · ${urenTekst(w.uren)}` : ''}</small></td>
+          <td class="nowrap">${datumNL(w.datum)}</td><td>${objectNaam(objectMap.get(w.objectId))}<small class="subregel">${esc(w.soort || '–')}${w.uitvoerder ? ` · ${esc(w.uitvoerder)}` : ''}${w.uren && toonUren() ? ` · ${urenTekst(w.uren)}` : ''}</small></td>
           <td>${werkStatusLabel(w.status)}</td>
         </tr>`).join('')}
     </tbody></table></div>` : '<p class="leeg">Nog geen werkzaamheden geregistreerd.</p>'}
@@ -563,8 +563,8 @@ async function dashboard() {
       ${werkBlok}
       <section class="kaart">
         <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">Open maatregelen uit inspecties</h2><a href="#/maatregelen">Alle maatregelen →</a></div>
-        ${perUrgentie.length ? `<div class="tabelhouder"><table><thead><tr><th>Urgentie</th><th>Aantal</th><th>Raming</th></tr></thead><tbody>
-          ${perUrgentie.map((x) => `<tr class="klikbaar" data-href="#/maatregelen"><td>${urgentieLabel(x.u.id)}</td><td>${x.n}</td><td>${x.raming ? euro(x.raming) : '–'}</td></tr>`).join('')}
+        ${perUrgentie.length ? `<div class="tabelhouder"><table><thead><tr><th>Urgentie</th><th>Aantal</th>${toonKosten() ? '<th>Raming</th>' : ''}</tr></thead><tbody>
+          ${perUrgentie.map((x) => `<tr class="klikbaar" data-href="#/maatregelen"><td>${urgentieLabel(x.u.id)}</td><td>${x.n}</td>${toonKosten() ? `<td>${x.raming ? euro(x.raming) : '–'}</td>` : ''}</tr>`).join('')}
         </tbody></table></div>` : '<p class="leeg">Geen open maatregelen.</p>'}
       </section>
       <div class="raster-2">${recentInsp}${recentWerk}</div>`;
@@ -1192,7 +1192,7 @@ async function objectDetail(id) {
           <dt>Volgende inspectie</dt><dd>${s.volgende ? datumNL(s.volgende) : s.planning === 'geen' ? '–' : 'Zo spoedig mogelijk'}</dd>
           <dt>Planning</dt><dd>${planningLabel(s.planning)}</dd>
           <dt>Flora & fauna</dt><dd>${vrijgaveLabel(await vrijgaveVoor(id))} <a href="#/vrijgaven/nieuw?object=${esc(id)}">+ vrijgave</a></dd>
-          <dt>Open maatregelen</dt><dd>${maatregelenOpen.length} (${euro(maatregelenOpen.reduce((t, m) => t + (Number(m.gebrek.kostenraming) || 0), 0))})</dd>
+          <dt>Open maatregelen</dt><dd>${maatregelenOpen.length}${toonKosten() ? ` (${euro(maatregelenOpen.reduce((t, m) => t + (Number(m.gebrek.kostenraming) || 0), 0))})` : ''}</dd>
         </dl>
       </section>
     </div>
@@ -1209,11 +1209,11 @@ async function objectDetail(id) {
     <section class="kaart">
       <h2>Uitgevoerde werkzaamheden</h2>
       ${eigenWerk.length ? `<div class="tabelhouder"><table>
-        <thead><tr><th>Datum</th><th>Soort</th><th class="verberg-mobiel">Uitvoerder</th><th>Uren</th><th>Status</th></tr></thead>
+        <thead><tr><th>Datum</th><th>Soort</th><th class="verberg-mobiel">Uitvoerder</th>${toonUren() ? '<th>Uren</th>' : ''}<th>Status</th></tr></thead>
         <tbody>${eigenWerk.map((w) => `
           <tr class="klikbaar" data-href="#/werkzaamheden/${esc(w.id)}">
             <td>${datumNL(w.datum)}</td><td>${esc(w.soort || '–')}</td><td class="verberg-mobiel">${esc(w.uitvoerder || '–')}</td>
-            <td>${urenTekst(w.uren)}</td><td>${werkStatusLabel(w.status)}</td>
+            ${toonUren() ? `<td>${urenTekst(w.uren)}</td>` : ''}<td>${werkStatusLabel(w.status)}</td>
           </tr>`).join('')}</tbody></table></div>` : '<p class="leeg">Er zijn nog geen werkzaamheden geregistreerd voor dit object.</p>'}
     </section>
     <section class="kaart">
@@ -1228,10 +1228,10 @@ async function objectDetail(id) {
     ${maatregelenOpen.length ? `<section class="kaart">
       <h2>Openstaande maatregelen</h2>
       <div class="tabelhouder"><table>
-        <thead><tr><th>Urgentie</th><th>Bouwdeel / gebrek</th><th>Maatregel</th><th>Raming</th></tr></thead>
+        <thead><tr><th>Urgentie</th><th>Bouwdeel / gebrek</th><th>Maatregel</th>${toonKosten() ? '<th>Raming</th>' : ''}</tr></thead>
         <tbody>${maatregelenOpen.map(({ gebrek: g, inspectie: i }) => `
           <tr class="klikbaar" data-href="#/inspecties/${esc(i.id)}"><td>${urgentieLabel(g.urgentie)}</td>
-          <td>${esc(g.bouwdeel)} – ${esc(g.gebrek)}</td><td>${esc(g.maatregel || '–')}</td><td>${euro(g.kostenraming)}</td></tr>`).join('')}
+          <td>${esc(g.bouwdeel)} – ${esc(g.gebrek)}</td><td>${esc(g.maatregel || '–')}</td>${toonKosten() ? `<td>${euro(g.kostenraming)}</td>` : ''}</tr>`).join('')}
         </tbody></table></div></section>` : ''}`;
 
   app.querySelector('#verwijder').onclick = async () => {
@@ -1822,8 +1822,8 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
         <textarea data-g="${i}" data-veld="maatregel" maxlength="2000" style="min-height:60px">${esc(g.maatregel)}</textarea></div>`,
       urgentie: `<div class="veld"><label>Urgentie</label><select data-g="${i}" data-veld="urgentie"><option value="">–</option>
         ${URGENTIES.map((u) => optie(u.id, u.label, g.urgentie)).join('')}</select></div>`,
-      kosten: `<div class="veld"><label>Kostenraming (€)</label>
-        <input type="number" min="0" step="100" inputmode="numeric" data-g="${i}" data-veld="kostenraming" value="${esc(g.kostenraming)}"></div>`,
+      kosten: toonKosten() ? `<div class="veld"><label>Kostenraming (€)</label>
+        <input type="number" min="0" step="100" inputmode="numeric" data-g="${i}" data-veld="kostenraming" value="${esc(g.kostenraming)}"></div>` : '',
       status: `<div class="veld"><label>Status maatregel</label><select data-g="${i}" data-veld="maatregelStatus">
         ${optie('open', 'Open', g.maatregelStatus)}${optie('uitgevoerd', 'Uitgevoerd', g.maatregelStatus)}</select></div>`,
       fotos: `<div class="veld breed"><label>Foto's</label>${fotoBlok(g.fotos, `g${i}`)}</div>`,
@@ -2091,11 +2091,11 @@ async function inspectieRapport(id) {
       <div class="rapport-extra">${await extraDetailHtml(i, 'inspectie')}</div>
       <h2 style="margin-top:1rem">Overzicht gebreken en maatregelen</h2>
       ${gebreken.length ? `<div class="tabelhouder"><table>
-        <thead><tr><th>#</th><th>Bouwdeel</th><th>Gebrek</th><th>E/I/O</th><th>Conditie</th><th>Urgentie</th><th>Raming</th></tr></thead>
+        <thead><tr><th>#</th><th>Bouwdeel</th><th>Gebrek</th><th>E/I/O</th><th>Conditie</th><th>Urgentie</th>${toonKosten() ? '<th>Raming</th>' : ''}</tr></thead>
         <tbody>${gebreken.map((g, n) => `<tr><td>${n + 1}</td><td>${esc(g.bouwdeel)}</td><td>${esc(g.gebrek)}</td>
           <td>${esc(ERNST[g.ernst]?.label ?? '–')} / ${esc(g.intensiteit)} / ${g.omvang === '' || g.omvang == null ? '–' : `${esc(g.omvang)}%`}</td>
-          <td>${scoreLabel(gebrekScore(g))}</td><td>${esc(URGENTIES.find((u) => u.id === g.urgentie)?.label ?? '–')}</td><td>${euro(g.kostenraming)}</td></tr>`).join('')}
-          <tr><td colspan="6"><strong>Totaal raming</strong></td><td><strong>${euro(gebreken.reduce((t, g) => t + (Number(g.kostenraming) || 0), 0))}</strong></td></tr>
+          <td>${scoreLabel(gebrekScore(g))}</td><td>${esc(URGENTIES.find((u) => u.id === g.urgentie)?.label ?? '–')}</td>${toonKosten() ? `<td>${euro(g.kostenraming)}</td>` : ''}</tr>`).join('')}
+          ${toonKosten() ? `<tr><td colspan="6"><strong>Totaal raming</strong></td><td><strong>${euro(gebreken.reduce((t, g) => t + (Number(g.kostenraming) || 0), 0))}</strong></td></tr>` : ''}
         </tbody></table></div>
         <h2 style="margin-top:1rem">Detailbevindingen</h2>${details.join('')}` : '<p>Er zijn geen gebreken geconstateerd.</p>'}
       <p style="margin-top:2rem;color:#555;font-size:.85rem">Conditiescores volgens de systematiek van NEN 2767 (1 = uitstekend, 6 = zeer slecht);
@@ -2254,7 +2254,7 @@ async function maatregelen() {
     </div>
     <div id="totaal" class="kaart"></div>
     <div class="kaart" style="padding:0"><div class="tabelhouder"><table>
-      <thead><tr><th>Urgentie</th><th>Object</th><th>Bouwdeel / gebrek</th><th class="verberg-mobiel">Maatregel</th><th>Conditie</th><th>Raming</th><th>Taak</th><th></th></tr></thead>
+      <thead><tr><th>Urgentie</th><th>Object</th><th>Bouwdeel / gebrek</th><th class="verberg-mobiel">Maatregel</th><th>Conditie</th>${toonKosten() ? '<th>Raming</th>' : ''}<th>Taak</th><th></th></tr></thead>
       <tbody id="rijen"></tbody></table></div></div>`;
 
   const [statusF, urgentieF, taakF] = ['#status', '#urgentie', '#taakf'].map((s) => app.querySelector(s));
@@ -2266,14 +2266,14 @@ async function maatregelen() {
       && (!urgentieF.value || g.urgentie === urgentieF.value)
       && (!taakF.value || (taakF.value === 'met') === taken.has(bevindingSleutel(i, g))));
     const totaal = zichtbaar.reduce((t, m) => t + (Number(m.gebrek.kostenraming) || 0), 0);
-    app.querySelector('#totaal').innerHTML = `<strong>${zichtbaar.length}</strong> maatregelen · totale raming <strong>${euro(totaal)}</strong>`;
+    app.querySelector('#totaal').innerHTML = `<strong>${zichtbaar.length}</strong> maatregelen${toonKosten() ? ` · totale raming <strong>${euro(totaal)}</strong>` : ''}`;
     app.querySelector('#rijen').innerHTML = zichtbaar.length ? zichtbaar.map(({ gebrek: g, inspectie: i, object: o }, n) => `
       <tr>
         <td>${urgentieLabel(g.urgentie)}</td>
         <td><a href="#/objecten/${esc(o?.id ?? '')}">${objectNaam(o)}</a></td>
         <td><a href="#/inspecties/${esc(i.id)}">${esc(g.bouwdeel)} – ${esc(g.gebrek)}</a><br><small>${datumNL(i.datum)}</small></td>
         <td class="verberg-mobiel">${esc(g.maatregel || '–')}</td>
-        <td>${g.urgentieKleur ? stowaLabel(g.urgentieKleur) : g.bvcMaatregel ? bvkLabel(i.bvc?.bvk) : scoreLabel(gebrekScore(g))}</td><td>${euro(g.kostenraming)}</td>
+        <td>${g.urgentieKleur ? stowaLabel(g.urgentieKleur) : g.bvcMaatregel ? bvkLabel(i.bvc?.bvk) : scoreLabel(gebrekScore(g))}</td>${toonKosten() ? `<td>${euro(g.kostenraming)}</td>` : ''}
         <td>${taken.has(bevindingSleutel(i, g)) ? taakStatusLabel(taken.get(bevindingSleutel(i, g)))
     : g.maatregelStatus === 'uitgevoerd' ? '–' : auto ? '<small>automatisch</small>' : `<button class="knop klein" data-als-taak="${n}">${I.door} Als taak</button>`}</td>
         <td><button class="knop klein" data-wissel="${n}">${g.maatregelStatus === 'uitgevoerd' ? 'Heropenen' : I.vink + ' Uitgevoerd'}</button></td>
@@ -2312,11 +2312,12 @@ async function maatregelen() {
 
   app.querySelector('#export').onclick = () => {
     const rijen = [['Objectcode', 'Object', 'Inspectiedatum', 'Bouwdeel', 'Gebrek', 'Plaats', 'Conditie', 'Maatregel', 'Urgentie', 'Kostenraming', 'Status', 'Uitgevoerd op']];
+    const kostenKolom = toonKosten() ? -1 : 9;
     for (const { gebrek: g, inspectie: i, object: o } of zichtbaar) {
       rijen.push([o?.code, o?.naam, i.datum, g.bouwdeel, g.gebrek, g.locatie, g.urgentieKleur ? `STOWA ${ST.URGENTIE[g.urgentieKleur]?.label ?? ''}` : g.bvcMaatregel ? (BV.BVK[i.bvc?.bvk]?.kort ?? '') : gebrekScore(g), g.maatregel,
         URGENTIES.find((u) => u.id === g.urgentie)?.label ?? '', g.kostenraming, g.maatregelStatus ?? 'open', g.uitgevoerdOp ?? '']);
     }
-    download(`maatregelen-${vandaag()}.csv`, csv(rijen), 'text/csv;charset=utf-8');
+    download(`maatregelen-${vandaag()}.csv`, csv(kostenKolom < 0 ? rijen : rijen.map((r) => r.filter((_, k) => k !== kostenKolom))), 'text/csv;charset=utf-8');
   };
 }
 
@@ -2893,7 +2894,7 @@ async function mobielStart() {
       ${loginHint}
       <a class="mtegel" href="#/m/werk">
         <span class="micoon">${I.werk}</span>
-        <span><strong>Registratie werkzaamheden</strong><small>Werk vastleggen binnen je werkpakket, met foto's en uren</small></span>
+        <span><strong>Registratie werkzaamheden</strong><small>Werk vastleggen binnen je werkpakket, met foto's${toonUren() ? ' en uren' : ''}</small></span>
       </a>
       <a class="mtegel" href="#/m/inspectie">
         <span class="micoon">${I.inspectie}</span>
@@ -3083,7 +3084,7 @@ async function werkzaamhedenLijst() {
       return true;
     });
     const uren = zichtbaar.reduce((t, w) => t + (Number(w.uren) || 0), 0);
-    app.querySelector('#totaal').innerHTML = `<strong>${zichtbaar.length}</strong> werkzaamheden · <strong>${urenTekst(uren)}</strong> totaal`;
+    app.querySelector('#totaal').innerHTML = `<strong>${zichtbaar.length}</strong> werkzaamheden${toonUren() ? ` · <strong>${urenTekst(uren)}</strong> totaal` : ''}`;
     app.querySelector('#rijen').innerHTML = zichtbaar.length ? zichtbaar.map((w) => `
       <tr class="klikbaar" data-href="#/werkzaamheden/${esc(w.id)}">
         <td>${datumNL(w.datum)}</td><td>${objectNaam(objectMap.get(w.objectId))}</td><td>${esc(w.soort || '–')}</td>
@@ -3105,13 +3106,15 @@ async function werkzaamhedenLijst() {
         const v = x[d.id];
         if (d.type === 'getal') return v ?? '';
         if (d.type === 'janee') return v === true ? 'Ja' : v === false ? 'Nee' : '';
-        if (d.type === 'checklist') return (v ?? []).join(', ');
+        if (d.type === 'checklist' || d.type === 'meerkeuze') return (v ?? []).join(', ');
+        if (['locatie', 'handtekening', 'tijdsduur', 'bijlage', 'foto'].includes(d.type)) return velden.isLeeg(d, v) ? '' : velden.toonWaarde(d, v, datumNL);
         return v ?? '';
       });
       rijen.push([w.datum, o?.code, o?.naam, w.soort, w.uitvoerder, w.uren, w.omschrijving, w.materiaal,
         WERKSTATUS[w.status] ?? 'Gereed', w.vervolg, w.maatregelen?.length ?? 0, w.fotoIds?.length ?? 0, ...extraKolommen]);
     }
-    download(`werkzaamheden-${vandaag()}.csv`, csv(rijen), 'text/csv;charset=utf-8');
+    // Uren uitgezet in dit project: kolom 'Uren' (index 5) niet exporteren.
+    download(`werkzaamheden-${vandaag()}.csv`, csv(toonUren() ? rijen : rijen.map((r) => r.filter((_, k) => k !== 5))), 'text/csv;charset=utf-8');
   };
 }
 
@@ -3139,7 +3142,7 @@ async function werkDetail(id) {
           <dt>Status</dt><dd>${werkStatusLabel(w.status)}</dd>
           <dt>Datum</dt><dd>${datumNL(w.datum)}</dd>
           <dt>Uitvoerder</dt><dd>${esc(w.uitvoerder || '–')}</dd>
-          <dt>Uren</dt><dd>${urenTekst(w.uren)}</dd>
+          ${toonUren() ? `<dt>Uren</dt><dd>${urenTekst(w.uren)}</dd>` : ''}
           ${w.materiaal ? `<dt>Materiaal</dt><dd style="white-space:pre-wrap">${esc(w.materiaal)}</dd>` : ''}
         </dl>
       </section>
@@ -3327,7 +3330,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     <div class="veld breed"><label for="f-soort" class="vereist">Soort werkzaamheid</label>
       <select id="f-soort" name="soort" required><option value="">– kies –</option>${WERKSOORTEN.map((s) => optie(s, s, w.soort)).join('')}</select></div>
     <div class="veld"><label for="f-datum" class="vereist">Datum</label><input id="f-datum" name="datum" type="date" required value="${esc(w.datum)}"></div>
-    <div class="veld"><label for="f-uren">Uren</label><input id="f-uren" name="uren" type="number" min="0" max="1000" step="0.25" inputmode="decimal" value="${esc(w.uren)}"></div>
+    ${toonUren() ? `<div class="veld"><label for="f-uren">Uren</label><input id="f-uren" name="uren" type="number" min="0" max="1000" step="0.25" inputmode="decimal" value="${esc(w.uren)}"></div>` : ''}
     <div class="veld breed"><label for="f-omschrijving">Wat is er gedaan?</label>
       <textarea id="f-omschrijving" name="omschrijving" maxlength="4000" placeholder="Korte omschrijving van het uitgevoerde werk">${esc(w.omschrijving)}</textarea></div>
     <div class="veld breed"><label>Foto's (voor / na)</label><div id="fotos"></div></div>
@@ -3461,7 +3464,8 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
       datum: data.datum,
       soort: data.soort,
       omschrijving: data.omschrijving,
-      uren: data.uren === '' ? '' : Number(data.uren),
+      // Uren uitgezet in dit project: niet gevraagd, een eerder ingevulde waarde blijft staan.
+      uren: !toonUren() || data.uren === undefined ? (bestaand?.uren ?? '') : data.uren === '' ? '' : Number(data.uren),
       uitvoerder: data.uitvoerder,
       status: data.status || 'gereed',
       vervolg: data.status === 'vervolg' ? data.vervolg : '',
@@ -3532,6 +3536,9 @@ const RECHTEN = {
   goedkeuren: { label: 'Goedkeuren', uitleg: 'Registraties in de inbox beoordelen (standaard uit)', standaardUit: true },
 };
 let huidigProject = null; // bijgewerkt bij elke paginawissel
+/** Kosten (ramingen) en uren zijn per project uit te zetten, bijv. als dat via een ander proces loopt. */
+const toonKosten = () => huidigProject?.kostenTonen !== false;
+const toonUren = () => huidigProject?.urenTonen !== false;
 
 const ikEmail = () => String(sync.sessie()?.gebruiker?.email ?? '').toLowerCase();
 /** Toegangsregels gelden voor ingelogde projectleden; beheerders en lokaal gebruik zien alles. */
@@ -4233,6 +4240,12 @@ async function projectFormulier(id) {
           <small>Bepaalt de standaard voor nieuwe werkpakketten; per pakket kun je altijd afwijken.</small></div>
         <div class="veld breed"><label for="f-omschrijving">Omschrijving</label>
           <textarea id="f-omschrijving" name="omschrijving" maxlength="2000">${esc(p.omschrijving)}</textarea></div>
+        <div class="veld breed"><label>Kosten en uren</label><div class="vinkjes-onder">
+          <label class="vink"><input type="checkbox" name="kostenTonen" ${p.kostenTonen === false ? '' : 'checked'}>
+            <span><strong>Kostenramingen gebruiken</strong><small>Raming per gebrek of maatregel, totalen in overzichten, dashboard, rapporten en exports.</small></span></label>
+          <label class="vink"><input type="checkbox" name="urenTonen" ${p.urenTonen === false ? '' : 'checked'}>
+            <span><strong>Uren registreren</strong><small>Veld Uren bij werkzaamheden en uren op het dashboard, in overzichten en exports.</small></span></label></div>
+          <small>Loopt dit bij jullie via een ander proces (bijv. het ERP- of urensysteem)? Zet het uit: dan wordt het niet gevraagd en nergens getoond. Al ingevulde waarden blijven bewaard.</small></div>
         <div class="veld breed"><label class="vink"><input type="checkbox" name="bevindingenAlsTaak" ${p.bevindingenAlsTaak ? 'checked' : ''}>
           <span><strong>Alle bevindingen automatisch als taak</strong><small>Standaard uit: bevindingen uit inspecties worden pas een taak als je ze doorzet
           (vanuit de inspectie of het maatregelenoverzicht). Aan: elke bevinding met een maatregel of urgentie verschijnt meteen als taak.</small></span></label></div>
@@ -4259,7 +4272,7 @@ async function projectFormulier(id) {
     const nu = new Date().toISOString();
     const opslaan = {
       ...p, id: bestaand?.id ?? nieuwId(), naam: d.naam, opdrachtgever: d.opdrachtgever, omschrijving: d.omschrijving,
-      status: d.status, planningswijze: d.planningswijze || 'gepland', leden, bevindingenAlsTaak: form.elements.bevindingenAlsTaak.checked, aangemaakt: p.aangemaakt ?? nu, gewijzigd: nu,
+      status: d.status, planningswijze: d.planningswijze || 'gepland', kostenTonen: form.elements.kostenTonen.checked, urenTonen: form.elements.urenTonen.checked, leden, bevindingenAlsTaak: form.elements.bevindingenAlsTaak.checked, aangemaakt: p.aangemaakt ?? nu, gewijzigd: nu,
     };
     await db.bewaar('projecten', opslaan);
     formulierGewijzigd = false;
@@ -5923,7 +5936,7 @@ async function formulierveldenPagina(id, q) {
         <section class="kaart">
           <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">${velden.FORMULIEREN[formulier]}</h2>
             <button class="knop primair" id="nieuw" type="button">+ Veld toevoegen</button></div>
-          <p><small>Standaardvelden zoals datum, ${formulier === 'werk' ? 'soort, uren en uitvoerder' : formulier === 'inspectie' ? 'soort, inspecteur en gebreken' : 'titel, prioriteit en deadline'} staan er altijd al in.</small></p>
+          <p><small>Standaardvelden zoals datum, ${formulier === 'werk' ? (project.urenTonen === false ? 'soort en uitvoerder' : 'soort, uren en uitvoerder') : formulier === 'inspectie' ? 'soort, inspecteur en gebreken' : 'titel, prioriteit en deadline'} staan er altijd al in.</small></p>
           ${eigen.length ? `<ol class="veldlijst">${eigen.map((d, i) => `
             <li class="${bewerk?.id === d.id ? 'actief' : ''}">
               <div><strong>${esc(d.label || '(zonder naam)')}</strong>
@@ -6985,7 +6998,7 @@ async function exporteerResultaten({ lijst, titel, onderdeel = '', filter = '', 
       const ids = [...new Set(r.fotos.map((f) => f.fotoId))];
       fotoData = new Map((await laadFotos(ids)).map((f) => [f.id, f.data]));
     }
-    const wb = RX.maakWerkboek(ExcelJS, r, { titel, project: project?.naam ?? '', onderdeel, filter, fotoData });
+    const wb = RX.maakWerkboek(ExcelJS, r, { titel, project: project?.naam ?? '', onderdeel, filter, fotoData, zonderKosten: !toonKosten() });
     download(`${bestandsnaam.replace(/[^\w-]+/g, '_')}-${vandaag()}.xlsx`, await wb.xlsx.writeBuffer(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     melding(`Excel gemaakt: ${r.resultaten.length} regels, ${r.gebreken.length} gebreken`);
   } catch (e) {
