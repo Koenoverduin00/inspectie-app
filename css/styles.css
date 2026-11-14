@@ -1380,3 +1380,11 @@ form:not(.afroep-inspectie) .a-insp { display: none; }
 .alleenlezen { display: inline-flex; align-items: center; gap: .3rem; align-self: center; }
 .alleenlezen svg, .geschslot svg { width: 14px; height: 14px; }
 .geschslot { color: var(--tekst-zacht); display: inline-flex; }
+
+/* Locatie op de kaart kiezen */
+.dialoog.kaartkies { width: min(760px, calc(100vw - 16px)); padding: 1rem; }
+.kaartkies-kaart { height: min(60vh, 520px); border-radius: 10px; overflow: hidden; border: 1px solid var(--rand); }
+.kaartkies-kaart.leaflet-container { cursor: crosshair; }
+.kaartkies-tekst { margin: .5rem 0 0; }
+.kaartkies-tekst svg { width: 16px; height: 16px; vertical-align: -3px; color: var(--primair); }
+@media (max-width: 560px) { .dialoog.kaartkies { max-height: calc(100dvh - 16px); } .kaartkies-kaart { height: 58dvh; } }

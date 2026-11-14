@@ -1214,12 +1214,13 @@ async function bibliotheekPagina() {
 // GPS-locatie per gebrek of bevinding (lat, lng, nauwkeurigheid, locatieBron, locatieOp)
 // ---------------------------------------------------------------------------
 const heeftGps = (x) => x?.lat !== '' && x?.lat != null && x?.lng !== '' && x?.lng != null && Number.isFinite(Number(x.lat));
-const gpsLink = (x) => `<a href="https://www.google.com/maps?q=${encodeURIComponent(x.lat)},${encodeURIComponent(x.lng)}" target="_blank" rel="noopener">${Number(x.lat).toFixed(6)}, ${Number(x.lng).toFixed(6)}</a>${x.nauwkeurigheid ? ` <small>±${esc(x.nauwkeurigheid)} m</small>` : ''}`;
+const gpsLink = (x) => `<a href="https://www.google.com/maps?q=${encodeURIComponent(x.lat)},${encodeURIComponent(x.lng)}" target="_blank" rel="noopener">${Number(x.lat).toFixed(6)}, ${Number(x.lng).toFixed(6)}</a>${x.locatieBron === 'kaart' ? ' <small>op kaart gekozen</small>' : x.nauwkeurigheid ? ` <small>GPS ±${esc(x.nauwkeurigheid)} m</small>` : ''}`;
 function gpsVeldHtml(x, sleutel) {
   const heeft = heeftGps(x);
   return `<div class="veld breed gpsveld" data-gpsveld="${esc(sleutel)}"><label>Locatie (GPS)</label>
     <div class="gpsregel">${heeft ? `${I.locatie} ${gpsLink(x)}` : '<small>Nog niet vastgelegd</small>'}
-      <button type="button" class="knop klein" data-gpsvast="${esc(sleutel)}">${I.gps} ${heeft ? 'Opnieuw bepalen' : 'Locatie vastleggen'}</button>
+      <button type="button" class="knop klein" data-gpsvast="${esc(sleutel)}" title="Je huidige positie gebruiken">${I.gps} ${heeft ? 'Mijn locatie opnieuw' : 'Mijn locatie'}</button>
+      <button type="button" class="knop klein" data-gpskaart="${esc(sleutel)}" title="Achteraf invullen? Tik de plek aan op de kaart">${I.kaart} Op kaart kiezen</button>
       ${heeft ? `<button type="button" class="knop klein" data-gpswis="${esc(sleutel)}" aria-label="Locatie wissen">${I.kruis}</button>` : ''}</div></div>`;
 }
 /** Bepaalt de huidige positie en zet die op het doel; stil = geen foutmelding (automatisch vastleggen). */
@@ -1235,12 +1236,66 @@ function bepaalGps(doel, klaar, { knop = null, stil = false } = {}) {
     formulierGewijzigd = true;
     klaar();
   }, (fout) => {
-    if (knop) { knop.disabled = false; knop.innerHTML = `${I.gps} Locatie vastleggen`; }
+    if (knop) { knop.disabled = false; knop.innerHTML = `${I.gps} Mijn locatie`; }
     if (!stil) melding(fout.code === 1 ? 'Geen toestemming voor locatie. Sta locatie toe in de instellingen van je browser.' : `Locatie niet beschikbaar: ${fout.message}`, 'fout');
   }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 });
 }
-/** Knoppen "Locatie vastleggen" en "wissen" in een formulier; vind(sleutel) geeft het gebrek/de bevinding. */
-function koppelGpsVelden(root, vind) {
+/**
+ * Kaartvenster om een plek aan te tikken (bijv. als je achteraf invult en niet meer op locatie bent).
+ * Toont het object ter oriëntatie; geeft { lat, lng } of null bij annuleren.
+ */
+async function kiesOpKaart({ huidig = null, objectId = '' } = {}) {
+  let L;
+  try { L = await laadLeaflet(); } catch (fout) { melding(fout.message, 'fout'); return null; }
+  const o = objectId ? await db.haal('objecten', objectId) : null;
+  const geom = o ? objectGeometrie(o) : null;
+  return new Promise((resolve) => {
+    const d = document.createElement('dialog');
+    d.className = 'dialoog kaartkies';
+    d.innerHTML = `<h2>Locatie op de kaart</h2>
+      <p><small>Tik op de plek van het gebrek. Je kunt de punaise daarna nog verslepen.${o ? ` Het object (${esc(o.code)}) is oranje omlijnd.` : ''}</small></p>
+      <div class="kaartkies-kaart"></div>
+      <p class="kaartkies-tekst"><small>Nog geen plek gekozen.</small></p>
+      <div class="formvoet"><button class="knop" type="button" data-weg>Annuleren</button>
+        <button class="knop primair" type="button" data-ok disabled>${I.vink} Locatie gebruiken</button></div>`;
+    document.body.append(d);
+    d.showModal();
+    const el = d.querySelector('.kaartkies-kaart');
+    const map = L.map(el, { zoomAnimation: false, fadeAnimation: false });
+    el.leafletKaart = map;
+    voegAchtergrondToe(L, map);
+    if (geom) {
+      const laag = L.geoJSON(geom, { style: { color: '#e07b00', weight: 2, fillOpacity: 0.12 }, pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 8, color: '#e07b00' }), interactive: false }).addTo(map);
+      if (!heeftGps(huidig)) map.fitBounds(laag.getBounds(), { maxZoom: 19, padding: [30, 30] });
+    }
+    if (heeftGps(huidig)) map.setView([huidig.lat, huidig.lng], 19);
+    else if (!geom) map.setView(laatstePositie ? [laatstePositie[1], laatstePositie[0]] : [52.1, 5.1], laatstePositie ? 18 : 8);
+    let gekozen = heeftGps(huidig) ? { lat: Number(huidig.lat), lng: Number(huidig.lng) } : null;
+    let marker = null;
+    const tekst = d.querySelector('.kaartkies-tekst');
+    const ok = d.querySelector('[data-ok]');
+    const zet = (ll) => {
+      gekozen = { lat: Number(ll.lat.toFixed(7)), lng: Number(ll.lng.toFixed(7)) };
+      tekst.innerHTML = `${I.locatie} <strong>${gekozen.lat.toFixed(6)}, ${gekozen.lng.toFixed(6)}</strong>`;
+      ok.disabled = false;
+    };
+    const plaats = (ll) => {
+      if (marker) marker.setLatLng(ll);
+      else { marker = L.marker(ll, { draggable: true }).addTo(map); marker.on('dragend', () => zet(marker.getLatLng())); }
+      zet(ll);
+    };
+    if (gekozen) { plaats(L.latLng(gekozen.lat, gekozen.lng)); ok.disabled = true; }
+    map.on('click', (e) => plaats(e.latlng));
+    setTimeout(() => map.invalidateSize(), 50);
+    const klaar = (w) => { map.remove(); d.close(); d.remove(); resolve(w); };
+    d.querySelector('[data-weg]').onclick = () => klaar(null);
+    d.addEventListener('cancel', (e) => { e.preventDefault(); klaar(null); });
+    ok.onclick = () => klaar(gekozen);
+  });
+}
+
+/** Knoppen "Mijn locatie", "Op kaart kiezen" en "wissen" in een formulier; vind(sleutel) geeft het gebrek/de bevinding. */
+function koppelGpsVelden(root, vind, { objectId = () => '' } = {}) {
   const ververs = (sleutel) => {
     const el = root.querySelector(`[data-gpsveld="${CSS.escape(sleutel)}"]`);
     if (el) el.outerHTML = gpsVeldHtml(vind(sleutel), sleutel);
@@ -1255,7 +1310,19 @@ function koppelGpsVelden(root, vind) {
       return;
     }
     const vast = e.target.closest('[data-gpsvast]');
-    if (vast) bepaalGps(vind(vast.dataset.gpsvast), () => ververs(vast.dataset.gpsvast), { knop: vast });
+    if (vast) { bepaalGps(vind(vast.dataset.gpsvast), () => ververs(vast.dataset.gpsvast), { knop: vast }); return; }
+    const kaartKnop = e.target.closest('[data-gpskaart]');
+    if (kaartKnop) {
+      const sleutel = kaartKnop.dataset.gpskaart;
+      const doel = vind(sleutel);
+      kiesOpKaart({ huidig: doel, objectId: objectId() }).then((ll) => {
+        if (!ll) return;
+        for (const k of ['nauwkeurigheid']) delete doel[k];
+        Object.assign(doel, { lat: ll.lat, lng: ll.lng, locatieBron: 'kaart', locatieOp: new Date().toISOString() });
+        formulierGewijzigd = true;
+        ververs(sleutel);
+      });
+    }
   });
   return { ververs, automatisch: (sleutel) => bepaalGps(vind(sleutel), () => ververs(sleutel), { stil: true }) };
 }
@@ -3107,7 +3174,8 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
   toonAlgemeneFotos();
   toonBouwdelen();
   toonGebreken();
-  const gpsV = koppelGpsVelden(form, (k) => (k[0] === 'c' ? staat.checklist[Number(k.slice(1))] : staat.gebreken[Number(k.slice(1))]));
+  const gpsV = koppelGpsVelden(form, (k) => (k[0] === 'c' ? staat.checklist[Number(k.slice(1))] : staat.gebreken[Number(k.slice(1))]),
+    { objectId: () => form.elements.objectId?.value || staat.objectId });
   if (!bestaand) {
     // Ander object gekozen: de bouwdelen volgen het nieuwe object.
     form.elements.objectId?.addEventListener?.('change', () => {
@@ -9570,7 +9638,7 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
   const form = app.querySelector('#form');
   const $ = (s) => app.querySelector(s);
   const fotoLijst = (k) => (k === 'alg' ? staat.fotos : b.gebreken[Number(k.slice(1))].fotos);
-  const bvcGps = koppelGpsVelden(form, (k) => b.gebreken[Number(k.slice(1))]);
+  const bvcGps = koppelGpsVelden(form, (k) => b.gebreken[Number(k.slice(1))], { objectId: () => object?.id ?? '' });
 
   const tekenGebreken = () => {
     $('#gebreken').innerHTML = b.gebreken.length ? b.gebreken.map((g, i) => `

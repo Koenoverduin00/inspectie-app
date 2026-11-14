@@ -391,8 +391,10 @@ De knop **Mijn locatie** op de kaart verschijnt alleen als er een ronde voor je 
 ## GPS-locatie per gebrek of bevinding
 
 Elk gebrek (NEN 2767, boomveiligheidscontrole), elke bevinding (oordeel) en elk controlepunt dat niet in orde is, heeft standaard een veld
-**Locatie (GPS)**. Op de telefoon wordt de positie automatisch vastgelegd zodra je de bevinding toevoegt (je staat er meestal naast);
-met **Opnieuw bepalen** of het kruisje pas je het aan of wis je het. Op de pc leg je de locatie vast met de knop. De nauwkeurigheid (± m) wordt
+**Locatie (GPS)**. Op de telefoon wordt de positie automatisch vastgelegd zodra je de bevinding toevoegt (je staat er meestal naast).
+Kies daarna zelf: **Mijn locatie** (je huidige GPS-positie) of **Op kaart kiezen** – handig als je achteraf invult en niet meer op locatie bent:
+je tikt de plek aan op een kaartje waarop het object oranje is omlijnd, en kunt de punaise nog verslepen. Met het kruisje wis je de locatie.
+Bij de locatie staat of hij met GPS (± m) of op de kaart is bepaald. De nauwkeurigheid (± m) wordt
 bewaard. Detailpagina en rapport tonen de coördinaten met een link naar de kaart; de Excel-export vult per gebrek X/Y (RD) en breedte-/lengtegraad.
 Waterkeringinspecties (STOWA) hadden dit al per waarneming.
 
