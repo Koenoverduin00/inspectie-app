@@ -2576,8 +2576,9 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     await db.bewaar('inspecties', inspectie);
     if (data.inspecteur) instelling.schrijf('inspecteur', data.inspecteur);
     formulierGewijzigd = false;
-    if (!mobiel) melding(status === 'afgerond' ? 'Inspectie afgerond en opgeslagen' : 'Concept opgeslagen');
-    else onthoudOpslag(status === 'afgerond' ? 'Inspectie opgeslagen' : 'Concept opgeslagen', inspectie.objectId);
+    if (status === 'afgerond') gedaan('Inspectie afgerond en vastgelegd', { object: objecten.find((o) => o.id === inspectie.objectId), beoordeling: true });
+    else melding('Concept opgeslagen – nog niet ingediend');
+    if (mobiel) onthoudOpslag(status === 'afgerond' ? 'Inspectie opgeslagen' : 'Concept opgeslagen', inspectie.objectId);
     if (status === 'afgerond') await rondTaakAf(taakId, inspectieId);
     ga(pakketTerug ?? (mobiel ? '#/' : `#/inspecties/${inspectieId}`));
   };
@@ -3334,6 +3335,7 @@ async function mobielLocatie(objectId) {
     if (knop.dataset.gereed) {
       knop.disabled = true;
       await snelGereed(x.v, o);
+      gedaan('Gereed gemeld', { object: o, extra: x.v.naam, beoordeling: true });
       onthoudOpslag(`Afgevinkt: ${x.v.naam}`, objectId);
       router();
     } else if (knop.dataset.overslaan) {
@@ -3387,6 +3389,60 @@ function statusregel(st) {
 // Mobiel: na opslaan een duidelijke bevestiging met de volgende stap
 // ---------------------------------------------------------------------------
 const OPGESLAGEN = 'inspectie-app:opgeslagen';
+/**
+ * Duidelijke bevestiging na vastleggen: groot groen vinkje, wat er is gedaan, en of het al is opgestuurd.
+ * Blijft over paginawissels heen staan en sluit vanzelf (of met een tik).
+ * @param {string} titel        bijv. "Werkzaamheid vastgelegd"
+ * @param {{ object?: object, beoordeling?: boolean, extra?: string, waarschuwing?: string }} opties
+ */
+function gedaan(titel, { object = null, beoordeling = false, extra = '', waarschuwing = '' } = {}) {
+  document.querySelectorAll('.toast, .vastgelegd').forEach((t) => t.remove());
+  const el = document.createElement('div');
+  el.className = 'vastgelegd';
+  el.setAttribute('role', 'alertdialog');
+  el.setAttribute('aria-live', 'assertive');
+  el.setAttribute('aria-label', titel);
+  el.innerHTML = `<div class="vastgelegd-kaart">
+    <svg class="vastgelegd-vink" viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="24"/><path d="M15 27l7 7 15-16"/></svg>
+    <h2>${esc(titel)}</h2>
+    ${object ? `<p class="vastgelegd-object">${esc(object.code ?? '')}${object.naam ? ` – ${esc(object.naam)}` : ''}</p>` : ''}
+    ${extra ? `<p>${esc(extra)}</p>` : ''}
+    ${waarschuwing ? `<p class="vastgelegd-let">${I.let} ${esc(waarschuwing)}</p>` : ''}
+    <p class="vastgelegd-status bezig" data-status>${I.vernieuw} Bezig met versturen…</p>
+    <button type="button" class="knop primair vastgelegd-ok">OK</button></div>`;
+  document.body.append(el);
+  let dicht = null;
+  const sluit = () => {
+    clearTimeout(dicht);
+    el.classList.add('weg');
+    setTimeout(() => el.remove(), 250);
+    document.removeEventListener('keydown', toets);
+  };
+  const toets = (e) => { if (e.key === 'Escape' || e.key === 'Enter') sluit(); };
+  document.addEventListener('keydown', toets);
+  el.addEventListener('click', (e) => { if (e.target === el || e.target.closest('.vastgelegd-ok')) sluit(); });
+  el.querySelector('.vastgelegd-ok').focus({ preventScroll: true });
+  const statusEl = el.querySelector('[data-status]');
+  const zet = (soort, html) => { statusEl.className = `vastgelegd-status ${soort}`; statusEl.innerHTML = html; };
+  const klaar = () => {
+    const st = laatsteSyncStatus ?? {};
+    const wacht = st.wachtend ?? 0;
+    if (st.fase === 'ok' && !wacht && navigator.onLine) {
+      zet('ok', `${I.vink} Opgestuurd${beoordeling ? ' – staat klaar om te worden goedgekeurd' : ''}`);
+    } else if (!navigator.onLine || st.fase === 'offline') {
+      zet('let', `${I.offline} Bewaard op dit toestel. Wordt automatisch opgestuurd zodra je weer verbinding hebt.`);
+    } else if (st.fase === 'uitgelogd' || st.fase === 'uit') {
+      zet('let', `${I.opslag} Bewaard op dit toestel. Log in om het op te sturen.`);
+    } else if (st.fase === 'fout') {
+      zet('let', `${I.let} Bewaard op dit toestel. Opsturen lukt nu niet; de app probeert het opnieuw.`);
+    } else {
+      zet('let', `${I.wacht} Bewaard. Wordt zo opgestuurd.`);
+    }
+    dicht = setTimeout(sluit, 3200);
+  };
+  Promise.race([sync.synchroniseer(), new Promise((r) => { setTimeout(r, 8000); })]).catch(() => {}).then(klaar);
+}
+
 function onthoudOpslag(tekst, objectId = '') {
   try { sessionStorage.setItem(OPGESLAGEN, JSON.stringify({ tekst, objectId, tijd: Date.now() })); } catch { /* geen opslag */ }
 }
@@ -4092,8 +4148,8 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     });
     if (data.uitvoerder) instelling.schrijf('inspecteur', data.uitvoerder);
     formulierGewijzigd = false;
-    if (!mobiel) melding('Werkzaamheid opgeslagen');
-    else onthoudOpslag('Werkzaamheid opgeslagen', data.objectId);
+    gedaan(bestaand ? 'Werkzaamheid bijgewerkt' : 'Werkzaamheid vastgelegd', { object: objecten.find((o) => o.id === data.objectId), beoordeling: true });
+    if (mobiel) onthoudOpslag('Werkzaamheid opgeslagen', data.objectId);
     await rondTaakAf(taakId, werkId);
     ga(pakketTerug ?? (mobiel ? '#/' : `#/werkzaamheden/${werkId}`));
   };
@@ -6919,7 +6975,7 @@ async function slaObjectOver(pakket, object) {
     id: overslaanId(pakket.id, object.id, pakket.rondeId), projectId: pakket.projectId, pakketId: pakket.id, rondeId: pakket.rondeId ?? '', objectId: object.id,
     ...keuze, door: sync.sessie()?.gebruiker?.email || instelling.lees('inspecteur') || '', op: vandaag(), gewijzigd: nu,
   });
-  melding(`${object.code} overgeslagen`);
+  gedaan('Overslaan vastgelegd', { object, extra: `Reden: ${keuze.reden ?? ''}` });
   return true;
 }
 
@@ -7426,7 +7482,7 @@ async function afroepFormulier(id, q = new URLSearchParams()) {
     const lijst = [...rondes, r];
     await db.bewaar('werkpakketten', { ...actueel, rondes: lijst, status: pakketStatus({ ...actueel, rondes: lijst }), gewijzigd: nu });
     formulierGewijzigd = false;
-    melding(`Afroep verstuurd: ${r.naam}`);
+    gedaan('Afroep verstuurd', { extra: `${r.naam}${r.afroep.spoed ? ' (spoed)' : ''} · gereed vóór ${datumNL(r.eind)}` });
     ga(`#/werkpakketten/${id}?ronde=${r.id}`);
   };
 }
@@ -8360,7 +8416,8 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
     formulierGewijzigd = false;
     const rood = waarnemingen.filter((w) => w.urgentieKleur === 'rood').length;
     if (mobiel) onthoudOpslag(status === 'afgerond' ? 'Waterkeringinspectie opgeslagen' : 'Concept opgeslagen', object.id);
-    if (!mobiel || (rood && status === 'afgerond')) melding(status === 'afgerond' ? `Inspectie afgerond${rood ? ` – ${rood}× rood: direct melden aan de beheerder!` : ''}` : 'Concept opgeslagen', rood && status === 'afgerond' ? 'fout' : 'ok');
+    if (status === 'afgerond') gedaan('Waterkeringinspectie afgerond en vastgelegd', { object, beoordeling: true, waarschuwing: rood ? `${rood}× rood: direct melden aan de beheerder!` : '' });
+    else melding('Concept opgeslagen – nog niet ingediend');
     ga(pakket ? pakketPagina(pakket, mobiel) : (mobiel ? '#/' : `#/inspecties/${inspectieId}`));
   };
 }
@@ -8772,8 +8829,9 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
     instelling.schrijf('bvcCertificaat', b.certificaat);
     instelling.schrijf('bvcMethode', b.methode);
     formulierGewijzigd = false;
-    if (!mobiel) melding(status === 'afgerond' ? 'Boomveiligheidscontrole afgerond' : 'Concept opgeslagen');
-    else onthoudOpslag(status === 'afgerond' ? 'Boomcontrole opgeslagen' : 'Concept opgeslagen', object.id);
+    if (status === 'afgerond') gedaan('Boomveiligheidscontrole afgerond en vastgelegd', { object, beoordeling: true });
+    else melding('Concept opgeslagen – nog niet ingediend');
+    if (mobiel) onthoudOpslag(status === 'afgerond' ? 'Boomcontrole opgeslagen' : 'Concept opgeslagen', object.id);
     ga(pakket ? (mobiel ? `#/m/pakket/${pakket.id}` : `#/werkpakketten/${pakket.id}`) : (mobiel ? '#/m/bvc' : `#/inspecties/${inspectieId}`));
   };
 }
@@ -9168,7 +9226,8 @@ async function vrijgaveFormulier(id, q = new URLSearchParams(), { mobiel = false
     instelling.schrijf('ecoDeskundigheid', v.deskundigheid);
     if (v.deskundige) instelling.schrijf('inspecteur', v.deskundige);
     formulierGewijzigd = false;
-    melding(status === 'afgerond' ? `Vrijgave afgerond: ${eco.BESLUIT[v.besluit].label}` : 'Concept opgeslagen');
+    if (status === 'afgerond') gedaan('Vrijgave vastgelegd', { extra: `Besluit: ${eco.BESLUIT[v.besluit].label}` });
+    else melding('Concept opgeslagen – nog niet ingediend');
     ga(pakket ? (mobiel ? `#/m/pakket/${pakket.id}` : `#/werkpakketten/${pakket.id}`) : (mobiel ? `#/m/vrijgave/${vid}` : `#/vrijgaven/${vid}`));
   };
 }

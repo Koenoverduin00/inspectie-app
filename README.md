@@ -126,6 +126,16 @@ maatregelen), afroepen, overgeslagen bezoeken (met reden) en flora- en fauna-vri
 en een link naar de registratie. Filteren op soort en jaar, en exporteren naar CSV. Hetzelfde logboek staat onderaan de
 objectpagina.
 
+## Bevestiging na vastleggen
+
+Na het vastleggen van een werkzaamheid, inspectie (NEN, waterkering, boomcontrole), vrijgave, overslaan, "Gereed" op locatie of een afroep
+verschijnt een duidelijke bevestiging met een groot groen vinkje, wat er is vastgelegd en op welk object. Daaronder staat of het al is opgestuurd:
+
+- **Opgestuurd – staat klaar om te worden goedgekeurd** (online en verzonden);
+- **Bewaard op dit toestel**, met de reden: geen verbinding (wordt automatisch opgestuurd), niet ingelogd, of opsturen lukt nu niet (de app probeert het opnieuw).
+
+De bevestiging sluit na enkele seconden vanzelf, of met **OK** / een tik ernaast. Een concept geeft alleen een korte melding ("nog niet ingediend").
+
 ## Goedkeuren: inbox
 
 Elke registratie van uitgevoerd werk en elke afgeronde inspectie krijgt een beoordelingsstatus:

@@ -1287,3 +1287,33 @@ form:not(.afroep-inspectie) .a-insp { display: none; }
 .dk-zoekbalk input[type=search] { flex: 1; margin: 0; }
 .decompkolommen { flex-basis: 100%; margin: 0; }
 .decompkolommen code { background: var(--achtergrond); border: 1px solid var(--rand); border-radius: 4px; padding: 0 .3rem; font-size: .8rem; }
+
+/* Bevestiging na vastleggen: groot groen vinkje */
+.vastgelegd { position: fixed; inset: 0; z-index: 3000; display: grid; place-items: center; padding: 1rem;
+  background: rgba(16, 24, 40, .45); animation: vastgelegd-in .18s ease-out; }
+.vastgelegd.weg { opacity: 0; transition: opacity .25s; }
+.vastgelegd-kaart { background: var(--vlak); color: var(--tekst); border-radius: 18px; box-shadow: 0 12px 40px rgba(0, 0, 0, .25);
+  width: min(420px, 100%); padding: 1.75rem 1.5rem 1.25rem; text-align: center; animation: vastgelegd-kaart .28s cubic-bezier(.2, 1.4, .4, 1); }
+.vastgelegd-kaart h2 { margin: .75rem 0 .25rem; font-size: 1.35rem; }
+.vastgelegd-kaart p { margin: .25rem 0; }
+.vastgelegd-object { color: var(--tekst-zacht); font-weight: 600; }
+.vastgelegd-vink { width: 104px; height: 104px; display: block; margin: 0 auto; }
+.vastgelegd-vink circle { fill: #1a7f37; stroke: #1a7f37; stroke-width: 2; transform-origin: center; animation: vastgelegd-cirkel .35s ease-out; }
+.vastgelegd-vink path { fill: none; stroke: #fff; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 40; stroke-dashoffset: 40; animation: vastgelegd-streep .4s .2s ease-out forwards; }
+.vastgelegd-status { display: inline-flex; align-items: center; gap: .4rem; margin-top: .75rem !important; padding: .45rem .8rem; border-radius: 10px;
+  font-weight: 600; font-size: .95rem; text-align: left; }
+.vastgelegd-status svg { width: 18px; height: 18px; flex: 0 0 18px; }
+.vastgelegd-status.ok { background: #e5f4e4; color: #1a7f37; }
+.vastgelegd-status.let { background: #f9eeda; color: #7a4d00; }
+.vastgelegd-status.bezig { background: var(--achtergrond); color: var(--tekst-zacht); }
+.vastgelegd-let { background: #fbebeb; color: #b42318; border-radius: 10px; padding: .45rem .8rem; font-weight: 600; }
+.vastgelegd-ok { margin-top: 1rem; min-width: 8rem; }
+@keyframes vastgelegd-in { from { opacity: 0; } }
+@keyframes vastgelegd-kaart { from { transform: scale(.85); opacity: 0; } }
+@keyframes vastgelegd-cirkel { from { transform: scale(0); } }
+@keyframes vastgelegd-streep { to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .vastgelegd, .vastgelegd-kaart, .vastgelegd-vink circle { animation: none; }
+  .vastgelegd-vink path { animation: none; stroke-dashoffset: 0; }
+}
