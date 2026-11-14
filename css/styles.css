@@ -1373,3 +1373,10 @@ form:not(.afroep-inspectie) .a-insp { display: none; }
 .geschlijst .geschstatus { display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; margin-top: .2rem; }
 .geschlijst .reden { color: var(--gevaar); }
 .geschregel { display: flex; gap: .75rem; align-items: flex-start; padding: .6rem .2rem; }
+
+/* Ingediende inspecties: alleen-lezen voor de inspecteur */
+.vergrendeld-icoon svg { width: 34px; height: 34px; color: var(--tekst-zacht); }
+.vergrendeld h2 { margin-top: .4rem; }
+.alleenlezen { display: inline-flex; align-items: center; gap: .3rem; align-self: center; }
+.alleenlezen svg, .geschslot svg { width: 14px; height: 14px; }
+.geschslot { color: var(--tekst-zacht); display: inline-flex; }

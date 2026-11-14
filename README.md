@@ -371,6 +371,14 @@ Rijkswaterstaat** (Loo Plan, 8 februari 2017, definitief) en het CROW **Standaar
 - **Rapport** per boom (bijlage 5) en **SUF-BVC export** (boom, boomgebreken, maatregelen) per project of werkpakket;
   bij een BVC-werkpakket een samenvatting per klasse en maatregel.
 
+## Ingediende inspecties zijn alleen-lezen
+
+Een inspecteur kan een inspectie aanpassen zolang het een **concept** is. Na **Afronden** is de inspectie ingediend en voor de inspecteur
+alleen-lezen: openen toont "Deze inspectie is ingediend" met een knop om hem te bekijken; Bewerken en Verwijderen staan niet meer op de
+detailpagina. Pas als de beheerder of beoordelaar de inspectie **afkeurt**, kan de inspecteur hem weer openen, aanpassen en opnieuw indienen.
+Beheerders en mensen met het recht "goedkeuren" kunnen altijd aanpassen. Dit geldt voor alle inspecties (NEN, eigen typen, boomveiligheid,
+waterkering). De regel wordt in de app gehandhaafd; de server controleert alleen projecttoegang.
+
 ## Mijn geschiedenis (telefoon, Ik-pagina)
 
 Op de Ik-pagina staat **Mijn geschiedenis**: alles wat je in het actieve project hebt vastgelegd – werkzaamheden, inspecties, vrijgaven en

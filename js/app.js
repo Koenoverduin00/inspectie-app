@@ -2735,6 +2735,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     app.innerHTML = leegKaart('Inspectie niet gevonden.', `<a class="knop" href="${mobiel ? '#/' : '#/inspecties'}">Terug</a>`);
     return;
   }
+  if (bestaand && !magInspectieAanpassen(bestaand)) return inspectieVergrendeld(bestaand, mobiel);
   if (bestaand?.bvc) return bvcFormulier(id, null, { mobiel, taakId, pakketId });
   if (bestaand?.stowa) return stowaFormulier(id, null, { mobiel, taakId, pakketId });
   if (!bestaand && pakketId && (await laadPakketView(pakketId, rondeId))?.inspectiesoort === ST.STOWA_SOORT) {
@@ -3354,8 +3355,8 @@ async function inspectieDetail(id) {
         <h1>${esc(i.soort)} · ${datumNL(i.datum)}</h1><p>${objectNaam(o)}${o?.type ? ` · ${esc(o.type)}` : ''}</p></div>
       <div class="knoppen">
         <a class="knop" href="#/inspecties/${esc(id)}/rapport">Rapport</a>
-        <a class="knop" href="#/inspecties/${esc(id)}/bewerken">Bewerken</a>
-        <button class="knop gevaar" id="verwijder">Verwijderen</button>
+        ${magInspectieAanpassen(i) ? `<a class="knop" href="#/inspecties/${esc(id)}/bewerken">Bewerken</a>` : alleenLezenLabel(i)}
+        ${magInspectieVerwijderen(i) ? '<button class="knop gevaar" id="verwijder">Verwijderen</button>' : ''}
       </div>
     </div>
     <div class="raster-2 detailkop">
@@ -3393,7 +3394,8 @@ async function inspectieDetail(id) {
 
   tekenObjectKaartje(app.querySelector('#objectkaartje'), o, typeOordeel ? typeOordeel.kleur : perBd ? '#0b4f6c' : CONDITIES[score]?.kleur ?? '#0b4f6c');
   bevindingKnoppen(i);
-  app.querySelector('#verwijder').onclick = async () => {
+  const knopWeg = app.querySelector('#verwijder');
+  if (knopWeg) knopWeg.onclick = async () => {
     if (!confirm('Deze inspectie inclusief foto\'s definitief verwijderen?')) return;
     await verwijderInspectieData(i);
     melding('Inspectie verwijderd');
@@ -4052,7 +4054,7 @@ async function mobielLocatie(objectId) {
   const [lng, lat] = geom ? (geom.type === 'Point' ? geom.coordinates : gis.middelpunt(geom)) : [null, null];
   const regHref = (x) => {
     const r = x.vg.gedaan.get(objectId);
-    return r ? (x.v.soort === 'inspectie' ? `#/m/inspectie/${esc(r.id)}` : `#/m/werk/${esc(r.id)}`) : '';
+    return r ? (x.v.soort === 'inspectie' ? esc(inspectieHref(r)) : `#/m/werk/${esc(r.id)}`) : '';
   };
   const regel = (x) => {
     const sleutel = `${x.v.id}:${x.v.rondeId}`;
@@ -4285,7 +4287,7 @@ async function mobielStart() {
       href: `#/m/werk/${w.id}`, icoon: I.werk, titel: w.soort || 'Werkzaamheid', object: objectMap.get(w.objectId), tijd: w.gewijzigd,
     })),
     ...inspecties.filter((i) => i.datum === dag && i.status === 'afgerond').map((i) => ({
-      href: `#/m/inspectie/${i.id}`, icoon: i.bvc ? I.boom : i.stowa ? I.water : I.inspectie,
+      href: inspectieHref(i), icoon: i.bvc ? I.boom : i.stowa ? I.water : I.inspectie,
       titel: i.bvc ? `Boomveiligheid · ${i.bvc.niet ? 'niet aangetroffen' : BV.BVK[i.bvc.bvk]?.kort ?? ''}`
         : i.stowa ? `Waterkering · ${i.stowa.waarnemingen?.length ?? 0} waarneming(en)${ST.zwaarste(i.stowa.waarnemingen) ? ` · ${ST.URGENTIE[ST.zwaarste(i.stowa.waarnemingen)].label.toLowerCase()}` : ''}`
           : `${i.soort} · ${i.gebreken?.length ?? 0} gebrek(en)`,
@@ -5200,6 +5202,42 @@ const beoordelingVan = (r) => r?.beoordeling?.status ?? 'goedgekeurd';
 const teBeoordelen = (r) => beoordelingVan(r) === 'ingediend' && (r.status !== 'concept');
 
 /** Mag deze gebruiker registraties goedkeuren? Beheerders altijd; projectleden alleen met het recht 'goedkeuren'. */
+/**
+ * Een ingediende inspectie is voor de inspecteur alleen-lezen. Aanpassen kan bij een concept, of als de inspectie is
+ * afgekeurd. Beheerders en beoordelaars (recht "goedkeuren") mogen altijd aanpassen.
+ */
+function magInspectieAanpassen(i) {
+  if (!i) return true;
+  if (magBeheren() || magGoedkeuren()) return true;
+  if (i.status !== 'afgerond') return true;
+  return beoordelingVan(i) === 'afgekeurd';
+}
+const magInspectieVerwijderen = (i) => magBeheren() || magGoedkeuren() || i?.status !== 'afgerond';
+/** Link naar een inspectie: het formulier als je mag aanpassen, anders de (alleen-lezen) detailpagina. */
+const inspectieHref = (i, mobiel = true) => (magInspectieAanpassen(i) ? (mobiel ? `#/m/inspectie/${i.id}` : `#/inspecties/${i.id}/bewerken`) : `#/inspecties/${i.id}`);
+const alleenLezenLabel = (i) => (magInspectieAanpassen(i) ? '' : `<span class="label-status alleenlezen" title="Ingediende inspecties kun je alleen aanpassen als ze zijn afgekeurd">${I.slot} Alleen-lezen</span>`);
+
+function inspectieVergrendeld(i, mobiel) {
+  const titel = i.bvc ? 'Boomveiligheidscontrole' : i.stowa ? 'Inspectie waterkering' : i.soort;
+  const terug = mobiel ? '#/' : `#/inspecties/${i.id}`;
+  app.innerHTML = `
+    ${mobiel ? `<div class="mkop"><a href="${terug}" class="mterug" aria-label="Terug">←</a><div><small>Inspectie</small><h1>${esc(titel)}</h1></div></div>`
+    : `<div class="paginakop"><div><p><a href="${terug}">← Terug</a></p><h1>${esc(titel)} · ${datumNL(i.datum)}</h1></div></div>`}
+    <section class="kaart vergrendeld">
+      <div class="vergrendeld-icoon">${I.slot}</div>
+      <h2>Deze inspectie is ingediend</h2>
+      <p>Een ingediende inspectie kun je niet meer aanpassen. Alleen als de beheerder of beoordelaar hem <strong>afkeurt</strong>, kun je hem weer
+        openen en aanpassen. Zie je een fout? Laat het de beheerder weten.</p>
+      <dl class="gegevens">
+        <dt>Datum</dt><dd>${datumNL(i.datum)}</dd>
+        <dt>Status</dt><dd>${beoordelingLabel(i)}</dd>
+        <dt>Oordeel</dt><dd>${inspectieOordeel(i)}</dd>
+      </dl>
+      <div class="knoppen" style="margin-top:1rem"><a class="knop primair" href="#/inspecties/${esc(i.id)}">Inspectie bekijken</a>
+        <a class="knop" href="${mobiel ? '#/m/account' : '#/inspecties'}">${mobiel ? 'Mijn geschiedenis' : 'Alle inspecties'}</a></div>
+    </section>`;
+}
+
 function magGoedkeuren() {
   if (magBeheren()) return true;
   return huidigProject?.ledenInfo?.[ikEmail()]?.rechten?.goedkeuren === true;
@@ -5440,7 +5478,7 @@ async function mijnRegistraties() {
     ...insp.filter(van).map((r) => ({
       r, icoon: r.bvc ? I.boom : r.stowa ? I.water : I.inspectie,
       titel: r.bvc ? 'Boomveiligheidscontrole' : r.stowa ? 'Inspectie waterkering' : r.soort,
-      href: r.bvc || r.stowa ? `#/inspecties/${r.id}` : `#/m/inspectie/${r.id}`,
+      href: r.bvc || r.stowa || !magInspectieAanpassen(r) ? `#/inspecties/${r.id}` : `#/m/inspectie/${r.id}`, slot: !magInspectieAanpassen(r),
       status: r.status === 'afgerond' ? beoordelingVan(r) : 'concept', oordeel: r.status === 'afgerond' ? inspectieOordeel(r) : '', tijd: tijd(r),
     })),
     ...vrij.filter((v) => isIk(v.deskundige)).map((r) => ({ r, icoon: I.blad, titel: `Vrijgave · ${eco.BESLUIT[r.besluit]?.label ?? 'concept'}`,
@@ -5489,7 +5527,7 @@ async function toonGeschiedenis(el) {
     vorigeDag = dag;
     const inhoud = `<span class="micoon klein">${x.icoon}</span>
       <span><strong>${esc(x.titel)}</strong><small>${objectNaam(x.object)}${x.pakket ? ` · ${esc(x.pakket)}` : ''}</small>
-        <small class="geschstatus">${GESCH_STATUS[x.status] ?? ''} ${x.oordeel ?? ''}</small>
+        <small class="geschstatus">${GESCH_STATUS[x.status] ?? ''} ${x.oordeel ?? ''}${x.slot ? ` <span class="geschslot" title="Ingediend: alleen-lezen">${I.slot}</span>` : ''}</small>
         ${x.status === 'afgekeurd' ? `<small class="reden">${esc(x.r.beoordeling?.opmerking || 'Geen reden opgegeven')}</small>` : ''}</span>`;
     return `${kop}<li>${x.href ? `<a href="${x.href}">${inhoud}</a>` : `<div class="geschregel">${inhoud}</div>`}</li>`;
   }).join('')}</ul>` : `<p class="mleeg">${lijst.length ? 'Niets met deze status.' : 'Je hebt in dit project nog niets vastgelegd.'}</p>`}
@@ -8733,7 +8771,7 @@ async function mobielPakket(id, q = new URLSearchParams()) {
     ${open.length > 5 ? '<div class="mzoek"><input type="search" id="m-zoek" placeholder="Zoek op code of naam" autocomplete="off" aria-label="Objecten zoeken"></div>' : ''}
     <ul class="mlijst" id="open-lijst"></ul>
     ${v.gedaan.size ? `<details class="mklapper"><summary>Gedaan (${v.gedaan.size})</summary><ul class="mlijst">${objecten.filter((o) => v.gedaan.has(o.id)).map((o) => `
-      <li><a href="${p.soort === 'inspectie' ? `#/m/inspectie/${esc(v.gedaan.get(o.id).id)}` : `#/m/werk/${esc(v.gedaan.get(o.id).id)}`}">
+      <li><a href="${p.soort === 'inspectie' ? esc(inspectieHref(v.gedaan.get(o.id))) : `#/m/werk/${esc(v.gedaan.get(o.id).id)}`}">
         <span class="micoon klein">${I.gereed}</span><span><strong>${esc(o.code)} – ${esc(o.naam)}</strong><small>${datumNL(v.gedaan.get(o.id).datum)}</small></span></a></li>`).join('')}</ul></details>` : ''}
     ${v.overgeslagen.size ? `<details class="mklapper"><summary>Overgeslagen (${v.overgeslagen.size})</summary><ul class="mlijst">${objecten.filter((o) => v.overgeslagen.has(o.id)).map((o) => `
       <li><div class="mregel"><span class="micoon klein">${I.overslaan}</span><span><strong>${esc(o.code)} – ${esc(o.naam)}</strong><small>${esc(v.overgeslagen.get(o.id).reden)}</small></span>
@@ -8924,6 +8962,7 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
     app.innerHTML = leegKaart('Inspectie niet gevonden.', '<a class="knop" href="#/inspecties">Terug</a>');
     return;
   }
+  if (bestaand && !magInspectieAanpassen(bestaand)) return inspectieVergrendeld(bestaand, mobiel);
   const object = objecten.find((o) => o.id === (bestaand?.objectId ?? objectId));
   if (!object) {
     const q = new URLSearchParams({ ...(pakketId ? { pakket: pakketId } : {}), ...(rondeId ? { ronde: rondeId } : {}), ...(taakId ? { taak: taakId } : {}) });
@@ -9368,11 +9407,12 @@ async function stowaDetail(i, { rapport = false } = {}) {
           <h1>${I.water} Inspectie waterkering · ${datumNL(i.datum)}</h1><p>${objectNaam(o)} · ${statusLabel(i.status)}</p></div>
         <div class="knoppen">
           <a class="knop" href="#/inspecties/${esc(i.id)}/rapport">Rapport</a>
-          <a class="knop" href="#/inspecties/${esc(i.id)}/bewerken">Bewerken</a>
-          <button class="knop gevaar" id="verwijder">Verwijderen</button>
+          ${magInspectieAanpassen(i) ? `<a class="knop" href="#/inspecties/${esc(i.id)}/bewerken">Bewerken</a>` : alleenLezenLabel(i)}
+          ${magInspectieVerwijderen(i) ? '<button class="knop gevaar" id="verwijder">Verwijderen</button>' : ''}
         </div>
       </div>${inhoud}`;
-    app.querySelector('#verwijder').onclick = async () => {
+    const knopWeg = app.querySelector('#verwijder');
+  if (knopWeg) knopWeg.onclick = async () => {
       if (!confirm('Deze inspectie inclusief foto\'s verwijderen?')) return;
       await verwijderInspectieData(i);
       ga(o ? `#/objecten/${o.id}` : '#/inspecties');
@@ -9397,6 +9437,7 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
     app.innerHTML = leegKaart('Controle niet gevonden.', '<a class="knop" href="#/inspecties">Terug</a>');
     return;
   }
+  if (bestaand && !magInspectieAanpassen(bestaand)) return inspectieVergrendeld(bestaand, mobiel);
   const object = objecten.find((o) => o.id === (bestaand?.objectId ?? objectId));
   if (!object && !mobiel) {
     // Op de pc eerst een boom kiezen.
@@ -9756,13 +9797,14 @@ async function bvcDetail(i, { rapport = false } = {}) {
         <h1>${I.boom} Boomveiligheidscontrole · ${datumNL(i.datum)}</h1><p>${objectNaam(o)} · ${statusLabel(i.status)}</p></div>
       <div class="knoppen">
         <a class="knop" href="#/inspecties/${esc(i.id)}/rapport">Rapport</a>
-        <a class="knop" href="#/inspecties/${esc(i.id)}/bewerken">Bewerken</a>
-        <button class="knop gevaar" id="verwijder">Verwijderen</button>
+        ${magInspectieAanpassen(i) ? `<a class="knop" href="#/inspecties/${esc(i.id)}/bewerken">Bewerken</a>` : alleenLezenLabel(i)}
+        ${magInspectieVerwijderen(i) ? '<button class="knop gevaar" id="verwijder">Verwijderen</button>' : ''}
       </div>
     </div>${inhoud}`;
   tekenObjectKaartje(app.querySelector('#objectkaartje'), o, i.bvc?.niet ? '#9aa5b1' : (BV.BVK[i.bvc?.bvk]?.kleur ?? '#0b4f6c'));
   bevindingKnoppen(i);
-  app.querySelector('#verwijder').onclick = async () => {
+  const knopWeg = app.querySelector('#verwijder');
+  if (knopWeg) knopWeg.onclick = async () => {
     if (!confirm('Deze boomveiligheidscontrole inclusief foto\'s verwijderen?')) return;
     await verwijderInspectieData(i);
     ga(o ? `#/objecten/${o.id}` : '#/inspecties');
