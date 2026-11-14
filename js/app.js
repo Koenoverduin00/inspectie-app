@@ -26,6 +26,7 @@ import * as ST from './stowa.js';
 import * as DG from './digigids.js';
 import * as PL from './planning.js';
 import * as DB from './dashboard.js';
+import * as D from './decompositie.js';
 import { I, ico } from './iconen.js';
 import { takenLijst, sorteerTaken, objectGeometrie, PRIORITEITEN } from './taken.js';
 
@@ -109,18 +110,19 @@ const ROUTES = [
   [/^\/instellingen$/, 'instellingen', instellingen],
   [/^\/personen$/, 'personen', personenPagina],
   [/^\/toewijzen$/, 'toewijzen', toewijzenPagina],
+  [/^\/decompositie$/, 'decompositie', decompositiePagina],
   [/^\/inrichting$/, 'inrichting', inrichtingPagina],
   [/^\/inbox$/, 'inbox', inboxPagina],
 ];
 
 // Het hoofdmenu is compact: onderdelen vallen onder een hoofdgroep en hebben daar een tabblad.
-const NAV_GROEP = { inspecties: 'werkpakketten', werkzaamheden: 'werkpakketten', maatregelen: 'werkpakketten', taken: 'planning', kaart: 'instellingen', personen: 'instellingen', toewijzen: 'werkpakketten' };
+const NAV_GROEP = { inspecties: 'werkpakketten', werkzaamheden: 'werkpakketten', maatregelen: 'werkpakketten', taken: 'planning', kaart: 'instellingen', personen: 'instellingen', decompositie: 'instellingen', toewijzen: 'werkpakketten' };
 const TABBLADEN = {
   werkpakketten: () => [['#/werkpakketten', I.pakket + ' Werkpakketten'], ['#/inspecties', I.inspectie + ' Inspecties'], ['#/werkzaamheden', I.werk + ' Werkzaamheden'], ['#/maatregelen', I.let + ' Maatregelen'], ...(magBeheren() ? [['#/toewijzen', I.personen + ' Toewijzen']] : [])],
-  instellingen: () => (magBeheren() ? [['#/instellingen', I.instellingen + ' Algemeen'], ['#/personen', I.personen + ' Personen'], ['#/kaart', I.kaart + ' Kaart & GIS']] : []),
+  instellingen: () => (magBeheren() ? [['#/instellingen', I.instellingen + ' Algemeen'], ['#/personen', I.personen + ' Personen'], ['#/kaart', I.kaart + ' Kaart & GIS'], ['#/decompositie', I.lagen + ' Decompositie']] : []),
 };
 // Alleen de overzichtspagina's krijgen tabbladen (geen formulieren of details).
-const TAB_PAGINAS = /^\/(werkpakketten|inspecties|werkzaamheden|maatregelen|toewijzen|instellingen|personen|kaart)$/;
+const TAB_PAGINAS = /^\/(werkpakketten|inspecties|werkzaamheden|maatregelen|toewijzen|instellingen|personen|kaart|decompositie)$/;
 
 function tabbalk(pad, groep) {
   const tabs = TABBLADEN[groep]?.() ?? [];
@@ -226,8 +228,12 @@ async function laadAlles() {
 }
 
 function objectStatus(object, inspecties) {
+  // Een GIS-object dat aan een bouwdeel is gekoppeld, telt ook inspecties mee die dat bouwdeel scoorden.
+  const bd = object.decomp && decompIndex()?.perId.get(object.decomp)?.niveau === 'bouwdeel' ? object.decomp : null;
+  const dekt = (i) => i.objectId === object.id || (bd && (i.bouwdelen ?? []).some((b) => b.id === bd && !b.nietGeinspecteerd));
+  const conditieVan = (i) => (D.perBouwdeel(i) ? (bd ? laatsteScores(inspecties).get(bd)?.score ?? null : null) : inspectieScore(i));
   const laatste = inspecties
-    .filter((i) => i.objectId === object.id && i.status === 'afgerond')
+    .filter((i) => dekt(i) && i.status === 'afgerond')
     .sort((a, b) => String(b.datum).localeCompare(String(a.datum)))[0];
   const bvk = laatste?.bvc && !laatste.bvc.niet ? laatste.bvc.bvk : null;
   if (laatste?.bvc) {
@@ -242,9 +248,363 @@ function objectStatus(object, inspecties) {
     return { laatste, conditie: null, stowa: ST.zwaarste(laatste.stowa.waarnemingen), volgende, planning: periodiek ? planningStatus(volgende, vandaag()) : 'geen' };
   }
   if (!laatste) return { laatste: null, conditie: null, volgende: null, planning: periodiek ? 'nooit' : 'geen' };
-  if (!periodiek) return { laatste, conditie: inspectieScore(laatste), volgende: null, planning: 'geen' };
+  if (!periodiek) return { laatste, conditie: conditieVan(laatste), volgende: null, planning: 'geen' };
   const volgende = volgendeInspectie(laatste.datum, object.inspectieInterval);
-  return { laatste, conditie: inspectieScore(laatste), volgende, planning: planningStatus(volgende, vandaag()) };
+  return { laatste, conditie: conditieVan(laatste), volgende, planning: planningStatus(volgende, vandaag()) };
+}
+
+// ---------------------------------------------------------------------------
+// NEN 2767-decompositie (object → element → bouwdeel), aangeleverd door de opdrachtgever.
+// GIS-objecten worden op elk niveau aan een knoop gekoppeld (o.decomp). Alleen bouwdelen krijgen een score.
+// ---------------------------------------------------------------------------
+const decompCache = new WeakMap();
+function decompIndex(p = huidigProject) {
+  const kn = p?.decompositie?.knopen;
+  if (!kn?.length) return null;
+  let idx = decompCache.get(kn);
+  if (!idx) { idx = D.index(kn); decompCache.set(kn, idx); }
+  return idx;
+}
+const scoreCache = new WeakMap();
+function laatsteScores(inspecties) {
+  let m = scoreCache.get(inspecties);
+  if (!m) { m = D.laatsteBouwdeelScores(inspecties); scoreCache.set(inspecties, m); }
+  return m;
+}
+/** De bouwdelen die bij een GIS-object horen: het bouwdeel zelf, of alle bouwdelen onder het element/object. */
+function bouwdelenVanObject(o, idx = decompIndex()) {
+  if (!idx || !o?.decomp || !idx.perId.has(o.decomp)) return [];
+  return D.bouwdelenOnder(idx, o.decomp);
+}
+const NIVEAU_KLEUR = { object: '#7d5ba6', element: '#c27c1e', bouwdeel: '#2f8f5b' };
+const niveauChip = (n) => `<span class="niveauchip" style="--nk:${NIVEAU_KLEUR[n] ?? '#8a96a3'}">${esc(D.NIVEAU_LABEL[n] ?? n)}</span>`;
+const knoopNaam = (k) => (k ? `${k.code ? `${esc(k.code)} ` : ''}${esc(k.naam)}` : '');
+
+/** Verdeling van de bouwdeelscores van één inspectie (geen totaalscore). */
+function verdelingLabel(i) {
+  const v = D.scoreVerdeling(i);
+  const delen = [1, 2, 3, 4, 5, 6].filter((s) => v[s])
+    .map((s) => `<span class="score klein" style="background:${CONDITIES[s].kleur}" title="${v[s]} bouwde${v[s] === 1 ? 'el' : 'len'} met conditie ${s} (${esc(CONDITIES[s].label)})">${s}</span><small>×${v[s]}</small>`);
+  if (v.niet) delen.push(`<span class="label-status" title="Niet geïnspecteerd">n.g.</span><small>×${v.niet}</small>`);
+  return `<span class="verdeling" title="Conditie per bouwdeel">${delen.join(' ') || '<span class="label-status">Geen bouwdelen</span>'}</span>`;
+}
+
+/** Tabel met de score per bouwdeel van één inspectie. */
+function bouwdeelScoreTabel(i, { kort = false } = {}) {
+  const idx = decompIndex();
+  const rijen = D.bouwdeelScores(i);
+  return `<div class="tabelhouder"><table class="bouwdeeltabel">
+    <thead><tr><th>Bouwdeel</th>${kort ? '' : '<th>Element</th>'}<th>Gebreken</th><th>Conditie</th></tr></thead>
+    <tbody>${rijen.map((b) => {
+    const k = idx?.perId.get(b.id);
+    const el = k?.ouder ? idx.perId.get(k.ouder) : null;
+    return `<tr><td>${b.code ? `<small>${esc(b.code)}</small> ` : ''}${esc(k?.naam ?? b.naam)}${k?.hoeveelheid !== '' && k?.hoeveelheid != null ? ` <small>(${esc(k.hoeveelheid)} ${esc(k.eenheid ?? '')})</small>` : ''}</td>
+      ${kort ? '' : `<td>${el ? esc(el.naam) : '–'}</td>`}
+      <td>${b.nietGeinspecteerd ? '–' : b.gebreken}</td>
+      <td>${b.nietGeinspecteerd ? `<span class="label-status">Niet geïnspecteerd</span>${b.reden ? ` <small>${esc(b.reden)}</small>` : ''}` : scoreLabel(b.score)}</td></tr>`;
+  }).join('')}</tbody></table></div>`;
+}
+
+async function leesDecompBestand(bestand) {
+  if (/\.(csv|txt)$/i.test(bestand.name)) return D.leesCsvTekst(await bestand.text());
+  const ExcelJS = await PX.laadExcelJS();
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(await bestand.arrayBuffer());
+  const ws = wb.worksheets.find((w) => /decompositie/i.test(w.name)) ?? wb.worksheets[0];
+  const regels = [];
+  ws?.eachRow({ includeEmpty: true }, (row) => { regels.push(Array.isArray(row.values) ? row.values.slice(1) : []); });
+  return regels;
+}
+
+async function decompositiePagina(_, q) {
+  if (!magBeheren()) {
+    app.innerHTML = leegKaart('Alleen beheerders kunnen de decompositie beheren.', '<a class="knop" href="#/">Naar het dashboard</a>');
+    return;
+  }
+  let project = await actiefProject();
+  if (!project) { app.innerHTML = leegKaart('Kies eerst een project.'); return; }
+  let knopen = project.decompositie?.knopen ?? [];
+  let idx = D.index(knopen);
+  const objecten = (await inProject('objecten')).sort((a, b) => String(a.code).localeCompare(String(b.code), 'nl', { numeric: true }));
+  const scores = D.laatsteBouwdeelScores(await inProject('inspecties'));
+  const metGeom = objecten.filter((o) => objectGeometrie(o));
+  const voorObject = q?.get('object') ? objecten.find((o) => o.id === q.get('object')) : null;
+  let gekozen = voorObject?.decomp && idx.perId.has(voorObject.decomp) ? voorObject.decomp : null;
+  const open = new Set(knopen.length <= 80 ? knopen.filter((k) => k.niveau !== 'bouwdeel').map((k) => k.id) : []);
+  const openPad = (id) => D.pad(idx, id).forEach((k) => { if (k.id !== id) open.add(k.id); });
+  if (gekozen) openPad(gekozen);
+  let kaartObj = null;
+  let voorbeeld = null;
+
+  const gekoppeld = () => {
+    const m = new Map();
+    for (const o of objecten) if (o.decomp && idx.perId.has(o.decomp)) m.set(o.decomp, [...(m.get(o.decomp) ?? []), o]);
+    return m;
+  };
+  const onderGekozen = () => new Set(gekozen ? [gekozen, ...alleOnder(gekozen)] : []);
+  const alleOnder = (id) => (idx.kinderen.get(id) ?? []).flatMap((k) => [k.id, ...alleOnder(k.id)]);
+  const kleurVan = (o) => {
+    const k = o.decomp ? idx.perId.get(o.decomp) : null;
+    if (!k) return '#b4bcc4';
+    if (o.decomp === gekozen) return '#1f6feb';
+    if (gekozen && onderGekozen().has(o.decomp)) return '#7fb0ff';
+    return NIVEAU_KLEUR[k.niveau];
+  };
+  const bewaarProject = async (decompositie) => {
+    const p = await actiefProject();
+    project = { ...p, decompositie, gewijzigd: new Date().toISOString() };
+    await db.bewaar('projecten', project);
+    huidigProject = project;
+    knopen = decompositie?.knopen ?? [];
+    idx = D.index(knopen);
+  };
+  const bewaarKoppelingen = async (wijzigingen) => {
+    const nu = new Date().toISOString();
+    const lijst = [];
+    for (const [oid, kid] of wijzigingen) {
+      const o = objecten.find((x) => x.id === oid);
+      if (!o || (o.decomp ?? '') === kid) continue;
+      o.decomp = kid;
+      lijst.push({ ...o, gewijzigd: nu });
+    }
+    if (lijst.length) await db.bewaarVeel('objecten', lijst);
+    return lijst.length;
+  };
+
+  const t = () => D.telling(knopen);
+  app.innerHTML = `
+    <div class="paginakop"><div><h1>Decompositie (NEN 2767)</h1>
+      <p>De decompositie van de opdrachtgever: object → element → bouwdeel. Koppel GIS-objecten op elk niveau; bij een inspectie
+      geeft de inspecteur alleen <strong>bouwdelen</strong> een conditiescore.</p></div>
+      <div class="knoppen">
+        <label class="knop primair">${I.bestand} Decompositie inlezen<input type="file" id="d-bestand" accept=".xlsx,.csv,.txt" hidden></label>
+        <button class="knop" id="d-sjabloon">${I.excel} Sjabloon</button>
+        ${knopen.length ? `<button class="knop" id="d-export">${I.exporteer} Exporteren</button>` : ''}
+      </div></div>
+    <div id="d-voorbeeld"></div>
+    ${knopen.length ? `
+    <section class="kaart decompstats">
+      <div><strong>${t().object}</strong><small>objecten</small></div>
+      <div><strong>${t().element}</strong><small>elementen</small></div>
+      <div><strong>${t().bouwdeel}</strong><small>bouwdelen</small></div>
+      <div><strong id="d-gekoppeld"></strong><small>GIS-objecten gekoppeld</small></div>
+      <div class="decompstats-knoppen">
+        <button class="knop klein" id="d-auto" title="Koppel GIS-objecten waarvan de objectcode gelijk is aan de (GIS-)code in de decompositie">${I.vernieuw} Koppelen op code</button>
+        <button class="knop klein gevaar" id="d-wis">${I.verwijder} Verwijderen</button></div>
+      <p class="decompbron"><small>${project.decompositie?.bestand ? `Bron: ${esc(project.decompositie.bestand)} · ` : ''}${project.decompositie?.op ? `ingelezen ${datumNL(project.decompositie.op.slice(0, 10))}` : ''}</small></p>
+    </section>
+    <div class="decompraster">
+      <section class="kaart decompboom">
+        <input type="search" id="d-zoek" placeholder="Zoek op code of naam…" autocomplete="off">
+        <div id="d-boom"></div>
+      </section>
+      <div>
+        <section class="kaart" id="d-selectie"></section>
+        <section class="kaart" style="padding:.5rem">
+          <div class="kaartlegenda"><span style="--k:#1f6feb">gekozen</span><span style="--k:#7fb0ff">eronder</span>
+            <span style="--k:${NIVEAU_KLEUR.object}">object</span><span style="--k:${NIVEAU_KLEUR.element}">element</span>
+            <span style="--k:${NIVEAU_KLEUR.bouwdeel}">bouwdeel</span><span style="--k:#b4bcc4">niet gekoppeld</span></div>
+          ${metGeom.length ? '<div id="d-kaart" class="kaartvlak" style="height:520px"></div>' : '<p class="leeg">Nog geen GIS-objecten in dit project. Laad eerst een GIS-bestand in via Kaart & GIS.</p>'}
+        </section>
+      </div>
+    </div>` : `
+    <section class="kaart">
+      <h2>Nog geen decompositie</h2>
+      <p>Lees het bestand van de opdrachtgever in (Excel .xlsx of CSV). Twee indelingen worden herkend:</p>
+      <ol>
+        <li><strong>Lijst</strong> – kolommen <em>Code, Naam, Niveau, Bovenliggende code</em>, optioneel <em>Eenheid, Hoeveelheid, GIS-code</em>.
+          Niveau is object, element of bouwdeel.</li>
+        <li><strong>Kolommen</strong> – per regel <em>Object, Element, Bouwdeel</em> (met optioneel <em>Objectcode, Elementcode, Bouwdeelcode</em>,
+          <em>Eenheid, Hoeveelheid, GIS-code</em>).</li>
+      </ol>
+      <p>Na het inlezen koppelt de app GIS-objecten automatisch als de objectcode gelijk is aan de GIS-code of de code in de decompositie.
+        De rest koppel je op de kaart: kies een onderdeel en klik op de vlakken.</p>
+    </section>`}`;
+
+  const tekenBoom = () => {
+    const el = app.querySelector('#d-boom');
+    if (!el) return;
+    const g = gekoppeld();
+    const termen = zoekTermen(app.querySelector('#d-zoek').value);
+    const past = (k) => termen.every((x) => `${k.code} ${k.naam}`.toLowerCase().includes(x));
+    let zichtbaar = null;
+    if (termen.length) {
+      zichtbaar = new Set();
+      for (const k of knopen) if (past(k)) D.pad(idx, k.id).forEach((p) => zichtbaar.add(p.id));
+    }
+    const rij = (k) => {
+      const kids = idx.kinderen.get(k.id) ?? [];
+      const isOpen = termen.length ? true : open.has(k.id);
+      const n = g.get(k.id)?.length ?? 0;
+      const s = k.niveau === 'bouwdeel' ? scores.get(k.id) : null;
+      return `<li>
+        <div class="dk-rij${k.id === gekozen ? ' gekozen' : ''}" data-knoop="${esc(k.id)}">
+          ${kids.length ? `<button type="button" class="dk-pijl" data-klap="${esc(k.id)}" aria-label="${isOpen ? 'Inklappen' : 'Uitklappen'}">${isOpen ? '▾' : '▸'}</button>` : '<span class="dk-pijl"></span>'}
+          ${niveauChip(k.niveau)}
+          <span class="dk-naam">${k.code ? `<small>${esc(k.code)}</small> ` : ''}${esc(k.naam)}</span>
+          ${k.hoeveelheid !== '' && k.hoeveelheid != null ? `<small class="dk-hv">${esc(k.hoeveelheid)} ${esc(k.eenheid ?? '')}</small>` : ''}
+          ${s ? `<span class="score klein" style="background:${CONDITIES[s.score].kleur}" title="Laatste conditie ${datumNL(s.datum)}">${s.score}</span>` : ''}
+          ${n ? `<span class="dk-gis" title="${n} GIS-object(en) gekoppeld">${I.kaart}${n}</span>` : ''}
+        </div>
+        ${kids.length && isOpen ? `<ul>${kids.filter((c) => !zichtbaar || zichtbaar.has(c.id)).map(rij).join('')}</ul>` : ''}</li>`;
+    };
+    const top = (idx.kinderen.get(null) ?? []).filter((k) => !zichtbaar || zichtbaar.has(k.id));
+    el.innerHTML = top.length ? `<ul class="dk-boom">${top.map(rij).join('')}</ul>` : '<p class="leeg">Niets gevonden.</p>';
+    const aantal = objecten.filter((o) => o.decomp && idx.perId.has(o.decomp)).length;
+    const tel = app.querySelector('#d-gekoppeld');
+    if (tel) tel.textContent = `${aantal} / ${objecten.length}`;
+  };
+
+  const tekenSelectie = () => {
+    const el = app.querySelector('#d-selectie');
+    if (!el) return;
+    const k = gekozen ? idx.perId.get(gekozen) : null;
+    if (!k) {
+      el.innerHTML = `<p style="margin:0">${I.punaise} <strong>Kies links een object, element of bouwdeel</strong> en klik daarna op de kaart op de GIS-vlakken die erbij horen.
+        Nogmaals klikken ontkoppelt. Een GIS-object hoort bij precies één onderdeel.</p>`;
+      return;
+    }
+    const eigen = gekoppeld().get(k.id) ?? [];
+    const bd = D.bouwdelenOnder(idx, k.id);
+    const s = k.niveau === 'bouwdeel' ? scores.get(k.id) : null;
+    el.innerHTML = `
+      <p style="margin:0 0 .25rem"><small>${D.pad(idx, k.id).slice(0, -1).map(knoopNaam).join(' › ') || 'Hoogste niveau'}</small></p>
+      <h2 style="margin:0">${niveauChip(k.niveau)} ${knoopNaam(k)}</h2>
+      <p style="margin:.4rem 0">${k.niveau === 'bouwdeel'
+    ? `Krijgt een conditiescore bij inspectie.${s ? ` Laatste: ${scoreLabel(s.score)} op <a href="#/inspecties/${esc(s.inspectieId)}">${datumNL(s.datum)}</a>.` : ' Nog niet geïnspecteerd.'}`
+    : `Inspectie op een hieraan gekoppeld GIS-object scoort de ${bd.length} bouwde${bd.length === 1 ? 'el' : 'len'} eronder.`}
+        ${k.hoeveelheid !== '' && k.hoeveelheid != null ? `<br>Hoeveelheid: ${esc(k.hoeveelheid)} ${esc(k.eenheid ?? '')}` : ''}</p>
+      <h3 style="margin:.75rem 0 .25rem">Gekoppelde GIS-objecten (${eigen.length})</h3>
+      ${eigen.length ? `<ul class="dk-objecten">${eigen.map((o) => `<li><button type="button" class="linkknop" data-zoom="${esc(o.id)}">${esc(o.code)}${o.naam && o.naam !== o.code ? ` – ${esc(o.naam)}` : ''}</button>
+        <button type="button" class="knop klein" data-los="${esc(o.id)}" title="Ontkoppelen">${I.kruis}</button></li>`).join('')}</ul>`
+    : '<p class="leeg" style="margin:0">Nog niets gekoppeld. Klik op de kaart op een vlak.</p>'}`;
+  };
+
+  const kies = (id) => {
+    gekozen = id;
+    if (id) openPad(id);
+    tekenBoom();
+    tekenSelectie();
+    kaartObj?.herkleur();
+    const eigen = id ? gekoppeld().get(id) ?? [] : [];
+    if (kaartObj && eigen.length === 1) kaartObj.zoomNaar(eigen[0].id);
+  };
+
+  const koppel = async (o) => {
+    if (!gekozen) return melding('Kies eerst links een onderdeel uit de decompositie.', 'fout');
+    const vorig = o.decomp ? idx.perId.get(o.decomp) : null;
+    const nieuw = o.decomp === gekozen ? '' : gekozen;
+    await bewaarKoppelingen(new Map([[o.id, nieuw]]));
+    melding(nieuw ? `${o.code} gekoppeld aan ${idx.perId.get(nieuw).naam}${vorig ? ` (was ${vorig.naam})` : ''}` : `${o.code} ontkoppeld`);
+    kaartObj?.herkleur();
+    tekenBoom();
+    tekenSelectie();
+  };
+
+  // Inlezen met voorbeeld en controle voordat er iets verandert.
+  app.querySelector('#d-bestand').addEventListener('change', async (e) => {
+    const bestand = e.target.files?.[0];
+    e.target.value = '';
+    if (!bestand) return;
+    let res;
+    try {
+      res = D.leesDecompositie(await leesDecompBestand(bestand));
+    } catch (fout) {
+      console.error(fout);
+      return melding('Dit bestand kan niet worden gelezen. Gebruik Excel (.xlsx) of CSV.', 'fout');
+    }
+    voorbeeld = { ...res, bestand: bestand.name };
+    const tn = D.telling(res.knopen);
+    const nieuweIds = new Set(res.knopen.map((k) => k.id));
+    const vervallen = objecten.filter((o) => o.decomp && !nieuweIds.has(o.decomp));
+    const auto = D.koppelOpCode(res.knopen, objecten.map((o) => (o.decomp && !nieuweIds.has(o.decomp) ? { ...o, decomp: '' } : o)));
+    voorbeeld.vervallen = vervallen;
+    voorbeeld.auto = auto;
+    app.querySelector('#d-voorbeeld').innerHTML = `
+      <section class="kaart ${res.knopen.length ? '' : 'waarschuwingskaart'}">
+        <h2 style="margin-top:0">${I.bestand} ${esc(bestand.name)}</h2>
+        ${res.knopen.length ? `<p><strong>${tn.object}</strong> objecten, <strong>${tn.element}</strong> elementen en <strong>${tn.bouwdeel}</strong> bouwdelen herkend
+          (indeling: ${res.indeling === 'lijst' ? 'lijst met bovenliggende code' : 'kolommen object/element/bouwdeel'}).</p>
+          <ul>
+            <li>${auto.size} GIS-object${auto.size === 1 ? ' wordt' : 'en worden'} automatisch gekoppeld op code.</li>
+            ${knopen.length ? `<li>Onderdelen met dezelfde code behouden hun koppelingen en scores.</li>` : ''}
+            ${vervallen.length ? `<li class="fouttekst">${vervallen.length} koppeling${vervallen.length === 1 ? '' : 'en'} vervallen: het onderdeel staat niet meer in het bestand.</li>` : ''}
+            ${tn.bouwdeel ? '' : '<li class="fouttekst">Er zitten geen bouwdelen in; zonder bouwdelen kan niets worden gescoord.</li>'}
+          </ul>` : ''}
+        ${res.fouten.length ? `<details ${res.knopen.length ? '' : 'open'}><summary>${res.fouten.length} melding${res.fouten.length === 1 ? '' : 'en'} bij het inlezen</summary>
+          <ul>${res.fouten.slice(0, 30).map((f) => `<li>${esc(f)}</li>`).join('')}${res.fouten.length > 30 ? `<li>… en ${res.fouten.length - 30} meer</li>` : ''}</ul></details>` : ''}
+        <div class="knoppen" style="margin-top:.75rem">
+          ${res.knopen.length ? `<button class="knop primair" id="d-overnemen">${I.vink} ${knopen.length ? 'Huidige decompositie vervangen' : 'Overnemen'}</button>` : ''}
+          <button class="knop" id="d-annuleer">Annuleren</button></div>
+      </section>`;
+    app.querySelector('#d-annuleer').onclick = () => { voorbeeld = null; app.querySelector('#d-voorbeeld').innerHTML = ''; };
+    const over = app.querySelector('#d-overnemen');
+    if (over) over.onclick = async () => {
+      if (voorbeeld.vervallen.length && !confirm(`${voorbeeld.vervallen.length} koppeling(en) vervallen omdat het onderdeel niet meer in het bestand staat. Doorgaan?`)) return;
+      await bewaarProject({ knopen: voorbeeld.knopen, bestand: voorbeeld.bestand, op: new Date().toISOString() });
+      const w = new Map(voorbeeld.vervallen.map((o) => [o.id, '']));
+      for (const [oid, kid] of voorbeeld.auto) w.set(oid, kid);
+      const n = await bewaarKoppelingen(w);
+      melding(`Decompositie overgenomen${n ? ` · ${n} koppeling${n === 1 ? '' : 'en'} bijgewerkt` : ''}`);
+      decompositiePagina(_, q);
+    };
+  });
+
+  app.querySelector('#d-sjabloon').onclick = () => download('decompositie-sjabloon.csv', csv(D.SJABLOON), 'text/csv;charset=utf-8');
+  app.querySelector('#d-export')?.addEventListener('click', () => {
+    const g = gekoppeld();
+    const regels = D.naarRegels(knopen);
+    const opCode = new Map(knopen.map((k) => [k.code, k.id]));
+    regels[0].push('Gekoppelde GIS-objecten');
+    for (const r of regels.slice(1)) r.push((g.get(opCode.get(r[0])) ?? []).map((o) => o.code).join(', '));
+    download(`decompositie-${String(project.naam ?? 'project').replace(/[^\w-]+/g, '_')}.csv`, csv(regels), 'text/csv;charset=utf-8');
+  });
+  app.querySelector('#d-auto')?.addEventListener('click', async () => {
+    const n = await bewaarKoppelingen(D.koppelOpCode(knopen, objecten));
+    melding(n ? `${n} GIS-object${n === 1 ? '' : 'en'} gekoppeld op code` : 'Geen nieuwe koppelingen gevonden op code');
+    kaartObj?.herkleur();
+    tekenBoom();
+    tekenSelectie();
+  });
+  app.querySelector('#d-wis')?.addEventListener('click', async () => {
+    if (!confirm('De decompositie en alle koppelingen met GIS-objecten verwijderen? Afgeronde inspecties behouden hun bouwdeelscores.')) return;
+    await bewaarKoppelingen(new Map(objecten.filter((o) => o.decomp).map((o) => [o.id, ''])));
+    await bewaarProject(null);
+    melding('Decompositie verwijderd');
+    decompositiePagina(_, q);
+  });
+  app.querySelector('#d-zoek')?.addEventListener('input', tekenBoom);
+  app.querySelector('#d-boom')?.addEventListener('click', (e) => {
+    const klap = e.target.closest('[data-klap]');
+    if (klap) {
+      const id = klap.dataset.klap;
+      if (open.has(id)) open.delete(id); else open.add(id);
+      tekenBoom();
+      return;
+    }
+    const r = e.target.closest('[data-knoop]');
+    if (r) kies(r.dataset.knoop === gekozen ? null : r.dataset.knoop);
+  });
+  app.querySelector('#d-selectie')?.addEventListener('click', async (e) => {
+    const z = e.target.closest('[data-zoom]');
+    if (z) { kaartObj?.zoomNaar(z.dataset.zoom); return; }
+    const los = e.target.closest('[data-los]');
+    if (los) {
+      const o = objecten.find((x) => x.id === los.dataset.los);
+      await bewaarKoppelingen(new Map([[o.id, '']]));
+      melding(`${o.code} ontkoppeld`);
+      kaartObj?.herkleur();
+      tekenBoom();
+      tekenSelectie();
+    }
+  });
+  tekenBoom();
+  tekenSelectie();
+  const kaartEl = app.querySelector('#d-kaart');
+  if (kaartEl) {
+    kaartObj = await tekenObjectenKaart(kaartEl, { objecten: metGeom, kleurVan, opKlik: koppel });
+    if (voorObject && kaartObj) kaartObj.zoomNaar(voorObject.id);
+  }
 }
 
 function alleMaatregelen(inspecties, objectMap) {
@@ -641,6 +1001,23 @@ const INRICHTING = [
       const zonder = objecten.filter((o) => !o.type).length;
       const typen = new Set(objecten.map((o) => o.type).filter(Boolean)).size;
       return zonder ? `${zonder} object${zonder === 1 ? '' : 'en'} zonder type` : `${typen} objecttype${typen === 1 ? '' : 'n'}, alle objecten ingedeeld`;
+    },
+  },
+  {
+    id: 'decompositie', titel: 'NEN 2767-decompositie', icoon: 'lagen', verplicht: false,
+    doel: 'Alleen nodig als de opdrachtgever inspecteert volgens NEN 2767 met een eigen decompositie. Dan scoort de inspecteur per bouwdeel in plaats van één score per object.',
+    nodig: ['De decompositie van de opdrachtgever (Excel of CSV): object → element → bouwdeel, met codes', 'Bij voorkeur een GIS-code per onderdeel, gelijk aan de objectcode in het GIS-bestand'],
+    snel: 'Lees het bestand in via Instellingen → Decompositie. Onderdelen met een GIS-code die overeenkomt met de objectcode worden direct gekoppeld.',
+    best: ['Vraag de opdrachtgever om vaste codes per onderdeel. Bij een nieuwe levering blijven koppelingen en scores dan behouden.',
+      'Koppel GIS-vlakken op het laagste niveau dat in het GIS bestaat: een vlak per bouwdeel geeft scores op de kaart, een vlak per object laat de inspecteur alle bouwdelen eronder scoren.',
+      'Controleer na het inlezen of er bouwdelen zijn: alleen bouwdelen krijgen een conditiescore.'],
+    actie: () => ['#/decompositie', 'Decompositie inlezen'],
+    klaar: ({ p }) => (p.decompositie?.knopen ?? []).length > 0,
+    status: ({ p, objecten }) => {
+      const kn = p.decompositie?.knopen ?? [];
+      if (!kn.length) return 'Geen decompositie (optioneel)';
+      const ids = new Set(kn.map((k) => k.id));
+      return `${D.telling(kn).bouwdeel} bouwdelen · ${objecten.filter((o) => ids.has(o.decomp)).length} GIS-objecten gekoppeld`;
     },
   },
   {
@@ -1151,6 +1528,9 @@ async function objectDetail(id) {
   }));
   const maatregelenOpen = alleMaatregelen(eigen, objectMap).filter((m) => m.gebrek.maatregelStatus !== 'uitgevoerd');
   const heeftLocatie = o.lat !== '' && o.lat != null && o.lng !== '' && o.lng != null;
+  const dIdx = decompIndex();
+  const dKnoop = dIdx && o.decomp ? dIdx.perId.get(o.decomp) : null;
+  const dBouwdelen = dKnoop ? D.bouwdelenOnder(dIdx, dKnoop.id) : [];
 
   app.innerHTML = `
     <div class="paginakop">
@@ -1180,12 +1560,20 @@ async function objectDetail(id) {
           ${o.geometrie ? `<dt>GIS</dt><dd>${geometrieInfo(o)}${laag ? ` · laag ${magBeheren() ? `<a href="#/kaart">${esc(laag.naam)}</a>` : esc(laag.naam)}` : ''}</dd>` : ''}
           <dt>Coördinaten</dt><dd>${heeftLocatie ? `${esc(o.lat)}, ${esc(o.lng)} · <a href="https://www.openstreetmap.org/?mlat=${encodeURIComponent(o.lat)}&mlon=${encodeURIComponent(o.lng)}#map=18/${encodeURIComponent(o.lat)}/${encodeURIComponent(o.lng)}" target="_blank" rel="noopener">kaart</a>` : '–'}</dd>
           <dt>Status</dt><dd>${esc(o.status || '–')}</dd>
+          ${dIdx ? `<dt>Decompositie</dt><dd>${dKnoop ? `${niveauChip(dKnoop.niveau)} ${esc(D.padTekst(dIdx, dKnoop.id))}` : 'Niet gekoppeld'}
+            ${magBeheren() && !isMobiel() ? ` · <a href="#/decompositie?object=${encodeURIComponent(id)}">${dKnoop ? 'wijzigen' : 'koppelen'}</a>` : ''}</dd>` : ''}
         </dl>
         ${o.notities ? `<h3 style="margin-top:1rem">Notities</h3><p style="white-space:pre-wrap">${esc(o.notities)}</p>` : ''}
       </section>
       <section class="kaart">
         <h2>Conditie en planning</h2>
-        <p>${scoreLabel(s.conditie, true)}</p>
+        ${dBouwdelen.length > 1 || (dBouwdelen.length === 1 && dKnoop?.niveau !== 'bouwdeel')
+    ? `<p style="margin:.25rem 0"><small>Conditie per bouwdeel (laatst gemeten)</small></p>
+      <ul class="bd-scores">${dBouwdelen.map((b) => {
+    const sc = laatsteScores(inspecties).get(b.id);
+    return `<li><span>${b.code ? `<small>${esc(b.code)}</small> ` : ''}${esc(b.naam)}</span>${sc ? `<a href="#/inspecties/${esc(sc.inspectieId)}" title="${datumNL(sc.datum)}">${scoreLabel(sc.score)}</a>` : '<span class="label-status">Nog niet</span>'}</li>`;
+  }).join('')}</ul>`
+    : `<p>${scoreLabel(s.conditie, true)}</p>`}
         <dl class="gegevens">
           <dt>Laatste inspectie</dt><dd>${s.laatste ? `<a href="#/inspecties/${esc(s.laatste.id)}">${datumNL(s.laatste.datum)}</a>` : 'Nog niet uitgevoerd'}</dd>
           <dt>Interval</dt><dd>${Number(o.inspectieInterval) > 0 ? `${esc(o.inspectieInterval)} jaar` : 'Geen periodieke inspectie'}</dd>
@@ -1699,6 +2087,15 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
   if (pakket && !bestaand && pakket.inspectiesoort) staat.soort = pakket.inspectiesoort;
   const pakketTerug = pakket ? pakketPagina(pakket, mobiel) : null;
   const openDetails = new Set(); // houdt opengeklapte onderdelen open bij hertekenen
+  // NEN 2767 met decompositie: de inspecteur scoort de bouwdelen die bij het (gekoppelde) GIS-object horen.
+  const decompIdx = decompIndex();
+  const scopeVan = (oid) => bouwdelenVanObject(objecten.find((o) => o.id === oid), decompIdx)
+    .map((k) => ({ id: k.id, code: k.code ?? '', naam: k.naam, nietGeinspecteerd: false, reden: '' }));
+  if (!bestaand) {
+    const sc = scopeVan(staat.objectId);
+    staat.bouwdelen = sc.length ? sc : null;
+  }
+  const perBd = () => Array.isArray(staat.bouwdelen) && staat.bouwdelen.length > 0;
 
   const objectVeld = mobiel && object
     ? `<input type="hidden" name="objectId" value="${esc(object.id)}">`
@@ -1732,6 +2129,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
           <div class="velden" style="margin-top:.75rem">${veldInspecteur}${veldWeer}</div></details>
       </section>
       <section class="kaart" id="extra-blok" hidden><h2>Extra gegevens</h2><div class="extra-velden"></div></section>
+      <section class="kaart" id="bouwdelen-blok" hidden></section>
       <div class="mtussen"><h2>Gebreken</h2><div id="totaal"></div></div>
       <div id="gebreken"></div>
       <button type="button" class="knop mgroot" id="gebrek-toevoegen">＋ Gebrek vastleggen</button>
@@ -1752,6 +2150,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
         <div class="velden">${objectVeld}${veldDatum}${veldInspecteur}${veldSoort}${veldWeer}${veldSamenvatting}${veldFotos}</div>
       </section>
       <section class="kaart" id="extra-blok" hidden><h2>Extra gegevens</h2><div class="extra-velden"></div></section>
+      <section class="kaart" id="bouwdelen-blok" hidden></section>
       <section>
         <div class="paginakop"><h2 style="margin:0">Gebreken</h2>
           <button type="button" class="knop" id="gebrek-toevoegen">+ Gebrek toevoegen</button></div>
@@ -1794,14 +2193,47 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
 
   const scoreVoor = (g) => scoreLabel(gebrekScore(g));
   const toonTotaal = () => {
+    if (perBd()) {
+      // Geen totaalscore: alleen bouwdelen krijgen een conditie.
+      app.querySelector('#totaal').innerHTML = mobiel ? verdelingLabel(staat)
+        : `<div style="text-align:right"><small>Conditie per bouwdeel (NEN 2767)</small><br>${verdelingLabel(staat)}</div>`;
+      const sc = new Map(D.bouwdeelScores(staat).map((b) => [b.id, b]));
+      app.querySelectorAll('[data-bdscore]').forEach((el) => {
+        const b = sc.get(el.dataset.bdscore);
+        el.innerHTML = b?.nietGeinspecteerd ? '<span class="label-status">n.g.</span>' : scoreLabel(b?.score);
+      });
+      return;
+    }
     app.querySelector('#totaal').innerHTML = mobiel
       ? scoreLabel(inspectieScore(staat))
       : `<div style="text-align:right"><small>Conditie (maatgevend gebrek)</small><br>${scoreLabel(inspectieScore(staat), true)}</div>`;
   };
 
+  const toonBouwdelen = () => {
+    const blok = app.querySelector('#bouwdelen-blok');
+    blok.hidden = !perBd();
+    if (!perBd()) { blok.innerHTML = ''; return; }
+    const elementVan = (bid) => {
+      const k = decompIdx?.perId.get(bid);
+      return k?.ouder ? decompIdx.perId.get(k.ouder)?.naam ?? '' : '';
+    };
+    blok.innerHTML = `<h2 style="margin-top:0">Bouwdelen <small>(${staat.bouwdelen.length})</small></h2>
+      <p style="margin:.1rem 0 .6rem"><small>Elk bouwdeel krijgt een eigen conditie: het slechtste gebrek op dat bouwdeel, of 1 als er niets is gevonden.
+      Kon je een bouwdeel niet inspecteren? Vink het dan af met een reden.</small></p>
+      <ul class="bd-lijst">${staat.bouwdelen.map((b, n) => `<li class="${b.nietGeinspecteerd ? 'niet' : ''}">
+        <div class="bd-naam">${b.code ? `<small>${esc(b.code)}</small> ` : ''}<strong>${esc(b.naam)}</strong>${elementVan(b.id) ? `<br><small>${esc(elementVan(b.id))}</small>` : ''}</div>
+        <span data-bdscore="${esc(b.id)}"></span>
+        <label class="vink bd-niet"><input type="checkbox" data-bd="${n}" data-bdveld="nietGeinspecteerd" ${b.nietGeinspecteerd ? 'checked' : ''}><span>Niet geïnspecteerd</span></label>
+        ${b.nietGeinspecteerd ? `<input class="bd-reden" data-bd="${n}" data-bdveld="reden" value="${esc(b.reden)}" placeholder="Reden, bijv. niet bereikbaar" maxlength="200">` : ''}
+      </li>`).join('')}</ul>`;
+  };
+
   const gebrekHtml = (g, i) => {
     const v = {
-      bouwdeel: `<div class="veld"><label>Bouwdeel</label><select data-g="${i}" data-veld="bouwdeel"><option value="">– kies –</option>
+      bouwdeel: perBd()
+        ? `<div class="veld"><label class="vereist">Bouwdeel</label><select data-g="${i}" data-veld="bouwdeelId"><option value="">– kies –</option>
+          ${staat.bouwdelen.filter((b) => !b.nietGeinspecteerd || b.id === g.bouwdeelId).map((b) => optie(b.id, `${b.code ? `${b.code} ` : ''}${b.naam}`, g.bouwdeelId)).join('')}</select></div>`
+        : `<div class="veld"><label>Bouwdeel</label><select data-g="${i}" data-veld="bouwdeel"><option value="">– kies –</option>
         ${BOUWDELEN.map((b) => optie(b, b, g.bouwdeel)).join('')}</select></div>`,
       gebrek: `<div class="veld"><label>Gebrek</label><select data-g="${i}" data-veld="gebrek"><option value="">– kies –</option>
         ${GEBREKEN.map((b) => optie(b, b, g.gebrek)).join('')}</select></div>`,
@@ -1847,9 +2279,11 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
   const toonGebreken = () => {
     app.querySelector('#gebreken').innerHTML = staat.gebreken.length
       ? staat.gebreken.map(gebrekHtml).join('')
-      : leegKaart(mobiel
-        ? 'Geen gebreken? Rond de schouw dan direct af.'
-        : 'Geen gebreken vastgelegd. Een inspectie zonder gebreken krijgt conditie 1 (uitstekend).');
+      : leegKaart(perBd()
+        ? 'Geen gebreken vastgelegd. Elk geïnspecteerd bouwdeel krijgt dan conditie 1 (uitstekend).'
+        : mobiel
+          ? 'Geen gebreken? Rond de schouw dan direct af.'
+          : 'Geen gebreken vastgelegd. Een inspectie zonder gebreken krijgt conditie 1 (uitstekend).');
     toonTotaal();
   };
   const toonAlgemeneFotos = () => { app.querySelector('#algemene-fotos').innerHTML = fotoBlok(staat.fotos, 'alg'); };
@@ -1857,7 +2291,18 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
   const herteken = (sleutel) => (sleutel === 'alg' ? toonAlgemeneFotos() : toonGebreken());
 
   toonAlgemeneFotos();
+  toonBouwdelen();
   toonGebreken();
+  if (!bestaand) {
+    // Ander object gekozen: de bouwdelen volgen het nieuwe object.
+    form.elements.objectId?.addEventListener?.('change', () => {
+      const sc = scopeVan(form.elements.objectId.value);
+      staat.bouwdelen = sc.length ? sc : null;
+      for (const g of staat.gebreken) if (g.bouwdeelId && !sc.some((b) => b.id === g.bouwdeelId)) { g.bouwdeelId = ''; g.bouwdeel = ''; }
+      toonBouwdelen();
+      toonGebreken();
+    });
+  }
 
   form.addEventListener('toggle', (e) => {
     const k = e.target.dataset?.details;
@@ -1868,10 +2313,25 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
   form.addEventListener('input', (e) => {
     formulierGewijzigd = true;
     const el = e.target;
+    if (el.dataset.bd !== undefined) {
+      const b = staat.bouwdelen[Number(el.dataset.bd)];
+      if (el.dataset.bdveld === 'reden') { b.reden = el.value; return; }
+      if (el.checked && staat.gebreken.some((g) => g.bouwdeelId === b.id)) {
+        el.checked = false;
+        return melding('Op dit bouwdeel staan gebreken. Verwijder die eerst of kies een ander bouwdeel.', 'fout');
+      }
+      b.nietGeinspecteerd = el.checked;
+      if (!el.checked) b.reden = '';
+      toonBouwdelen();
+      toonGebreken();
+      if (el.checked) app.querySelector(`.bd-reden[data-bd="${el.dataset.bd}"]`)?.focus();
+      return;
+    }
     if (el.dataset.g === undefined) return;
     const i = Number(el.dataset.g);
     const g = staat.gebreken[i];
     g[el.dataset.veld] = el.dataset.veld === 'intensiteit' ? Number(el.value) : el.value;
+    if (el.dataset.veld === 'bouwdeelId') g.bouwdeel = staat.bouwdelen.find((b) => b.id === el.value)?.naam ?? '';
     app.querySelector(`[data-score="${i}"]`).innerHTML = scoreVoor(g);
     app.querySelector(`[data-gebrek="${i}"]`).style.borderLeftColor = CONDITIES[gebrekScore(g)].kleur;
     app.querySelector(`[data-omvang="${i}"]`).textContent = OMVANG_KLASSEN[omvangKlasse(g.omvang) - 1].label;
@@ -1912,7 +2372,10 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
   });
 
   app.querySelector('#gebrek-toevoegen').onclick = () => {
-    staat.gebreken.push(nieuwGebrek());
+    const g = nieuwGebrek();
+    const open = perBd() ? staat.bouwdelen.filter((b) => !b.nietGeinspecteerd) : [];
+    if (open.length === 1) { g.bouwdeelId = open[0].id; g.bouwdeel = open[0].naam; }
+    staat.gebreken.push(g);
     formulierGewijzigd = true;
     toonGebreken();
     const nieuw = app.querySelector(`[data-gebrek="${staat.gebreken.length - 1}"]`);
@@ -1927,6 +2390,14 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     if (!data.datum) return melding('Vul de inspectiedatum in.', 'fout');
     if (!bestaand && !staat.werkpakketId && data.soort !== CALAMITEIT) return melding('Zonder werkpakket kan alleen een inspectie na incident of calamiteit worden vastgelegd.', 'fout');
     const status = e.submitter?.dataset.status ?? staat.status ?? 'concept';
+    if (status === 'afgerond' && perBd()) {
+      const zonder = staat.gebreken.findIndex((g) => !g.bouwdeelId);
+      if (zonder >= 0) {
+        app.querySelector(`[data-gebrek="${zonder}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return melding(`Kies bij gebrek ${zonder + 1} het bouwdeel.`, 'fout');
+      }
+      if (staat.bouwdelen.every((b) => b.nietGeinspecteerd)) return melding('Er is geen enkel bouwdeel geïnspecteerd.', 'fout');
+    }
     if (status === 'afgerond') {
       const fouten = extraB.fouten();
       if (fouten.length) {
@@ -1961,6 +2432,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
       extra: extraB.waarden(),
       extraLabels: extraB.labels(),
       extraFotoIds,
+      bouwdelen: perBd() ? staat.bouwdelen.map((b) => ({ id: b.id, code: b.code ?? '', naam: b.naam, nietGeinspecteerd: Boolean(b.nietGeinspecteerd), reden: b.nietGeinspecteerd ? b.reden ?? '' : '' })) : undefined,
       gebreken: staat.gebreken.map(({ fotos, ...g }) => ({
         ...g,
         intensiteit: Number(g.intensiteit) || 1,
@@ -1994,6 +2466,7 @@ async function inspectieDetail(id) {
   const o = await db.haal('objecten', i.objectId);
   const gebreken = i.gebreken ?? [];
   const score = inspectieScore(i);
+  const perBd = D.perBouwdeel(i);
   const pakket = i.werkpakketId ? await laadPakketView(i.werkpakketId, i.rondeId) : null;
   const gebrekKaarten = await Promise.all(gebreken.map((g, n) => nenGebrekKaart(g, n)));
 
@@ -2009,10 +2482,13 @@ async function inspectieDetail(id) {
     </div>
     <div class="raster-2 detailkop">
       <section class="kaart">
-        <div class="oordeelblok" style="--gk:${CONDITIES[score]?.kleur ?? '#9aa5b1'}">
+        ${perBd ? `<div class="oordeelblok" style="--gk:#0b4f6c">
+          <div><small>Conditie per bouwdeel (NEN 2767)</small>${verdelingLabel(i)}</div>
+          <p>${i.bouwdelen.length} bouwde${i.bouwdelen.length === 1 ? 'el' : 'len'} uit de decompositie. Alleen bouwdelen krijgen een conditiescore.</p>
+        </div>` : `<div class="oordeelblok" style="--gk:${CONDITIES[score]?.kleur ?? '#9aa5b1'}">
           <div><small>Conditie (NEN 2767)</small>${scoreLabel(score, true)}</div>
           <p>${score ? esc(CONDITIES[score].omschrijving) : 'Geen gebreken vastgelegd'}.</p>
-        </div>
+        </div>`}
         <dl class="gegevens">
           <dt>Status</dt><dd>${statusLabel(i.status)}</dd>
           <dt>Datum</dt><dd>${datumNL(i.datum)}</dd>
@@ -2028,11 +2504,12 @@ async function inspectieDetail(id) {
     ${i.samenvatting || i.fotoIds?.length ? `<section class="kaart"><h2>Samenvatting</h2>
       ${i.samenvatting ? `<p style="white-space:pre-wrap">${esc(i.samenvatting)}</p>` : ''}${await fotoGalerij(i.fotoIds, { titel: "Foto's" })}</section>` : ''}
     ${await extraDetailHtml(i, 'inspectie')}
+    ${perBd ? `<section class="kaart"><h2>Conditie per bouwdeel</h2>${bouwdeelScoreTabel(i)}</section>` : ''}
     <div class="mtussen"><h2>Gebreken${gebreken.length ? ` (${gebreken.length})` : ''}</h2></div>
     ${gebrekSamenvatting(gebreken)}
     ${gebrekKaarten.join('') || leegKaart('Geen gebreken geconstateerd.')}`;
 
-  tekenObjectKaartje(app.querySelector('#objectkaartje'), o, CONDITIES[score]?.kleur ?? '#0b4f6c');
+  tekenObjectKaartje(app.querySelector('#objectkaartje'), o, perBd ? '#0b4f6c' : CONDITIES[score]?.kleur ?? '#0b4f6c');
   bevindingKnoppen(i);
   app.querySelector('#verwijder').onclick = async () => {
     if (!confirm('Deze inspectie inclusief foto\'s definitief verwijderen?')) return;
@@ -2073,7 +2550,7 @@ async function inspectieRapport(id) {
         <div><small>${esc(organisatie || 'Inspectierapport')}</small>
           <h1 style="margin:.25rem 0">Inspectierapport ${esc(o.code ?? '')}</h1>
           <div>${esc(o.naam ?? '')} · ${esc(i.soort)}</div></div>
-        <div style="text-align:right"><small>Conditie</small><br>${scoreLabel(score, true)}</div>
+        <div style="text-align:right">${D.perBouwdeel(i) ? `<small>Conditie per bouwdeel</small><br>${verdelingLabel(i)}` : `<small>Conditie</small><br>${scoreLabel(score, true)}`}</div>
       </div>
       <div class="raster-2">
         <div><h2>Object</h2><dl class="gegevens">
@@ -2089,6 +2566,7 @@ async function inspectieRapport(id) {
       ${i.samenvatting ? `<h2 style="margin-top:1rem">Samenvatting</h2><p style="white-space:pre-wrap">${esc(i.samenvatting)}</p>` : ''}
       ${await fotoGalerij(i.fotoIds, { titel: "Foto's" })}
       <div class="rapport-extra">${await extraDetailHtml(i, 'inspectie')}</div>
+      ${D.perBouwdeel(i) ? `<h2 style="margin-top:1rem">Conditie per bouwdeel</h2>${bouwdeelScoreTabel(i)}` : ''}
       <h2 style="margin-top:1rem">Overzicht gebreken en maatregelen</h2>
       ${gebreken.length ? `<div class="tabelhouder"><table>
         <thead><tr><th>#</th><th>Bouwdeel</th><th>Gebrek</th><th>E/I/O</th><th>Conditie</th><th>Urgentie</th>${toonKosten() ? '<th>Raming</th>' : ''}</tr></thead>
@@ -2099,13 +2577,14 @@ async function inspectieRapport(id) {
         </tbody></table></div>
         <h2 style="margin-top:1rem">Detailbevindingen</h2>${details.join('')}` : '<p>Er zijn geen gebreken geconstateerd.</p>'}
       <p style="margin-top:2rem;color:#555;font-size:.85rem">Conditiescores volgens de systematiek van NEN 2767 (1 = uitstekend, 6 = zeer slecht);
-        de objectconditie is gelijk aan het maatgevende gebrek. E/I/O = ernst / intensiteit / omvang.</p>
+        ${D.perBouwdeel(i) ? 'de conditie wordt per bouwdeel uit de decompositie bepaald door het maatgevende gebrek op dat bouwdeel en niet opgeteld naar element of object.'
+    : 'de objectconditie is gelijk aan het maatgevende gebrek.'} E/I/O = ernst / intensiteit / omvang.</p>
       <div class="raster-2" style="margin-top:2rem">
         <div>Handtekening inspecteur:<br><br><br>_____________________________<br>${esc(i.inspecteur || '')}</div>
         <div>Datum rapport: ${datumNL(vandaag())}</div>
       </div>
     </article>`;
-  tekenObjectKaartje(app.querySelector('#objectkaartje'), o.id ? o : null, CONDITIES[score]?.kleur ?? '#0b4f6c');
+  tekenObjectKaartje(app.querySelector('#objectkaartje'), o.id ? o : null, D.perBouwdeel(i) ? '#0b4f6c' : CONDITIES[score]?.kleur ?? '#0b4f6c');
 }
 
 // ---------------------------------------------------------------------------
@@ -5070,6 +5549,7 @@ function oordeelKleur(i) {
   if (i.status !== 'afgerond') return '#8a96a3';
   if (i.stowa) return ST.URGENTIE[ST.zwaarste(i.stowa.waarnemingen)]?.kleur ?? '#1a7f37';
   if (i.bvc) return i.bvc.niet ? '#8a96a3' : BV.BVK[i.bvc.bvk]?.kleur ?? '#8a96a3';
+  if (D.perBouwdeel(i)) return '#0b4f6c';
   return CONDITIES[inspectieScore(i)]?.kleur ?? '#8a96a3';
 }
 
@@ -7307,6 +7787,7 @@ function oordeelLabel(s) {
 
 function inspectieOordeel(i) {
   if (i.stowa) return stowaLabel(ST.zwaarste(i.stowa.waarnemingen));
+  if (D.perBouwdeel(i)) return verdelingLabel(i);
   if (!i.bvc) return scoreLabel(inspectieScore(i));
   return i.bvc.niet ? '<span class="label-status">Niet aangetroffen</span>' : bvkLabel(i.bvc.bvk);
 }

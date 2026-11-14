@@ -6,6 +6,7 @@ import * as BV from './bvc.js';
 import { middelpunt } from './gis.js';
 import * as ST from './stowa.js';
 import * as DG from './digigids.js';
+import * as D from './decompositie.js';
 
 const STATUS_TEKST = { afgerond: 'Gedaan', concept: 'Concept (niet afgerond)', overgeslagen: 'Overgeslagen', open: 'Open' };
 
@@ -43,6 +44,12 @@ export function oordeel(i) {
     if (i.bvc.niet) return { code: 'Niet aangetroffen', tekst: 'Niet aangetroffen', kleur: '' };
     const k = BV.BVK[i.bvc.bvk];
     return { code: k?.kort ?? '', tekst: k?.label ?? '', kleur: k?.kleur ?? '' };
+  }
+  if (D.perBouwdeel(i)) {
+    const v = D.scoreVerdeling(i);
+    const delen = [1, 2, 3, 4, 5, 6].filter((n) => v[n]).map((n) => `${v[n]}× ${n}`);
+    if (v.niet) delen.push(`${v.niet}× niet geïnspecteerd`);
+    return { code: 'Per bouwdeel', tekst: delen.join(', '), kleur: '' };
   }
   const s = inspectieScore(i);
   return s ? { code: s, tekst: CONDITIES[s].label, kleur: CONDITIES[s].kleur } : { code: '', tekst: '', kleur: '' };
@@ -83,6 +90,7 @@ export function resultaatRijen({ lijst, laagNaam = new Map(), extra = () => [] }
   const resultaten = [];
   const gebreken = [];
   const maatregelen = [];
+  const bouwdelen = [];
   const fotos = []; // { objectcode, onderwerp, fotoId }
   for (const { object: o, inspectie: i, status, reden } of lijst) {
     const b = i?.bvc ?? null;
@@ -151,6 +159,12 @@ export function resultaatRijen({ lijst, laagNaam = new Map(), extra = () => [] }
         maatregelen.push({ waarden: [o.code, o.naam, datum(i.datum), m.bvcMaatregel ?? '', BV.URGENTIE[m.termijn]?.label ?? '', datum(m.uitvoerenVoor), '', m.maatregelStatus === 'uitgevoerd' ? 'Uitgevoerd' : 'Open'], kleur: m.termijn === 'acuut' ? '#d1452f' : '' });
       }
     } else {
+      for (const bd of D.bouwdeelScores(i)) {
+        bouwdelen.push({
+          waarden: [o.code, o.naam, datum(i.datum), bd.code, bd.naam, bd.score ?? '', bd.score ? CONDITIES[bd.score].label : 'Niet geïnspecteerd', bd.nietGeinspecteerd ? '' : bd.gebreken, bd.reden],
+          kleur: bd.score ? CONDITIES[bd.score].kleur : '',
+        });
+      }
       nenGebreken.forEach((g, n) => {
         const s = gebrekScore(g);
         gebreken.push({
@@ -168,7 +182,7 @@ export function resultaatRijen({ lijst, laagNaam = new Map(), extra = () => [] }
   }
   const tel = (s) => lijst.filter((r) => (r.inspectie ? r.inspectie.status : r.status) === s).length;
   return {
-    kolommen: kol, resultaten, gebreken, maatregelen, fotos,
+    kolommen: kol, resultaten, gebreken, maatregelen, bouwdelen, fotos,
     telling: { totaal: lijst.length, gedaan: tel('afgerond'), concept: tel('concept'), overgeslagen: tel('overgeslagen'), open: tel('open') },
   };
 }
@@ -177,6 +191,9 @@ export const GEBREK_KOLOMMEN = [
   ['Objectcode', 14], ['Naam', 26], ['Datum', 12, 'datum'], ['Nr', 5], ['Bouwdeel / plaats', 24], ['Gebrek', 28], ['Type', 16], ['Gevolg / Digigids-klasse', 16],
   ['Ernst', 10], ['Intensiteit', 14], ['Omvang (%)', 10], ['Conditie / urgentie', 11], ['Waarneming / toelichting', 44], ['Maatregel', 34], ['Urgentie', 16], ["Foto's", 8],
   ['X (RD)', 12], ['Y (RD)', 12], ['Breedtegraad', 12], ['Lengtegraad', 12],
+];
+export const BOUWDEEL_KOLOMMEN = [
+  ['Objectcode', 14], ['Naam', 26], ['Datum', 12, 'datum'], ['Bouwdeelcode', 16], ['Bouwdeel', 30], ['Conditie', 10], ['Omschrijving', 18], ['Gebreken', 10], ['Reden niet geïnspecteerd', 30],
 ];
 export const MAATREGEL_KOLOMMEN = [
   ['Objectcode', 14], ['Naam', 26], ['Datum inspectie', 13, 'datum'], ['Maatregel', 40], ['Urgentie', 18], ['Uitvoeren vóór', 13, 'datum'], ['Raming (€)', 12, 'euro'], ['Status', 12],
@@ -246,6 +263,7 @@ export function maakWerkboek(ExcelJS, r, meta) {
   };
   const oordeelKol = r.kolommen.findIndex(([, , s]) => s === 'oordeel') + 1;
   blad('Resultaten', r.kolommen, r.resultaten, oordeelKol);
+  if (r.bouwdelen?.length) blad('Bouwdeelscores', BOUWDEEL_KOLOMMEN, r.bouwdelen, 6);
   if (r.gebreken.length) blad('Gebreken', GEBREK_KOLOMMEN, r.gebreken, 12);
   if (r.maatregelen.length) blad('Maatregelen', MAATREGEL_KOLOMMEN, r.maatregelen, 5);
 

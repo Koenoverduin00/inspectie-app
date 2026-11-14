@@ -361,6 +361,23 @@ Rijkswaterstaat** (Loo Plan, 8 februari 2017, definitief) en het CROW **Standaar
 - **Rapport** per boom (bijlage 5) en **SUF-BVC export** (boom, boomgebreken, maatregelen) per project of werkpakket;
   bij een BVC-werkpakket een samenvatting per klasse en maatregel.
 
+## NEN 2767-decompositie (scores per bouwdeel)
+
+Voor opdrachtgevers die volgens NEN 2767 werken met een eigen decompositie (object → element → bouwdeel).
+
+- **Inlezen** (Instellingen → Decompositie, alleen beheerders): Excel (.xlsx) of CSV van de opdrachtgever. Twee indelingen worden herkend:
+  een lijst met *Code, Naam, Niveau, Bovenliggende code* (optioneel *Eenheid, Hoeveelheid, GIS-code*), of kolommen *Object, Element, Bouwdeel*
+  (met optionele codekolommen). Je ziet eerst een voorbeeld met aantallen en meldingen; pas na "Overnemen" verandert er iets.
+  Onderdelen houden een vaste id op basis van hun code, dus bij een nieuwe levering blijven koppelingen en scores behouden.
+- **GIS koppelen** op object-, element- of bouwdeelniveau: automatisch als de objectcode gelijk is aan de GIS-code (of code) in de decompositie,
+  daarna op de kaart naast de boom: kies een onderdeel en klik op de vlakken (nogmaals klikken ontkoppelt). Een GIS-object hoort bij één onderdeel.
+- **Inspecteren**: bij een gekoppeld GIS-object toont het formulier de bouwdelen die erbij horen (het bouwdeel zelf, of alle bouwdelen onder het
+  element/object). Elk gebrek hoort bij een bouwdeel; een bouwdeel dat niet kon worden bekeken vink je af met een reden.
+- **Scores**: alleen bouwdelen krijgen een conditie (het slechtste gebrek op dat bouwdeel, of 1 zonder gebreken). Er wordt niets opgeteld naar
+  element of object: lijsten tonen de verdeling (bijv. "1×3, 4×1"), detail en rapport een tabel per bouwdeel, de Excel-export een blad *Bouwdeelscores*.
+  Een GIS-vlak dat aan een bouwdeel is gekoppeld, krijgt op de objectenkaart de laatst gemeten score van dat bouwdeel.
+- Zonder decompositie of koppeling werkt de inspectie zoals voorheen (één conditie per object, maatgevend gebrek).
+
 ## Kosten en uren uitzetten
 
 In de projectgegevens staan twee schakelaars: **Kostenramingen gebruiken** en **Uren registreren**. Loopt dit bij een
