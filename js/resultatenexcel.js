@@ -11,7 +11,7 @@ import * as TY from './inspectietypen.js';
 
 const STATUS_TEKST = { afgerond: 'Gedaan', concept: 'Concept (niet afgerond)', overgeslagen: 'Overgeslagen', open: 'Open' };
 
-function coordinaten(o) {
+export function coordinaten(o) {
   let lat = parseFloat(o?.lat);
   let lng = parseFloat(o?.lng);
   if ((!Number.isFinite(lat) || !Number.isFinite(lng)) && o?.geometrie) {
@@ -24,7 +24,7 @@ function coordinaten(o) {
 }
 
 /** RD en WGS84 van een puntlocatie (waarneming). */
-function puntCoord(w) {
+export function puntCoord(w) {
   const lat = Number(w?.lat); const lng = Number(w?.lng);
   if (!w?.lat || !Number.isFinite(lat) || !Number.isFinite(lng)) return ['', '', '', ''];
   const [x, y] = BV.wgs84NaarRd(lng, lat);

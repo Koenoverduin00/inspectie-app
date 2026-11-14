@@ -371,6 +371,22 @@ Rijkswaterstaat** (Loo Plan, 8 februari 2017, definitief) en het CROW **Standaar
 - **Rapport** per boom (bijlage 5) en **SUF-BVC export** (boom, boomgebreken, maatregelen) per project of werkpakket;
   bij een BVC-werkpakket een samenvatting per klasse en maatregel.
 
+## Uitkomsten van werkpakketten naar Excel (pc)
+
+Werkpakketten → **Uitkomsten naar Excel** (of op de pagina van één werkpakket). Kies de werkpakketten, eventueel een periode, welke registraties
+(werkzaamheden, inspecties, overgeslagen objecten) en of je alleen goedgekeurde registraties wilt. Het bestand heeft vijf bladen:
+
+| Blad | Inhoud |
+|---|---|
+| **Overzicht** | Selectie en per werkpakket/ronde: objecten, gedaan, overgeslagen, open en percentage gereed |
+| **Registraties** | Eén regel per registratie met álle antwoorden in kolommen: werk-/inspectiesoort, object, datum, uitvoerder/schouwer, status, beoordeling, oordeel, omschrijving, materiaal, vervolg, uren, reden overslaan, elk extra formulierveld en elk checklistpunt, coördinaten |
+| **Antwoorden** | Dezelfde antwoorden onder elkaar (vraag / antwoord), handig voor draaitabellen |
+| **Bevindingen** | Alle gebreken en bevindingen uit inspecties (NEN, eigen typen, checklist, BVC, STOWA) met oordeel, maatregel, urgentie, raming en GPS-locatie |
+| **Vervolgacties** | Input voor nieuw werk: open maatregelen (met "uitvoeren vóór" uit de urgentie), werkzaamheden met "vervolg nodig" en overgeslagen objecten, gesorteerd op urgentie |
+
+Kopieer de objectcodes uit Vervolgacties naar het blad Objecten van het werkpakket-sjabloon om er direct een nieuw werkpakket van te maken.
+Kosten- en urenkolommen vervallen als die in het project zijn uitgezet. Alleen afgeronde inspecties tellen mee (geen concepten).
+
 ## Ingediende inspecties zijn alleen-lezen
 
 Een inspecteur kan een inspectie aanpassen zolang het een **concept** is. Na **Afronden** is de inspectie ingediend en voor de inspecteur

@@ -21,6 +21,7 @@ import {
 } from './pakketten.js';
 import * as PX from './pakketexcel.js';
 import * as RX from './resultatenexcel.js';
+import * as UX from './uitkomstenexcel.js';
 import * as IMP from './gisimport.js';
 import * as ST from './stowa.js';
 import * as DG from './digigids.js';
@@ -7936,6 +7937,7 @@ async function werkpakkettenLijst() {
   app.innerHTML = `
     <div class="paginakop">
       <div><h1>Werkpakketten</h1><p>Werkpakket → rondes (taken) → objecten, met voortgang per ronde en per object.</p></div>
+      ${!isMobiel() ? `<div class="knoppen"><button class="knop" id="uitkomsten-xls" title="Alle antwoorden per registratie, bevindingen en vervolgacties">${I.excel} Uitkomsten naar Excel</button></div>` : ''}
       ${magBeheren() ? `<div class="knoppen">
         <button class="knop" id="xls-sjabloon" title="Leeg Excel-sjabloon met de keuzelijsten van dit project">${I.sjabloon} Excel-sjabloon</button>
         <button class="knop" id="xls-export" title="Alle werkpakketten van dit project in het Excel-formaat">${I.exporteer} Naar Excel</button>
@@ -7950,6 +7952,7 @@ async function werkpakkettenLijst() {
         ${p.toegewezen?.length ? `<small>${I.gebruiker} ${p.toegewezen.map(esc).join(', ')}</small>` : ''}
       </a>`).join('')}</div>`
     : leegKaart('Nog geen werkpakketten in dit project.', magBeheren() ? '<a class="knop primair" href="#/werkpakketten/nieuw">+ Nieuw werkpakket</a>' : '')}`;
+  app.querySelector('#uitkomsten-xls')?.addEventListener('click', () => exporteerUitkomsten());
   app.querySelector('#xls-sjabloon')?.addEventListener('click', () => maakPakketExcel({ metGegevens: false }));
   app.querySelector('#xls-export')?.addEventListener('click', () => maakPakketExcel({ metGegevens: true }));
   app.querySelector('#xls-import')?.addEventListener('change', (e) => { if (e.target.files?.[0]) leesPakketExcel(e.target.files[0]); });
@@ -8500,7 +8503,7 @@ async function pakketDetail(id, q = new URLSearchParams()) {
     </section>
     ${afroep && ronde.afroep?.toelichting ? `<div class="kaart afroepkaart"><strong>${esc(ronde.afroep.reden ?? 'Afroep')}</strong><p style="white-space:pre-wrap;margin:.35rem 0 0">${esc(ronde.afroep.toelichting)}</p></div>` : ''}
     <div class="mtussen"><h2>${afroep ? 'A' : 'R'}${ronde.nummer} ${esc(ronde.naam)} <small style="font-weight:400">· ${pakketSoortTekst(p)}</small></h2>
-      <div class="knoppen">${p.soort === 'inspectie' ? '<button class="knop" id="resultaten-xls">' + I.excel + ' Resultaten naar Excel</button>' : ''}<button class="knop" id="export">CSV</button>${p.inspectiesoort === BV.BVC_SOORT && p.soort === 'inspectie' ? '<button class="knop" id="suf">SUF-BVC</button>' : ''}</div></div>
+      <div class="knoppen"><button class="knop" id="uitkomsten-xls" title="Alle antwoorden per registratie, bevindingen en vervolgacties">${I.excel} Uitkomsten naar Excel</button>${p.soort === 'inspectie' ? '<button class="knop" id="resultaten-xls">' + I.excel + ' Resultaten ronde</button>' : ''}<button class="knop" id="export">CSV</button>${p.inspectiesoort === BV.BVC_SOORT && p.soort === 'inspectie' ? '<button class="knop" id="suf">SUF-BVC</button>' : ''}</div></div>
     <section class="kaart">${voortgangBalk(v, { groot: true })}</section>
     ${p.inspectiesoort === BV.BVC_SOORT ? bvcSamenvatting(g.inspecties.filter((i) => i.werkpakketId === p.id && (i.rondeId || STANDAARD_RONDE) === (p.rondeId || STANDAARD_RONDE))) : ''}
     <div class="kaartindeling">
@@ -8560,6 +8563,7 @@ async function pakketDetail(id, q = new URLSearchParams()) {
     ga('#/werkpakketten');
   });
   app.querySelector('#suf')?.addEventListener('click', () => exporteerSuf((i) => i.werkpakketId === p.id && (i.rondeId || STANDAARD_RONDE) === (p.rondeId || STANDAARD_RONDE), p.naam));
+  app.querySelector('#uitkomsten-xls')?.addEventListener('click', () => exporteerUitkomsten({ voorPakket: pr.id }));
   app.querySelector('#resultaten-xls')?.addEventListener('click', () => exporteerResultaten({
     lijst: rondeResultaten(p, g), titel: `${pr.code ? `${pr.code} · ` : ''}${pr.naam} – R${ronde.nummer} ${ronde.naam}`,
     onderdeel: `Werkpakket ${pr.code || pr.naam}, ronde R${ronde.nummer} (${pakketSoortTekst(p).replace(/<[^>]+>/g, '')})`,
@@ -8575,6 +8579,100 @@ async function pakketDetail(id, q = new URLSearchParams()) {
     }
     download(`werkpakket-${p.naam.replace(/[^\w-]+/g, '_')}-${vandaag()}.csv`, csv(rijen), 'text/csv;charset=utf-8');
   };
+}
+
+// --- Uitkomsten van werkpakketten naar Excel (pc) ---------------------------------
+/** Alle registraties (werk, inspecties, overgeslagen) van de gekozen werkpakketten, met antwoorden en vervolgacties. */
+async function exporteerUitkomsten({ voorPakket = null } = {}) {
+  const g = await pakketGegevens();
+  const zelfde = (a, b) => (a || STANDAARD_RONDE) === (b || STANDAARD_RONDE);
+  const aantalVan = (p) => g.werkzaamheden.filter((w) => w.werkpakketId === p.id).length
+    + g.inspecties.filter((i) => i.werkpakketId === p.id && i.status === 'afgerond').length
+    + g.overgeslagen.filter((o) => o.pakketId === p.id).length;
+  const pakketten = g.pakketten.filter((p) => pakketVoorMij(p));
+  if (!pakketten.length) return melding('Er zijn nog geen werkpakketten.', 'fout');
+  const d = document.createElement('dialog');
+  d.className = 'dialoog breed';
+  d.innerHTML = `<form method="dialog" novalidate>
+    <h2>${I.excel} Uitkomsten naar Excel</h2>
+    <p><small>Per registratie alle antwoorden van de uitvoerder of schouwer, de bevindingen en een blad <strong>Vervolgacties</strong>
+      (open maatregelen, werk met vervolg en overgeslagen objecten) als input voor nieuwe werkzaamheden.</small></p>
+    <div class="paginakop" style="margin:.5rem 0 .25rem"><strong>Werkpakketten</strong>
+      <span class="knoppen"><button type="button" class="knop klein" data-alle="1">Alles</button><button type="button" class="knop klein" data-alle="0">Niets</button></span></div>
+    <div class="kieslijst">${pakketten.map((p) => {
+    const n = aantalVan(p);
+    return `<label class="vink${n ? '' : ' uit'}"><input type="checkbox" name="pakket" value="${esc(p.id)}" ${voorPakket ? (p.id === voorPakket ? 'checked' : '') : n ? 'checked' : ''}>
+      <span>${esc(p.naam)} ${pakketStatusLabel(p.status)}<small>${p.code ? `${esc(p.code)} · ` : ''}${n} registratie${n === 1 ? '' : 's'}</small></span></label>`;
+  }).join('')}</div>
+    <div class="velden">
+      <div class="veld"><label for="u-van">Periode van</label><input type="date" id="u-van"></div>
+      <div class="veld"><label for="u-tot">tot en met</label><input type="date" id="u-tot"></div>
+    </div>
+    <div class="velden" style="margin-top:.5rem">
+      <label class="vink"><input type="checkbox" id="u-werk" checked><span>Werkzaamheden</span></label>
+      <label class="vink"><input type="checkbox" id="u-insp" checked><span>Inspecties</span></label>
+      <label class="vink"><input type="checkbox" id="u-over" checked><span>Overgeslagen objecten</span></label>
+      <label class="vink"><input type="checkbox" id="u-goed"><span>Alleen goedgekeurde registraties</span></label>
+    </div>
+    <div class="formvoet"><button class="knop" value="nee" type="button" data-weg>Annuleren</button><button class="knop primair" value="ja" type="submit">${I.excel} Excel maken</button></div>
+  </form>`;
+  document.body.append(d);
+  d.querySelectorAll('[data-alle]').forEach((k) => k.addEventListener('click', () => d.querySelectorAll('input[name=pakket]').forEach((c) => { c.checked = k.dataset.alle === '1'; })));
+  d.showModal();
+  const keuze = await new Promise((ok) => {
+    d.querySelector('[data-weg]').onclick = () => ok(null);
+    d.addEventListener('cancel', (e) => { e.preventDefault(); ok(null); });
+    d.querySelector('form').onsubmit = (e) => {
+      e.preventDefault();
+      const ids = [...d.querySelectorAll('input[name=pakket]:checked')].map((c) => c.value);
+      if (!ids.length) { melding('Kies minstens één werkpakket.', 'fout'); return; }
+      ok({ ids: new Set(ids), van: d.querySelector('#u-van').value, tot: d.querySelector('#u-tot').value, werk: d.querySelector('#u-werk').checked,
+        insp: d.querySelector('#u-insp').checked, over: d.querySelector('#u-over').checked, goed: d.querySelector('#u-goed').checked });
+    };
+  });
+  d.close();
+  d.remove();
+  if (!keuze) return;
+  try {
+    melding('Excel-bestand wordt gemaakt…');
+    const [ExcelJS, project] = await Promise.all([PX.laadExcelJS(), actiefProject()]);
+    const perId = new Map(pakketten.map((p) => [p.id, p]));
+    const rondeVan = (p, rid) => rondesVan(p).find((r) => zelfde(r.id, rid)) ?? (isAfroep(p) ? null : rondesVan(p)[0]) ?? null;
+    const inPeriode = (dt) => (!keuze.van || String(dt) >= keuze.van) && (!keuze.tot || String(dt).slice(0, 10) <= keuze.tot);
+    const goed = (r) => !keuze.goed || beoordelingVan(r) === 'goedgekeurd';
+    const regs = [
+      ...(keuze.werk ? g.werkzaamheden.filter((w) => keuze.ids.has(w.werkpakketId) && inPeriode(w.datum) && goed(w))
+        .map((r) => ({ soort: 'werk', r, pakket: perId.get(r.werkpakketId), ronde: rondeVan(perId.get(r.werkpakketId), r.rondeId), object: g.objectMap.get(r.objectId) })) : []),
+      ...(keuze.insp ? g.inspecties.filter((i) => keuze.ids.has(i.werkpakketId) && i.status === 'afgerond' && inPeriode(i.datum) && goed(i))
+        .map((r) => ({ soort: 'inspectie', r, pakket: perId.get(r.werkpakketId), ronde: rondeVan(perId.get(r.werkpakketId), r.rondeId), object: g.objectMap.get(r.objectId) })) : []),
+      ...(keuze.over ? g.overgeslagen.filter((o) => keuze.ids.has(o.pakketId) && inPeriode(o.op))
+        .map((r) => ({ soort: 'overgeslagen', r, pakket: perId.get(r.pakketId), ronde: rondeVan(perId.get(r.pakketId), r.rondeId), object: g.objectMap.get(r.objectId) })) : []),
+    ].filter((x) => x.pakket && x.object)
+      .sort((a, b) => String(a.pakket.naam).localeCompare(String(b.pakket.naam), 'nl', { numeric: true }) || (Number(a.ronde?.nummer) || 0) - (Number(b.ronde?.nummer) || 0)
+        || String(a.object.code).localeCompare(String(b.object.code), 'nl', { numeric: true }) || String(a.r.datum ?? a.r.op).localeCompare(String(b.r.datum ?? b.r.op)));
+    if (!regs.length) return melding('Geen registraties gevonden met deze keuze.', 'fout');
+    const defs = { werk: (project?.velden ?? []).filter((x) => x.formulier === 'werk'), inspectie: (project?.velden ?? []).filter((x) => x.formulier === 'inspectie') };
+    const r = UX.uitkomstRijen({
+      registraties: regs,
+      extra: (rec, soort) => extraWeergave(rec, defs[soort] ?? []).filter(({ d: x }) => !['foto', 'bijlage'].includes(x.type))
+        .map(({ d: x, v }) => [x.label, velden.toonWaarde(x, v, datumNL)]),
+      beoordeling: (rec) => beoordelingVan(rec), metUren: toonUren(), metKosten: toonKosten(),
+    });
+    const rondes = [...keuze.ids].map((id) => perId.get(id)).filter(Boolean).flatMap((p) => rondesVan(p).map((rd) => {
+      const vg = g.rondeVoortgang.get(`${p.id}:${rd.id}`);
+      return { pakket: `${p.code ? `${p.code} · ` : ''}${p.naam}`, ronde: rd.naam ?? '', soort: rd.soort === 'inspectie' ? (rd.inspectiesoort ?? 'Inspectie') : (rd.werksoort || 'Werk'),
+        periode: periodeTekst(rd), totaal: vg?.totaal ?? 0, gedaan: vg?.gedaan?.size ?? 0, overgeslagen: vg?.overgeslagen?.size ?? 0, open: vg?.open?.length ?? 0, percentage: vg?.percentage ?? 0 };
+    }));
+    const filter = [`${keuze.ids.size} werkpakket${keuze.ids.size === 1 ? '' : 'ten'}`, keuze.van || keuze.tot ? `periode ${keuze.van ? datumNL(keuze.van) : '…'} – ${keuze.tot ? datumNL(keuze.tot) : '…'}` : '',
+      keuze.goed ? 'alleen goedgekeurd' : ''].filter(Boolean).join(' · ');
+    const wb = UX.maakWerkboek(ExcelJS, r, { titel: 'Uitkomsten werkpakketten', project: project?.naam ?? '', filter, rondes, metKosten: toonKosten() });
+    const naam = keuze.ids.size === 1 ? `uitkomsten-${(perId.get([...keuze.ids][0]).code || perId.get([...keuze.ids][0]).naam)}` : 'uitkomsten-werkpakketten';
+    download(`${naam.replace(/[^\w-]+/g, '_')}-${vandaag()}.xlsx`, await wb.xlsx.writeBuffer(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    melding(`Excel gemaakt: ${r.rijen.length} registraties, ${r.bevindingen.length} bevindingen, ${r.vervolg.length} vervolgacties`);
+  } catch (e) {
+    console.error(e);
+    melding(`Excel maken mislukt: ${e.message}`, 'fout');
+  }
 }
 
 // --- Resultaten van inspecties naar Excel ---------------------------------------
