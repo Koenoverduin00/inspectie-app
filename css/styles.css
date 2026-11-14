@@ -1283,3 +1283,7 @@ form:not(.afroep-inspectie) .a-insp { display: none; }
   .bd-lijst li { grid-template-columns: 1fr auto; }
   .bd-niet { grid-column: 1 / -1; }
 }
+.dk-zoekbalk { display: flex; gap: .5rem; margin-bottom: .5rem; }
+.dk-zoekbalk input[type=search] { flex: 1; margin: 0; }
+.decompkolommen { flex-basis: 100%; margin: 0; }
+.decompkolommen code { background: var(--achtergrond); border: 1px solid var(--rand); border-radius: 4px; padding: 0 .3rem; font-size: .8rem; }

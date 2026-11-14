@@ -335,6 +335,7 @@ async function decompositiePagina(_, q) {
   if (gekozen) openPad(gekozen);
   let kaartObj = null;
   let voorbeeld = null;
+  let bewerk = null; // { modus: 'bewerk', id } | { modus: 'nieuw', ouder }
 
   const gekoppeld = () => {
     const m = new Map();
@@ -377,25 +378,29 @@ async function decompositiePagina(_, q) {
       <p>De decompositie van de opdrachtgever: object → element → bouwdeel. Koppel GIS-objecten op elk niveau; bij een inspectie
       geeft de inspecteur alleen <strong>bouwdelen</strong> een conditiescore.</p></div>
       <div class="knoppen">
-        <label class="knop primair">${I.bestand} Decompositie inlezen<input type="file" id="d-bestand" accept=".xlsx,.csv,.txt" hidden></label>
+        <label class="knop primair">${I.bestand} ${knopen.length ? 'Bijwerken met nieuw bestand' : 'Decompositie inlezen'}<input type="file" id="d-bestand" accept=".xlsx,.csv,.txt" hidden></label>
         <button class="knop" id="d-sjabloon">${I.excel} Sjabloon</button>
         ${knopen.length ? `<button class="knop" id="d-export">${I.exporteer} Exporteren</button>` : ''}
       </div></div>
     <div id="d-voorbeeld"></div>
     ${knopen.length ? `
     <section class="kaart decompstats">
-      <div><strong>${t().object}</strong><small>objecten</small></div>
-      <div><strong>${t().element}</strong><small>elementen</small></div>
-      <div><strong>${t().bouwdeel}</strong><small>bouwdelen</small></div>
+      <div><strong id="d-t-object">${t().object}</strong><small>objecten</small></div>
+      <div><strong id="d-t-element">${t().element}</strong><small>elementen</small></div>
+      <div><strong id="d-t-bouwdeel">${t().bouwdeel}</strong><small>bouwdelen</small></div>
       <div><strong id="d-gekoppeld"></strong><small>GIS-objecten gekoppeld</small></div>
       <div class="decompstats-knoppen">
         <button class="knop klein" id="d-auto" title="Koppel GIS-objecten waarvan de objectcode gelijk is aan de (GIS-)code in de decompositie">${I.vernieuw} Koppelen op code</button>
         <button class="knop klein gevaar" id="d-wis">${I.verwijder} Verwijderen</button></div>
-      <p class="decompbron"><small>${project.decompositie?.bestand ? `Bron: ${esc(project.decompositie.bestand)} · ` : ''}${project.decompositie?.op ? `ingelezen ${datumNL(project.decompositie.op.slice(0, 10))}` : ''}</small></p>
+      <p class="decompbron"><small>${project.decompositie?.bestand ? `Bron: ${esc(project.decompositie.bestand)} · ` : ''}${project.decompositie?.op ? `ingelezen ${datumNL(project.decompositie.op.slice(0, 10))}` : ''}<span id="d-aangepast">${project.decompositie?.aangepast ? ` · handmatig aangepast ${datumNL(project.decompositie.aangepast.slice(0, 10))}` : ''}</span></small></p>
+      <p class="decompkolommen"><small>${I.let} <strong>Nieuwe levering of aangepaste gegevens?</strong> Gebruik in het bestand precies dezelfde kolomnamen als bij het eerste inlezen,
+        anders kunnen gegevens niet worden bijgewerkt of ingelezen.${project.decompositie?.kolommen?.length ? ` Kolommen: ${project.decompositie.kolommen.map((k) => `<code>${esc(k)}</code>`).join(' ')}` : ''}
+        Bij het bijwerken kies je welke code hetzelfde is gebleven; daarop worden de onderdelen herkend.</small></p>
     </section>
     <div class="decompraster">
       <section class="kaart decompboom">
-        <input type="search" id="d-zoek" placeholder="Zoek op code of naam…" autocomplete="off">
+        <div class="dk-zoekbalk"><input type="search" id="d-zoek" placeholder="Zoek op code of naam…" autocomplete="off">
+          <button type="button" class="knop klein" id="d-nieuw-object" title="Nieuw object toevoegen">＋ Object</button></div>
         <div id="d-boom"></div>
       </section>
       <div>
@@ -417,6 +422,8 @@ async function decompositiePagina(_, q) {
         <li><strong>Kolommen</strong> – per regel <em>Object, Element, Bouwdeel</em> (met optioneel <em>Objectcode, Elementcode, Bouwdeelcode</em>,
           <em>Eenheid, Hoeveelheid, GIS-code</em>).</li>
       </ol>
+      <p><strong>Let op:</strong> gebruik bij elke volgende levering precies dezelfde kolomnamen als in het eerste bestand. Alleen dan kan de app gegevens
+        bijwerken en nieuwe onderdelen inlezen. Geef elk onderdeel een vaste code: daarop herkent de app het onderdeel bij een nieuwe levering.</p>
       <p>Na het inlezen koppelt de app GIS-objecten automatisch als de objectcode gelijk is aan de GIS-code of de code in de decompositie.
         De rest koppel je op de kaart: kies een onderdeel en klik op de vlakken.</p>
     </section>`}`;
@@ -455,10 +462,39 @@ async function decompositiePagina(_, q) {
     if (tel) tel.textContent = `${aantal} / ${objecten.length}`;
   };
 
+  const knoopForm = (titel, k, niveau, uitleg) => `
+    <form id="d-knoopform" novalidate>
+      <h2 style="margin-top:0">${niveauChip(niveau)} ${titel}</h2>
+      ${uitleg ? `<p style="margin:.25rem 0 .5rem"><small>${uitleg}</small></p>` : ''}
+      <div class="velden">
+        <div class="veld"><label for="dk-code" class="vereist">Code</label><input id="dk-code" name="code" value="${esc(k?.code ?? '')}" maxlength="60" required>
+          <small>Vaste code van de opdrachtgever. Hierop wordt het onderdeel herkend bij een nieuwe levering.</small></div>
+        <div class="veld"><label for="dk-naam" class="vereist">Naam</label><input id="dk-naam" name="naam" value="${esc(k?.naam ?? '')}" maxlength="160" required></div>
+        <div class="veld"><label for="dk-eenheid">Eenheid</label><input id="dk-eenheid" name="eenheid" value="${esc(k?.eenheid ?? '')}" maxlength="20" placeholder="bijv. m2, m1, st"></div>
+        <div class="veld"><label for="dk-hoeveelheid">Hoeveelheid</label><input id="dk-hoeveelheid" name="hoeveelheid" type="number" step="any" min="0" value="${esc(k?.hoeveelheid ?? '')}"></div>
+        <div class="veld breed"><label for="dk-gis">GIS-code</label><input id="dk-gis" name="gis" value="${esc(k?.gis ?? '')}" maxlength="80">
+          <small>Gelijk aan de objectcode in het GIS-bestand? Dan koppelt "Koppelen op code" het vlak automatisch.</small></div>
+      </div>
+      <div class="knoppen" style="margin-top:.5rem"><button class="knop primair" type="submit">${I.vink} Opslaan</button>
+        <button class="knop" type="button" data-actie="annuleer">Annuleren</button></div>
+    </form>`;
+
   const tekenSelectie = () => {
     const el = app.querySelector('#d-selectie');
     if (!el) return;
+    if (bewerk?.modus === 'nieuw') {
+      const ouder = bewerk.ouder ? idx.perId.get(bewerk.ouder) : null;
+      const niveau = ouder ? D.KIND_NIVEAU[ouder.niveau] : 'object';
+      el.innerHTML = knoopForm(`Nieuw ${D.NIVEAU_LABEL[niveau].toLowerCase()}`, null, niveau, ouder ? `Onder ${knoopNaam(ouder)}` : 'Op het hoogste niveau');
+      el.querySelector('#dk-code').focus();
+      return;
+    }
     const k = gekozen ? idx.perId.get(gekozen) : null;
+    if (k && bewerk?.modus === 'bewerk' && bewerk.id === k.id) {
+      el.innerHTML = knoopForm(`${knoopNaam(k)} bewerken`, k, k.niveau, D.pad(idx, k.id).slice(0, -1).map(knoopNaam).join(' › '));
+      el.querySelector('#dk-naam').focus();
+      return;
+    }
     if (!k) {
       el.innerHTML = `<p style="margin:0">${I.punaise} <strong>Kies links een object, element of bouwdeel</strong> en klik daarna op de kaart op de GIS-vlakken die erbij horen.
         Nogmaals klikken ontkoppelt. Een GIS-object hoort bij precies één onderdeel.</p>`;
@@ -470,6 +506,10 @@ async function decompositiePagina(_, q) {
     el.innerHTML = `
       <p style="margin:0 0 .25rem"><small>${D.pad(idx, k.id).slice(0, -1).map(knoopNaam).join(' › ') || 'Hoogste niveau'}</small></p>
       <h2 style="margin:0">${niveauChip(k.niveau)} ${knoopNaam(k)}</h2>
+      <div class="knoppen" style="margin:.5rem 0">
+        <button type="button" class="knop klein" data-actie="bewerk">${I.concept} Bewerken</button>
+        ${D.KIND_NIVEAU[k.niveau] ? `<button type="button" class="knop klein" data-actie="kind">＋ ${D.NIVEAU_LABEL[D.KIND_NIVEAU[k.niveau]]} eronder</button>` : ''}
+        <button type="button" class="knop klein gevaar" data-actie="verwijder">${I.verwijder} Verwijderen</button></div>
       <p style="margin:.4rem 0">${k.niveau === 'bouwdeel'
     ? `Krijgt een conditiescore bij inspectie.${s ? ` Laatste: ${scoreLabel(s.score)} op <a href="#/inspecties/${esc(s.inspectieId)}">${datumNL(s.datum)}</a>.` : ' Nog niet geïnspecteerd.'}`
     : `Inspectie op een hieraan gekoppeld GIS-object scoort de ${bd.length} bouwde${bd.length === 1 ? 'el' : 'len'} eronder.`}
@@ -482,6 +522,7 @@ async function decompositiePagina(_, q) {
 
   const kies = (id) => {
     gekozen = id;
+    bewerk = null;
     if (id) openPad(id);
     tekenBoom();
     tekenSelectie();
@@ -501,7 +542,73 @@ async function decompositiePagina(_, q) {
     tekenSelectie();
   };
 
-  // Inlezen met voorbeeld en controle voordat er iets verandert.
+  // Inlezen met voorbeeld en controle voordat er iets verandert. Bestaat er al een decompositie, dan wordt die
+  // bijgewerkt: onderdelen worden herkend op een code die hetzelfde is gebleven.
+  const toonVoorbeeld = () => {
+    const vb = voorbeeld;
+    const el = app.querySelector('#d-voorbeeld');
+    const res = vb.res;
+    const tn = D.telling(res.knopen);
+    const bijwerk = knopen.length > 0;
+    const kolomCheck = bijwerk && project.decompositie?.kolommen?.length ? D.vergelijkKolommen(project.decompositie.kolommen, res.kop) : null;
+    const geblokkeerd = Boolean(kolomCheck?.ontbreekt.length);
+    let r = null;
+    if (bijwerk && res.knopen.length && !geblokkeerd) r = D.bijwerken(knopen, res.knopen, vb.sleutel);
+    const nieuweKnopen = r ? r.knopen : res.knopen;
+    const nieuweIds = new Set(nieuweKnopen.map((k) => k.id));
+    const vervallenObj = objecten.filter((o) => o.decomp && !nieuweIds.has(o.decomp));
+    const auto = D.koppelOpCode(nieuweKnopen, objecten.map((o) => (o.decomp && !nieuweIds.has(o.decomp) ? { ...o, decomp: '' } : o)));
+    const verlorenScores = r ? r.vervallen.filter((k) => scores.has(k.id)).length : 0;
+    Object.assign(vb, { r, nieuweKnopen, vervallenObj, auto });
+    const telMatch = (s) => D.bijwerken(knopen, res.knopen, s).knopen.length - D.bijwerken(knopen, res.knopen, s).toegevoegd.length;
+    const lijstje = (items, max = 12) => `<ul>${items.slice(0, max).map((x) => `<li>${x}</li>`).join('')}${items.length > max ? `<li>… en ${items.length - max} meer</li>` : ''}</ul>`;
+    el.innerHTML = `
+      <section class="kaart ${res.knopen.length && !geblokkeerd ? '' : 'waarschuwingskaart'}">
+        <h2 style="margin-top:0">${I.bestand} ${esc(vb.bestand)} ${bijwerk ? '<small>· decompositie bijwerken</small>' : ''}</h2>
+        ${geblokkeerd ? `<p class="fouttekst"><strong>De kolomnamen zijn niet hetzelfde als bij het eerste inlezen.</strong> Om gegevens aan te passen of nieuwe gegevens in te
+          lezen moeten de kolommen precies dezelfde namen hebben. Ontbreekt of hernoemd: ${kolomCheck.ontbreekt.map((k) => `<strong>${esc(k)}</strong>`).join(', ')}.</p>
+          <p><small>Verwachte kolommen: ${project.decompositie.kolommen.map(esc).join(' · ')}</small></p>` : ''}
+        ${kolomCheck?.extra.length && !geblokkeerd ? `<p><small>${I.let} Extra kolommen die niet in het eerste bestand stonden: ${kolomCheck.extra.map(esc).join(', ')}.
+          Alleen bekende kolommen worden gebruikt.</small></p>` : ''}
+        ${res.knopen.length && !geblokkeerd ? `<p><strong>${tn.object}</strong> objecten, <strong>${tn.element}</strong> elementen en <strong>${tn.bouwdeel}</strong> bouwdelen in het bestand.</p>` : ''}
+        ${r ? `
+          <div class="veld"><label><strong>Welke code is hetzelfde gebleven?</strong></label>
+            <small>Daarop herkent de app de onderdelen uit de vorige levering. Herkende onderdelen houden hun GIS-koppelingen en conditiescores.</small>
+            <div class="segment" role="radiogroup" style="margin-top:.35rem">${Object.entries(D.SLEUTELS).map(([k, l]) => `
+              <label><input type="radio" name="d-sleutel" value="${k}" ${vb.sleutel === k ? 'checked' : ''}><span>${l} (${telMatch(k)} herkend)</span></label>`).join('')}</div></div>
+          <ul>
+            <li><strong>${r.ongewijzigd}</strong> ongewijzigd</li>
+            <li><strong>${r.gewijzigd.length}</strong> gewijzigd${r.gewijzigd.length ? lijstje(r.gewijzigd.map((g) => `${niveauChip(g.knoop.niveau)} ${knoopNaam(g.knoop)} <small>(${g.velden.join(', ')})</small>`)) : ''}</li>
+            <li><strong>${r.toegevoegd.length}</strong> nieuw${r.toegevoegd.length ? lijstje(r.toegevoegd.map((k) => `${niveauChip(k.niveau)} ${knoopNaam(k)}`)) : ''}</li>
+            <li class="${r.vervallen.length ? 'fouttekst' : ''}"><strong>${r.vervallen.length}</strong> vervallen (niet meer in het bestand)${r.vervallen.length ? lijstje(r.vervallen.map((k) => `${niveauChip(k.niveau)} ${knoopNaam(k)}`)) : ''}</li>
+          </ul>
+          ${r.toegevoegd.length && r.vervallen.length ? `<p><small>${I.let} Zie je hetzelfde onderdeel bij "nieuw" én bij "vervallen"? Dan is de gekozen code veranderd: kies hierboven een andere code die hetzelfde is gebleven.</small></p>` : ''}
+          ${r.fouten.length ? lijstje(r.fouten.map(esc)) : ''}` : ''}
+        ${res.knopen.length && !geblokkeerd ? `<ul>
+            <li>${auto.size} GIS-object${auto.size === 1 ? ' wordt' : 'en worden'} automatisch gekoppeld op code.</li>
+            ${vervallenObj.length ? `<li class="fouttekst">${vervallenObj.length} GIS-koppeling${vervallenObj.length === 1 ? '' : 'en'} vervallen omdat het onderdeel niet meer bestaat.</li>` : ''}
+            ${verlorenScores ? `<li class="fouttekst">${verlorenScores} vervallen bouwde${verlorenScores === 1 ? 'el heeft' : 'len hebben'} een conditiescore; afgeronde inspecties blijven bewaard.</li>` : ''}
+            ${tn.bouwdeel ? '' : '<li class="fouttekst">Er zitten geen bouwdelen in; zonder bouwdelen kan niets worden gescoord.</li>'}
+          </ul>` : ''}
+        ${res.fouten.length ? `<details ${res.knopen.length ? '' : 'open'}><summary>${res.fouten.length} melding${res.fouten.length === 1 ? '' : 'en'} bij het inlezen</summary>
+          ${lijstje(res.fouten.map(esc), 30)}</details>` : ''}
+        <div class="knoppen" style="margin-top:.75rem">
+          ${res.knopen.length && !geblokkeerd ? `<button class="knop primair" id="d-overnemen">${I.vink} ${bijwerk ? 'Decompositie bijwerken' : 'Overnemen'}</button>` : ''}
+          <button class="knop" id="d-annuleer">Annuleren</button></div>
+      </section>`;
+    el.querySelectorAll('input[name=d-sleutel]').forEach((x) => x.addEventListener('change', () => { voorbeeld.sleutel = x.value; toonVoorbeeld(); }));
+    el.querySelector('#d-annuleer').onclick = () => { voorbeeld = null; el.innerHTML = ''; };
+    const over = el.querySelector('#d-overnemen');
+    if (over) over.onclick = async () => {
+      if (vb.vervallenObj.length && !confirm(`${vb.vervallenObj.length} GIS-koppeling(en) vervallen omdat het onderdeel niet meer in het bestand staat. Doorgaan?`)) return;
+      await bewaarProject({ knopen: vb.nieuweKnopen, bestand: vb.bestand, op: new Date().toISOString(), kolommen: project.decompositie?.kolommen?.length ? project.decompositie.kolommen : res.kop, sleutel: vb.sleutel });
+      const w = new Map(vb.vervallenObj.map((o) => [o.id, '']));
+      for (const [oid, kid] of vb.auto) w.set(oid, kid);
+      const n = await bewaarKoppelingen(w);
+      melding(`Decompositie ${bijwerk ? 'bijgewerkt' : 'overgenomen'}${n ? ` · ${n} koppeling${n === 1 ? '' : 'en'} bijgewerkt` : ''}`);
+      decompositiePagina(_, q);
+    };
+  };
   app.querySelector('#d-bestand').addEventListener('change', async (e) => {
     const bestand = e.target.files?.[0];
     e.target.value = '';
@@ -513,41 +620,9 @@ async function decompositiePagina(_, q) {
       console.error(fout);
       return melding('Dit bestand kan niet worden gelezen. Gebruik Excel (.xlsx) of CSV.', 'fout');
     }
-    voorbeeld = { ...res, bestand: bestand.name };
-    const tn = D.telling(res.knopen);
-    const nieuweIds = new Set(res.knopen.map((k) => k.id));
-    const vervallen = objecten.filter((o) => o.decomp && !nieuweIds.has(o.decomp));
-    const auto = D.koppelOpCode(res.knopen, objecten.map((o) => (o.decomp && !nieuweIds.has(o.decomp) ? { ...o, decomp: '' } : o)));
-    voorbeeld.vervallen = vervallen;
-    voorbeeld.auto = auto;
-    app.querySelector('#d-voorbeeld').innerHTML = `
-      <section class="kaart ${res.knopen.length ? '' : 'waarschuwingskaart'}">
-        <h2 style="margin-top:0">${I.bestand} ${esc(bestand.name)}</h2>
-        ${res.knopen.length ? `<p><strong>${tn.object}</strong> objecten, <strong>${tn.element}</strong> elementen en <strong>${tn.bouwdeel}</strong> bouwdelen herkend
-          (indeling: ${res.indeling === 'lijst' ? 'lijst met bovenliggende code' : 'kolommen object/element/bouwdeel'}).</p>
-          <ul>
-            <li>${auto.size} GIS-object${auto.size === 1 ? ' wordt' : 'en worden'} automatisch gekoppeld op code.</li>
-            ${knopen.length ? `<li>Onderdelen met dezelfde code behouden hun koppelingen en scores.</li>` : ''}
-            ${vervallen.length ? `<li class="fouttekst">${vervallen.length} koppeling${vervallen.length === 1 ? '' : 'en'} vervallen: het onderdeel staat niet meer in het bestand.</li>` : ''}
-            ${tn.bouwdeel ? '' : '<li class="fouttekst">Er zitten geen bouwdelen in; zonder bouwdelen kan niets worden gescoord.</li>'}
-          </ul>` : ''}
-        ${res.fouten.length ? `<details ${res.knopen.length ? '' : 'open'}><summary>${res.fouten.length} melding${res.fouten.length === 1 ? '' : 'en'} bij het inlezen</summary>
-          <ul>${res.fouten.slice(0, 30).map((f) => `<li>${esc(f)}</li>`).join('')}${res.fouten.length > 30 ? `<li>… en ${res.fouten.length - 30} meer</li>` : ''}</ul></details>` : ''}
-        <div class="knoppen" style="margin-top:.75rem">
-          ${res.knopen.length ? `<button class="knop primair" id="d-overnemen">${I.vink} ${knopen.length ? 'Huidige decompositie vervangen' : 'Overnemen'}</button>` : ''}
-          <button class="knop" id="d-annuleer">Annuleren</button></div>
-      </section>`;
-    app.querySelector('#d-annuleer').onclick = () => { voorbeeld = null; app.querySelector('#d-voorbeeld').innerHTML = ''; };
-    const over = app.querySelector('#d-overnemen');
-    if (over) over.onclick = async () => {
-      if (voorbeeld.vervallen.length && !confirm(`${voorbeeld.vervallen.length} koppeling(en) vervallen omdat het onderdeel niet meer in het bestand staat. Doorgaan?`)) return;
-      await bewaarProject({ knopen: voorbeeld.knopen, bestand: voorbeeld.bestand, op: new Date().toISOString() });
-      const w = new Map(voorbeeld.vervallen.map((o) => [o.id, '']));
-      for (const [oid, kid] of voorbeeld.auto) w.set(oid, kid);
-      const n = await bewaarKoppelingen(w);
-      melding(`Decompositie overgenomen${n ? ` · ${n} koppeling${n === 1 ? '' : 'en'} bijgewerkt` : ''}`);
-      decompositiePagina(_, q);
-    };
+    voorbeeld = { res, bestand: bestand.name, sleutel: project.decompositie?.sleutel ?? 'code' };
+    toonVoorbeeld();
+    app.querySelector('#d-voorbeeld').scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 
   app.querySelector('#d-sjabloon').onclick = () => download('decompositie-sjabloon.csv', csv(D.SJABLOON), 'text/csv;charset=utf-8');
@@ -585,7 +660,60 @@ async function decompositiePagina(_, q) {
     const r = e.target.closest('[data-knoop]');
     if (r) kies(r.dataset.knoop === gekozen ? null : r.dataset.knoop);
   });
+  const naWijziging = () => {
+    const tn = D.telling(knopen);
+    for (const n of D.NIVEAUS) { const x = app.querySelector(`#d-t-${n}`); if (x) x.textContent = tn[n]; }
+    const a = app.querySelector('#d-aangepast');
+    if (a) a.textContent = ` · handmatig aangepast ${datumNL(vandaag())}`;
+    kaartObj?.herkleur();
+    tekenBoom();
+    tekenSelectie();
+  };
+  const bewaarKnopen = (nieuw) => bewaarProject({ ...(project.decompositie ?? {}), knopen: nieuw, aangepast: new Date().toISOString() });
+  app.querySelector('#d-nieuw-object')?.addEventListener('click', () => { bewerk = { modus: 'nieuw', ouder: null }; tekenSelectie(); });
+  app.querySelector('#d-selectie')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = formulierData(e.target);
+    const data = { code: f.code.trim(), naam: f.naam.trim(), eenheid: f.eenheid.trim(), hoeveelheid: f.hoeveelheid === '' ? '' : Number(f.hoeveelheid), gis: f.gis.trim() };
+    if (!data.code) return melding('Vul de code in. Op die code wordt het onderdeel herkend bij een nieuwe levering.', 'fout');
+    if (!data.naam) return melding('Vul een naam in.', 'fout');
+    if (bewerk?.modus === 'nieuw') {
+      const r = D.voegKnoopToe(knopen, bewerk.ouder, data, `h${nieuwId().replace(/-/g, '').slice(0, 12)}`);
+      if (r.fout) return melding(r.fout, 'fout');
+      await bewaarKnopen(r.knopen);
+      gekozen = r.knoop.id;
+      bewerk = null;
+      D.pad(idx, gekozen).forEach((x) => { if (x.id !== gekozen) open.add(x.id); });
+      melding(`${D.NIVEAU_LABEL[r.knoop.niveau]} ${r.knoop.naam} toegevoegd`);
+      return naWijziging();
+    }
+    const oud = idx.perId.get(bewerk.id);
+    if (oud.code && oud.code !== data.code && !confirm(`Je wijzigt de code "${oud.code}" in "${data.code}".\n\nDe code is de sleutel waarop de app dit onderdeel herkent als je een nieuw bestand van de opdrachtgever inleest. Pas de code daar ook aan, of kies bij het bijwerken een andere code die hetzelfde is gebleven (bijv. de GIS-code).\n\nKoppelingen en scores blijven behouden. Doorgaan?`)) return;
+    const r = D.pasKnoopAan(knopen, bewerk.id, data);
+    if (r.fout) return melding(r.fout, 'fout');
+    await bewaarKnopen(r.knopen);
+    bewerk = null;
+    melding('Onderdeel opgeslagen');
+    naWijziging();
+  });
   app.querySelector('#d-selectie')?.addEventListener('click', async (e) => {
+    const actie = e.target.closest('[data-actie]')?.dataset.actie;
+    if (actie === 'annuleer') { bewerk = null; return tekenSelectie(); }
+    if (actie === 'bewerk') { bewerk = { modus: 'bewerk', id: gekozen }; return tekenSelectie(); }
+    if (actie === 'kind') { bewerk = { modus: 'nieuw', ouder: gekozen }; return tekenSelectie(); }
+    if (actie === 'verwijder') {
+      const k = idx.perId.get(gekozen);
+      const { knopen: rest, weg } = D.verwijderKnoop(knopen, gekozen);
+      const los = objecten.filter((o) => weg.has(o.decomp));
+      const metScore = [...weg].filter((id) => scores.has(id)).length;
+      if (!confirm(`${D.NIVEAU_LABEL[k.niveau]} "${k.naam}" verwijderen${weg.size > 1 ? `, met ${weg.size - 1} onderdeel/onderdelen eronder` : ''}?`
+        + `${los.length ? `\n${los.length} GIS-koppeling(en) vervallen.` : ''}${metScore ? `\n${metScore} bouwdeel/bouwdelen hebben een conditiescore; afgeronde inspecties blijven bewaard.` : ''}`)) return;
+      await bewaarKoppelingen(new Map(los.map((o) => [o.id, ''])));
+      await bewaarKnopen(rest);
+      gekozen = k.ouder && idx.perId.has(k.ouder) ? k.ouder : null;
+      melding(`${k.naam} verwijderd`);
+      return naWijziging();
+    }
     const z = e.target.closest('[data-zoom]');
     if (z) { kaartObj?.zoomNaar(z.dataset.zoom); return; }
     const los = e.target.closest('[data-los]');

@@ -72,12 +72,13 @@ export function leesDecompositie(regels) {
   const start = rijen.findIndex((r) => r.some((c) => c));
   if (start < 0) return { knopen: [], fouten: ['Het bestand is leeg.'], indeling: null };
   const k = kolommen(rijen[start]);
+  const kop = rijen[start].filter(Boolean);
   const data = rijen.slice(start + 1).map((r, i) => ({ r, rij: start + i + 2 })).filter(({ r }) => r.some((c) => c));
-  if (k.niveau !== undefined && (k.code !== undefined || k.naam !== undefined)) return leesLijst(data, k);
+  if (k.niveau !== undefined && (k.code !== undefined || k.naam !== undefined)) return { ...leesLijst(data, k), kop };
   if (k.object !== undefined || k.element !== undefined || k.bouwdeel !== undefined
-    || k.objectcode !== undefined || k.elementcode !== undefined || k.bouwdeelcode !== undefined) return leesKolommen(data, k);
+    || k.objectcode !== undefined || k.elementcode !== undefined || k.bouwdeelcode !== undefined) return { ...leesKolommen(data, k), kop };
   return {
-    knopen: [], indeling: null,
+    knopen: [], indeling: null, kop,
     fouten: ['Kolommen niet herkend. Gebruik "Code, Naam, Niveau, Bovenliggende code" of "Object, Element, Bouwdeel".'],
   };
 }
@@ -166,6 +167,97 @@ function maakId(niveau, sleutel) {
   const s = `${niveau}:${norm(sleutel)}`;
   for (let i = 0; i < s.length; i += 1) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
   return `${niveau[0]}${(h >>> 0).toString(36)}`;
+}
+
+/**
+ * Vergelijkt de kolomkoppen van een nieuwe levering met die van het eerste bestand.
+ * Bijwerken kan alleen als alle oorspronkelijke kolommen er (met dezelfde naam) nog in staan.
+ */
+export function vergelijkKolommen(oud, nieuw) {
+  const n = new Set((nieuw ?? []).map(norm));
+  const o = new Set((oud ?? []).map(norm));
+  return { ontbreekt: (oud ?? []).filter((k) => !n.has(norm(k))), extra: (nieuw ?? []).filter((k) => !o.has(norm(k))) };
+}
+
+export const SLEUTELS = { code: 'Code', gis: 'GIS-code' };
+const VELD_LABEL = { naam: 'naam', code: 'code', eenheid: 'eenheid', hoeveelheid: 'hoeveelheid', gis: 'GIS-code', ouder: 'plaats in de boom' };
+
+/**
+ * Werkt een bestaande decompositie bij met een nieuwe levering. Onderdelen worden herkend op een code die hetzelfde
+ * is gebleven (sleutel = 'code' of 'gis', per niveau); die houden hun id, dus GIS-koppelingen en scores blijven.
+ * @returns {{ knopen, gewijzigd: {knoop, velden: string[]}[], toegevoegd: object[], vervallen: object[], ongewijzigd: number, fouten: string[] }}
+ */
+export function bijwerken(oud, nieuw, sleutel = 'code') {
+  const fouten = [];
+  const sl = (k) => norm(k[sleutel]);
+  const oudPer = new Map();
+  for (const k of oud ?? []) if (sl(k)) oudPer.set(`${k.niveau}|${sl(k)}`, k);
+  const oudeIds = new Set((oud ?? []).map((k) => k.id));
+  const gebruikt = new Set();
+  const idMap = new Map();
+  let teller = 0;
+  for (const k of nieuw ?? []) {
+    const s = sl(k);
+    const o = s ? oudPer.get(`${k.niveau}|${s}`) : null;
+    if (o && gebruikt.has(o.id)) fouten.push(`${SLEUTELS[sleutel]} "${k[sleutel]}" komt dubbel voor bij ${NIVEAU_LABEL[k.niveau].toLowerCase()}en; de tweede wordt als nieuw onderdeel gezien.`);
+    if (o && !gebruikt.has(o.id)) {
+      gebruikt.add(o.id);
+      idMap.set(k.id, o.id);
+    } else {
+      let id = k.id;
+      while (oudeIds.has(id) || [...idMap.values()].includes(id)) { teller += 1; id = `${k.id}n${teller}`; }
+      idMap.set(k.id, id);
+    }
+  }
+  const knopen = (nieuw ?? []).map((k) => ({ ...k, id: idMap.get(k.id), ouder: k.ouder ? idMap.get(k.ouder) ?? null : null }));
+  const oudPerId = new Map((oud ?? []).map((k) => [k.id, k]));
+  const gewijzigd = [];
+  const toegevoegd = [];
+  let ongewijzigd = 0;
+  for (const k of knopen) {
+    const o = oudPerId.get(k.id);
+    if (!o) { toegevoegd.push(k); continue; }
+    const velden = Object.keys(VELD_LABEL).filter((v) => String(o[v] ?? '') !== String(k[v] ?? '')).map((v) => VELD_LABEL[v]);
+    if (velden.length) gewijzigd.push({ knoop: k, velden }); else ongewijzigd += 1;
+  }
+  const vervallen = (oud ?? []).filter((k) => !gebruikt.has(k.id));
+  return { knopen, gewijzigd, toegevoegd, vervallen, ongewijzigd, fouten };
+}
+
+export const KIND_NIVEAU = { object: 'element', element: 'bouwdeel', bouwdeel: null };
+
+/** Past één onderdeel aan (naam, code, eenheid, hoeveelheid, GIS-code). Code moet uniek zijn binnen het niveau. */
+export function pasKnoopAan(knopen, id, wijziging) {
+  const k = knopen.find((x) => x.id === id);
+  if (!k) return { fout: 'Onderdeel niet gevonden.' };
+  const nieuw = { ...k, ...wijziging, naam: String(wijziging.naam ?? k.naam).trim(), code: String(wijziging.code ?? k.code ?? '').trim() };
+  if (!nieuw.naam) return { fout: 'Vul een naam in.' };
+  if (nieuw.code && knopen.some((x) => x.id !== id && x.niveau === k.niveau && norm(x.code) === norm(nieuw.code))) {
+    return { fout: `De code "${nieuw.code}" bestaat al bij een ander ${NIVEAU_LABEL[k.niveau].toLowerCase()}.` };
+  }
+  return { knopen: knopen.map((x) => (x.id === id ? nieuw : x)) };
+}
+
+/** Voegt een onderdeel toe: een object bovenaan (ouder = null) of een element/bouwdeel onder de ouder. */
+export function voegKnoopToe(knopen, ouderId, data, id) {
+  const ouder = ouderId ? knopen.find((x) => x.id === ouderId) : null;
+  if (ouderId && !ouder) return { fout: 'Bovenliggend onderdeel niet gevonden.' };
+  const niveau = ouder ? KIND_NIVEAU[ouder.niveau] : 'object';
+  if (!niveau) return { fout: 'Onder een bouwdeel kan niets meer worden toegevoegd.' };
+  const k = { id, code: '', naam: '', niveau, ouder: ouder?.id ?? null, eenheid: '', hoeveelheid: '', gis: '' };
+  const r = pasKnoopAan([...knopen, k], id, data);
+  return r.fout ? r : { knopen: r.knopen, knoop: r.knopen.find((x) => x.id === id) };
+}
+
+/** Verwijdert een onderdeel met alles eronder. */
+export function verwijderKnoop(knopen, id) {
+  const weg = new Set([id]);
+  let groei = true;
+  while (groei) {
+    groei = false;
+    for (const k of knopen) if (k.ouder && weg.has(k.ouder) && !weg.has(k.id)) { weg.add(k.id); groei = true; }
+  }
+  return { knopen: knopen.filter((k) => !weg.has(k.id)), weg };
 }
 
 /** Hulpstructuur voor snel opzoeken. */

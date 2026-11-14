@@ -89,3 +89,56 @@ test('export naar regels is weer in te lezen', () => {
   assert.deepEqual(terug.fouten, []);
   assert.deepEqual(terug.knopen.map((k) => k.id).sort(), knopen.map((k) => k.id).sort());
 });
+
+test('bijwerken op een code die hetzelfde is gebleven', () => {
+  const oud = D.leesDecompositie(D.SJABLOON).knopen;
+  const regels = D.SJABLOON.map((r) => [...r]);
+  regels[3][1] = 'Landhoofd noordzijde';          // naam gewijzigd
+  regels[6][5] = 260;                              // hoeveelheid gewijzigd
+  regels.splice(7, 1);                             // Leuning vervalt
+  regels.push(['KW-001.2.3', 'Voegovergang', 'Bouwdeel', 'KW-001.2', 'm1', 12, '']);
+  const nieuw = D.leesDecompositie(regels).knopen;
+  const r = D.bijwerken(oud, nieuw, 'code');
+  assert.equal(r.ongewijzigd, 4);
+  assert.deepEqual(r.gewijzigd.map((g) => `${g.knoop.code}:${g.velden.join('+')}`).sort(), ['KW-001.1.1:naam', 'KW-001.2.1:hoeveelheid']);
+  assert.deepEqual(r.toegevoegd.map((k) => k.naam), ['Voegovergang']);
+  assert.deepEqual(r.vervallen.map((k) => k.naam), ['Leuning']);
+  const lh = oud.find((k) => k.code === 'KW-001.1.1');
+  assert.equal(r.knopen.find((k) => k.code === 'KW-001.1.1').id, lh.id);
+  const ids = new Set(r.knopen.map((k) => k.id));
+  assert.ok(r.knopen.every((k) => !k.ouder || ids.has(k.ouder)));
+});
+
+test('bijwerken op GIS-code behoudt id bij gewijzigde code', () => {
+  const oud = D.leesDecompositie(D.SJABLOON).knopen;
+  const regels = D.SJABLOON.map((r) => [...r]);
+  regels[3][0] = 'NIEUW-1';
+  const nieuw = D.leesDecompositie(regels.map((r, i) => (i === 3 ? [r[0], r[1], r[2], 'KW-001.1', r[4], r[5], r[6]] : r))).knopen;
+  const lh = oud.find((k) => k.gis === 'KW-001-LH-N');
+  const r = D.bijwerken(oud, nieuw, 'gis');
+  const k = r.knopen.find((x) => x.gis === 'KW-001-LH-N');
+  assert.equal(k.id, lh.id);
+  assert.ok(r.gewijzigd.some((g) => g.knoop.id === lh.id && g.velden.includes('code')));
+});
+
+test('kolommen vergelijken', () => {
+  const v = D.vergelijkKolommen(['Code', 'Naam', 'Niveau', 'Bovenliggende code'], ['code', 'Naam', 'Niveau', 'Ouder', 'Extra']);
+  assert.deepEqual(v.ontbreekt, ['Bovenliggende code']);
+  assert.deepEqual(v.extra, ['Ouder', 'Extra']);
+});
+
+test('aanpassen, toevoegen en verwijderen', () => {
+  let kn = D.leesDecompositie(D.SJABLOON).knopen;
+  const dek = kn.find((k) => k.naam === 'Brugdek');
+  assert.ok(D.pasKnoopAan(kn, dek.id, { code: 'KW-001.2.2' }).fout);
+  kn = D.pasKnoopAan(kn, dek.id, { naam: 'Brugdek (beton)', hoeveelheid: 250 }).knopen;
+  assert.equal(kn.find((k) => k.id === dek.id).naam, 'Brugdek (beton)');
+  const el = kn.find((k) => k.naam === 'Bovenbouw');
+  const r = D.voegKnoopToe(kn, el.id, { naam: 'Voeg', code: 'KW-001.2.9' }, 'x1');
+  assert.equal(r.knoop.niveau, 'bouwdeel');
+  assert.ok(D.voegKnoopToe(r.knopen, 'x1', { naam: 'Te diep' }, 'x2').fout);
+  assert.equal(D.voegKnoopToe(r.knopen, null, { naam: 'Gemaal' }, 'x3').knoop.niveau, 'object');
+  const w = D.verwijderKnoop(r.knopen, el.id);
+  assert.equal(w.weg.size, 4);
+  assert.equal(D.telling(w.knopen).bouwdeel, 2);
+});
