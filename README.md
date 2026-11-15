@@ -387,6 +387,12 @@ gebaseerd: **voortgang** (te doen / gedaan / overgeslagen in de actieve ronde), 
 De legenda en het aantal objecten staan onder de kaart; een klik op een object toont per werkpakket de status. Je keuze wordt in je
 dashboardindeling bewaard.
 
+Met **Registraties** bekijk je de kaart per soort registratie: werkzaamheden (alle of per werksoort), inspecties (alle of per
+inspectiesoort), open maatregelen, flora- en fauna-vrijgaven of overgeslagen objecten, over een **periode** (7/30/90 dagen, een jaar of alles).
+De kaart toont dan alleen objecten met zo'n registratie, gekleurd naar de uitkomst van de laatste: werk gereed of vervolg nodig, het oordeel van de
+inspectie, de urgentie van de maatregel of het besluit van de vrijgave. Gecombineerd met de werkpakketknoppen tellen alleen registraties uit die
+pakketten mee. Een klik op een object toont de laatste registraties met een link ernaartoe.
+
 ## Objecten aan werkpakketten koppelen
 
 Twee manieren, allebei op de pc (beheerders):

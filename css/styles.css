@@ -1441,3 +1441,6 @@ a.tegel:hover { background: var(--primair-licht); }
 .kppopup { list-style: none; padding: 0; margin: .3rem 0; }
 .kppopup li { display: flex; align-items: center; gap: .35rem; }
 [data-dashlegenda] small { margin-left: auto; color: var(--tekst-zacht); }
+.dashkaart-keuzes { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; }
+.dashkaart-keuzes select { max-width: 16rem; }
+.kppopup a { color: var(--primair); }

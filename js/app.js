@@ -1528,6 +1528,7 @@ const DASH_ROLLEN = { opdrachtnemer: 'Opdrachtnemer', opdrachtgever: 'Opdrachtge
 
 let dashBewerken = false;
 const DASH_KAART_KLEUR = { voortgang: 'Voortgang (te doen / gedaan)', pakket: 'Werkpakket', oordeel: 'Laatste oordeel' };
+const DASH_KAART_PERIODE = { 7: 'Laatste 7 dagen', 30: 'Laatste 30 dagen', 90: 'Laatste 90 dagen', 365: 'Laatste jaar', alles: 'Alles' };
 const PAKKET_PALET = ['#1f6feb', '#e8710a', '#7d5ba6', '#1a7f37', '#c2185b', '#00838f', '#b8860b', '#5d4037'];
 async function dashboard() {
   const { objecten, inspecties, werkzaamheden, objectMap, status } = await laadAlles();
@@ -1775,7 +1776,18 @@ async function dashboard() {
               ${keuzes.map((p, n) => `<button type="button" class="gfchip${gekozen.has(p.id) ? ' actief' : ''}" data-kp="${esc(p.id)}" title="${esc(p.code || '')} ${esc(p.naam)}">
                 <i class="kpstip" style="background:${PAKKET_PALET[n % PAKKET_PALET.length]}"></i>${esc(p.naam)}</button>`).join('')}
               ${keuzes.length ? '' : '<small>Geen lopende werkpakketten.</small>'}</div>
-            <label class="dashkaart-kleur">Kleur op <select data-kk>${Object.entries(DASH_KAART_KLEUR).map(([k, l]) => optie(k, l, kleur)).join('')}</select></label>
+            <div class="dashkaart-keuzes">
+              <label class="dashkaart-kleur">Registraties <select data-kr>
+                <option value="">Geen (alle objecten)</option>
+                <optgroup label="Werkzaamheden"><option value="werk:*" ${o.reg === 'werk:*' ? 'selected' : ''}>Alle werkzaamheden</option>
+                  ${[...new Set(werkzaamheden.map((w) => w.soort).filter(Boolean))].sort().map((x) => optie(`werk:${x}`, x, o.reg)).join('')}</optgroup>
+                <optgroup label="Inspecties"><option value="insp:*" ${o.reg === 'insp:*' ? 'selected' : ''}>Alle inspecties</option>
+                  ${[...new Set(inspecties.filter((i) => i.status === 'afgerond').map((i) => (i.bvc ? BV.BVC_SOORT : i.stowa ? ST.STOWA_SOORT : i.soort)).filter(Boolean))].sort().map((x) => optie(`insp:${x}`, x, o.reg)).join('')}</optgroup>
+                <optgroup label="Overig">${optie('maatregel', 'Open maatregelen', o.reg)}${optie('vrijgave', 'Flora- en fauna-vrijgaven', o.reg)}${optie('over', 'Overgeslagen objecten', o.reg)}</optgroup>
+              </select></label>
+              <label class="dashkaart-kleur" data-kperlabel ${o.reg ? '' : 'hidden'}>Periode <select data-kper>${Object.entries(DASH_KAART_PERIODE).map(([k, l]) => optie(k, l, o.periode ?? '90')).join('')}</select></label>
+              <label class="dashkaart-kleur" data-kklabel ${o.reg ? 'hidden' : ''}>Kleur op <select data-kk>${Object.entries(DASH_KAART_KLEUR).map(([k, l]) => optie(k, l, kleur)).join('')}</select></label>
+            </div>
           </div>
           <div class="dashkaart${b?.breed ? ' groot' : ''}" data-dashkaart><p class="leeg">Kaart laden…</p></div>
           <div class="kaartlegenda" data-dashlegenda></div></section>`;
@@ -1879,7 +1891,52 @@ async function dashboard() {
   if (kaartEl) {
     // Kaartblok: werkpakketten en kleurwijze kies je in het blok zelf; de keuze wordt in je indeling bewaard.
     const kaartCfg = cfg.find((b) => b.id === 'kaart');
-    const st = { pakketten: new Set((kaartCfg?.opties?.pakketten ?? []).filter((id) => g.pakketten.some((p) => p.id === id))), kleur: kaartCfg?.opties?.kleur };
+    const st = { pakketten: new Set((kaartCfg?.opties?.pakketten ?? []).filter((id) => g.pakketten.some((p) => p.id === id))), kleur: kaartCfg?.opties?.kleur,
+      reg: kaartCfg?.opties?.reg ?? '', periode: kaartCfg?.opties?.periode ?? '90' };
+    // Registraties per object (laatste eerst) voor de gekozen soort, periode en werkpakketten.
+    const vrijgaven = await inProject('vrijgaven');
+    const regPerObject = () => {
+      const m = new Map();
+      if (!st.reg) return m;
+      const van = st.periode === 'alles' ? '' : PL.isoVan(PL.dagNr(nu) - Number(st.periode) + 1);
+      const inPeriode = (d) => !van || String(d ?? '') >= van;
+      const inPak = (pid) => !st.pakketten.size || st.pakketten.has(pid);
+      const voeg = (oid, x) => { if (!oid) return; const l = m.get(oid) ?? []; l.push(x); m.set(oid, l); };
+      const [soort, wat] = st.reg.split(':');
+      if (soort === 'werk') {
+        for (const w of werkzaamheden) {
+          if ((wat !== '*' && w.soort !== wat) || !inPeriode(w.datum) || !inPak(w.werkpakketId)) continue;
+          voeg(w.objectId, { datum: w.datum, titel: w.soort || 'Werkzaamheid', label: w.status === 'vervolg' ? 'Vervolg nodig' : 'Gereed',
+            kleur: w.status === 'vervolg' ? '#e8710a' : '#1a7f37', href: `#/werkzaamheden/${w.id}`, door: w.uitvoerder });
+        }
+      } else if (soort === 'insp') {
+        for (const i of inspecties) {
+          const s2 = i.bvc ? BV.BVC_SOORT : i.stowa ? ST.STOWA_SOORT : i.soort;
+          if (i.status !== 'afgerond' || (wat !== '*' && s2 !== wat) || !inPeriode(i.datum) || !inPak(i.werkpakketId)) continue;
+          voeg(i.objectId, { datum: i.datum, titel: s2, labelHtml: inspectieOordeel(i), kleur: oordeelKleur(i), href: `#/inspecties/${i.id}`, door: i.inspecteur });
+        }
+      } else if (soort === 'maatregel') {
+        for (const x of maatregelenOpen) {
+          if (!inPeriode(x.inspectie.datum) || !inPak(x.inspectie.werkpakketId)) continue;
+          const u = x.gebrek.urgentie;
+          voeg(x.inspectie.objectId, { datum: x.inspectie.datum, titel: x.gebrek.maatregel || [x.gebrek.bouwdeel, x.gebrek.gebrek].filter(Boolean).join(' – ') || 'Maatregel',
+            label: urgentieLabel(u).replace(/<[^>]+>/g, '') || 'Open', kleur: u === 'direct' ? '#d1452f' : u === '3maanden' ? '#e8710a' : '#c9a400', href: `#/inspecties/${x.inspectie.id}`, rang: URGENTIES.find((y) => y.id === u)?.rang ?? 9 });
+        }
+      } else if (soort === 'vrijgave') {
+        for (const v of vrijgaven) {
+          if (v.status !== 'afgerond' || !inPeriode(v.datum) || !inPak(v.werkpakketId)) continue;
+          for (const oid of v.objectIds ?? []) voeg(oid, { datum: v.datum, titel: 'Vrijgave', label: eco.BESLUIT[v.besluit]?.label ?? '', kleur: eco.BESLUIT[v.besluit]?.kleur ?? '#8a96a3', href: `#/vrijgaven/${v.id}`, door: v.deskundige });
+        }
+      } else if (soort === 'over') {
+        for (const o of g.overgeslagen) {
+          if (!inPeriode(o.op) || !inPak(o.pakketId)) continue;
+          voeg(o.objectId, { datum: o.op, titel: `Overgeslagen (${g.pakketten.find((p) => p.id === o.pakketId)?.naam ?? 'werkpakket'})`, label: o.reden ?? '', kleur: '#8a96a3', href: `#/werkpakketten/${o.pakketId}`, door: o.door });
+        }
+      }
+      for (const l of m.values()) l.sort((a, b) => (a.rang ?? 0) - (b.rang ?? 0) || String(b.datum).localeCompare(String(a.datum)));
+      return m;
+    };
+    let regs = regPerObject();
     const kleurNr = new Map(g.pakketten.filter((p) => p.status !== 'afgerond' || st.pakketten.has(p.id)).map((p, n) => [p.id, PAKKET_PALET[n % PAKKET_PALET.length]]));
     // Per pakket de rondes die meetellen: de actieve, anders de laatste.
     const rondeVgs = (p) => {
@@ -1893,6 +1950,7 @@ async function dashboard() {
     const telPakketten = () => (st.pakketten.size ? gekozenP() : g.pakketten.filter((p) => p.status === 'actief'));
     const statusVan = (o) => DB.objectStatusInPakketten(o.id, telPakketten().flatMap((p) => rondeVgs(p).map((x) => x.vg)));
     const kleurVan = (o) => {
+      if (st.reg) return regs.get(o.id)?.[0]?.kleur ?? '#c3cad1';
       const w = kleurWijze();
       if (w === 'voortgang') return PAKKET_KLEUR[statusVan(o) ?? 'overgeslagen'] ?? '#8a96a3';
       if (w === 'pakket') {
@@ -1902,13 +1960,22 @@ async function dashboard() {
       const s = status.get(o.id);
       return s?.laatste ? oordeelKleur(s.laatste) : '#1f6feb';
     };
-    const zichtbaar = () => (st.pakketten.size ? objecten.filter((o) => gekozenP().some((p) => inPakket(o, p))) : objecten);
+    const zichtbaar = () => (st.reg ? objecten.filter((o) => regs.has(o.id))
+      : st.pakketten.size ? objecten.filter((o) => gekozenP().some((p) => inPakket(o, p))) : objecten);
     const legenda = () => {
       const w = kleurWijze();
       const el = app.querySelector('[data-dashlegenda]');
       const n = zichtbaar().length;
       const zonder = zichtbaar().filter((o) => !objectGeometrie(o)).length;
       let items;
+      if (st.reg) {
+        const gezien = new Map();
+        for (const l of regs.values()) { const x = l[0]; const k = x.label ?? x.labelHtml?.replace(/<[^>]+>/g, '') ?? ''; if (k && !gezien.has(k)) gezien.set(k, x.kleur); }
+        items = [...gezien.entries()].slice(0, 10);
+        const aantal = [...regs.values()].reduce((t, l) => t + l.length, 0);
+        el.innerHTML = `${items.map(([l, k]) => `<span style="--k:${esc(k)}">${esc(l)}</span>`).join('')}<small>${n} object${n === 1 ? '' : 'en'} · ${aantal} registratie${aantal === 1 ? '' : 's'}${zonder ? `, ${zonder} zonder locatie` : ''}</small>`;
+        return;
+      }
       if (w === 'voortgang') items = [['Te doen', PAKKET_KLEUR.open], ['Gedaan', PAKKET_KLEUR.gedaan], ['Overgeslagen', PAKKET_KLEUR.overgeslagen]];
       else if (w === 'pakket') items = (st.pakketten.size ? gekozenP() : g.pakketten.filter((p) => kleurNr.has(p.id))).map((p) => [p.naam, kleurNr.get(p.id)]);
       else items = [...[1, 2, 3, 4, 5, 6].map((c) => [`${c} · ${CONDITIES[c].label}`, CONDITIES[c].kleur]), ['Niet geïnspecteerd', '#1f6feb']];
@@ -1920,7 +1987,10 @@ async function dashboard() {
         const so = DB.objectStatusInPakketten(o.id, rondeVgs(p).map((x) => x.vg));
         return `<li><i class="kpstip" style="background:${PAKKET_KLEUR[so] ?? '#8a96a3'}"></i>${esc(p.naam)}: ${so === 'open' ? 'te doen' : so ?? '–'}</li>`;
       });
-      return `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br>${oordeelLabel(s)}${regels.length ? `<ul class="kppopup">${regels.join('')}</ul>` : ''}<a href="#/objecten/${esc(o.id)}">Object openen</a>`;
+      const rl = st.reg ? (regs.get(o.id) ?? []) : [];
+      const regHtml = rl.length ? `<ul class="kppopup">${rl.slice(0, 4).map((x) => `<li><i class="kpstip" style="background:${esc(x.kleur)}"></i>
+        <a href="${x.href}">${datumNL(x.datum)} · ${esc(x.titel)}</a> ${x.labelHtml ?? (x.label ? `<small>${esc(x.label)}</small>` : '')}</li>`).join('')}</ul>${rl.length > 4 ? `<small>+ ${rl.length - 4} meer</small><br>` : ''}` : '';
+      return `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br>${st.reg ? regHtml : `${oordeelLabel(s)}${regels.length ? `<ul class="kppopup">${regels.join('')}</ul>` : ''}`}<a href="#/objecten/${esc(o.id)}">Object openen</a>`;
     };
     const kaartP = tekenObjectenKaart(kaartEl, { objecten: objecten.filter((o) => objectGeometrie(o)), kleurVan, popup });
     const werkBij = async ({ inzoomen = false } = {}) => {
@@ -1931,7 +2001,7 @@ async function dashboard() {
       legenda();
     };
     const bewaarKaart = () => {
-      const nieuw = cfg.map((b) => (b.id === 'kaart' ? { ...b, opties: { pakketten: [...st.pakketten], kleur: st.kleur ?? '' } } : b));
+      const nieuw = cfg.map((b) => (b.id === 'kaart' ? { ...b, opties: { pakketten: [...st.pakketten], kleur: st.kleur ?? '', reg: st.reg, periode: st.periode } } : b));
       instelling.schrijf(sleutel, JSON.stringify(nieuw));
       cfg.splice(0, cfg.length, ...nieuw);
     };
@@ -1943,9 +2013,19 @@ async function dashboard() {
       if (!id) st.pakketten.clear(); else if (st.pakketten.has(id)) st.pakketten.delete(id); else st.pakketten.add(id);
       balk.querySelectorAll('[data-kp]').forEach((x) => x.classList.toggle('actief', x.dataset.kp ? st.pakketten.has(x.dataset.kp) : !st.pakketten.size));
       if (!DASH_KAART_KLEUR[st.kleur]) balk.querySelector('[data-kk]').value = kleurWijze();
+      regs = regPerObject();
       bewaarKaart();
       werkBij({ inzoomen: true });
     });
+    balk.querySelector('[data-kr]').addEventListener('change', (e) => {
+      st.reg = e.target.value;
+      balk.querySelector('[data-kperlabel]').hidden = !st.reg;
+      balk.querySelector('[data-kklabel]').hidden = Boolean(st.reg);
+      regs = regPerObject();
+      bewaarKaart();
+      werkBij({ inzoomen: true });
+    });
+    balk.querySelector('[data-kper]').addEventListener('change', (e) => { st.periode = e.target.value; regs = regPerObject(); bewaarKaart(); werkBij({ inzoomen: true }); });
     balk.querySelector('[data-kk]').addEventListener('change', (e) => { st.kleur = e.target.value; bewaarKaart(); werkBij(); });
     werkBij({ inzoomen: st.pakketten.size > 0 });
   }
