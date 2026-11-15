@@ -5024,15 +5024,15 @@ async function mobielStart() {
       ${loginHint}
       <a class="mtegel" href="#/m/werk">
         <span class="micoon">${I.werk}</span>
-        <span><strong>Registratie werkzaamheden</strong><small>Werk vastleggen binnen je werkpakket, met foto's${toonUren() ? ' en uren' : ''}</small></span>
+        <span><strong>Registratie werkzaamheden</strong></span>
       </a>
       <a class="mtegel storingtegel" href="#/m/storing">
         <span class="micoon">${I.let}</span>
-        <span><strong>Storing of gebrek oplossen</strong><small>Altijd, ook ’s nachts – zonder werkpakket</small></span>
+        <span><strong>Storing of gebrek oplossen</strong></span>
       </a>
       <a class="mtegel" href="#/m/inspectie">
         <span class="micoon">${I.inspectie}</span>
-        <span><strong>Schouw &amp; inspectie</strong><small>Gebreken vastleggen en boomveiligheidscontrole</small></span>
+        <span><strong>Schouw &amp; inspectie</strong></span>
       </a>
       ${vrijgaveNodig ? `<a class="mtegel" href="#/m/vrijgave">
         <span class="micoon">${I.blad}</span>
