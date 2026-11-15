@@ -371,6 +371,19 @@ Rijkswaterstaat** (Loo Plan, 8 februari 2017, definitief) en het CROW **Standaar
 - **Rapport** per boom (bijlage 5) en **SUF-BVC export** (boom, boomgebreken, maatregelen) per project of werkpakket;
   bij een BVC-werkpakket een samenvatting per klasse en maatregel.
 
+## Objecten aan werkpakketten koppelen
+
+Twee manieren, allebei op de pc (beheerders):
+
+- **Vanuit Objecten**: filter op type, conditie, planning, laag en op **kenmerken** (bijv. `beheertype = Gazon` **en** `maaifrequentie = 4`;
+  met **＋ Kenmerk** voeg je nog een voorwaarde toe). Vink objecten los aan of kies **Alle gevonden selecteren**. Daarna:
+  **Aan werkpakket toevoegen** (kies een lopend pakket; objecten die er al in zitten worden overgeslagen) of
+  **Nieuw werkpakket met selectie** (het pakketformulier opent met deze objecten al gekozen).
+- **In het werkpakket (Objecten samenstellen)**: dezelfde kenmerkfilters, met meerdere voorwaarden tegelijk, plus aanvinken in de lijst,
+  aanklikken op de kaart en een gebied slepen.
+
+Kies je een andere laag of type, dan vervallen kenmerkfilters die daar niet voorkomen.
+
 ## Uitkomsten van werkpakketten naar Excel (pc)
 
 Werkpakketten → **Uitkomsten naar Excel** (of op de pagina van één werkpakket). Kies de werkpakketten, eventueel een periode, welke registraties

@@ -1388,3 +1388,12 @@ form:not(.afroep-inspectie) .a-insp { display: none; }
 .kaartkies-tekst { margin: .5rem 0 0; }
 .kaartkies-tekst svg { width: 16px; height: 16px; vertical-align: -3px; color: var(--primair); }
 @media (max-width: 560px) { .dialoog.kaartkies { max-height: calc(100dvh - 16px); } .kaartkies-kaart { height: 58dvh; } }
+
+/* Filter op kenmerken (meerdere regels) en selectie in Objecten */
+.kfgroep { display: inline-flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+.kfregel { display: inline-flex; gap: .3rem; align-items: center; }
+.kfregel small { color: var(--tekst-zacht); font-weight: 600; }
+.kfregel select { max-width: 13rem; }
+.selectiebalk { display: flex; flex-wrap: wrap; gap: .5rem .75rem; align-items: center; padding: .6rem .9rem; position: sticky; top: .5rem; z-index: 5; }
+.selectiebalk.actief { border-color: var(--primair); background: var(--primair-licht); }
+.selectiebalk .sel-acties { display: inline-flex; gap: .5rem; margin-left: auto; flex-wrap: wrap; }

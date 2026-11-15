@@ -1997,10 +1997,106 @@ async function laadDemo() {
 // ---------------------------------------------------------------------------
 // Objecten
 // ---------------------------------------------------------------------------
+/**
+ * Filter op kenmerken (GIS-attributen): regels "kenmerk = waarde", gecombineerd met EN. Elke volgende regel stelt
+ * alleen waarden voor die bij de vorige regels nog voorkomen. basis() geeft de objecten om uit te kiezen.
+ */
+function kenmerkFilters(el, { basis, opWijzig }) {
+  let regels = [{ kenmerk: '', waarde: '' }];
+  const sorteer = (a, b) => a.localeCompare(b, 'nl', { numeric: true });
+  const teken = () => {
+    const alle = basis();
+    el.innerHTML = regels.map((r, n) => {
+      const objs = n ? filterObjecten(alle, { kenmerken: regels.slice(0, n) }) : alle;
+      const namen = [...new Set(objs.flatMap((o) => Object.keys(o.kenmerken ?? {})))].sort(sorteer);
+      const waarden = r.kenmerk ? [...new Set(objs.map((o) => o.kenmerken?.[r.kenmerk]).filter((v) => v !== undefined && v !== null && v !== '').map(String))].sort(sorteer) : [];
+      return `<span class="kfregel">${n ? '<small>en</small>' : ''}<select data-kf="${n}" data-k="kenmerk" aria-label="Kenmerk"><option value="">Kenmerk…</option>${namen.map((v) => optie(v, v, r.kenmerk)).join('')}</select>
+        <select data-kf="${n}" data-k="waarde" aria-label="Waarde van ${esc(r.kenmerk || 'kenmerk')}" ${r.kenmerk ? '' : 'disabled'}><option value="">${r.kenmerk ? 'Alle waarden' : 'Waarde…'}</option>${waarden.slice(0, 400).map((v) => optie(v, v, r.waarde)).join('')}</select>
+        ${regels.length > 1 || r.kenmerk ? `<button type="button" class="knop klein" data-kf-weg="${n}" aria-label="Filter verwijderen" title="Filter verwijderen">${I.kruis}</button>` : ''}</span>`;
+    }).join('') + (regels.at(-1).kenmerk && regels.at(-1).waarde ? '<button type="button" class="knop klein" data-kf-bij title="Nog een kenmerk als filter">＋ Kenmerk</button>' : '');
+  };
+  el.addEventListener('change', (e) => {
+    const n = e.target.dataset.kf;
+    if (n === undefined) return;
+    const r = regels[Number(n)];
+    r[e.target.dataset.k] = e.target.value;
+    if (e.target.dataset.k === 'kenmerk') r.waarde = '';
+    regels = regels.slice(0, Number(n) + 1).concat(regels.slice(Number(n) + 1).filter((x) => x.kenmerk));
+    teken();
+    opWijzig();
+  });
+  el.addEventListener('click', (e) => {
+    if (e.target.closest('[data-kf-bij]')) { regels.push({ kenmerk: '', waarde: '' }); teken(); return; }
+    const w = e.target.closest('[data-kf-weg]');
+    if (!w) return;
+    regels.splice(Number(w.dataset.kfWeg), 1);
+    if (!regels.length) regels = [{ kenmerk: '', waarde: '' }];
+    teken();
+    opWijzig();
+  });
+  teken();
+  return {
+    waarden: () => regels.filter((r) => r.kenmerk && r.waarde !== ''),
+    tekst: () => regels.filter((r) => r.kenmerk && r.waarde !== '').map((r) => `${r.kenmerk} = ${r.waarde}`).join(' en '),
+    /** Na een andere laag of type: filters die daar niet (meer) voorkomen vervallen. */
+    ververs: () => {
+      const alle = basis();
+      const blijft = [];
+      for (const r of regels) {
+        const objs = blijft.length ? filterObjecten(alle, { kenmerken: blijft }) : alle;
+        if (!r.kenmerk) continue;
+        if (!objs.some((o) => o.kenmerken && r.kenmerk in o.kenmerken)) continue;
+        if (r.waarde !== '' && !objs.some((o) => String(o.kenmerken?.[r.kenmerk] ?? '') === r.waarde)) continue;
+        blijft.push(r);
+      }
+      regels = blijft.length ? blijft : [{ kenmerk: '', waarde: '' }];
+      teken();
+    },
+  };
+}
+
+/** Objecten toevoegen aan een bestaand werkpakket (keuzevenster). */
+async function objectenNaarPakket(ids) {
+  const pakketten = (await inProject('werkpakketten')).filter((p) => !p.gesloten && pakketStatus(p) !== 'afgerond')
+    .sort((a, b) => String(a.naam).localeCompare(String(b.naam), 'nl', { numeric: true }));
+  if (!pakketten.length) { melding('Er is nog geen lopend werkpakket. Kies "Nieuw werkpakket met selectie".', 'fout'); return false; }
+  const d = document.createElement('dialog');
+  d.className = 'dialoog breed';
+  d.innerHTML = `<form method="dialog" novalidate><h2>${ids.length} object${ids.length === 1 ? '' : 'en'} aan werkpakket toevoegen</h2>
+    <p><small>Objecten die al in het pakket zitten, worden overgeslagen. Rondes met een eigen deelselectie (uit Excel) veranderen niet.</small></p>
+    <div class="kieslijst">${pakketten.map((p, n) => {
+    const al = ids.filter((id) => (p.objecten ?? []).includes(id)).length;
+    return `<label class="vink"><input type="radio" name="pakket" value="${esc(p.id)}" ${n ? '' : 'checked'}>
+      <span>${esc(p.naam)} ${pakketStatusLabel(pakketStatus(p))}<small>${p.code ? `${esc(p.code)} · ` : ''}${(p.objecten ?? []).length} objecten${al ? ` · ${al} van de selectie zit er al in` : ''}</small></span></label>`;
+  }).join('')}</div>
+    <div class="formvoet"><button class="knop" type="button" data-weg>Annuleren</button><button class="knop primair" type="submit">${I.pakket} Toevoegen</button></div></form>`;
+  document.body.append(d);
+  d.showModal();
+  const pid = await new Promise((ok) => {
+    d.querySelector('[data-weg]').onclick = () => ok(null);
+    d.addEventListener('cancel', (e) => { e.preventDefault(); ok(null); });
+    d.querySelector('form').onsubmit = (e) => { e.preventDefault(); ok(d.querySelector('input[name=pakket]:checked')?.value ?? null); };
+  });
+  d.close();
+  d.remove();
+  if (!pid) return false;
+  const p = await db.haal('werkpakketten', pid);
+  const bestaand = new Set(p.objecten ?? []);
+  const erbij = ids.filter((id) => !bestaand.has(id));
+  if (!erbij.length) { melding('Alle gekozen objecten zitten al in dit werkpakket.'); return false; }
+  await db.bewaar('werkpakketten', { ...p, objecten: [...(p.objecten ?? []), ...erbij], gewijzigd: new Date().toISOString() });
+  gedaan(`${erbij.length} object${erbij.length === 1 ? '' : 'en'} toegevoegd`, { extra: `aan ${p.naam}${erbij.length < ids.length ? ` (${ids.length - erbij.length} zaten er al in)` : ''}` });
+  return true;
+}
+const SELECTIE_NIEUW_PAKKET = 'inspectie-app:selectieNieuwPakket';
+
 async function objectenLijst() {
   const { objecten, status } = await laadAlles();
   let weergave = instelling.lees('objectWeergave') === 'kaart' ? 'kaart' : 'lijst';
   const typen = [...new Set(objecten.map((o) => o.type).filter(Boolean))].sort();
+  const lagen = await inProject('lagen');
+  const kanKiezen = magBeheren() && !isMobiel();
+  const gekozen = new Set();
   app.innerHTML = `
     <div class="paginakop">
       <div><h1>Objecten</h1><p>${objecten.length} geregistreerde objecten in het areaal.</p></div>
@@ -2016,10 +2112,18 @@ async function objectenLijst() {
         ${[1, 2, 3, 4, 5, 6].map((s) => optie(s, `${s} · ${CONDITIES[s].label}`)).join('')}${optie('geen', 'Niet geïnspecteerd')}</select>
       <select id="planning" aria-label="Planning"><option value="">Alle planningen</option>
         ${Object.entries(PLANNING_TEKST).filter(([k]) => k !== 'onbekend').map(([k, v]) => optie(k, v)).join('')}</select>
+      ${lagen.length > 1 ? `<select id="laag" aria-label="Laag"><option value="">Alle lagen</option>${lagen.map((l) => optie(l.id, l.naam)).join('')}${optie('-', 'Losse objecten (geen laag)')}</select>` : ''}
+      <span id="kenmerkfilters" class="kfgroep"></span>
       <div class="segment weergavekeuze" role="radiogroup" aria-label="Weergave">
         <label><input type="radio" name="oweergave" value="lijst" ${weergave === 'lijst' ? 'checked' : ''}><span>${I.lijst} Lijst</span></label>
         <label><input type="radio" name="oweergave" value="kaart" ${weergave === 'kaart' ? 'checked' : ''}><span>${I.kaart} Kaart</span></label></div>
     </div>
+    ${kanKiezen ? `<div class="kaart selectiebalk" id="selectiebalk">
+      <span id="sel-tekst"></span>
+      <button type="button" class="knop klein" id="sel-alle"></button>
+      <button type="button" class="knop klein" id="sel-wis" hidden>Selectie wissen</button>
+      <span class="sel-acties" hidden><button type="button" class="knop klein primair" id="sel-pakket">${I.pakket} Aan werkpakket toevoegen</button>
+        <button type="button" class="knop klein" id="sel-nieuw">＋ Nieuw werkpakket met selectie</button></span></div>` : ''}
     <div id="objectkaart-blok" ${weergave === 'kaart' ? '' : 'hidden'}>
       <div class="kaartindeling">
         <div id="objectkaart" class="kaart objectenkaart"><p class="leeg">Kaart laden…</p></div>
@@ -2035,16 +2139,37 @@ async function objectenLijst() {
       </div>
     </div>
     <div class="kaart" id="objectlijst" style="padding:0" ${weergave === 'kaart' ? 'hidden' : ''}><div class="tabelhouder"><table>
-      <thead><tr><th>Code</th><th>Naam</th><th class="verberg-mobiel">Type</th><th class="verberg-mobiel">Bouwjaar</th><th>Conditie</th><th class="verberg-mobiel">Laatste inspectie</th><th>Planning</th></tr></thead>
+      <thead><tr>${kanKiezen ? '<th style="width:38px"><input type="checkbox" id="sel-kop" aria-label="Alle gevonden objecten selecteren"></th>' : ''}<th>Code</th><th>Naam</th><th class="verberg-mobiel">Type</th><th class="verberg-mobiel">Bouwjaar</th><th>Conditie</th><th class="verberg-mobiel">Laatste inspectie</th><th>Planning</th></tr></thead>
       <tbody id="rijen"></tbody>
     </table></div></div>`;
 
   let gevonden = [];
   const filters = ['zoek', 'type', 'conditie', 'planning'].map((id) => app.querySelector(`#${id}`));
+  const laagEl = app.querySelector('#laag');
+  const basisVoorKenmerken = () => filterObjecten(objecten, { laag: laagEl?.value ?? '', type: filters[1].value });
+  const kf = kenmerkFilters(app.querySelector('#kenmerkfilters'), { basis: basisVoorKenmerken, opWijzig: () => { toon(); werkKaartBij(); } });
+  const werkSelectieBij = () => {
+    if (!kanKiezen) return;
+    const n = gekozen.size;
+    const nieuw = gevonden.filter((o) => !gekozen.has(o.id)).length;
+    app.querySelector('#sel-tekst').innerHTML = n ? `<strong>${n}</strong> object${n === 1 ? '' : 'en'} geselecteerd` : 'Selecteer objecten om ze aan een werkpakket te koppelen.';
+    const alle = app.querySelector('#sel-alle');
+    alle.textContent = `Alle ${gevonden.length} gevonden selecteren`;
+    alle.hidden = !nieuw;
+    app.querySelector('#sel-wis').hidden = !n;
+    app.querySelector('.sel-acties').hidden = !n;
+    app.querySelector('#selectiebalk').classList.toggle('actief', n > 0);
+    const kop = app.querySelector('#sel-kop');
+    if (kop) { kop.checked = gevonden.length > 0 && !nieuw; kop.indeterminate = nieuw > 0 && nieuw < gevonden.length; }
+  };
   const toon = () => {
     const [zoek, type, conditie, planning] = filters.map((f) => f.value.toLowerCase());
+    const laag = laagEl?.value ?? '';
+    const kfw = kf.waarden();
     const rijen = gevonden = objecten.filter((o) => {
       const s = status.get(o.id);
+      if (laag && !filterObjecten([o], { laag }).length) return false;
+      if (kfw.length && !filterObjecten([o], { kenmerken: kfw }).length) return false;
       if (!objectPast(o, zoekTermen(zoek))) return false;
       if (type && o.type?.toLowerCase() !== type) return false;
       if (conditie && (conditie === 'geen' ? s.conditie : String(s.conditie) !== conditie)) return false;
@@ -2053,11 +2178,13 @@ async function objectenLijst() {
     });
     app.querySelector('#rijen').innerHTML = rijen.length ? rijen.map((o) => {
       const s = status.get(o.id);
-      return `<tr class="klikbaar" data-href="#/objecten/${esc(o.id)}">
+      return `<tr class="klikbaar${gekozen.has(o.id) ? ' gekozen' : ''}" data-href="#/objecten/${esc(o.id)}">
+        ${kanKiezen ? `<td><input type="checkbox" data-sel="${esc(o.id)}" ${gekozen.has(o.id) ? 'checked' : ''} aria-label="${esc(o.code)} selecteren"></td>` : ''}
         <td><strong>${esc(o.code)}</strong>${objectGeometrie(o) ? ` <button type="button" class="kaartpin" data-opkaart="${esc(o.id)}" title="Op de kaart tonen" aria-label="${esc(o.code)} op de kaart tonen">${I.locatie}</button>` : ''}</td><td>${esc(o.naam)}</td><td class="verberg-mobiel">${esc(o.type)}</td>
         <td class="verberg-mobiel">${esc(o.bouwjaar || '–')}</td><td>${oordeelLabel(s)}</td>
         <td class="verberg-mobiel">${datumNL(s.laatste?.datum)}</td><td>${planningLabel(s.planning)}</td></tr>`;
-    }).join('') : `<tr><td colspan="7" class="leeg">${objecten.length ? 'Geen objecten gevonden met deze filters.' : 'Nog geen objecten. <a href="#/objecten/nieuw">Registreer het eerste object</a>.'}</td></tr>`;
+    }).join('') : `<tr><td colspan="${kanKiezen ? 8 : 7}" class="leeg">${objecten.length ? 'Geen objecten gevonden met deze filters.' : 'Nog geen objecten. <a href="#/objecten/nieuw">Registreer het eerste object</a>.'}</td></tr>`;
+    werkSelectieBij();
   };
   // Kaart: zoeken en filteren tonen de gevonden objecten; bij weinig treffers zoomt de kaart erop in.
   let kaartKlaar = null;
@@ -2145,6 +2272,29 @@ async function objectenLijst() {
     if (eerste) (await kaartKlaar)?.zoomNaar(eerste.id);
   });
   filters.forEach((f) => f.addEventListener('input', () => { toon(); if (kaartKlaar) werkKaartBij(); }));
+  [filters[1], laagEl].filter(Boolean).forEach((f) => f.addEventListener('change', () => { kf.ververs(); toon(); if (kaartKlaar) werkKaartBij(); }));
+  if (kanKiezen) {
+    app.querySelector('#rijen').addEventListener('change', (e) => {
+      const id = e.target.dataset.sel;
+      if (!id) return;
+      if (e.target.checked) gekozen.add(id); else gekozen.delete(id);
+      e.target.closest('tr').classList.toggle('gekozen', e.target.checked);
+      werkSelectieBij();
+    });
+    app.querySelector('#sel-kop').addEventListener('change', (e) => {
+      for (const o of gevonden) { if (e.target.checked) gekozen.add(o.id); else gekozen.delete(o.id); }
+      toon();
+    });
+    app.querySelector('#sel-alle').onclick = () => { for (const o of gevonden) gekozen.add(o.id); toon(); };
+    app.querySelector('#sel-wis').onclick = () => { gekozen.clear(); toon(); };
+    app.querySelector('#sel-pakket').onclick = async () => {
+      if (await objectenNaarPakket([...gekozen])) { gekozen.clear(); toon(); }
+    };
+    app.querySelector('#sel-nieuw').onclick = () => {
+      try { sessionStorage.setItem(SELECTIE_NIEUW_PAKKET, JSON.stringify([...gekozen])); } catch { /* geen opslag */ }
+      ga('#/werkpakketten/nieuw?selectie=1');
+    };
+  }
   toon();
   if (weergave === 'kaart') startKaart();
 
@@ -2891,7 +3041,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
       <input id="f-datum" name="datum" type="date" required value="${esc(staat.datum)}"></div>`;
   const veldSoort = `<div class="veld"><label for="f-soort">Soort</label>
       <select id="f-soort" name="soort">${(losseCalamiteit && !bestaand ? [CALAMITEIT] : [...new Set([...inspectieSoorten(), ...(bestaand?.soort ? [bestaand.soort] : [])])].filter((s) => s !== BV.BVC_SOORT && (pakket || bestaand || s !== ST.STOWA_SOORT))).map((s) => optie(s, s, staat.soort)).join('')}</select>
-      <small>Waterkering? Kies "${ST.STOWA_SOORT}" voor de STOWA-inspectiewijzers.</small></div>`;
+      </div>`;
   const veldInspecteur = `<div class="veld"><label for="f-inspecteur">Inspecteur</label>
       <input id="f-inspecteur" name="inspecteur" value="${esc(staat.inspecteur)}" maxlength="100"></div>`;
   const veldWeer = `<div class="veld"><label for="f-weer">Weersomstandigheden</label>
@@ -7984,6 +8134,10 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
   }
   const gekozen = new Set(p.objecten ?? []);
   if (!bron && q.get('object')) gekozen.add(q.get('object'));
+  if (!bron && q.get('selectie')) {
+    // Selectie uit Objecten: "Nieuw werkpakket met selectie".
+    try { for (const oid of JSON.parse(sessionStorage.getItem(SELECTIE_NIEUW_PAKKET) ?? '[]')) gekozen.add(oid); sessionStorage.removeItem(SELECTIE_NIEUW_PAKKET); } catch { /* geen opslag */ }
+  }
   const planning = p.planning ?? (project?.planningswijze === 'afroep' ? 'afroep' : 'gepland');
   const leden = project?.leden ?? [];
   const terug = id ? `#/werkpakketten/${esc(id)}` : '#/werkpakketten';
@@ -8043,8 +8197,7 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
         <div class="filters samensteller">
           <select id="z-laag" aria-label="Laag"><option value="">Alle lagen</option>${lagen.map((l) => optie(l.id, l.naam)).join('')}${optie('-', 'Losse objecten (geen laag)')}</select>
           <select id="z-type" aria-label="Objecttype"><option value="">Alle typen</option>${[...new Set(objecten.map((o) => o.type).filter(Boolean))].sort().map((t) => optie(t, t)).join('')}</select>
-          <select id="z-kenmerk" aria-label="Kenmerk"><option value="">Kenmerk…</option></select>
-          <select id="z-waarde" aria-label="Waarde" disabled><option value="">Waarde…</option></select>
+          <span id="z-kenmerken" class="kfgroep"></span>
           <select id="z-conditie" aria-label="Conditie"><option value="">Alle condities</option>
             ${[1, 2, 3, 4, 5, 6].map((s) => optie(s, `${s} · ${CONDITIES[s].label}`)).join('')}${optie('geen', 'Niet geïnspecteerd')}</select>
           <select id="z-planning" aria-label="Planning"><option value="">Alle planningen</option>
@@ -8170,27 +8323,10 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
   };
 
   const filters = () => ({
-    laag: $('#z-laag').value, type: $('#z-type').value, kenmerk: $('#z-kenmerk').value, waarde: $('#z-waarde').value,
+    laag: $('#z-laag').value, type: $('#z-type').value, kenmerken: kf.waarden(),
     conditie: $('#z-conditie').value, planning: $('#z-planning').value, zoek: $('#z-zoek').value,
   });
-  const vulKenmerken = () => {
-    const f = filters();
-    const basis = filterObjecten(objecten, { laag: f.laag, type: f.type });
-    const velden = [...new Set(basis.flatMap((o) => Object.keys(o.kenmerken ?? {})))].sort();
-    const huidig = $('#z-kenmerk').value;
-    $('#z-kenmerk').innerHTML = `<option value="">Kenmerk…</option>${velden.map((v) => optie(v, v, huidig)).join('')}`;
-    vulWaarden();
-  };
-  const vulWaarden = () => {
-    const f = filters();
-    const sel = $('#z-waarde');
-    if (!f.kenmerk) { sel.disabled = true; sel.innerHTML = '<option value="">Waarde…</option>'; return; }
-    const basis = filterObjecten(objecten, { laag: f.laag, type: f.type });
-    const waarden = [...new Set(basis.map((o) => o.kenmerken?.[f.kenmerk]).filter((v) => v !== undefined && v !== null && v !== '').map(String))]
-      .sort((a, b) => a.localeCompare(b, 'nl', { numeric: true }));
-    sel.disabled = false;
-    sel.innerHTML = `<option value="">Alle waarden</option>${waarden.slice(0, 300).map((v) => optie(v, v, f.waarde)).join('')}`;
-  };
+  const kf = kenmerkFilters($('#z-kenmerken'), { basis: () => filterObjecten(objecten, { laag: $('#z-laag').value, type: $('#z-type').value }), opWijzig: () => toon() });
   let zichtbaar = [];
   const toon = () => {
     const toonKeuze = $('#z-toon').value;
@@ -8249,9 +8385,8 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
   };
   gebiedKnop('#gebied-erin', true);
   gebiedKnop('#gebied-eruit', false);
-  ['#z-laag', '#z-type'].forEach((s) => $(s).addEventListener('change', () => { vulKenmerken(); toon(); }));
-  $('#z-kenmerk').addEventListener('change', () => { vulWaarden(); toon(); });
-  ['#z-waarde', '#z-conditie', '#z-planning', '#z-toon'].forEach((s) => $(s).addEventListener('change', toon));
+  ['#z-laag', '#z-type'].forEach((s) => $(s).addEventListener('change', () => { kf.ververs(); toon(); }));
+  ['#z-conditie', '#z-planning', '#z-toon'].forEach((s) => $(s).addEventListener('change', toon));
   $('#z-zoek').addEventListener('input', toon);
   $('#z-rijen').addEventListener('change', (e) => {
     const k = e.target.dataset.kies;
@@ -8265,7 +8400,6 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
   $('#alles-erin').onclick = () => { zichtbaar.forEach((o) => gekozen.add(o.id)); formulierGewijzigd = true; toon(); };
   $('#alles-eruit').onclick = () => { zichtbaar.forEach((o) => gekozen.delete(o.id)); formulierGewijzigd = true; toon(); };
   form.addEventListener('input', () => { formulierGewijzigd = true; });
-  vulKenmerken();
   toon();
 
   form.onsubmit = async (e) => {
@@ -10675,7 +10809,7 @@ document.addEventListener('click', (e) => {
     return;
   }
   const rij = e.target.closest('tr[data-href]');
-  if (rij && !e.target.closest('a, button')) location.hash = rij.dataset.href;
+  if (rij && !e.target.closest('a, button, input, label, select')) location.hash = rij.dataset.href;
 });
 
 document.addEventListener('keydown', (e) => {

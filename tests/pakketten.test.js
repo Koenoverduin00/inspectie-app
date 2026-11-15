@@ -109,3 +109,16 @@ test('rondes: impliciete ronde, weergave en voortgang per ronde', () => {
   const t = totaalVoortgang([g1, g2]);
   assert.deepEqual([t.totaal, t.gedaan.size, t.overgeslagen.size], [4, 2, 1]);
 });
+
+test('filterObjecten met meerdere kenmerken', async () => {
+  const { filterObjecten } = await import('../js/pakketten.js');
+  const o = [
+    { id: 1, code: 'A', kenmerken: { wijk: 'Noord', frequentie: 4 } },
+    { id: 2, code: 'B', kenmerken: { wijk: 'Noord', frequentie: 2 } },
+    { id: 3, code: 'C', kenmerken: { wijk: 'Zuid', frequentie: 4 } },
+  ];
+  const ids = (f) => filterObjecten(o, f).map((x) => x.id);
+  assert.deepEqual(ids({ kenmerken: [{ kenmerk: 'wijk', waarde: 'Noord' }, { kenmerk: 'frequentie', waarde: '4' }] }), [1]);
+  assert.deepEqual(ids({ kenmerken: [{ kenmerk: 'wijk', waarde: ['Noord', 'Zuid'] }] }), [1, 2, 3]);
+  assert.deepEqual(ids({ kenmerken: [{ kenmerk: 'wijk', waarde: '' }] }), [1, 2, 3]);
+});

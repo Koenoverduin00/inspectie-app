@@ -134,6 +134,11 @@ export function filterObjecten(objecten, f = {}, { status } = {}) {
     if (f.laag && f.laag !== '-' && o.laagId !== f.laag) return false;
     if (f.type && o.type !== f.type) return false;
     if (f.kenmerk && f.waarde !== undefined && f.waarde !== '' && String(o.kenmerken?.[f.kenmerk] ?? '') !== f.waarde) return false;
+    for (const k of f.kenmerken ?? []) {
+      if (!k?.kenmerk || k.waarde === undefined || k.waarde === '') continue;
+      const v = String(o.kenmerken?.[k.kenmerk] ?? '');
+      if (Array.isArray(k.waarde) ? !k.waarde.includes(v) : v !== k.waarde) return false;
+    }
     if (f.conditie) {
       const c = status?.get(o.id)?.conditie;
       if (f.conditie === 'geen' ? c : String(c) !== f.conditie) return false;
