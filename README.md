@@ -371,6 +371,17 @@ Rijkswaterstaat** (Loo Plan, 8 februari 2017, definitief) en het CROW **Standaar
 - **Rapport** per boom (bijlage 5) en **SUF-BVC export** (boom, boomgebreken, maatregelen) per project of werkpakket;
   bij een BVC-werkpakket een samenvatting per klasse en maatregel.
 
+## Eigen dashboard
+
+Op het dashboard (pc) kiest iedereen zelf wat hij ziet: **Dashboard aanpassen**. Blokken toevoegen of weghalen, de volgorde bepalen
+(slepen of ↑ ↓) en per blok kiezen of het **breed** of **smal** (halve breedte) is. De indeling geldt per persoon, per project en per weergave
+(opdrachtnemer / opdrachtgever) en wordt op het apparaat bewaard. **Standaard herstellen** zet de indeling terug. Een beheerder kan de
+eigen indeling met **Als standaard voor dit project** instellen als startpunt voor iedereen in het project.
+
+Beschikbare blokken: Kerncijfers (tegels), Uitgevoerde werkzaamheden, Lopende rondes – op schema?, Voortgang per werkpakket, Open
+maatregelen, Vervolgacties, Te beoordelen (alleen voor beoordelaars), Staat van het areaal (verdeling conditie/oordeel), Inspectieplanning
+(verlopen/binnenkort), Kaart (objecten gekleurd naar oordeel), Recente inspecties en Recente werkzaamheden.
+
 ## Objecten aan werkpakketten koppelen
 
 Twee manieren, allebei op de pc (beheerders):

@@ -30,3 +30,16 @@ test('werk per week, tellen en binnenkort', () => {
   const rondes = [{ r: { status: 'gepland', start: '2027-03-20' } }, { r: { status: 'gepland', start: '2027-05-01' } }, { r: { status: 'actief', start: '2027-03-13' } }];
   assert.equal(startBinnenkort(rondes, '2027-03-12').length, 1);
 });
+
+test('eigen dashboard: indeling en verplaatsen', async () => {
+  const { indeling, verplaats } = await import('../js/dashboard.js');
+  const std = [{ id: 'werk', breed: true }, { id: 'rondes', breed: true }, { id: 'recent' }];
+  assert.deepEqual(indeling(null, std, ['werk', 'rondes', 'recent']).map((b) => b.id), ['werk', 'rondes', 'recent']);
+  assert.deepEqual(indeling([{ id: 'recent', breed: true }, { id: 'onbekend' }, { id: 'recent' }], std, ['werk', 'recent']), [{ id: 'recent', breed: true }]);
+  assert.deepEqual(indeling([{ id: 'inbox' }], std, ['werk', 'rondes', 'recent']).map((b) => b.id), ['werk', 'rondes', 'recent']);
+  const l = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+  assert.deepEqual(verplaats(l, 'c', { stap: -1 }).map((b) => b.id), ['a', 'c', 'b']);
+  assert.deepEqual(verplaats(l, 'a', { stap: -1 }).map((b) => b.id), ['a', 'b', 'c']);
+  assert.deepEqual(verplaats(l, 'a', { naar: 'c' }).map((b) => b.id), ['b', 'c', 'a']);
+  assert.deepEqual(verplaats(l, 'c', { naar: 'a' }).map((b) => b.id), ['c', 'a', 'b']);
+});

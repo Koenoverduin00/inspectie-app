@@ -292,7 +292,7 @@ function verdelingLabel(i) {
   const delen = [1, 2, 3, 4, 5, 6].filter((s) => v[s])
     .map((s) => `<span class="score klein" style="background:${CONDITIES[s].kleur}" title="${v[s]} bouwde${v[s] === 1 ? 'el' : 'len'} met conditie ${s} (${esc(CONDITIES[s].label)})">${s}</span><small>×${v[s]}</small>`);
   if (v.niet) delen.push(`<span class="label-status" title="Niet geïnspecteerd">n.g.</span><small>×${v.niet}</small>`);
-  return `<span class="verdeling" title="Conditie per bouwdeel">${delen.join(' ') || '<span class="label-status">Geen bouwdelen</span>'}</span>`;
+  return `<span class="bdverdeling" title="Conditie per bouwdeel">${delen.join(' ') || '<span class="label-status">Geen bouwdelen</span>'}</span>`;
 }
 
 /** Tabel met de score per bouwdeel van één inspectie. */
@@ -1526,8 +1526,9 @@ function gebrekSamenvatting(gebreken, i = null) {
 // ---------------------------------------------------------------------------
 const DASH_ROLLEN = { opdrachtnemer: 'Opdrachtnemer', opdrachtgever: 'Opdrachtgever' };
 
+let dashBewerken = false;
 async function dashboard() {
-  const { objecten, inspecties, werkzaamheden, objectMap } = await laadAlles();
+  const { objecten, inspecties, werkzaamheden, objectMap, status } = await laadAlles();
   const project = await actiefProject();
   const rol = DASH_ROLLEN[instelling.lees('dashboardRol')] ? instelling.lees('dashboardRol') : 'opdrachtnemer';
   const schakelaar = `<div class="segment rolkeuze" role="radiogroup" aria-label="Weergave dashboard">${Object.entries(DASH_ROLLEN).map(([k, l]) => `
@@ -1646,61 +1647,224 @@ async function dashboard() {
     </tbody></table></div>` : '<p class="leeg">Nog geen werkzaamheden geregistreerd.</p>'}
   </section>`;
 
-  let inhoud;
-  if (rol === 'opdrachtgever') {
-    const lopendePakketten = g.pakketten.filter((p) => p.status !== 'afgerond');
-    const ergste = (p) => rondes.filter((x) => x.p === p && x.r.status === 'actief')
-      .reduce((m, x) => (DB.SIGNAAL[x.s.signaal].ernst > DB.SIGNAAL[m]?.ernst ? x.s.signaal : m), null);
-    const maatregelenOpen = alleMaatregelen(inspecties, objectMap).filter((m) => m.gebrek.maatregelStatus !== 'uitgevoerd');
-    const perUrgentie = URGENTIES.map((u) => {
-      const lijst = maatregelenOpen.filter((m) => m.gebrek.urgentie === u.id);
-      return { u, n: lijst.length, raming: lijst.reduce((t, m) => t + (Number(m.gebrek.kostenraming) || 0), 0) };
-    }).filter((x) => x.n);
-    const afgerondRecent = rondes.filter((x) => x.r.status === 'afgerond' && x.r.eind && String(x.r.eind) >= PL.isoVan(PL.dagNr(nu) - 60));
-    inhoud = `
-      <section class="kaart">
-        <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">Voortgang per werkpakket</h2><a href="#/werkpakketten">Alle werkpakketten →</a></div>
+  // --- Blokken: elk blok is een bouwsteen die je zelf op je dashboard zet ---
+  const lopendePakketten = g.pakketten.filter((p) => p.status !== 'afgerond');
+  const ergste = (p) => rondes.filter((x) => x.p === p && x.r.status === 'actief')
+    .reduce((m, x) => (DB.SIGNAAL[x.s.signaal].ernst > DB.SIGNAAL[m]?.ernst ? x.s.signaal : m), null);
+  const maatregelenOpen = alleMaatregelen(inspecties, objectMap).filter((m) => m.gebrek.maatregelStatus !== 'uitgevoerd');
+  const perUrgentie = URGENTIES.map((u) => {
+    const lijst = maatregelenOpen.filter((m) => m.gebrek.urgentie === u.id);
+    return { u, n: lijst.length, raming: lijst.reduce((t, m) => t + (Number(m.gebrek.kostenraming) || 0), 0) };
+  }).filter((x) => x.n);
+  const afgerondRecent = rondes.filter((x) => x.r.status === 'afgerond' && x.r.eind && String(x.r.eind) >= PL.isoVan(PL.dagNr(nu) - 60));
+  const beoordelen = magGoedkeuren() ? [...werkzaamheden.filter(teBeoordelen).map((r) => ({ r, store: 'werkzaamheden' })), ...inspecties.filter(teBeoordelen).map((r) => ({ r, store: 'inspecties' }))]
+    .sort((a, b) => String(b.r.beoordeling?.ingediendOp ?? '').localeCompare(String(a.r.beoordeling?.ingediendOp ?? ''))) : [];
+  const kop2 = (titel, link, linkTekst) => `<div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">${titel}</h2>${link ? `<a href="${link}">${linkTekst} →</a>` : ''}</div>`;
+  const BLOKKEN = {
+    kerncijfers: {
+      titel: 'Kerncijfers', uitleg: 'Tegels met de belangrijkste aantallen in één oogopslag.', breed: true,
+      html: () => {
+        const verlopen = objecten.filter((o) => status.get(o.id)?.planning === 'verlopen').length;
+        const tegels = [
+          ['Lopende rondes', lopend.length, '#/planning', ''],
+          ['Achter op schema', achter.length, '#/planning', achter.length ? 'slecht' : 'goed'],
+          ['Werk deze week', dezeWeek.aantal, '#/werkzaamheden', ''],
+          ['Open maatregelen', maatregelenOpen.length, '#/maatregelen', maatregelenOpen.some((m) => m.gebrek.urgentie === 'direct') ? 'slecht' : ''],
+          ['Inspectie verlopen', verlopen, '#/objecten', verlopen ? 'let' : 'goed'],
+          ...(magGoedkeuren() ? [['Te beoordelen', beoordelen.length, '#/inbox', beoordelen.length ? 'let' : 'goed']] : []),
+        ];
+        return `<section class="kaart">${kop2('Kerncijfers')}<div class="tegels">${tegels.map(([l, n, href, k]) => `
+          <a class="tegel ${k}" href="${href}"><strong>${n}</strong><span>${esc(l)}</span></a>`).join('')}</div></section>`;
+      },
+    },
+    werk: { titel: 'Uitgevoerde werkzaamheden', uitleg: 'Per week, per soort en per uitvoerder (laatste 4 weken).', breed: true, html: () => werkBlok },
+    rondes: {
+      titel: 'Lopende rondes – op schema?', uitleg: 'Verwachte tegenover werkelijke voortgang per ronde, en wat binnenkort start.', breed: true,
+      html: () => rondesBlok(achter.length ? `${I.let} Aandacht: ${achter.length} ronde${achter.length === 1 ? '' : 's'} achter op schema` : 'Lopende rondes – ligt het werk op schema?', lopend, 'Er loopt op dit moment geen ronde.'),
+    },
+    voortgang: {
+      titel: 'Voortgang per werkpakket', uitleg: 'Alle lopende werkpakketten met voortgangsbalk.', breed: true,
+      html: () => `<section class="kaart">${kop2('Voortgang per werkpakket', '#/werkpakketten', 'Alle werkpakketten')}
         ${lopendePakketten.length ? `<div class="pakketten compact">${lopendePakketten.map((p) => {
-          const sig = ergste(p);
-          return `<a class="pakket" href="#/werkpakketten/${esc(p.id)}"><div class="pakketkop"><strong>${esc(p.naam)}</strong>${sig
-            ? `<span class="label-status ${DB.SIGNAAL[sig].klasse}">${esc(sig)}</span>` : pakketStatusLabel(p.status)}</div>
-          <small>${pakketRondesTekst(p)}</small>
-          ${voortgangBalk(g.voortgangen.get(p.id))}</a>`;
-        }).join('')}</div>` : '<p class="leeg">Geen lopende werkpakketten.</p>'}
-        ${afgerondRecent.length ? `<p class="tussenkop">${I.vink} Afgerond in de laatste 60 dagen: ${afgerondRecent.map((x) => esc(x.v.naam)).join(', ')}</p>` : ''}
-      </section>
-      ${rondesBlok(achter.length ? `${I.let} Aandacht: ${achter.length} ronde${achter.length === 1 ? '' : 's'} achter op schema` : 'Lopende rondes', lopend, 'Er loopt op dit moment geen ronde.')}
-      ${werkBlok}
-      <section class="kaart">
-        <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">Open maatregelen uit inspecties</h2><a href="#/maatregelen">Alle maatregelen →</a></div>
+    const sig = ergste(p);
+    return `<a class="pakket" href="#/werkpakketten/${esc(p.id)}"><div class="pakketkop"><strong>${esc(p.naam)}</strong>${sig
+      ? `<span class="label-status ${DB.SIGNAAL[sig].klasse}">${esc(sig)}</span>` : pakketStatusLabel(p.status)}</div>
+          <small>${pakketRondesTekst(p)}</small>${voortgangBalk(g.voortgangen.get(p.id))}</a>`;
+  }).join('')}</div>` : '<p class="leeg">Geen lopende werkpakketten.</p>'}
+        ${afgerondRecent.length ? `<p class="tussenkop">${I.vink} Afgerond in de laatste 60 dagen: ${afgerondRecent.map((x) => esc(x.v.naam)).join(', ')}</p>` : ''}</section>`,
+    },
+    maatregelen: {
+      titel: 'Open maatregelen', uitleg: 'Open maatregelen uit inspecties per urgentie' + (toonKosten() ? ', met raming.' : '.'), breed: false,
+      html: () => `<section class="kaart">${kop2('Open maatregelen uit inspecties', '#/maatregelen', 'Alle maatregelen')}
         ${perUrgentie.length ? `<div class="tabelhouder"><table><thead><tr><th>Urgentie</th><th>Aantal</th>${toonKosten() ? '<th>Raming</th>' : ''}</tr></thead><tbody>
           ${perUrgentie.map((x) => `<tr class="klikbaar" data-href="#/maatregelen"><td>${urgentieLabel(x.u.id)}</td><td>${x.n}</td>${toonKosten() ? `<td>${x.raming ? euro(x.raming) : '–'}</td>` : ''}</tr>`).join('')}
-        </tbody></table></div>` : '<p class="leeg">Geen open maatregelen.</p>'}
-      </section>
-      <div class="raster-2">${recentInsp}${recentWerk}</div>`;
-  } else {
-    inhoud = `
-      ${werkBlok}
-      ${rondesBlok('Lopende rondes – ligt het werk op schema?', lopend, 'Er loopt op dit moment geen ronde. Zet een ronde in de planning op actief.')}
-      <div class="raster-2">${recentWerk}${recentInsp}</div>`;
-  }
+        </tbody></table></div>` : '<p class="leeg">Geen open maatregelen.</p>'}</section>`,
+    },
+    vervolg: {
+      titel: 'Vervolgacties', uitleg: 'Werk met "vervolg nodig" en urgente open maatregelen: input voor nieuw werk.', breed: false,
+      html: () => {
+        const urgent = maatregelenOpen.filter((m) => ['direct', '3maanden'].includes(m.gebrek.urgentie));
+        const vervolgWerk = werkzaamheden.filter((w) => w.status === 'vervolg').sort((a, b) => String(b.datum).localeCompare(String(a.datum)));
+        const regels = [
+          ...urgent.map((m) => ({ href: `#/inspecties/${m.inspectie.id}`, titel: m.gebrek.maatregel || [m.gebrek.bouwdeel, m.gebrek.gebrek].filter(Boolean).join(' – '), sub: `${objectNaam(m.object)} · ${urgentieLabel(m.gebrek.urgentie)}` })),
+          ...vervolgWerk.map((w) => ({ href: `#/werkzaamheden/${w.id}`, titel: w.vervolg || w.omschrijving || w.soort, sub: `${objectNaam(objectMap.get(w.objectId))} · vervolg op ${esc(w.soort || 'werk')}` })),
+        ];
+        return `<section class="kaart">${kop2('Vervolgacties', '#/werkpakketten', 'Uitkomsten naar Excel')}
+          ${regels.length ? `<ul class="dashlijst">${regels.slice(0, 8).map((x) => `<li><a href="${x.href}"><strong>${esc(x.titel)}</strong><small>${x.sub}</small></a></li>`).join('')}</ul>
+          ${regels.length > 8 ? `<p><small>+ ${regels.length - 8} meer</small></p>` : ''}` : '<p class="leeg">Geen openstaande vervolgacties.</p>'}</section>`;
+      },
+    },
+    inbox: {
+      titel: 'Te beoordelen', uitleg: 'Ingediende registraties die op goedkeuring wachten.', breed: false, alleen: () => magGoedkeuren(),
+      html: () => `<section class="kaart">${kop2(`Te beoordelen${beoordelen.length ? ` (${beoordelen.length})` : ''}`, '#/inbox', 'Inbox')}
+        ${beoordelen.length ? `<ul class="dashlijst">${beoordelen.slice(0, 6).map(({ r, store }) => `<li><a href="#/${store}/${esc(r.id)}">
+          <strong>${esc(store === 'werkzaamheden' ? (r.soort || 'Werkzaamheid') : (r.bvc ? 'Boomveiligheidscontrole' : r.stowa ? 'Inspectie waterkering' : r.soort))}</strong>
+          <small>${objectNaam(objectMap.get(r.objectId))} · ${datumNL(r.datum)}${r.uitvoerder || r.inspecteur ? ` · ${esc(r.uitvoerder || r.inspecteur)}` : ''}</small></a></li>`).join('')}</ul>`
+    : '<p class="leeg">Niets te beoordelen.</p>'}</section>`,
+    },
+    condities: {
+      titel: 'Staat van het areaal', uitleg: 'Verdeling van de laatste conditie of het laatste oordeel per object.', breed: false,
+      html: () => {
+        const per = new Map();
+        for (const o of objecten) {
+          const s = status.get(o.id);
+          let k; let kleur; let rang;
+          if (s?.conditie) { k = `${s.conditie} · ${CONDITIES[s.conditie].label}`; kleur = CONDITIES[s.conditie].kleur; rang = s.conditie; }
+          else if (s?.oordeel) { k = s.oordeel.label; kleur = s.oordeel.kleur; rang = 10 + (Number(s.oordeel.waarde) || 0); }
+          else if (s?.bvk) { k = `Boomveiligheid: ${BV.BVK[s.bvk]?.kort ?? s.bvk}`; kleur = BV.BVK[s.bvk]?.kleur ?? '#8a96a3'; rang = 30; }
+          else if (s?.laatste) { k = 'Geïnspecteerd (overig)'; kleur = '#5b6875'; rang = 40; }
+          else { k = 'Nog niet geïnspecteerd'; kleur = '#c3cad1'; rang = 50; }
+          const x = per.get(k) ?? { n: 0, kleur, rang };
+          x.n += 1;
+          per.set(k, x);
+        }
+        const lijst = [...per.entries()].sort((a, b) => a[1].rang - b[1].rang);
+        const top = Math.max(1, ...lijst.map(([, x]) => x.n));
+        return `<section class="kaart">${kop2('Staat van het areaal', '#/objecten', 'Objecten')}
+          <div class="verdeling">${lijst.map(([k, x]) => `<div class="balk"><span>${esc(k)}</span>
+            <div class="spoor"><div class="vulling" style="width:${(x.n / top) * 100}%;background:${x.kleur}"></div></div><strong>${x.n}</strong></div>`).join('')}</div></section>`;
+      },
+    },
+    planning: {
+      titel: 'Inspectieplanning', uitleg: 'Objecten waarvan de periodieke inspectie verlopen is of binnenkort komt.', breed: false,
+      html: () => {
+        const verlopen = objecten.filter((o) => status.get(o.id)?.planning === 'verlopen');
+        const binnen = objecten.filter((o) => status.get(o.id)?.planning === 'binnenkort');
+        const nooit = objecten.filter((o) => status.get(o.id)?.planning === 'nooit');
+        return `<section class="kaart">${kop2('Inspectieplanning', '#/objecten', 'Objecten')}
+          <div class="tegels klein"><span class="tegel ${verlopen.length ? 'slecht' : 'goed'}"><strong>${verlopen.length}</strong><span>Verlopen</span></span>
+            <span class="tegel ${binnen.length ? 'let' : ''}"><strong>${binnen.length}</strong><span>Binnenkort</span></span>
+            <span class="tegel"><strong>${nooit.length}</strong><span>Nog nooit</span></span></div>
+          ${verlopen.length ? `<ul class="dashlijst">${verlopen.slice(0, 5).map((o) => `<li><a href="#/objecten/${esc(o.id)}"><strong>${esc(o.code)} – ${esc(o.naam)}</strong>
+            <small>volgende inspectie was ${datumNL(status.get(o.id).volgende)}</small></a></li>`).join('')}</ul>` : ''}</section>`;
+      },
+    },
+    kaart: {
+      titel: 'Kaart', uitleg: 'Alle objecten op de kaart, gekleurd naar het laatste oordeel.', breed: false,
+      html: () => `<section class="kaart">${kop2('Kaart', '#/objecten', 'Objecten')}<div class="dashkaart" data-dashkaart><p class="leeg">Kaart laden…</p></div></section>`,
+    },
+    recentInsp: { titel: 'Recente inspecties', uitleg: 'De laatste 8 inspecties met hun oordeel.', breed: false, html: () => recentInsp },
+    recentWerk: { titel: 'Recente werkzaamheden', uitleg: 'De laatste 8 geregistreerde werkzaamheden.', breed: false, html: () => recentWerk },
+  };
+  const beschikbaar = Object.keys(BLOKKEN).filter((id) => !BLOKKEN[id].alleen || BLOKKEN[id].alleen());
+  const STANDAARD = {
+    opdrachtnemer: [{ id: 'werk', breed: true }, { id: 'rondes', breed: true }, { id: 'recentWerk' }, { id: 'recentInsp' }],
+    opdrachtgever: [{ id: 'voortgang', breed: true }, { id: 'rondes', breed: true }, { id: 'werk', breed: true }, { id: 'maatregelen', breed: true }, { id: 'recentInsp' }, { id: 'recentWerk' }],
+  };
+  const sleutel = `dashboard:${project.id}:${rol}`;
+  let eigen = null;
+  try { eigen = JSON.parse(instelling.lees(sleutel) || 'null'); } catch { eigen = null; }
+  const projectStandaard = project.dashboard?.[rol] ?? null;
+  const cfg = DB.indeling(eigen, DB.indeling(projectStandaard, STANDAARD[rol], beschikbaar), beschikbaar);
+  const bewaar = (lijst) => { instelling.schrijf(sleutel, JSON.stringify(lijst)); dashboard(); };
+  const bewerken = dashBewerken;
+  const blokHtml = (b) => `<div class="dashblok${b.breed ? ' breed' : ''}" data-blok="${esc(b.id)}" ${bewerken ? 'draggable="true"' : ''}>
+    ${bewerken ? `<div class="dashgereedschap"><span class="dashgreep" title="Slepen om te verplaatsen">⠿</span><strong>${esc(BLOKKEN[b.id].titel)}</strong>
+      <span class="knoppen"><button type="button" class="knop klein" data-dash="op" data-id="${esc(b.id)}" aria-label="Omhoog">↑</button>
+      <button type="button" class="knop klein" data-dash="neer" data-id="${esc(b.id)}" aria-label="Omlaag">↓</button>
+      <button type="button" class="knop klein" data-dash="breed" data-id="${esc(b.id)}">${b.breed ? 'Smal' : 'Breed'}</button>
+      <button type="button" class="knop klein gevaar" data-dash="weg" data-id="${esc(b.id)}" aria-label="Blok verbergen">${I.kruis}</button></span></div>` : ''}
+    ${BLOKKEN[b.id].html()}</div>`;
+  const verborgen = beschikbaar.filter((id) => !cfg.some((b) => b.id === id));
+  const inhoud = `
+    ${bewerken ? `<section class="kaart dashbewerk">
+      <div class="paginakop" style="margin-bottom:.5rem"><div><h2 style="margin:0">${I.instellingen} Dashboard aanpassen</h2>
+        <p style="margin:.25rem 0 0"><small>Sleep blokken of gebruik ↑ ↓ om de volgorde te bepalen, maak ze breed of smal, en voeg blokken toe of haal ze weg.
+        Je indeling geldt voor jou, voor de weergave "${esc(DASH_ROLLEN[rol])}" in dit project.</small></p></div>
+        <div class="knoppen"><button type="button" class="knop" data-dash="herstel">Standaard herstellen</button>
+          ${magBeheren() ? '<button type="button" class="knop" data-dash="voorproject" title="Iedereen in dit project start met deze indeling">Als standaard voor dit project</button>' : ''}
+          <button type="button" class="knop primair" data-dash="klaar">${I.vink} Klaar</button></div></div>
+      ${verborgen.length ? `<h3 class="tussenkop">Blokken toevoegen</h3><div class="dashtoevoegen">${verborgen.map((id) => `
+        <button type="button" class="dashkeuze" data-dash="erbij" data-id="${esc(id)}"><strong>＋ ${esc(BLOKKEN[id].titel)}</strong><small>${esc(BLOKKEN[id].uitleg)}</small></button>`).join('')}</div>`
+    : '<p><small>Alle blokken staan op je dashboard.</small></p>'}
+    </section>` : ''}
+    <div class="dashraster${bewerken ? ' bewerken' : ''}">${cfg.map(blokHtml).join('') || '<p class="leeg">Je dashboard is leeg. Voeg hierboven blokken toe.</p>'}</div>`;
 
-  app.innerHTML = `
+  app.innerHTML = `<div class="dashpagina">
     <div class="paginakop">
       ${kop}
       <div class="knoppen">
         ${schakelaar}
+        <button type="button" class="knop" data-dash="${bewerken ? 'klaar' : 'bewerk'}" title="Kies zelf welke blokken je ziet">${I.instellingen} ${bewerken ? 'Klaar met aanpassen' : 'Dashboard aanpassen'}</button>
         ${rol === 'opdrachtgever'
     ? '<a class="knop" href="#/planning">' + I.kalender + ' Planning</a><a class="knop primair" href="#/werkpakketten">' + I.pakket + ' Werkpakketten</a>'
     : '<a class="knop" href="#/inspecties/nieuw">+ Inspectie</a><a class="knop primair" href="#/werkzaamheden/nieuw">+ Werkzaamheid</a>'}
       </div>
     </div>
     ${await inrichtingBanner()}
-    ${inhoud}`;
+    ${inhoud}</div>`;
   app.querySelectorAll('input[name=dashrol]').forEach((r) => r.addEventListener('change', () => {
     instelling.schrijf('dashboardRol', r.value);
     dashboard();
   }));
+  const pagina = app.querySelector('.dashpagina');
+  pagina.addEventListener('click', async function dashKlik(e) {
+    const k = e.target.closest('[data-dash]');
+    if (!k) return;
+    const id = k.dataset.id;
+    const actie = k.dataset.dash;
+    pagina.removeEventListener('click', dashKlik);
+    if (actie === 'bewerk') { dashBewerken = true; return dashboard(); }
+    if (actie === 'klaar') { dashBewerken = false; return dashboard(); }
+    if (actie === 'op' || actie === 'neer') return bewaar(DB.verplaats(cfg, id, { stap: actie === 'op' ? -1 : 1 }));
+    if (actie === 'breed') return bewaar(cfg.map((b) => (b.id === id ? { ...b, breed: !b.breed } : b)));
+    if (actie === 'weg') return bewaar(cfg.filter((b) => b.id !== id));
+    if (actie === 'erbij') return bewaar([...cfg, { id, breed: Boolean(BLOKKEN[id].breed) }]);
+    if (actie === 'herstel') {
+      try { localStorage.removeItem(`inspectie-app:${sleutel}`); } catch { /* geen opslag */ }
+      melding('Standaardindeling hersteld');
+      return dashboard();
+    }
+    if (actie === 'voorproject') {
+      if (!confirm(`Deze indeling instellen als standaard voor iedereen in dit project (weergave "${DASH_ROLLEN[rol]}")? Wie zelf al een eigen indeling heeft, houdt die.`)) { pagina.addEventListener('click', dashKlik); return; }
+      await bewaarActiefProject((p) => ({ dashboard: { ...(p.dashboard ?? {}), [rol]: cfg } }));
+      melding('Ingesteld als standaard voor dit project');
+      return dashboard();
+    }
+    pagina.addEventListener('click', dashKlik);
+  });
+  if (bewerken) {
+    // Slepen om de volgorde te bepalen.
+    let gesleept = null;
+    app.querySelectorAll('.dashblok').forEach((el) => {
+      el.addEventListener('dragstart', (e) => { gesleept = el.dataset.blok; el.classList.add('sleept'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', gesleept); });
+      el.addEventListener('dragend', () => { el.classList.remove('sleept'); app.querySelectorAll('.dashblok.doel').forEach((x) => x.classList.remove('doel')); });
+      el.addEventListener('dragover', (e) => { if (gesleept && gesleept !== el.dataset.blok) { e.preventDefault(); el.classList.add('doel'); } });
+      el.addEventListener('dragleave', () => el.classList.remove('doel'));
+      el.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if (gesleept && gesleept !== el.dataset.blok) bewaar(DB.verplaats(cfg, gesleept, { naar: el.dataset.blok }));
+      });
+    });
+  }
+  const kaartEl = app.querySelector('[data-dashkaart]');
+  if (kaartEl) {
+    tekenObjectenKaart(kaartEl, {
+      objecten: objecten.filter((o) => objectGeometrie(o)),
+      kleurVan: (o) => { const s = status.get(o.id); return s?.laatste ? oordeelKleur(s.laatste) : '#1f6feb'; },
+      popup: (o) => `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br>${oordeelLabel(status.get(o.id))}<br><a href="#/objecten/${esc(o.id)}">Object openen</a>`,
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------

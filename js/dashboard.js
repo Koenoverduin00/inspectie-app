@@ -74,3 +74,37 @@ export function startBinnenkort(rondes, vandaagIso, dagen = 14) {
   return rondes.filter((x) => x.r.status === 'gepland' && x.r.start && dagNr(x.r.start) <= v + dagen)
     .sort((a, b) => String(a.r.start).localeCompare(String(b.r.start)));
 }
+
+/**
+ * Indeling van een eigen dashboard: [{ id, breed }] in volgorde. Onbekende of dubbele blokken vallen weg;
+ * zonder geldige eigen indeling geldt de standaard.
+ * @param {any} opgeslagen       eigen indeling (of null)
+ * @param {{id: string, breed?: boolean}[]} standaard
+ * @param {string[]} beschikbaar ids van de blokken die er (voor deze gebruiker) zijn
+ */
+export function indeling(opgeslagen, standaard, beschikbaar) {
+  const mag = new Set(beschikbaar);
+  const schoon = (lijst) => {
+    const gezien = new Set();
+    return (Array.isArray(lijst) ? lijst : []).filter((b) => b && mag.has(b.id) && !gezien.has(b.id) && gezien.add(b.id))
+      .map((b) => ({ id: b.id, breed: Boolean(b.breed) }));
+  };
+  const eigen = schoon(opgeslagen);
+  return eigen.length ? eigen : schoon(standaard);
+}
+
+/** Verplaatst een blok in de indeling (naar positie van doel, of omhoog/omlaag). */
+export function verplaats(lijst, id, { naar = null, stap = 0 } = {}) {
+  const i = lijst.findIndex((b) => b.id === id);
+  if (i < 0) return lijst;
+  const kopie = [...lijst];
+  const [blok] = kopie.splice(i, 1);
+  let j;
+  if (naar) {
+    j = kopie.findIndex((b) => b.id === naar);
+    if (j < 0) return lijst;
+    if (i <= j) j += 1; // naar beneden: na het doel
+  } else j = Math.max(0, Math.min(kopie.length, i + stap));
+  kopie.splice(j, 0, blok);
+  return kopie;
+}

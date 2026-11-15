@@ -1240,8 +1240,8 @@ form:not(.afroep-inspectie) .a-insp { display: none; }
 
 /* NEN 2767-decompositie */
 .score.klein { font-size: .72rem; padding: .05rem .4rem; min-width: 1.3rem; text-align: center; }
-.verdeling { display: inline-flex; flex-wrap: wrap; gap: .15rem .35rem; align-items: center; }
-.verdeling small { color: var(--tekst-zacht); }
+.bdverdeling { display: inline-flex; flex-wrap: wrap; gap: .15rem .35rem; align-items: center; }
+.bdverdeling small { color: var(--tekst-zacht); }
 .niveauchip { display: inline-block; font-size: .68rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em;
   color: var(--nk); border: 1px solid var(--nk); border-radius: 999px; padding: 0 .45rem; line-height: 1.5; vertical-align: middle; }
 .decompstats { display: flex; flex-wrap: wrap; gap: 1rem 2rem; align-items: center; }
@@ -1397,3 +1397,36 @@ form:not(.afroep-inspectie) .a-insp { display: none; }
 .selectiebalk { display: flex; flex-wrap: wrap; gap: .5rem .75rem; align-items: center; padding: .6rem .9rem; position: sticky; top: .5rem; z-index: 5; }
 .selectiebalk.actief { border-color: var(--primair); background: var(--primair-licht); }
 .selectiebalk .sel-acties { display: inline-flex; gap: .5rem; margin-left: auto; flex-wrap: wrap; }
+
+/* Eigen dashboard: blokken in een raster, breed of smal */
+.dashraster { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; align-items: start; }
+.dashblok { min-width: 0; }
+.dashblok > .kaart, .dashblok > section { margin: 0; height: 100%; }
+.dashblok.breed { grid-column: 1 / -1; }
+.dashraster.bewerken .dashblok { outline: 2px dashed var(--rand); outline-offset: 4px; border-radius: var(--radius); }
+.dashraster.bewerken .dashblok.doel { outline-color: var(--primair); background: var(--primair-licht); }
+.dashraster.bewerken .dashblok.sleept { opacity: .45; }
+.dashraster.bewerken .dashblok > section { pointer-events: none; }
+.dashgereedschap { display: flex; align-items: center; gap: .5rem; padding: .35rem .5rem; margin-bottom: .4rem; background: var(--primair-licht); border-radius: 8px; }
+.dashgereedschap strong { flex: 1; }
+.dashgreep { cursor: grab; font-size: 1.1rem; color: var(--tekst-zacht); }
+.dashbewerk { border: 2px solid var(--primair); }
+.dashtoevoegen { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: .5rem; }
+.dashkeuze { text-align: left; border: 1px dashed var(--primair); background: var(--vlak); color: var(--tekst); border-radius: 10px; padding: .6rem .75rem; cursor: pointer; font: inherit; display: flex; flex-direction: column; gap: .2rem; }
+.dashkeuze:hover { background: var(--primair-licht); }
+.dashkeuze small { color: var(--tekst-zacht); }
+.tegels { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: .6rem; }
+.tegels.klein { grid-template-columns: repeat(3, 1fr); margin-bottom: .5rem; }
+.tegel { display: flex; flex-direction: column; gap: .15rem; padding: .7rem .8rem; border: 1px solid var(--rand); border-left: 4px solid var(--primair); border-radius: 10px; color: var(--tekst); text-decoration: none; background: var(--vlak); }
+.tegel strong { font-size: 1.6rem; line-height: 1.1; }
+.tegel span { font-size: .85rem; color: var(--tekst-zacht); }
+.tegel.goed { border-left-color: #1a7f37; }
+.tegel.let { border-left-color: #e8710a; }
+.tegel.slecht { border-left-color: #d1452f; }
+a.tegel:hover { background: var(--primair-licht); }
+.dashlijst { list-style: none; margin: 0; padding: 0; display: grid; }
+.dashlijst li a { display: flex; flex-direction: column; padding: .45rem .2rem; border-bottom: 1px solid var(--rand); color: var(--tekst); text-decoration: none; }
+.dashlijst li a:hover { background: var(--primair-licht); }
+.dashlijst small { color: var(--tekst-zacht); }
+.dashkaart { height: 300px; border-radius: 8px; overflow: hidden; }
+@media (max-width: 900px) { .dashraster { grid-template-columns: 1fr; } }
