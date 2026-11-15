@@ -54,6 +54,7 @@ const ROUTES = [
   [/^\/m\/werk$/, 'm-werk', () => werkpakketKiezer(null, { mobiel: true })],
   [/^\/m\/werk\/nieuw$/, 'm-werk', (_, q) => werkFormulier(null, q.get('object'), { mobiel: true, taakId: q.get('taak'), maatregel: q.get('maatregel'), pakketId: q.get('pakket'), rondeId: q.get('ronde') })],
   [/^\/m\/werk\/([^/]+)$/, 'm-werk', (id) => werkFormulier(id, null, { mobiel: true })],
+  [/^\/m\/storing$/, 'm-werk', (_, q) => werkFormulier(null, q.get('object'), { mobiel: true, storing: true, maatregel: q.get('maatregel') })],
   [/^\/m\/inspectie$/, 'm-inspectie', () => inspectiepakketKiezer(null, { mobiel: true })],
   [/^\/m\/inspectie\/nieuw$/, 'm-inspectie', (_, q) => inspectieFormulier(null, q.get('object'), { mobiel: true, taakId: q.get('taak'), pakketId: q.get('pakket'), rondeId: q.get('ronde'), calamiteit: q.get('calamiteit') === '1' })],
   [/^\/m\/inspectie\/([^/]+)$/, 'm-inspectie', (id) => inspectieFormulier(id, null, { mobiel: true })],
@@ -74,6 +75,8 @@ const ROUTES = [
   [/^\/vrijgaven\/([^/]+)\/bewerken$/, 'vrijgaven', (id, q) => vrijgaveFormulier(id, q)],
   [/^\/vrijgaven\/([^/]+)$/, 'vrijgaven', (id) => vrijgaveDetail(id)],
   [/^\/werkzaamheden$/, 'werkzaamheden', werkzaamhedenLijst],
+  [/^\/storing$/, 'werkzaamheden', (_, q) => werkFormulier(null, q.get('object'), { storing: true, maatregel: q.get('maatregel') })],
+  [/^\/storingen$/, 'werkpakketten', storingenPagina],
   [/^\/werkzaamheden\/nieuw$/, 'werkzaamheden', (_, q) => werkFormulier(null, q.get('object'), { taakId: q.get('taak'), maatregel: q.get('maatregel'), pakketId: q.get('pakket'), rondeId: q.get('ronde') })],
   [/^\/werkzaamheden\/([^/]+)\/bewerken$/, 'werkzaamheden', (id) => werkFormulier(id)],
   [/^\/werkzaamheden\/([^/]+)$/, 'werkzaamheden', async (id) => { await werkDetail(id); toonBeoordelingBlok('werkzaamheden', await db.haal('werkzaamheden', id)); }],
@@ -5023,6 +5026,10 @@ async function mobielStart() {
         <span class="micoon">${I.werk}</span>
         <span><strong>Registratie werkzaamheden</strong><small>Werk vastleggen binnen je werkpakket, met foto's${toonUren() ? ' en uren' : ''}</small></span>
       </a>
+      <a class="mtegel storingtegel" href="#/m/storing">
+        <span class="micoon">${I.let}</span>
+        <span><strong>Storing of gebrek oplossen</strong><small>Altijd, ook ’s nachts – zonder werkpakket</small></span>
+      </a>
       <a class="mtegel" href="#/m/inspectie">
         <span class="micoon">${I.inspectie}</span>
         <span><strong>Schouw &amp; inspectie</strong><small>Gebreken vastleggen en boomveiligheidscontrole</small></span>
@@ -5218,7 +5225,7 @@ async function werkzaamhedenLijst() {
       <tr class="klikbaar" data-href="#/werkzaamheden/${esc(w.id)}">
         <td>${datumNL(w.datum)}</td><td>${objectNaam(objectMap.get(w.objectId))}</td><td>${esc(w.soort || '–')}</td>
         <td class="verberg-mobiel">${esc(w.uitvoerder || '–')}</td>
-        <td>${beoordelingLabel(w)}${w.status === 'vervolg' ? ` ${werkStatusLabel(w.status)}` : ''}</td>
+        <td>${storingLabel(w)} ${beoordelingLabel(w)}${w.status === 'vervolg' ? ` ${werkStatusLabel(w.status)}` : ''}</td>
       </tr>`).join('') : `<tr><td colspan="5" class="leeg">${werk.length ? 'Geen werkzaamheden gevonden met deze filters.' : 'Nog geen werkzaamheden geregistreerd.'}</td></tr>`;
   };
   filters.forEach((f) => f.addEventListener('input', toon));
@@ -5264,6 +5271,10 @@ async function werkDetail(id) {
         <button class="knop gevaar" id="verwijder">Verwijderen</button>
       </div>
     </div>
+    ${w.storing ? `<section class="kaart storingbanner"><h2 style="margin-top:0">${I.let} ${esc(w.storing.type || 'Storing')} – ${esc(STORING_RESULTAAT[w.storing.resultaat]?.label ?? '')}</h2>
+      <p style="white-space:pre-wrap;margin:.25rem 0">${esc(w.storing.melding || '–')}</p>
+      <small>${w.storing.gemeldOp ? `Gemeld ${datumTijdNL(w.storing.gemeldOp)}` : ''}${w.storing.opgelostOp ? ` · opgelost ${datumTijdNL(w.storing.opgelostOp)}` : ''}${w.storing.gemeldOp && w.storing.opgelostOp && duurTekst(w.storing.gemeldOp, w.storing.opgelostOp) ? ` · doorlooptijd ${duurTekst(w.storing.gemeldOp, w.storing.opgelostOp)}` : ''}
+        · zonder werkpakket (storingen en gebreken)</small></section>` : ''}
     <div class="raster-2">
       <section class="kaart">
         <h2>Gegevens</h2>
@@ -5370,7 +5381,11 @@ async function werkpakketKiezer(objectId, { mobiel = false, taakId = null, maatr
   const leeg = object
     ? `<strong>${esc(object.code)} – ${esc(object.naam)}</strong> zit in geen actieve werkronde${mobiel ? ' die aan jou is toegewezen' : ''}.`
     : `Er ${mobiel ? 'is voor jou' : 'is'} geen actieve werkronde.`;
+  const storingHref = `${mobiel ? '#/m/storing' : '#/storing'}${objectId || maatregel ? `?${new URLSearchParams({ ...(objectId ? { object: objectId } : {}), ...(maatregel ? { maatregel } : {}) })}` : ''}`;
+  const storingOptie = mag('storing') ? `<a class="kaart storingoptie" href="${storingHref}">${I.let}
+    <span><strong>Storing of gebrek oplossen</strong><small>Zonder werkpakket – voor iets wat direct opgelost moet worden, ook buiten werktijd.</small></span></a>` : '';
   app.innerHTML = `${kop}
+    ${storingOptie}
     ${lijst.length ? `<ul class="mlijst pakketlijst ${mobiel ? '' : 'kaart'}">${lijst.map(({ pakket: v, voortgang }) => `
       <li><a href="${href(v)}"><span class="micoon klein">${I.pakket}</span>
         <span><strong>${esc(v.naam)}</strong><small>${v.code ? `${esc(v.code)} · ` : ''}${pakketSoortTekst(v)}${periodeTekst(v) ? ` · ${periodeTekst(v)}` : ''}</small>
@@ -5383,9 +5398,10 @@ async function werkpakketKiezer(objectId, { mobiel = false, taakId = null, maatr
         <a class="knop" href="#/planning">Naar de planning</a></div>` : ''}</div>`}`;
 }
 
-async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maatregel = null, pakketId = null, rondeId = null } = {}) {
-  if (!id && !mag('werk')) return geenRecht('werk');
-  if (!id && !pakketId) return werkpakketKiezer(objectId, { mobiel, taakId, maatregel });
+async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maatregel = null, pakketId = null, rondeId = null, storing = false } = {}) {
+  if (!id && storing && !mag('storing')) return geenRecht('storing');
+  if (!id && !storing && !mag('werk')) return geenRecht('werk');
+  if (!id && !pakketId && !storing) return werkpakketKiezer(objectId, { mobiel, taakId, maatregel });
   const [objecten, inspecties] = await Promise.all([inProject('objecten'), inProject('inspecties')]);
   objecten.sort((a, b) => String(a.code).localeCompare(String(b.code), 'nl', { numeric: true }));
   const bestaand = id ? await db.haal('werkzaamheden', id) : null;
@@ -5400,9 +5416,11 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
       : 'Registreer eerst een object.', mobiel ? '' : '<a class="knop primair" href="#/objecten/nieuw">+ Object registreren</a>');
     return;
   }
+  const isStoring = storing || Boolean(bestaand?.storing);
   const w = bestaand ?? {
-    objectId: objectId ?? '', datum: vandaag(), soort: '', uitvoerder: instelling.lees('inspecteur'), uren: '', werkpakketId: pakketId ?? '', rondeId: rondeId ?? '',
+    objectId: objectId ?? '', datum: vandaag(), soort: isStoring ? STORING_SOORT : '', uitvoerder: instelling.lees('inspecteur'), uren: '', werkpakketId: isStoring ? '' : pakketId ?? '', rondeId: isStoring ? '' : rondeId ?? '',
     omschrijving: '', materiaal: '', status: 'gereed', vervolg: '', maatregelen: [], fotoIds: [],
+    ...(isStoring ? { storing: { type: maatregel ? 'Gebrek' : 'Storing', melding: '', gemeldOp: nuLokaal(), opgelostOp: nuLokaal(), resultaat: 'opgelost' } } : {}),
   };
   const fotos = await laadFotos(w.fotoIds);
   const origineleFotoIds = new Set(w.fotoIds ?? []);
@@ -5411,11 +5429,11 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
   const taak = taakId ? await db.haal('taken', taakId) : null;
   const pakket = await laadPakketView(w.werkpakketId, w.rondeId);
   if (pakket) w.rondeId = pakket.rondeId;
-  if (!bestaand && !pakket) {
+  if (!bestaand && !pakket && !isStoring) {
     app.innerHTML = leegKaart('Dit werkpakket bestaat niet (meer).', `<a class="knop" href="${mobiel ? '#/m/werk' : '#/werkzaamheden/nieuw'}">Ander werkpakket kiezen</a>`);
     return;
   }
-  if (!bestaand && w.objectId && !pakket.objecten.includes(w.objectId)) {
+  if (!bestaand && pakket && w.objectId && !pakket.objecten.includes(w.objectId)) {
     app.innerHTML = leegKaart(`Dit object hoort niet bij ${esc(pakket.naam)}.`, `<a class="knop" href="${mobiel ? '#/m/werk' : '#/werkzaamheden/nieuw'}?object=${esc(w.objectId)}">Passend werkpakket kiezen</a>`);
     return;
   }
@@ -5449,21 +5467,33 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
         ${taak?.omschrijving ? `<br><small>${esc(taak.omschrijving)}</small>` : ''}
         ${maatregelInfo ? `<br><small>${esc(maatregelInfo.bouwdeel || '')} – ${esc(maatregelInfo.gebrek || '')}; wordt bij opslaan op uitgevoerd gezet.</small>` : ''}</div>` : '';
 
-  const objectVeld = mobiel && object
+  const objectVeld = mobiel && object && !isStoring
     ? `<input type="hidden" name="objectId" value="${esc(object.id)}">`
     : objectKeuzeVeld(objecten, w.objectId);
+  const storingBanner = `<div class="kaart storingbanner">${I.let} <strong>Storing of gebrek – altijd open</strong>
+    <br><small>Hiervoor is geen werkpakket nodig, ook niet ’s nachts. Vink hieronder eventueel de openstaande maatregel aan die je hiermee oplost.</small></div>`;
+  const st = w.storing ?? {};
+  const storingVelden = isStoring ? `
+    <div class="veld${mobiel ? ' breed' : ''}"><label for="f-stype" class="vereist">Wat is het?</label>
+      <select id="f-stype" name="stype">${STORING_TYPEN.map((x) => optie(x, x, st.type)).join('')}</select></div>
+    <div class="veld${mobiel ? ' breed' : ''}"><label for="f-gemeld">Gemeld / ontdekt om</label><input id="f-gemeld" name="gemeldOp" type="datetime-local" value="${esc(st.gemeldOp ?? '')}"></div>
+    <div class="veld breed"><label for="f-melding" class="vereist">Wat was er aan de hand?</label>
+      <textarea id="f-melding" name="melding" maxlength="2000" style="min-height:70px" placeholder="bijv. slagboom gaat niet open, lantaarnpaal brandt niet, boom over het fietspad">${esc(st.melding ?? '')}</textarea></div>` : '';
   const velden = `
     ${objectVeld}
+    ${storingVelden}
     <div class="veld breed"><label for="f-soort" class="vereist">Soort werkzaamheid</label>
-      <select id="f-soort" name="soort" required><option value="">– kies –</option>${WERKSOORTEN.map((s) => optie(s, s, w.soort)).join('')}</select></div>
+      <select id="f-soort" name="soort" required><option value="">– kies –</option>${[...new Set([...(isStoring ? [STORING_SOORT] : []), ...WERKSOORTEN, ...(w.soort ? [w.soort] : [])])].map((s) => optie(s, s, w.soort)).join('')}</select></div>
     <div class="veld"><label for="f-datum" class="vereist">Datum</label><input id="f-datum" name="datum" type="date" required value="${esc(w.datum)}"></div>
     ${toonUren() ? `<div class="veld"><label for="f-uren">Uren</label><input id="f-uren" name="uren" type="number" min="0" max="1000" step="0.25" inputmode="decimal" value="${esc(w.uren)}"></div>` : ''}
-    <div class="veld breed"><label for="f-omschrijving">Wat is er gedaan?</label>
-      <textarea id="f-omschrijving" name="omschrijving" maxlength="4000" placeholder="Korte omschrijving van het uitgevoerde werk">${esc(w.omschrijving)}</textarea></div>
+    <div class="veld breed"><label for="f-omschrijving" ${isStoring ? 'class="vereist"' : ''}>${isStoring ? 'Wat heb je gedaan om het op te lossen?' : 'Wat is er gedaan?'}</label>
+      <textarea id="f-omschrijving" name="omschrijving" maxlength="4000" placeholder="${isStoring ? 'bijv. zekering vervangen, tak verwijderd en weg vrijgemaakt' : 'Korte omschrijving van het uitgevoerde werk'}">${esc(w.omschrijving)}</textarea></div>
     <div class="veld breed"><label>Foto's (voor / na)</label><div id="fotos"></div></div>
     <div class="veld"><label for="f-uitvoerder">Uitvoerder</label><input id="f-uitvoerder" name="uitvoerder" maxlength="100" value="${esc(w.uitvoerder)}"></div>
-    <div class="veld"><label for="f-status">Status</label>
-      <select id="f-status" name="status">${Object.entries(WERKSTATUS).map(([k, v]) => optie(k, v, w.status)).join('')}</select></div>
+    ${isStoring ? `<div class="veld${mobiel ? ' breed' : ''}"><label for="f-opgelost">Opgelost / gestopt om</label><input id="f-opgelost" name="opgelostOp" type="datetime-local" value="${esc(st.opgelostOp ?? '')}"></div>
+    <div class="veld breed"><label class="vereist">Resultaat</label>${segment('resultaat', st.resultaat ?? 'opgelost', Object.entries(STORING_RESULTAAT).map(([k, x]) => [k, x.label]))}</div>`
+    : `<div class="veld"><label for="f-status">Status</label>
+      <select id="f-status" name="status">${Object.entries(WERKSTATUS).map(([k, v]) => optie(k, v, w.status)).join('')}</select></div>`}
     <div class="veld breed" id="vervolg-veld" ${w.status === 'vervolg' ? '' : 'hidden'}><label for="f-vervolg">Welk vervolg is nodig?</label>
       <textarea id="f-vervolg" name="vervolg" maxlength="2000" style="min-height:60px">${esc(w.vervolg)}</textarea></div>
     <div class="veld breed"><label for="f-materiaal">Gebruikt materiaal</label>
@@ -5471,19 +5501,19 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
 
   app.innerHTML = mobiel ? `
     <div class="mkop"><a href="${pakketTerug ?? '#/'}" class="mterug" aria-label="Terug">←</a>
-      <div><small>${bestaand ? 'Werkzaamheid bewerken' : 'Registratie werkzaamheden'}</small>
+      <div><small>${isStoring ? (bestaand ? 'Storing / gebrek bewerken' : 'Storing of gebrek oplossen') : bestaand ? 'Werkzaamheid bewerken' : 'Registratie werkzaamheden'}</small>
       <h1>${object ? `${esc(object.code)} – ${esc(object.naam)}` : 'Kies een object'}</h1></div></div>
     <form id="form" novalidate class="mform">
-      ${taakBanner}${pakketBanner}<div id="vrijgave-banner">${vrijgaveBanner(w.objectId)}</div>
+      ${taakBanner}${pakketBanner}${isStoring ? storingBanner : ''}<div id="vrijgave-banner">${vrijgaveBanner(w.objectId)}</div>
       <section class="kaart"><div class="velden">${velden}</div></section>
       <section class="kaart" id="extra-blok" hidden><h2>Extra gegevens</h2><div class="extra-velden"></div></section>
       <section class="kaart" id="maatregelen-blok"></section>
       <div class="mvoet"><button class="knop primair" type="submit">${I.vink} Opslaan</button></div>
     </form>` : `
     <div class="paginakop"><div><p><a href="${terug}">← Terug</a></p>
-      <h1>${bestaand ? 'Werkzaamheid bewerken' : 'Werkzaamheid registreren'}</h1></div></div>
+      <h1>${isStoring ? (bestaand ? 'Storing / gebrek bewerken' : 'Storing of gebrek oplossen') : bestaand ? 'Werkzaamheid bewerken' : 'Werkzaamheid registreren'}</h1></div></div>
     <form id="form" novalidate>
-      ${taakBanner}${pakketBanner}${bestaand && !pakket ? '<div class="kaart"><small>Deze werkzaamheid is geregistreerd vóórdat werkzaamheden aan een werkpakket gekoppeld moesten worden.</small></div>' : ''}
+      ${taakBanner}${pakketBanner}${isStoring ? storingBanner : bestaand && !pakket ? '<div class="kaart"><small>Deze werkzaamheid is geregistreerd vóórdat werkzaamheden aan een werkpakket gekoppeld moesten worden.</small></div>' : ''}
       <div id="vrijgave-banner">${vrijgaveBanner(w.objectId)}</div>
       <section class="kaart"><div class="velden">${velden}</div></section>
       <section class="kaart" id="extra-blok" hidden><h2>Extra gegevens</h2><div class="extra-velden"></div></section>
@@ -5532,6 +5562,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
   form.addEventListener('input', (e) => {
     formulierGewijzigd = true;
     if (e.target.name === 'status') app.querySelector('#vervolg-veld').hidden = e.target.value !== 'vervolg';
+    if (e.target.name === 'resultaat') app.querySelector('#vervolg-veld').hidden = e.target.value === 'opgelost';
     if (e.target.name === 'objectId') {
       gekozen.clear();
       toonMaatregelen();
@@ -5567,6 +5598,9 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     if (!data.objectId) return melding('Kies een object.', 'fout');
     if (!data.soort) return melding('Kies de soort werkzaamheid.', 'fout');
     if (!data.datum) return melding('Vul de datum in.', 'fout');
+    if (isStoring && !String(data.melding ?? '').trim()) return melding('Beschrijf wat er aan de hand was.', 'fout');
+    if (isStoring && !String(data.omschrijving ?? '').trim()) return melding('Beschrijf wat je hebt gedaan.', 'fout');
+    if (isStoring) data.status = data.resultaat === 'opgelost' ? 'gereed' : 'vervolg';
     const fouten = extraB.fouten();
     if (fouten.length) {
       app.querySelector('#extra-blok').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -5599,6 +5633,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
       vervolg: data.status === 'vervolg' ? data.vervolg : '',
       materiaal: data.materiaal,
       werkpakketId: w.werkpakketId ?? '', rondeId: w.werkpakketId ? (w.rondeId ?? '') : '',
+      ...(isStoring ? { storing: { type: data.stype, melding: String(data.melding ?? '').trim(), gemeldOp: data.gemeldOp ?? '', opgelostOp: data.opgelostOp ?? '', resultaat: data.resultaat || 'opgelost' } } : {}),
       maatregelen: [...gekozen].map((k) => {
         const [inspectieId, gebrekId] = k.split(':');
         return { inspectieId, gebrekId };
@@ -5613,7 +5648,8 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     });
     if (data.uitvoerder) instelling.schrijf('inspecteur', data.uitvoerder);
     formulierGewijzigd = false;
-    gedaan(bestaand ? 'Werkzaamheid bijgewerkt' : 'Werkzaamheid vastgelegd', { object: objecten.find((o) => o.id === data.objectId), beoordeling: true });
+    gedaan(isStoring ? (data.resultaat === 'opgelost' ? 'Storing / gebrek opgelost' : 'Storing / gebrek vastgelegd') : bestaand ? 'Werkzaamheid bijgewerkt' : 'Werkzaamheid vastgelegd',
+      { object: objecten.find((o) => o.id === data.objectId), beoordeling: true, extra: isStoring && data.resultaat !== 'opgelost' ? STORING_RESULTAAT[data.resultaat].label : '' });
     if (mobiel) onthoudOpslag('Werkzaamheid opgeslagen', data.objectId);
     await rondTaakAf(taakId, werkId);
     ga(pakketTerug ?? (mobiel ? '#/' : `#/werkzaamheden/${werkId}`));
@@ -5661,11 +5697,28 @@ const RECHTEN = {
   overslaan: { label: 'Overslaan', uitleg: 'Een object in een ronde overslaan met een reden' },
   vrijgave: { label: 'Flora & fauna', uitleg: 'Vrijgaven (veldcheck) vastleggen' },
   incident: { label: 'Incident melden', uitleg: 'Inspectie na incident of calamiteit, zonder werkpakket' },
+  storing: { label: 'Storingen oplossen', uitleg: 'Altijd, ook ’s nachts en zonder werkpakket: een storing of gebrek oplossen en vastleggen' },
   goedkeuren: { label: 'Goedkeuren', uitleg: 'Registraties in de inbox beoordelen (standaard uit)', standaardUit: true },
 };
 let huidigProject = null; // bijgewerkt bij elke paginawissel
 /** Kosten (ramingen) en uren zijn per project uit te zetten, bijv. als dat via een ander proces loopt. */
 const toonKosten = () => huidigProject?.kostenTonen !== false;
+// Storingen en gebreken: altijd op te lossen, zonder dat er een werkpakket klaarstaat.
+const STORING_SOORT = 'Storing / gebrek verhelpen';
+const STORING_TYPEN = ['Storing', 'Gebrek', 'Schade', 'Melding (burger of klant)', 'Calamiteit', 'Anders'];
+const STORING_RESULTAAT = {
+  opgelost: { label: 'Opgelost', kleur: '#1a7f37' },
+  tijdelijk: { label: 'Tijdelijk opgelost – vervolg nodig', kleur: '#e8710a' },
+  niet: { label: 'Niet opgelost – vervolg nodig', kleur: '#d1452f' },
+};
+const nuLokaal = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
+const storingLabel = (w) => (w?.storing ? `<span class="label-status storinglabel" style="--k:${STORING_RESULTAAT[w.storing.resultaat]?.kleur ?? '#5b6875'}">${I.let} ${esc(w.storing.type || 'Storing')}</span>` : '');
+const datumTijdNL = (v) => (v ? `${datumNL(String(v).slice(0, 10))} ${String(v).slice(11, 16)}`.trim() : '');
+const duurTekst = (van, tot) => {
+  const m = Math.round((new Date(tot) - new Date(van)) / 60000);
+  if (!Number.isFinite(m) || m < 0) return '';
+  return m < 60 ? `${m} min` : m < 1440 ? `${Math.floor(m / 60)} u ${m % 60 ? `${m % 60} min` : ''}`.trim() : `${Math.floor(m / 1440)} d ${Math.floor((m % 1440) / 60)} u`;
+};
 const toonUren = () => huidigProject?.urenTonen !== false;
 
 const ikEmail = () => String(sync.sessie()?.gebruiker?.email ?? '').toLowerCase();
@@ -8561,6 +8614,50 @@ async function slaObjectOver(pakket, object) {
 }
 
 // --- Overzicht (pc) -----------------------------------------------------------
+/** Vaste kaart in Werkpakketten: storingen en gebreken, altijd open, zonder voorbereiding. */
+async function storingenKaart() {
+  const lijst = (await inProject('werkzaamheden')).filter((w) => w.storing);
+  const open = lijst.filter((w) => w.storing.resultaat !== 'opgelost' && w.status === 'vervolg').length;
+  const recent = lijst.filter((w) => String(w.datum) >= PL.isoVan(PL.dagNr(vandaag()) - 6)).length;
+  return `<a class="kaart pakket storingenkaart" href="#/storingen">
+    <div class="pakketkop"><strong>${I.let} Storingen en gebreken</strong><span class="label-status afgerond">Altijd open</span></div>
+    <small>Zonder werkpakket, ook ’s nachts: iedereen met het recht "Storingen oplossen" kan een storing of gebrek oplossen en vastleggen.</small>
+    <small><strong>${lijst.length}</strong> geregistreerd · ${recent} afgelopen 7 dagen${open ? ` · <strong style="color:#e8710a">${open} met vervolg nodig</strong>` : ''}</small></a>`;
+}
+
+async function storingenPagina() {
+  const [werk, objecten] = await Promise.all([inProject('werkzaamheden'), inProject('objecten')]);
+  const objectMap = new Map(objecten.map((o) => [o.id, o]));
+  const lijst = werk.filter((w) => w.storing).sort((a, b) => String(b.storing.opgelostOp || b.datum).localeCompare(String(a.storing.opgelostOp || a.datum)));
+  app.innerHTML = `
+    <div class="paginakop"><div><p><a href="#/werkpakketten">← Werkpakketten</a></p><h1>${I.let} Storingen en gebreken</h1>
+      <p>Altijd open, zonder werkpakket: wat er buiten (ook buiten werktijd) direct is opgelost. Elke registratie gaat ter beoordeling naar de inbox.</p></div>
+      <div class="knoppen">${mag('storing') ? `<a class="knop primair" href="#/storing">${I.let} Storing of gebrek oplossen</a>` : ''}</div></div>
+    <div class="filters">
+      <input type="search" id="s-zoek" placeholder="Zoek op object, melding, uitvoerder…" aria-label="Zoeken">
+      <select id="s-type" aria-label="Soort"><option value="">Alle soorten</option>${STORING_TYPEN.map((t) => optie(t, t)).join('')}</select>
+      <select id="s-res" aria-label="Resultaat"><option value="">Alle resultaten</option>${Object.entries(STORING_RESULTAAT).map(([k, x]) => optie(k, x.label)).join('')}</select>
+    </div>
+    <div class="kaart" style="padding:0"><div class="tabelhouder"><table>
+      <thead><tr><th>Opgelost</th><th>Object</th><th>Wat was er</th><th class="verberg-mobiel">Wat is gedaan</th><th>Resultaat</th><th class="verberg-mobiel">Door</th></tr></thead>
+      <tbody id="s-rijen"></tbody></table></div></div>`;
+  const f = ['s-zoek', 's-type', 's-res'].map((x) => app.querySelector(`#${x}`));
+  const toon = () => {
+    const [zoek, type, res] = f.map((x) => x.value);
+    const rijen = lijst.filter((w) => (!type || w.storing.type === type) && (!res || w.storing.resultaat === res)
+      && (!zoek || `${objectMap.get(w.objectId)?.code} ${objectMap.get(w.objectId)?.naam} ${w.storing.melding} ${w.omschrijving} ${w.uitvoerder}`.toLowerCase().includes(zoek.toLowerCase())));
+    app.querySelector('#s-rijen').innerHTML = rijen.length ? rijen.map((w) => `<tr class="klikbaar" data-href="#/werkzaamheden/${esc(w.id)}">
+      <td class="nowrap">${datumTijdNL(w.storing.opgelostOp) || datumNL(w.datum)}${w.storing.gemeldOp && w.storing.opgelostOp ? `<small class="subregel">na ${duurTekst(w.storing.gemeldOp, w.storing.opgelostOp)}</small>` : ''}</td>
+      <td>${objectNaam(objectMap.get(w.objectId))}<small class="subregel">${esc(w.storing.type || '')}</small></td>
+      <td>${esc(String(w.storing.melding || '').slice(0, 120))}</td><td class="verberg-mobiel">${esc(String(w.omschrijving || '').slice(0, 120))}</td>
+      <td><span class="label-status" style="background:${STORING_RESULTAAT[w.storing.resultaat]?.kleur};color:#fff">${esc(STORING_RESULTAAT[w.storing.resultaat]?.label ?? '')}</span> ${beoordelingLabel(w)}</td>
+      <td class="verberg-mobiel">${esc(w.uitvoerder || '–')}</td></tr>`).join('')
+      : `<tr><td colspan="6" class="leeg">${lijst.length ? 'Niets gevonden met deze filters.' : 'Nog geen storingen of gebreken opgelost.'}</td></tr>`;
+  };
+  f.forEach((x) => x.addEventListener('input', toon));
+  toon();
+}
+
 async function werkpakkettenLijst() {
   const g0 = await pakketGegevens();
   const { voortgangen } = g0;
@@ -8575,6 +8672,7 @@ async function werkpakkettenLijst() {
         <label class="knop fotoknop" title="Werkpakketten inladen uit Excel">${I.open} Excel inladen<input type="file" id="xls-import" accept=".xlsx"></label>
         <a class="knop primair" href="#/werkpakketten/nieuw">+ Nieuw werkpakket</a></div>` : ''}
     </div>
+    ${await storingenKaart()}
     ${pakketten.length ? `<div class="pakketten">${pakketten.map((p) => `
       <a class="kaart pakket" href="#/werkpakketten/${esc(p.id)}">
         <div class="pakketkop"><strong>${esc(p.naam)}</strong>${pakketStatusLabel(p.status)}</div>
@@ -9201,11 +9299,13 @@ async function pakketDetail(id, q = new URLSearchParams()) {
 async function exporteerUitkomsten({ voorPakket = null } = {}) {
   const g = await pakketGegevens();
   const zelfde = (a, b) => (a || STANDAARD_RONDE) === (b || STANDAARD_RONDE);
-  const aantalVan = (p) => g.werkzaamheden.filter((w) => w.werkpakketId === p.id).length
+  const aantalVan = (p) => g.werkzaamheden.filter((w) => (w.storing && !w.werkpakketId ? '__storingen' : w.werkpakketId) === p.id).length
     + g.inspecties.filter((i) => i.werkpakketId === p.id && i.status === 'afgerond').length
     + g.overgeslagen.filter((o) => o.pakketId === p.id).length;
-  const pakketten = g.pakketten.filter((p) => pakketVoorMij(p));
+  const STORINGEN = { id: '__storingen', code: '', naam: 'Storingen en gebreken (zonder werkpakket)', status: 'actief', objecten: [] };
+  const pakketten = [...g.pakketten.filter((p) => pakketVoorMij(p)), ...(g.werkzaamheden.some((w) => w.storing) ? [STORINGEN] : [])];
   if (!pakketten.length) return melding('Er zijn nog geen werkpakketten.', 'fout');
+  const pakketVan = (r) => (r.storing && !r.werkpakketId ? STORINGEN.id : r.werkpakketId);
   const d = document.createElement('dialog');
   d.className = 'dialoog breed';
   d.innerHTML = `<form method="dialog" novalidate>
@@ -9256,8 +9356,8 @@ async function exporteerUitkomsten({ voorPakket = null } = {}) {
     const inPeriode = (dt) => (!keuze.van || String(dt) >= keuze.van) && (!keuze.tot || String(dt).slice(0, 10) <= keuze.tot);
     const goed = (r) => !keuze.goed || beoordelingVan(r) === 'goedgekeurd';
     const regs = [
-      ...(keuze.werk ? g.werkzaamheden.filter((w) => keuze.ids.has(w.werkpakketId) && inPeriode(w.datum) && goed(w))
-        .map((r) => ({ soort: 'werk', r, pakket: perId.get(r.werkpakketId), ronde: rondeVan(perId.get(r.werkpakketId), r.rondeId), object: g.objectMap.get(r.objectId) })) : []),
+      ...(keuze.werk ? g.werkzaamheden.filter((w) => keuze.ids.has(pakketVan(w)) && inPeriode(w.datum) && goed(w))
+        .map((r) => ({ soort: 'werk', r, pakket: perId.get(pakketVan(r)), ronde: pakketVan(r) === STORINGEN.id ? { naam: 'Altijd open' } : rondeVan(perId.get(r.werkpakketId), r.rondeId), object: g.objectMap.get(r.objectId) })) : []),
       ...(keuze.insp ? g.inspecties.filter((i) => keuze.ids.has(i.werkpakketId) && i.status === 'afgerond' && inPeriode(i.datum) && goed(i))
         .map((r) => ({ soort: 'inspectie', r, pakket: perId.get(r.werkpakketId), ronde: rondeVan(perId.get(r.werkpakketId), r.rondeId), object: g.objectMap.get(r.objectId) })) : []),
       ...(keuze.over ? g.overgeslagen.filter((o) => keuze.ids.has(o.pakketId) && inPeriode(o.op))
@@ -9269,11 +9369,16 @@ async function exporteerUitkomsten({ voorPakket = null } = {}) {
     const defs = { werk: (project?.velden ?? []).filter((x) => x.formulier === 'werk'), inspectie: (project?.velden ?? []).filter((x) => x.formulier === 'inspectie') };
     const r = UX.uitkomstRijen({
       registraties: regs,
-      extra: (rec, soort) => extraWeergave(rec, defs[soort] ?? []).filter(({ d: x }) => !['foto', 'bijlage'].includes(x.type))
-        .map(({ d: x, v }) => [x.label, velden.toonWaarde(x, v, datumNL)]),
+      extra: (rec, soort) => [
+        ...(rec.storing ? [['Storing: soort', rec.storing.type ?? ''], ['Storing: wat was er', rec.storing.melding ?? ''], ['Storing: gemeld om', datumTijdNL(rec.storing.gemeldOp)],
+          ['Storing: opgelost om', datumTijdNL(rec.storing.opgelostOp)], ['Storing: doorlooptijd', rec.storing.gemeldOp && rec.storing.opgelostOp ? duurTekst(rec.storing.gemeldOp, rec.storing.opgelostOp) : ''],
+          ['Storing: resultaat', STORING_RESULTAAT[rec.storing.resultaat]?.label ?? '']] : []),
+        ...extraWeergave(rec, defs[soort] ?? []).filter(({ d: x }) => !['foto', 'bijlage'].includes(x.type))
+          .map(({ d: x, v }) => [x.label, velden.toonWaarde(x, v, datumNL)]),
+      ],
       beoordeling: (rec) => beoordelingVan(rec), metUren: toonUren(), metKosten: toonKosten(),
     });
-    const rondes = [...keuze.ids].map((id) => perId.get(id)).filter(Boolean).flatMap((p) => rondesVan(p).map((rd) => {
+    const rondes = [...keuze.ids].map((id) => perId.get(id)).filter((p) => p && p.id !== STORINGEN.id).flatMap((p) => rondesVan(p).map((rd) => {
       const vg = g.rondeVoortgang.get(`${p.id}:${rd.id}`);
       return { pakket: `${p.code ? `${p.code} · ` : ''}${p.naam}`, ronde: rd.naam ?? '', soort: rd.soort === 'inspectie' ? (rd.inspectiesoort ?? 'Inspectie') : (rd.werksoort || 'Werk'),
         periode: periodeTekst(rd), totaal: vg?.totaal ?? 0, gedaan: vg?.gedaan?.size ?? 0, overgeslagen: vg?.overgeslagen?.size ?? 0, open: vg?.open?.length ?? 0, percentage: vg?.percentage ?? 0 };

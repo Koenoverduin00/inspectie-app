@@ -371,6 +371,20 @@ Rijkswaterstaat** (Loo Plan, 8 februari 2017, definitief) en het CROW **Standaar
 - **Rapport** per boom (bijlage 5) en **SUF-BVC export** (boom, boomgebreken, maatregelen) per project of werkpakket;
   bij een BVC-werkpakket een samenvatting per klasse en maatregel.
 
+## Storingen en gebreken – altijd open
+
+Een storing of gebrek moet je altijd kunnen oplossen, ook ’s nachts en zonder dat er een werkpakket klaarstaat:
+
+- **Telefoon**: tegel **Storing of gebrek oplossen** op het startscherm. **Pc**: Werkpakketten → kaart **Storingen en gebreken** → *Storing of gebrek
+  oplossen*. Ook de werkpakketkiezer biedt deze optie als er geen passende ronde is.
+- Formulier: object (zoeken, dichtbij, kaart of decompositie), **wat is het** (storing, gebrek, schade, melding, calamiteit), **wat was er aan de
+  hand**, gemeld om, **wat heb je gedaan**, opgelost om, foto's en het **resultaat**: opgelost, tijdelijk opgelost of niet opgelost (dan vraagt de app
+  welk vervolg nodig is). Openstaande maatregelen van het object kun je meteen afvinken als uitgevoerd.
+- Het wordt een gewone werkregistratie (soort *Storing / gebrek verhelpen*) zonder werkpakket; hij gaat ter beoordeling naar de inbox, staat in
+  Mijn geschiedenis en in het overzicht **Storingen en gebreken** (met doorlooptijd), en in de export **Uitkomsten naar Excel** als
+  "Storingen en gebreken (zonder werkpakket)" met de storingsgegevens als kolommen. Vervolg nodig komt in het blad Vervolgacties.
+- Recht **Storingen oplossen** (standaard aan) per persoon in te stellen bij Toewijzen. Werkt offline; versturen gebeurt zodra er verbinding is.
+
 ## Object kiezen in een formulier
 
 Waar je in een inspectie, schouw of werkzaamheid zelf het object kiest (bijv. een inspectie na incident, of een pakket met meerdere objecten),

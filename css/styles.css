@@ -290,7 +290,7 @@ body.modus-mobiel .onderbalk {
 .mzoek input { flex: 1; min-height: 48px; }
 .mzoek .knop { min-height: 48px; white-space: nowrap; }
 
-.mform .velden { grid-template-columns: 1fr 1fr; gap: .75rem; }
+.mform .velden { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: .75rem; }
 .mform .veld.breed, .mform .veld:has(textarea), .mform .veld:has(.fotos) { grid-column: 1 / -1; }
 .mform input, .mform select, .mform textarea { min-height: 48px; }
 .mform details { margin-top: .75rem; }
@@ -1469,3 +1469,23 @@ a.tegel:hover { background: var(--primair-licht); }
   .objectkies-tabs span { font-size: .85rem; padding-left: .3rem; padding-right: .3rem; gap: .2rem; }
   .objectkies-tabs span svg { width: 15px; height: 15px; }
 }
+
+/* Storingen en gebreken: altijd open, zonder werkpakket */
+.mtegel.storingtegel { border-color: #e8710a; background: #fdf1e6; }
+.mtegel.storingtegel .micoon { background: #e8710a; color: #fff; }
+:root[data-thema="donker"] .mtegel.storingtegel { background: #3a2817; }
+.storingoptie { display: flex; gap: .75rem; align-items: center; border: 2px solid #e8710a; color: var(--tekst); text-decoration: none; margin-bottom: 1rem; }
+.storingoptie > svg { width: 28px; height: 28px; color: #e8710a; flex: 0 0 28px; }
+.storingoptie span { display: flex; flex-direction: column; }
+.storingoptie small { color: var(--tekst-zacht); }
+.storingbanner { border-left: 5px solid #e8710a; }
+.storingbanner > svg, .storingbanner h2 svg { color: #e8710a; }
+.storinglabel { background: color-mix(in srgb, var(--k) 15%, transparent); color: var(--k); display: inline-flex; align-items: center; gap: .2rem; }
+.storinglabel svg { width: 13px; height: 13px; }
+.pakket.storingenkaart { border: 2px solid #e8710a; margin-bottom: 1rem; display: flex; flex-direction: column; gap: .3rem; }
+body.geen-storing .storingtegel, body.geen-storing .storingoptie { display: none !important; }
+.objectkeuzeveld, .objectkeuze { min-width: 0; max-width: 100%; }
+.objectkeuze .knoppen { flex-wrap: wrap; min-width: 0; }
+.segment label { min-width: 0; }
+.velden .veld { min-width: 0; }
+.velden input[type="datetime-local"], .velden input[type="date"], .velden input[type="time"] { min-width: 0; max-width: 100%; }
