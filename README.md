@@ -371,6 +371,18 @@ Rijkswaterstaat** (Loo Plan, 8 februari 2017, definitief) en het CROW **Standaar
 - **Rapport** per boom (bijlage 5) en **SUF-BVC export** (boom, boomgebreken, maatregelen) per project of werkpakket;
   bij een BVC-werkpakket een samenvatting per klasse en maatregel.
 
+## Object kiezen in een formulier
+
+Waar je in een inspectie, schouw of werkzaamheid zelf het object kiest (bijv. een inspectie na incident, of een pakket met meerdere objecten),
+staan drie knoppen in plaats van een lange keuzelijst:
+
+- **Zoeken** – op code, naam, type of kenmerk; met **Dichtbij mij** staat het dichtstbijzijnde object bovenaan, met de afstand erbij.
+- **Op kaart** – tik het object aan en kies **Dit object kiezen**; **Naar mijn locatie** centreert de kaart op je positie.
+- **Decompositie** (als die is ingeladen) – kies in de boom object → element → bouwdeel het gekoppelde GIS-object. Bij een NEN 2767-inspectie
+  verschijnen daarna direct de bouwdelen die bij dat object horen.
+
+Binnen een werkpakket zie je alleen de objecten van dat pakket.
+
 ## Eigen dashboard
 
 Op het dashboard (pc) kiest iedereen zelf wat hij ziet: **Dashboard aanpassen**. Blokken toevoegen of weghalen, de volgorde bepalen

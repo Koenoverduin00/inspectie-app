@@ -1330,6 +1330,161 @@ function koppelGpsVelden(root, vind, { objectId = () => '' } = {}) {
 const GPS_VELDEN = ['lat', 'lng', 'nauwkeurigheid', 'locatieBron', 'locatieOp'];
 const gpsVan = (x) => Object.fromEntries(GPS_VELDEN.filter((k) => x?.[k] !== undefined && x?.[k] !== '').map((k) => [k, x[k]]));
 
+// ---------------------------------------------------------------------------
+// Object kiezen in een formulier: zoeken (ook dichtbij), op de kaart of via de decompositie
+// ---------------------------------------------------------------------------
+/** Veld met het gekozen object en knoppen om te kiezen; de waarde zit in een verborgen veld (name="objectId"). */
+function objectKeuzeVeld(objecten, gekozenId, { label = 'Object', idVeld = 'f-object' } = {}) {
+  const o = objecten.find((x) => x.id === gekozenId);
+  const decomp = decompIndex() && objecten.some((x) => x.decomp && decompIndex().perId.has(x.decomp));
+  return `<div class="veld breed objectkeuzeveld"><label class="vereist">${esc(label)}</label>
+    <input type="hidden" id="${idVeld}" name="objectId" value="${esc(gekozenId ?? '')}">
+    <div class="objectkeuze">
+      <div class="objectkeuze-tekst" data-okeuze-tekst>${o ? `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}${o.type ? `<small>${esc(o.type)}</small>` : ''}` : '<span class="zacht">Nog geen object gekozen</span>'}</div>
+      <div class="knoppen">
+        <button type="button" class="knop klein${o ? '' : ' primair'}" data-okies="zoek">${I.lijst} Zoeken</button>
+        <button type="button" class="knop klein" data-okies="kaart">${I.kaart} Op kaart</button>
+        ${decomp ? `<button type="button" class="knop klein" data-okies="decomp">${I.lagen} Decompositie</button>` : ''}
+      </div></div></div>`;
+}
+
+/** Koppelt de knoppen van objectKeuzeVeld; bij een keuze krijgt het verborgen veld een change-event. */
+function koppelObjectKeuze(root, objecten, { idVeld = 'f-object' } = {}) {
+  root.addEventListener('click', async (e) => {
+    const k = e.target.closest('[data-okies]');
+    if (!k || !root.contains(k)) return;
+    const veld = root.querySelector(`#${idVeld}`);
+    const id = await kiesObject(objecten, { modus: k.dataset.okies, huidig: veld.value });
+    if (!id || id === veld.value) return;
+    veld.value = id;
+    const o = objecten.find((x) => x.id === id);
+    root.querySelector('[data-okeuze-tekst]').innerHTML = `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}${o.type ? `<small>${esc(o.type)}</small>` : ''}`;
+    root.querySelectorAll('[data-okies="zoek"]').forEach((b) => b.classList.remove('primair'));
+    formulierGewijzigd = true;
+    veld.dispatchEvent(new Event('change', { bubbles: true }));
+    veld.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+
+/** Keuzevenster met tabbladen Zoeken / Kaart / Decompositie; geeft het gekozen object-id of null. */
+async function kiesObject(objecten, { modus = 'zoek', huidig = '' } = {}) {
+  const idx = decompIndex();
+  const metDecomp = idx && objecten.some((x) => x.decomp && idx.perId.has(x.decomp));
+  const perKnoop = new Map();
+  if (metDecomp) for (const o of objecten) if (o.decomp && idx.perId.has(o.decomp)) perKnoop.set(o.decomp, [...(perKnoop.get(o.decomp) ?? []), o]);
+  const d = document.createElement('dialog');
+  d.className = 'dialoog objectkies';
+  d.innerHTML = `<div class="paginakop" style="margin:0 0 .5rem"><h2 style="margin:0">Object kiezen</h2>
+      <button type="button" class="knop klein" data-weg aria-label="Sluiten">${I.kruis}</button></div>
+    <div class="segment objectkies-tabs" role="tablist">
+      <label><input type="radio" name="okt" value="zoek"><span>${I.lijst} Zoeken</span></label>
+      <label><input type="radio" name="okt" value="kaart"><span>${I.kaart} Kaart</span></label>
+      ${metDecomp ? `<label><input type="radio" name="okt" value="decomp"><span>${I.lagen} Decompositie</span></label>` : ''}</div>
+    <div data-tab="zoek" hidden>
+      <div class="objectkies-zoekbalk"><input type="search" data-ozoek placeholder="Zoek op code, naam, type of kenmerk…" autocomplete="off">
+        <button type="button" class="knop klein" data-dichtbij>${I.locatie} Dichtbij mij</button></div>
+      <ul class="objectkies-lijst" data-olijst></ul></div>
+    <div data-tab="kaart" hidden>
+      <p style="margin:.25rem 0 .5rem"><small>Tik op het object. <button type="button" class="linkknop" data-kaartpos>${I.locatie} Naar mijn locatie</button></small></p>
+      <div class="objectkies-kaart" data-okaart></div>
+      <div class="objectkies-gekozen" data-okaartkeuze><small>Nog niets aangetikt.</small></div></div>
+    ${metDecomp ? `<div data-tab="decomp" hidden>
+      <input type="search" data-dzoek placeholder="Zoek in de decompositie…" autocomplete="off" style="width:100%;margin-bottom:.5rem">
+      <div class="objectkies-boom" data-oboom></div></div>` : ''}`;
+  document.body.append(d);
+  d.showModal();
+  let kaart = null;
+  return new Promise((resolve) => {
+    const klaar = (w) => { kaart?.map?.remove(); d.close(); d.remove(); resolve(w); };
+    d.querySelector('[data-weg]').onclick = () => klaar(null);
+    d.addEventListener('cancel', (e) => { e.preventDefault(); klaar(null); });
+    const regel = (o, extra = '') => `<li><button type="button" data-kies="${esc(o.id)}" class="${o.id === huidig ? 'huidig' : ''}">
+      <strong>${esc(o.code)}</strong> ${esc(o.naam)}<small>${esc(o.type || '')}${extra}</small></button></li>`;
+    // Zoeken
+    const toonLijst = () => {
+      const termen = zoekTermen(d.querySelector('[data-ozoek]').value);
+      let lijst = objecten.filter((o) => objectPast(o, termen));
+      let afst = null;
+      if (laatstePositie) {
+        afst = new Map(lijst.map((o) => [o.id, gis.afstandTot(laatstePositie, objectGeometrie(o))]));
+        lijst = lijst.slice().sort((a, b) => (afst.get(a.id) ?? Infinity) - (afst.get(b.id) ?? Infinity));
+      }
+      d.querySelector('[data-olijst]').innerHTML = lijst.length ? lijst.slice(0, 150).map((o) => regel(o, afst?.get(o.id) != null ? ` · ${afstandTekst(afst.get(o.id))}` : '')).join('')
+        + (lijst.length > 150 ? `<li class="leeg">+ ${lijst.length - 150} meer – typ verder om te verfijnen</li>` : '') : '<li class="leeg">Geen objecten gevonden.</li>';
+    };
+    d.querySelector('[data-ozoek]').addEventListener('input', toonLijst);
+    const bepaalPositie = (knop, na) => {
+      if (!navigator.geolocation) return melding('Locatiebepaling wordt niet ondersteund.', 'fout');
+      knop.disabled = true;
+      navigator.geolocation.getCurrentPosition((pos) => {
+        laatstePositie = [pos.coords.longitude, pos.coords.latitude];
+        knop.disabled = false;
+        na();
+      }, (fout) => { knop.disabled = false; melding(`Locatie niet beschikbaar: ${fout.message}`, 'fout'); }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
+    };
+    d.querySelector('[data-dichtbij]').onclick = (e) => bepaalPositie(e.currentTarget, toonLijst);
+    // Kaart
+    let kaartKeuze = huidig || '';
+    const toonKaartKeuze = () => {
+      const o = objecten.find((x) => x.id === kaartKeuze);
+      d.querySelector('[data-okaartkeuze]').innerHTML = o ? `<span><strong>${esc(o.code)}</strong> – ${esc(o.naam)}</span>
+        <button type="button" class="knop primair" data-kies="${esc(o.id)}">${I.vink} Dit object kiezen</button>` : '<small>Nog niets aangetikt.</small>';
+    };
+    const startKaart = async () => {
+      if (kaart) { kaart.map.invalidateSize(); return; }
+      kaart = await tekenObjectenKaart(d.querySelector('[data-okaart]'), {
+        objecten: objecten.filter((o) => objectGeometrie(o)),
+        kleurVan: (o) => (o.id === kaartKeuze ? '#1f6feb' : '#e8710a'),
+        opKlik: (o) => { kaartKeuze = o.id; kaart?.herkleur(); toonKaartKeuze(); },
+      });
+      if (kaart && laatstePositie) kaart.zetPositie(laatstePositie);
+      if (kaart && kaartKeuze) kaart.zoomNaar(kaartKeuze);
+      toonKaartKeuze();
+    };
+    d.querySelector('[data-kaartpos]').onclick = (e) => bepaalPositie(e.currentTarget, async () => {
+      await startKaart();
+      kaart?.zetPositie(laatstePositie);
+      kaart?.map.setView([laatstePositie[1], laatstePositie[0]], 18, { animate: false });
+    });
+    // Decompositie
+    const toonBoom = () => {
+      const el = d.querySelector('[data-oboom]');
+      if (!el) return;
+      const termen = zoekTermen(d.querySelector('[data-dzoek]').value);
+      const past = (k) => termen.every((t) => `${k.code} ${k.naam}`.toLowerCase().includes(t));
+      // Alleen takken waaronder een gekoppeld GIS-object zit.
+      const heeftObject = (k) => perKnoop.has(k.id) || (idx.kinderen.get(k.id) ?? []).some(heeftObject);
+      let zichtbaar = null;
+      if (termen.length) { zichtbaar = new Set(); for (const k of idx.knopen) if (past(k)) D.pad(idx, k.id).forEach((p) => zichtbaar.add(p.id)); }
+      const rij = (k) => {
+        if (!heeftObject(k) || (zichtbaar && !zichtbaar.has(k.id))) return '';
+        const objs = perKnoop.get(k.id) ?? [];
+        const kids = (idx.kinderen.get(k.id) ?? []).map(rij).join('');
+        return `<li><div class="okb-rij">${niveauChip(k.niveau)} <span>${k.code ? `<small>${esc(k.code)}</small> ` : ''}${esc(k.naam)}</span>
+          ${objs.map((o) => `<button type="button" class="knop klein${o.id === huidig ? ' primair' : ''}" data-kies="${esc(o.id)}" title="${esc(o.naam)}">${esc(o.code)}</button>`).join('')}</div>
+          ${kids ? `<ul>${kids}</ul>` : ''}</li>`;
+      };
+      const html = (idx.kinderen.get(null) ?? []).map(rij).join('');
+      el.innerHTML = html ? `<ul class="okb">${html}</ul>` : '<p class="leeg">Niets gevonden.</p>';
+    };
+    d.querySelector('[data-dzoek]')?.addEventListener('input', toonBoom);
+    // Tabbladen
+    const zetTab = (t) => {
+      d.querySelectorAll('[data-tab]').forEach((x) => { x.hidden = x.dataset.tab !== t; });
+      d.querySelector(`input[name=okt][value="${t}"]`).checked = true;
+      if (t === 'zoek') { toonLijst(); d.querySelector('[data-ozoek]').focus(); }
+      if (t === 'kaart') startKaart();
+      if (t === 'decomp') toonBoom();
+    };
+    d.querySelectorAll('input[name=okt]').forEach((r) => r.addEventListener('change', () => zetTab(r.value)));
+    d.addEventListener('click', (e) => {
+      const k = e.target.closest('[data-kies]');
+      if (k) klaar(k.dataset.kies);
+    });
+    zetTab(modus === 'decomp' && !metDecomp ? 'zoek' : modus);
+  });
+}
+
 function alleMaatregelen(inspecties, objectMap) {
   const lijst = [];
   for (const insp of inspecties) {
@@ -3362,9 +3517,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
 
   const objectVeld = mobiel && object
     ? `<input type="hidden" name="objectId" value="${esc(object.id)}">`
-    : `<div class="veld breed"><label for="f-object" class="vereist">Object</label>
-        <select id="f-object" name="objectId" required><option value="">– kies een object –</option>
-        ${objecten.map((o) => optie(o.id, `${o.code} – ${o.naam}`, staat.objectId)).join('')}</select></div>`;
+    : objectKeuzeVeld(objecten, staat.objectId);
   const veldDatum = `<div class="veld"><label for="f-datum" class="vereist">Datum</label>
       <input id="f-datum" name="datum" type="date" required value="${esc(staat.datum)}"></div>`;
   const veldSoort = `<div class="veld"><label for="f-soort">Soort</label>
@@ -3430,6 +3583,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     </form>`;
 
   const form = app.querySelector('#form');
+  koppelObjectKeuze(form, objecten);
   const extraB = await extraBlok(app.querySelector('#extra-blok'), await projectVelden('inspectie', () => form.elements.soort.value), bestaand);
   form.addEventListener('change', (e) => {
     if (e.target.name !== 'soort') return;
@@ -5297,9 +5451,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
 
   const objectVeld = mobiel && object
     ? `<input type="hidden" name="objectId" value="${esc(object.id)}">`
-    : `<div class="veld breed"><label for="f-object" class="vereist">Object</label>
-        <select id="f-object" name="objectId" required><option value="">– kies een object –</option>
-        ${objecten.map((o) => optie(o.id, `${o.code} – ${o.naam}`, w.objectId)).join('')}</select></div>`;
+    : objectKeuzeVeld(objecten, w.objectId);
   const velden = `
     ${objectVeld}
     <div class="veld breed"><label for="f-soort" class="vereist">Soort werkzaamheid</label>
@@ -5343,6 +5495,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     </form>`;
 
   const form = app.querySelector('#form');
+  koppelObjectKeuze(form, objecten);
   const extraB = await extraBlok(app.querySelector('#extra-blok'), await projectVelden('werk', () => form.elements.soort.value), bestaand);
   form.addEventListener('change', (e) => { if (e.target.name === 'soort') extraB.teken(); });
   const gekozen = new Set(origineleKoppelingen);

@@ -1444,3 +1444,28 @@ a.tegel:hover { background: var(--primair-licht); }
 .dashkaart-keuzes { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; }
 .dashkaart-keuzes select { max-width: 16rem; }
 .kppopup a { color: var(--primair); }
+
+/* Object kiezen in een formulier */
+.objectkeuze { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; border: 1px solid var(--rand); border-radius: 10px; padding: .55rem .7rem; background: var(--vlak); }
+.objectkeuze-tekst { flex: 1 1 220px; display: flex; flex-direction: column; }
+.objectkeuze-tekst small { color: var(--tekst-zacht); }
+.objectkeuze .zacht { color: var(--tekst-zacht); }
+.dialoog.objectkies { width: min(820px, calc(100vw - 16px)); max-height: calc(100dvh - 16px); padding: 1rem; }
+.objectkies-tabs { margin-bottom: .75rem; }
+.objectkies-zoekbalk { display: flex; gap: .5rem; margin-bottom: .5rem; }
+.objectkies-zoekbalk input { flex: 1; }
+.objectkies-lijst { list-style: none; padding: 0; margin: 0; max-height: 55vh; overflow: auto; border: 1px solid var(--rand); border-radius: 8px; }
+.objectkies-lijst button { display: block; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--rand); background: none; padding: .6rem .75rem; font: inherit; color: var(--tekst); cursor: pointer; }
+.objectkies-lijst button:hover, .objectkies-lijst button.huidig { background: var(--primair-licht); }
+.objectkies-lijst small { display: block; color: var(--tekst-zacht); }
+.objectkies-kaart { height: min(55vh, 460px); border-radius: 10px; overflow: hidden; border: 1px solid var(--rand); }
+.objectkies-gekozen { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .5rem; margin-top: .6rem; min-height: 2.6rem; }
+.objectkies-boom { max-height: 55vh; overflow: auto; }
+.okb, .okb ul { list-style: none; margin: 0; padding: 0; }
+.okb ul { padding-left: 1.1rem; border-left: 1px dashed var(--rand); margin-left: .6rem; }
+.okb-rij { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; padding: .3rem 0; }
+.okb-rij > span { flex: 1 1 auto; }
+@media (max-width: 560px) {
+  .objectkies-tabs span { font-size: .85rem; padding-left: .3rem; padding-right: .3rem; gap: .2rem; }
+  .objectkies-tabs span svg { width: 15px; height: 15px; }
+}
