@@ -87,7 +87,7 @@ export function indeling(opgeslagen, standaard, beschikbaar) {
   const schoon = (lijst) => {
     const gezien = new Set();
     return (Array.isArray(lijst) ? lijst : []).filter((b) => b && mag.has(b.id) && !gezien.has(b.id) && gezien.add(b.id))
-      .map((b) => ({ id: b.id, breed: Boolean(b.breed) }));
+      .map((b) => ({ id: b.id, breed: Boolean(b.breed), ...(b.opties && typeof b.opties === 'object' ? { opties: b.opties } : {}) }));
   };
   const eigen = schoon(opgeslagen);
   return eigen.length ? eigen : schoon(standaard);
@@ -107,4 +107,22 @@ export function verplaats(lijst, id, { naar = null, stap = 0 } = {}) {
   } else j = Math.max(0, Math.min(kopie.length, i + stap));
   kopie.splice(j, 0, blok);
   return kopie;
+}
+
+/**
+ * Status van een object over de gekozen werkpakketten heen: open als het in één ervan nog open is, anders
+ * overgeslagen, anders gedaan. null = het object zit in geen van de gekozen pakketten.
+ * @param {string} objectId
+ * @param {{gedaan: Map, overgeslagen: Map, open: string[]}[]} voortgangen  de rondes die meetellen
+ */
+export function objectStatusInPakketten(objectId, voortgangen) {
+  let in_ = false;
+  let over = false;
+  let gedaan = false;
+  for (const vg of voortgangen) {
+    if (vg.open.includes(objectId)) return 'open';
+    if (vg.overgeslagen.has(objectId)) { in_ = true; over = true; } else if (vg.gedaan.has(objectId)) { in_ = true; gedaan = true; }
+  }
+  if (!in_) return null;
+  return over ? 'overgeslagen' : gedaan ? 'gedaan' : null;
 }

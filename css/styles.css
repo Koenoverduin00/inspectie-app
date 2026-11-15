@@ -1430,3 +1430,14 @@ a.tegel:hover { background: var(--primair-licht); }
 .dashlijst small { color: var(--tekst-zacht); }
 .dashkaart { height: 300px; border-radius: 8px; overflow: hidden; }
 @media (max-width: 900px) { .dashraster { grid-template-columns: 1fr; } }
+
+/* Kaartblok op het dashboard */
+.dashkaart.groot { height: 460px; }
+.dashkaart-balk { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; justify-content: space-between; margin-bottom: .6rem; }
+.dashkaart-pakketten { display: flex; flex-wrap: wrap; gap: .35rem; flex: 1 1 400px; }
+.dashkaart-pakketten .gfchip { display: inline-flex; align-items: center; gap: .35rem; max-width: 18rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dashkaart-kleur { display: inline-flex; align-items: center; gap: .4rem; font-size: .85rem; white-space: nowrap; }
+.kpstip { display: inline-block; width: .7rem; height: .7rem; border-radius: 50%; flex: 0 0 .7rem; }
+.kppopup { list-style: none; padding: 0; margin: .3rem 0; }
+.kppopup li { display: flex; align-items: center; gap: .35rem; }
+[data-dashlegenda] small { margin-left: auto; color: var(--tekst-zacht); }

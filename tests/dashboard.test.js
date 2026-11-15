@@ -43,3 +43,15 @@ test('eigen dashboard: indeling en verplaatsen', async () => {
   assert.deepEqual(verplaats(l, 'a', { naar: 'c' }).map((b) => b.id), ['b', 'c', 'a']);
   assert.deepEqual(verplaats(l, 'c', { naar: 'a' }).map((b) => b.id), ['c', 'a', 'b']);
 });
+
+test('kaartblok: opties blijven bewaard en status over pakketten', async () => {
+  const { indeling, objectStatusInPakketten } = await import('../js/dashboard.js');
+  const r = indeling([{ id: 'kaart', breed: true, opties: { pakketten: ['p1'], kleur: 'pakket' } }], [], ['kaart']);
+  assert.deepEqual(r[0].opties, { pakketten: ['p1'], kleur: 'pakket' });
+  const a = { gedaan: new Map([['x', 1]]), overgeslagen: new Map(), open: ['y'] };
+  const b = { gedaan: new Map(), overgeslagen: new Map([['x', 1]]), open: [] };
+  assert.equal(objectStatusInPakketten('y', [a, b]), 'open');
+  assert.equal(objectStatusInPakketten('x', [a]), 'gedaan');
+  assert.equal(objectStatusInPakketten('x', [a, b]), 'overgeslagen');
+  assert.equal(objectStatusInPakketten('z', [a, b]), null);
+});

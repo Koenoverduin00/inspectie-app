@@ -380,7 +380,12 @@ eigen indeling met **Als standaard voor dit project** instellen als startpunt vo
 
 Beschikbare blokken: Kerncijfers (tegels), Uitgevoerde werkzaamheden, Lopende rondes – op schema?, Voortgang per werkpakket, Open
 maatregelen, Vervolgacties, Te beoordelen (alleen voor beoordelaars), Staat van het areaal (verdeling conditie/oordeel), Inspectieplanning
-(verlopen/binnenkort), Kaart (objecten gekleurd naar oordeel), Recente inspecties en Recente werkzaamheden.
+(verlopen/binnenkort), Kaart, Recente inspecties en Recente werkzaamheden.
+
+**Kaartblok**: kies met de knoppen boven de kaart welke werkpakketten je ziet (één, meerdere of "Alle objecten") en waarop de kleur is
+gebaseerd: **voortgang** (te doen / gedaan / overgeslagen in de actieve ronde), **werkpakket** (elk pakket een eigen kleur) of **laatste oordeel**.
+De legenda en het aantal objecten staan onder de kaart; een klik op een object toont per werkpakket de status. Je keuze wordt in je
+dashboardindeling bewaard.
 
 ## Objecten aan werkpakketten koppelen
 

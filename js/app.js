@@ -1527,6 +1527,8 @@ function gebrekSamenvatting(gebreken, i = null) {
 const DASH_ROLLEN = { opdrachtnemer: 'Opdrachtnemer', opdrachtgever: 'Opdrachtgever' };
 
 let dashBewerken = false;
+const DASH_KAART_KLEUR = { voortgang: 'Voortgang (te doen / gedaan)', pakket: 'Werkpakket', oordeel: 'Laatste oordeel' };
+const PAKKET_PALET = ['#1f6feb', '#e8710a', '#7d5ba6', '#1a7f37', '#c2185b', '#00838f', '#b8860b', '#5d4037'];
 async function dashboard() {
   const { objecten, inspecties, werkzaamheden, objectMap, status } = await laadAlles();
   const project = await actiefProject();
@@ -1760,8 +1762,24 @@ async function dashboard() {
       },
     },
     kaart: {
-      titel: 'Kaart', uitleg: 'Alle objecten op de kaart, gekleurd naar het laatste oordeel.', breed: false,
-      html: () => `<section class="kaart">${kop2('Kaart', '#/objecten', 'Objecten')}<div class="dashkaart" data-dashkaart><p class="leeg">Kaart laden…</p></div></section>`,
+      titel: 'Kaart', uitleg: 'Objecten op de kaart: kies zelf welke werkpakketten je ziet en waarop de kleur is gebaseerd.', breed: true,
+      html: (b) => {
+        const o = b?.opties ?? {};
+        const gekozen = new Set((o.pakketten ?? []).filter((id) => g.pakketten.some((p) => p.id === id)));
+        const kleur = DASH_KAART_KLEUR[o.kleur] ? o.kleur : (gekozen.size ? 'voortgang' : 'oordeel');
+        const keuzes = g.pakketten.filter((p) => p.status !== 'afgerond' || gekozen.has(p.id));
+        return `<section class="kaart">${kop2('Kaart', '#/objecten', 'Objecten')}
+          <div class="dashkaart-balk" data-dashkaartbalk>
+            <div class="dashkaart-pakketten" role="group" aria-label="Werkpakketten op de kaart">
+              <button type="button" class="gfchip${gekozen.size ? '' : ' actief'}" data-kp="">Alle objecten</button>
+              ${keuzes.map((p, n) => `<button type="button" class="gfchip${gekozen.has(p.id) ? ' actief' : ''}" data-kp="${esc(p.id)}" title="${esc(p.code || '')} ${esc(p.naam)}">
+                <i class="kpstip" style="background:${PAKKET_PALET[n % PAKKET_PALET.length]}"></i>${esc(p.naam)}</button>`).join('')}
+              ${keuzes.length ? '' : '<small>Geen lopende werkpakketten.</small>'}</div>
+            <label class="dashkaart-kleur">Kleur op <select data-kk>${Object.entries(DASH_KAART_KLEUR).map(([k, l]) => optie(k, l, kleur)).join('')}</select></label>
+          </div>
+          <div class="dashkaart${b?.breed ? ' groot' : ''}" data-dashkaart><p class="leeg">Kaart laden…</p></div>
+          <div class="kaartlegenda" data-dashlegenda></div></section>`;
+      },
     },
     recentInsp: { titel: 'Recente inspecties', uitleg: 'De laatste 8 inspecties met hun oordeel.', breed: false, html: () => recentInsp },
     recentWerk: { titel: 'Recente werkzaamheden', uitleg: 'De laatste 8 geregistreerde werkzaamheden.', breed: false, html: () => recentWerk },
@@ -1784,7 +1802,7 @@ async function dashboard() {
       <button type="button" class="knop klein" data-dash="neer" data-id="${esc(b.id)}" aria-label="Omlaag">↓</button>
       <button type="button" class="knop klein" data-dash="breed" data-id="${esc(b.id)}">${b.breed ? 'Smal' : 'Breed'}</button>
       <button type="button" class="knop klein gevaar" data-dash="weg" data-id="${esc(b.id)}" aria-label="Blok verbergen">${I.kruis}</button></span></div>` : ''}
-    ${BLOKKEN[b.id].html()}</div>`;
+    ${BLOKKEN[b.id].html(b)}</div>`;
   const verborgen = beschikbaar.filter((id) => !cfg.some((b) => b.id === id));
   const inhoud = `
     ${bewerken ? `<section class="kaart dashbewerk">
@@ -1859,11 +1877,77 @@ async function dashboard() {
   }
   const kaartEl = app.querySelector('[data-dashkaart]');
   if (kaartEl) {
-    tekenObjectenKaart(kaartEl, {
-      objecten: objecten.filter((o) => objectGeometrie(o)),
-      kleurVan: (o) => { const s = status.get(o.id); return s?.laatste ? oordeelKleur(s.laatste) : '#1f6feb'; },
-      popup: (o) => `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br>${oordeelLabel(status.get(o.id))}<br><a href="#/objecten/${esc(o.id)}">Object openen</a>`,
+    // Kaartblok: werkpakketten en kleurwijze kies je in het blok zelf; de keuze wordt in je indeling bewaard.
+    const kaartCfg = cfg.find((b) => b.id === 'kaart');
+    const st = { pakketten: new Set((kaartCfg?.opties?.pakketten ?? []).filter((id) => g.pakketten.some((p) => p.id === id))), kleur: kaartCfg?.opties?.kleur };
+    const kleurNr = new Map(g.pakketten.filter((p) => p.status !== 'afgerond' || st.pakketten.has(p.id)).map((p, n) => [p.id, PAKKET_PALET[n % PAKKET_PALET.length]]));
+    // Per pakket de rondes die meetellen: de actieve, anders de laatste.
+    const rondeVgs = (p) => {
+      const rs = rondesVan(p);
+      const actief = rs.filter((r) => r.status === 'actief');
+      return (actief.length ? actief : rs.slice(-1)).map((r) => ({ vg: g.rondeVoortgang.get(`${p.id}:${r.id}`), r })).filter((x) => x.vg);
+    };
+    const inPakket = (o, p) => (p.objecten ?? []).includes(o.id);
+    const kleurWijze = () => (DASH_KAART_KLEUR[st.kleur] ? st.kleur : (st.pakketten.size ? 'voortgang' : 'oordeel'));
+    const gekozenP = () => g.pakketten.filter((p) => st.pakketten.has(p.id));
+    const telPakketten = () => (st.pakketten.size ? gekozenP() : g.pakketten.filter((p) => p.status === 'actief'));
+    const statusVan = (o) => DB.objectStatusInPakketten(o.id, telPakketten().flatMap((p) => rondeVgs(p).map((x) => x.vg)));
+    const kleurVan = (o) => {
+      const w = kleurWijze();
+      if (w === 'voortgang') return PAKKET_KLEUR[statusVan(o) ?? 'overgeslagen'] ?? '#8a96a3';
+      if (w === 'pakket') {
+        const p = (st.pakketten.size ? gekozenP() : g.pakketten).find((x) => inPakket(o, x));
+        return p ? kleurNr.get(p.id) ?? '#5b6875' : '#c3cad1';
+      }
+      const s = status.get(o.id);
+      return s?.laatste ? oordeelKleur(s.laatste) : '#1f6feb';
+    };
+    const zichtbaar = () => (st.pakketten.size ? objecten.filter((o) => gekozenP().some((p) => inPakket(o, p))) : objecten);
+    const legenda = () => {
+      const w = kleurWijze();
+      const el = app.querySelector('[data-dashlegenda]');
+      const n = zichtbaar().length;
+      const zonder = zichtbaar().filter((o) => !objectGeometrie(o)).length;
+      let items;
+      if (w === 'voortgang') items = [['Te doen', PAKKET_KLEUR.open], ['Gedaan', PAKKET_KLEUR.gedaan], ['Overgeslagen', PAKKET_KLEUR.overgeslagen]];
+      else if (w === 'pakket') items = (st.pakketten.size ? gekozenP() : g.pakketten.filter((p) => kleurNr.has(p.id))).map((p) => [p.naam, kleurNr.get(p.id)]);
+      else items = [...[1, 2, 3, 4, 5, 6].map((c) => [`${c} · ${CONDITIES[c].label}`, CONDITIES[c].kleur]), ['Niet geïnspecteerd', '#1f6feb']];
+      el.innerHTML = `${items.map(([l, k]) => `<span style="--k:${esc(k)}">${esc(l)}</span>`).join('')}<small>${n} object${n === 1 ? '' : 'en'}${zonder ? `, ${zonder} zonder locatie` : ''}</small>`;
+    };
+    const popup = (o) => {
+      const s = status.get(o.id);
+      const regels = (st.pakketten.size ? gekozenP() : g.pakketten.filter((p) => p.status !== 'afgerond')).filter((p) => inPakket(o, p)).map((p) => {
+        const so = DB.objectStatusInPakketten(o.id, rondeVgs(p).map((x) => x.vg));
+        return `<li><i class="kpstip" style="background:${PAKKET_KLEUR[so] ?? '#8a96a3'}"></i>${esc(p.naam)}: ${so === 'open' ? 'te doen' : so ?? '–'}</li>`;
+      });
+      return `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br>${oordeelLabel(s)}${regels.length ? `<ul class="kppopup">${regels.join('')}</ul>` : ''}<a href="#/objecten/${esc(o.id)}">Object openen</a>`;
+    };
+    const kaartP = tekenObjectenKaart(kaartEl, { objecten: objecten.filter((o) => objectGeometrie(o)), kleurVan, popup });
+    const werkBij = async ({ inzoomen = false } = {}) => {
+      const k = await kaartP;
+      if (!k) return;
+      k.toon(new Set(zichtbaar().map((o) => o.id)), { inzoomen });
+      k.herkleur();
+      legenda();
+    };
+    const bewaarKaart = () => {
+      const nieuw = cfg.map((b) => (b.id === 'kaart' ? { ...b, opties: { pakketten: [...st.pakketten], kleur: st.kleur ?? '' } } : b));
+      instelling.schrijf(sleutel, JSON.stringify(nieuw));
+      cfg.splice(0, cfg.length, ...nieuw);
+    };
+    const balk = app.querySelector('[data-dashkaartbalk]');
+    balk.addEventListener('click', (e) => {
+      const c = e.target.closest('[data-kp]');
+      if (!c) return;
+      const id = c.dataset.kp;
+      if (!id) st.pakketten.clear(); else if (st.pakketten.has(id)) st.pakketten.delete(id); else st.pakketten.add(id);
+      balk.querySelectorAll('[data-kp]').forEach((x) => x.classList.toggle('actief', x.dataset.kp ? st.pakketten.has(x.dataset.kp) : !st.pakketten.size));
+      if (!DASH_KAART_KLEUR[st.kleur]) balk.querySelector('[data-kk]').value = kleurWijze();
+      bewaarKaart();
+      werkBij({ inzoomen: true });
     });
+    balk.querySelector('[data-kk]').addEventListener('change', (e) => { st.kleur = e.target.value; bewaarKaart(); werkBij(); });
+    werkBij({ inzoomen: st.pakketten.size > 0 });
   }
 }
 
