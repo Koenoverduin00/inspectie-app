@@ -201,6 +201,14 @@ de projecten en wanneer/door wie de uitnodiging is verstuurd, met **Opnieuw**, *
 Alleen beheerders zien de pagina en kunnen de ledenlijst van projecten wijzigen (afgedwongen door de RLS-regels in
 Supabase). Beheerders zelf (toegang tot alle projecten) staan in de tabel `teamleden`.
 
+**Account en wachtwoord.** De kolom **Account** laat per persoon zien of hij al in het systeem zit: *Geen account* (nog nooit
+aangemeld), *Nog nooit ingelogd* (uitgenodigd of account aangemaakt, maar nog niet ingelogd) of *Actief* met de datum en tijd van
+de laatste keer inloggen. **Wachtwoorden zijn niet in te zien**, ook niet door een beheerder: Supabase bewaart alleen een
+versleutelde (gehashte) versie. Is iemand zijn wachtwoord vergeten, gebruik dan **Wachtwoord resetten**: de persoon krijgt een
+mail met een link om zelf een nieuw wachtwoord in te stellen. Voor de kolom Account is eenmalig het script
+[`006_accountstatus.sql`](supabase/006_accountstatus.sql) nodig (een functie die alleen beheerders de accountstatus geeft,
+zonder wachtwoorden); zolang dat niet is uitgevoerd, staat er een melding op de pagina.
+
 **Eenmalig instellen in Supabase**
 1. *Authentication → Emails → SMTP Settings*: stel een eigen mailserver in (bijv. het SMTP-account van je organisatie of
    een dienst als Postmark, Brevo of SendGrid). Zonder eigen SMTP verstuurt Supabase maar enkele mails per uur en alleen
@@ -755,7 +763,7 @@ veld zonder bereik kunt inspecteren. Ben je ingelogd, dan worden wijzigingen aut
    Haal in stap 5 van het script de `--` weg voor de `insert`-regel en vul je eigen adres in.
    Voer daarna in volgorde [`002_werkzaamheden.sql`](supabase/002_werkzaamheden.sql) en
    [`003_projecten_gis_taken.sql`](supabase/003_projecten_gis_taken.sql), [`004_werkpakketten.sql`](supabase/004_werkpakketten.sql) en
-   [`005_vrijgaven.sql`](supabase/005_vrijgaven.sql)
+   [`005_vrijgaven.sql`](supabase/005_vrijgaven.sql) en [`006_accountstatus.sql`](supabase/006_accountstatus.sql)
    uit (alle scripts zijn veilig opnieuw uit te voeren).
    Alleen e-mailadressen in de tabel `teamleden` hebben toegang tot de gegevens; collega's voeg je later toe met
    `insert into public.teamleden (email) values ('collega@bedrijf.nl');`.

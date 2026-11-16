@@ -6675,18 +6675,23 @@ async function personenPagina() {
     </form>
     <section class="kaart" style="padding:0">
       <div class="tabelhouder"><table>
-        <thead><tr><th>Naam</th><th>E-mailadres</th><th>Projecten</th><th>Uitnodiging</th><th></th></tr></thead>
+        <thead><tr><th>Naam</th><th>E-mailadres</th><th>Projecten</th><th>Uitnodiging</th><th>Account</th><th></th></tr></thead>
         <tbody>${personen.length ? personen.map((x) => `<tr data-email="${esc(x.email)}">
           <td>${x.naam ? esc(x.naam) : '<span class="zacht">–</span>'}${x.email === ik ? ' <small>(jij)</small>' : ''}</td>
           <td>${esc(x.email)}</td>
           <td>${x.projecten.map((p) => `<span class="chipje">${esc(p.naam)}</span>`).join(' ')}</td>
           <td>${x.uitgenodigdOp ? `${I.vink} ${datumNL(x.uitgenodigdOp.slice(0, 10))}${x.uitgenodigdDoor ? `<br><small>door ${esc(x.uitgenodigdDoor)}</small>` : ''}` : '<span class="label-status binnenkort">Nog niet verstuurd</span>'}</td>
+          <td class="accountcel" data-account="${esc(x.email)}">${kanMailen ? '<span class="zacht">laden…</span>' : '<span class="zacht">Log in om dit te zien</span>'}</td>
           <td class="acties"><button class="knop klein" type="button" data-opnieuw ${kanMailen ? '' : 'disabled'}>${I.mail} ${x.uitgenodigdOp ? 'Opnieuw' : 'Versturen'}</button>
+            <button class="knop klein" type="button" data-herstel ${kanMailen ? '' : 'disabled'} title="Stuur een mail met een link om een nieuw wachtwoord in te stellen">${I.slot ?? ''} Wachtwoord resetten</button>
             <button class="knop klein" type="button" data-wijzig>Projecten</button>
             <button class="knop klein gevaar" type="button" data-weg aria-label="${esc(x.email)} verwijderen">${I.verwijder}</button></td>
-        </tr>`).join('') : '<tr><td colspan="5" class="leeg">Nog geen personen toegevoegd.</td></tr>'}</tbody>
+        </tr>`).join('') : '<tr><td colspan="6" class="leeg">Nog geen personen toegevoegd.</td></tr>'}</tbody>
       </table></div>
     </section>
+    <p class="hulptekst" id="accountuitleg">${I.let} <strong>Wachtwoorden zijn niet in te zien</strong>, ook niet door een beheerder: ze worden alleen versleuteld (gehasht) opgeslagen.
+      Is iemand zijn wachtwoord vergeten, gebruik dan <strong>Wachtwoord resetten</strong>: de persoon krijgt een mail met een link om zelf een nieuw wachtwoord in te stellen.
+      In de kolom <strong>Account</strong> zie je of iemand al een account heeft en wanneer hij voor het laatst heeft ingelogd.</p>
     <p><small>Beheerders (toegang tot alle projecten) worden vastgelegd in Supabase, in de tabel <code>teamleden</code>.</small></p>`;
   if (!isMobiel()) app.insertAdjacentHTML('afterbegin', tabbalk('/personen', 'instellingen'));
 
@@ -6718,10 +6723,42 @@ async function personenPagina() {
     }
   };
 
+  // Accountstatus: heeft de persoon al een account, en wanneer voor het laatst ingelogd (zonder wachtwoorden).
+  if (kanMailen && personen.length) {
+    sync.accountStatus(personen.map((x) => x.email)).then((st) => {
+      if (st === null) {
+        app.querySelectorAll('[data-account]').forEach((el) => { el.innerHTML = '<span class="zacht">Onbekend</span>'; });
+        app.querySelector('#accountuitleg')?.insertAdjacentHTML('beforebegin', `<div class="kaart waarschuwingskaart">${I.let} De accountstatus kan nog niet worden opgehaald.
+          Voer in Supabase (SQL Editor) het script <code>supabase/006_accountstatus.sql</code> uit; daarna zie je hier of mensen al in het systeem zitten.</div>`);
+        return;
+      }
+      app.querySelectorAll('[data-account]').forEach((el) => {
+        const a = st.get(el.dataset.account);
+        const tijd = (iso) => `${datumNL(iso.slice(0, 10))} ${new Date(iso).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}`;
+        el.innerHTML = !a ? '<span class="label-status">Geen account</span><br><small>Nog niet aangemeld</small>'
+          : a.laatst_ingelogd ? `<span class="label-status afgerond">${I.vink} Actief</span><br><small>Laatst ingelogd ${tijd(a.laatst_ingelogd)}</small>`
+            : `<span class="label-status binnenkort">Nog nooit ingelogd</span><br><small>${a.uitgenodigd ? `Uitgenodigd ${datumNL(a.uitgenodigd.slice(0, 10))}` : `Account sinds ${datumNL(a.aangemaakt.slice(0, 10))}`}</small>`;
+      });
+    }).catch(() => app.querySelectorAll('[data-account]').forEach((el) => { el.innerHTML = '<span class="zacht">Niet op te halen</span>'; }));
+  }
+
   app.querySelector('tbody').addEventListener('click', async (e) => {
     const tr = e.target.closest('tr[data-email]');
     if (!tr) return;
     const x = personen.find((p) => p.email === tr.dataset.email);
+    if (e.target.closest('[data-herstel]')) {
+      const knop = e.target.closest('[data-herstel]');
+      if (!confirm(`Een mail sturen naar ${x.email} met een link om een nieuw wachtwoord in te stellen?`)) return;
+      knop.disabled = true;
+      try {
+        await sync.wachtwoordVergeten(x.email, location.href.split('#')[0]);
+        gedaan('Herstelmail verstuurd', { extra: `${x.naam || x.email} krijgt een link om zelf een nieuw wachtwoord in te stellen.` });
+      } catch (fout) {
+        melding(fout instanceof TypeError ? 'Geen verbinding met de server.' : fout.message, 'fout');
+      }
+      knop.disabled = false;
+      return;
+    }
     if (e.target.closest('[data-opnieuw]')) {
       const knop = e.target.closest('[data-opnieuw]');
       knop.disabled = true;

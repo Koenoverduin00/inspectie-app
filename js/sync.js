@@ -232,6 +232,23 @@ export async function haalRolOp() {
   return rol;
 }
 
+/**
+ * Accountstatus van personen (alleen voor beheerders, via de databasefunctie account_status uit update 006):
+ * per e-mailadres { aangemaakt, uitgenodigd, bevestigd, laatst_ingelogd }. Wachtwoorden zijn niet in te zien.
+ * @returns {Promise<Map<string, object>|null>} null als de functie (nog) niet bestaat.
+ */
+export async function accountStatus(emails) {
+  try {
+    const res = await api('/rest/v1/rpc/account_status', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emails }),
+    });
+    return new Map((await res.json()).map((r) => [String(r.email).toLowerCase(), r]));
+  } catch (fout) {
+    if (/account_status|404|PGRST202|Could not find/i.test(String(fout?.message ?? ''))) return null;
+    throw fout;
+  }
+}
+
 /** Rol van deze gebruiker. Zonder online account werkt de app lokaal en ben je beheerder. */
 export function rol() {
   if (!isIngesteld() || !sessie()) return 'beheerder';
