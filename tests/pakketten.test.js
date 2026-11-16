@@ -122,3 +122,18 @@ test('filterObjecten met meerdere kenmerken', async () => {
   assert.deepEqual(ids({ kenmerken: [{ kenmerk: 'wijk', waarde: ['Noord', 'Zuid'] }] }), [1, 2, 3]);
   assert.deepEqual(ids({ kenmerken: [{ kenmerk: 'wijk', waarde: '' }] }), [1, 2, 3]);
 });
+
+test('rondes op één locatie van elkaar onderscheiden', async () => {
+  const P = await import('../js/pakketten.js');
+  const pk = (code, start, objecten, rondes = 1) => ({ id: code, code, naam: 'Inspecteren verlichting', objecten,
+    rondes: Array.from({ length: rondes }, (_, i) => ({ id: `${code}r${i}`, nummer: i + 1, naam: 'Inspecteren verlichting', soort: 'inspectie', inspectiesoort: 'Schouw', start, eind: '' })) });
+  const views = [pk('WP-1', '2026-03-01', ['a', 'b']), pk('WP-2', '2026-03-01', ['a', 'b']), pk('WP-3', '2026-09-01', ['a']), pk('WP-4', '2026-03-01', ['a'], 2)]
+    .flatMap((p) => P.rondesVan(p).slice(0, 1).map((r) => P.rondeView(p, r)));
+  assert.equal(views[0].naam, 'Inspecteren verlichting'); // geen "X – X"
+  const o = P.onderscheid(views);
+  assert.deepEqual(o.get('WP-1:WP-1r0'), { code: 'WP-1', ronde: '', zelfdeNaam: true, dubbel: true });
+  assert.equal(o.get('WP-3:WP-3r0').dubbel, false);
+  assert.equal(o.get('WP-4:WP-4r0').ronde, 'R1');
+  const p = { id: 'x', naam: 'Maaien', objecten: [], rondes: [{ id: 'r', nummer: 2, naam: 'Maaironde 2' }, { id: 's', nummer: 1, naam: 'Maaien' }] };
+  assert.equal(P.rondeView(p, p.rondes[0]).naam, 'Maaien – Maaironde 2');
+});

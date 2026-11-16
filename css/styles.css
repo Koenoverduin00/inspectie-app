@@ -1540,3 +1540,15 @@ td.actiecel .knoppen { justify-content: flex-end; flex-wrap: wrap; }
 .mbd button > span:last-child { display: flex; flex-direction: column; min-width: 0; }
 .mbd small { color: var(--zacht, #6b7785); overflow: hidden; text-overflow: ellipsis; }
 .mbd .stip { flex: 0 0 auto; }
+.rondekenmerken { display: block; color: var(--zacht, #6b7785); font-size: .78rem; line-height: 1.3; }
+.veldrondes li a { display: flex; gap: .45rem; align-items: flex-start; color: inherit; text-decoration: none; padding: .2rem 0; }
+.veldrondes li a .stip { margin-top: .35rem; }
+.veldrondes .rondenaam { display: block; }
+.dubbelmelding { margin: .35rem 0; font-size: .8rem; color: #8a4b00; background: #fff4e0; border-radius: 6px; padding: .3rem .45rem; }
+.dubbelmelding.zacht { color: var(--zacht, #6b7785); background: none; padding: 0; }
+.mpakketchips .gfchip { max-width: 16rem; overflow: hidden; text-overflow: ellipsis; }
+.veldrondes { max-height: 38vh; overflow-y: auto; overscroll-behavior: contain; }
+.locregel.actueel { box-shadow: 0 0 0 2px var(--primair, #0b4f6c); }
+.actueellabel { display: inline-flex; align-items: center; gap: .25rem; font-size: .75rem; font-weight: 700; color: #fff; background: var(--primair, #0b4f6c);
+  border-radius: 999px; padding: .1rem .55rem; margin-bottom: .35rem; }
+.rondekenmerken strong { display: inline !important; font-size: inherit; }

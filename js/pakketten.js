@@ -56,13 +56,16 @@ export function rondesVan(p) {
 export const rondeCode = (p, r) => `${p.code || 'WP'}-R${r.nummer ?? 1}`;
 
 /** Een ronde als 'werkpakket-weergave': de velden van de ronde, de context (id, uitvoerders) van het pakket. */
+const norm = (x) => String(x ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 export function rondeView(p, r) {
   const binnen = new Set(p.objecten ?? []);
   const objecten = r.objectIds?.length ? r.objectIds.filter((id) => binnen.has(id)) : [...(p.objecten ?? [])];
   const enkel = !p.rondes?.length;
   return {
     ...p, ...r, id: p.id, rondeId: r.id, rondeNaam: r.naam, pakketNaam: p.naam,
-    naam: enkel ? p.naam : `${p.naam} – ${r.naam}`, objecten, deelselectie: Boolean(r.objectIds?.length),
+    // Heet de ronde hetzelfde als het pakket, dan de naam maar één keer.
+    naam: enkel || !String(r.naam ?? '').trim() || norm(r.naam) === norm(p.naam) ? p.naam : `${p.naam} – ${r.naam}`,
+    objecten, deelselectie: Boolean(r.objectIds?.length),
   };
 }
 
@@ -147,4 +150,27 @@ export function filterObjecten(objecten, f = {}, { status } = {}) {
     if (zoek && !`${o.code} ${o.naam} ${o.locatie ?? ''}`.toLowerCase().includes(zoek)) return false;
     return true;
   });
+}
+
+/**
+ * Wat maakt rondes op dezelfde locatie van elkaar verschillend? Per ronde de kenmerken (code, rondenummer, periode, aantal objecten)
+ * en of de naam vaker voorkomt. "dubbel" = zelfde naam, soort, periode en objecten: waarschijnlijk dubbel aangemaakt.
+ * @param {object[]} views  rondeView's
+ * @returns {Map<string, { code: string, ronde: string, zelfdeNaam: boolean, dubbel: boolean }>} op `${id}:${rondeId}`
+ */
+export function onderscheid(views) {
+  const sleutel = (v) => `${v.id}:${v.rondeId}`;
+  const telNaam = new Map();
+  const telAlles = new Map();
+  const alles = (v) => [norm(v.naam), v.soort, v.werksoort ?? '', v.inspectiesoort ?? '', v.start ?? '', v.eind ?? '', [...(v.objecten ?? [])].sort().join(',')].join('|');
+  for (const v of views) {
+    telNaam.set(norm(v.naam), (telNaam.get(norm(v.naam)) ?? 0) + 1);
+    telAlles.set(alles(v), (telAlles.get(alles(v)) ?? 0) + 1);
+  }
+  return new Map(views.map((v) => [sleutel(v), {
+    code: v.code || '',
+    ronde: (v.rondes?.length ?? 0) > 1 ? `R${v.nummer ?? 1}` : '',
+    zelfdeNaam: telNaam.get(norm(v.naam)) > 1,
+    dubbel: telAlles.get(alles(v)) > 1,
+  }]));
 }

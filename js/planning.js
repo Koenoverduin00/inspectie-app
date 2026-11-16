@@ -147,3 +147,30 @@ export function jarenVanRondes(rondes, vandaagIso) {
   }
   return [...s].sort((a, b) => a - b);
 }
+
+/**
+ * Hoe ver ligt de planning van een ronde van vandaag af, in dagen: 0 als vandaag binnen de periode valt, anders de afstand tot
+ * de dichtstbijzijnde rand. Niet ingeplande rondes komen achteraan (Infinity).
+ */
+export function afstandTotVandaag(r, vandaagIso) {
+  const p = periode(r);
+  if (!p) return Infinity;
+  const v = dagNr(vandaagIso);
+  if (v >= p.start && v <= p.eind) return 0;
+  return v < p.start ? p.start - v : v - p.eind;
+}
+
+/**
+ * Volgorde bij afmelden op een locatie: eerst wat nog open is, daarin de planning die het dichtst bij vandaag ligt bovenaan
+ * (lopend vóór binnenkort vóór verlopen bij gelijke afstand), daarna gedaan en overgeslagen.
+ * @param {{ v: object, st: 'open'|'gedaan'|'overgeslagen' }[]} lijst
+ */
+export function dichtstbijEerst(lijst, vandaagIso) {
+  const rang = { open: 0, gedaan: 1, overgeslagen: 2 };
+  const v = dagNr(vandaagIso);
+  const later = (x) => { const p = periode(x.v); return p && p.start > v ? 1 : 0; };
+  return [...lijst].sort((a, b) => (rang[a.st] ?? 3) - (rang[b.st] ?? 3)
+    || afstandTotVandaag(a.v, vandaagIso) - afstandTotVandaag(b.v, vandaagIso)
+    || later(b) - later(a)
+    || String(a.v.code ?? '').localeCompare(String(b.v.code ?? ''), 'nl', { numeric: true }));
+}

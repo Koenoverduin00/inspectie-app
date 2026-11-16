@@ -71,3 +71,23 @@ test('periodefilter voor rondes: standaard dit kalenderjaar', async () => {
   assert.deepEqual(PL.jarenVanRondes(jaarlijks, nu), [2024, 2025, 2026, 2027, 2028, 2029]);
   assert.deepEqual(PL.jarenVanRondes([], nu), [2026]);
 });
+
+test('afmelden op locatie: planning die het dichtst bij vandaag ligt bovenaan', async () => {
+  const PL = await import('../js/planning.js');
+  const nu = '2026-11-16';
+  const r = (code, start, eind) => ({ code, start, eind });
+  assert.equal(PL.afstandTotVandaag(r('a', '2026-11-01', '2026-11-30'), nu), 0);
+  assert.equal(PL.afstandTotVandaag(r('a', '2026-11-20', '2026-11-30'), nu), 4);
+  assert.equal(PL.afstandTotVandaag(r('a', '2026-01-01', '2026-03-31'), nu), 230);
+  assert.equal(PL.afstandTotVandaag(r('a', '', ''), nu), Infinity);
+  const lijst = [
+    { v: r('Q1', '2026-01-05', '2026-03-31'), st: 'open' },
+    { v: r('Q4', '2026-10-01', '2026-12-31'), st: 'open' },
+    { v: r('Q3', '2026-07-01', '2026-09-30'), st: 'open' },
+    { v: r('KLAAR', '2026-11-10', '2026-11-20'), st: 'gedaan' },
+    { v: r('LOS', '', ''), st: 'open' },
+    { v: r('BINNENKORT', '2026-11-19', '2026-11-25'), st: 'open' },
+    { v: r('VERLOPEN', '2026-11-01', '2026-11-13'), st: 'open' },
+  ];
+  assert.deepEqual(PL.dichtstbijEerst(lijst, nu).map((x) => x.v.code), ['Q4', 'BINNENKORT', 'VERLOPEN', 'Q3', 'Q1', 'LOS', 'KLAAR']);
+});
