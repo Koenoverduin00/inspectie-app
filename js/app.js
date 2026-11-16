@@ -7045,7 +7045,7 @@ async function toonImportVoorstel(kandidaten, fouten, { doel = null } = {}) {
     inst.kleur = LAAGKLEUREN[(lagen.length + n) % LAAGKLEUREN.length];
     let gevonden = IMP.vindBestaandeLaag(laag, inst, { lagen, objecten, bestandsnaam: k.bestand });
     if (doel) gevonden = (!doel.soort || doel.soort === laag.soort) ? { laag: doel, reden: 'gekozen laag', overlap: gevonden?.overlap ?? 0 } : null;
-    if (gevonden) Object.assign(inst, { codeveld: gevonden.laag.codeveld ?? inst.codeveld, naamveld: gevonden.laag.naamveld ?? inst.naamveld, naam: gevonden.laag.naam, kleur: gevonden.laag.kleur ?? inst.kleur });
+    if (gevonden) Object.assign(inst, { codeveld: gevonden.laag.codeveld ?? inst.codeveld, naamveld: gevonden.laag.naamveld ?? inst.naamveld, naamveld2: gevonden.laag.naamveld2 ?? '', naam: gevonden.laag.naam, kleur: gevonden.laag.kleur ?? inst.kleur });
     if (gevonden && gevonden.laag.typeveld !== undefined) Object.assign(inst, { typeveld: gevonden.laag.typeveld, vastType: gevonden.laag.vastType ?? '' });
     else if (gevonden && !inst.typeveld) inst.vastType = objecten.find((o) => o.laagId === gevonden.laag.id)?.type ?? '';
     return {
@@ -7056,6 +7056,16 @@ async function toonImportVoorstel(kandidaten, fouten, { doel = null } = {}) {
   const plan = (v) => (v.actie === 'bijwerken' && v.doelId
     ? IMP.planBijwerken(v.laag.features, v.inst, objecten.filter((o) => o.laagId === v.doelId), metHistorie) : null);
 
+  // Naam van de objecten: zelf de kolom kiezen (eventueel aangevuld met een tweede kolom), met voorbeelden.
+  const naamKeuze = (v) => {
+    const vs = v.inst.velden ?? [];
+    if (!vs.length) return '';
+    const vb = v.laag.features.slice(0, 40).map((f) => IMP.naamUitKolommen(f.properties, v.inst.naamveld, v.inst.naamveld2)).filter(Boolean);
+    return `<div class="il-naamkeuze">
+      <label>Naam van de objecten <select data-veld="naamveld">${optie('', `— laagnaam + nummer (${v.inst.naam} 001…) —`, v.inst.naamveld)}${vs.map((x) => optie(x, x, v.inst.naamveld)).join('')}</select></label>
+      ${v.inst.naamveld ? `<label>aangevuld met <select data-veld="naamveld2">${optie('', '— niets —', v.inst.naamveld2 ?? '')}${vs.filter((x) => x !== v.inst.naamveld).map((x) => optie(x, x, v.inst.naamveld2 ?? '')).join('')}</select></label>` : ''}
+      <small>${vb.length ? `bijv. ${[...new Set(vb)].slice(0, 3).map((x) => `<code>${esc(x)}</code>`).join(' ')}` : v.inst.naamveld ? 'deze kolom is leeg in de eerste objecten' : 'Kies een kolom met een herkenbare naam (bijv. omschrijving of straat); achteraf aan te passen bij Kaart & GIS.'}</small></div>`;
+  };
   const typeKeuze = (v) => {
     const vs = v.inst.velden;
     const gekozen = IMP.typeGekozen(v.inst);
@@ -7107,11 +7117,11 @@ async function toonImportVoorstel(kandidaten, fouten, { doel = null } = {}) {
   ].join('')}</div>` : ''}</div>` : ''}
       ${meldingen.length ? `<ul class="il-meldingen">${meldingen.map((m) => `<li>${I.let} ${esc(m)}</li>`).join('')}</ul>` : ''}
       ${v.actie !== 'overslaan' ? typeKeuze(v) : ''}
-      ${v.actie !== 'overslaan' ? `<details class="il-meer"><summary>Instellingen <small>code: ${esc(v.inst.codeveld || `automatisch (${v.inst.voorvoegsel}-001…)`)}${v.inst.naamveld ? ` · naam: ${esc(v.inst.naamveld)}` : ''}</small></summary>
+      ${v.actie !== 'overslaan' ? naamKeuze(v) : ''}
+      ${v.actie !== 'overslaan' ? `<details class="il-meer"><summary>Instellingen <small>code: ${esc(v.inst.codeveld || `automatisch (${v.inst.voorvoegsel}-001…)`)}</small></summary>
         <div class="velden">
           <div class="veld"><label>Objectcode uit kolom</label><select data-veld="codeveld">${optie('', '— automatisch nummeren —', v.inst.codeveld)}${vs.map((x) => optie(x, x, v.inst.codeveld)).join('')}</select>
             <small>Alleen kolommen met unieke waarden zijn zinvol; dubbele codes krijgen -2, -3.</small></div>
-          <div class="veld"><label>Naam uit kolom</label><select data-veld="naamveld">${optie('', '— laagnaam + nummer —', v.inst.naamveld)}${vs.map((x) => optie(x, x, v.inst.naamveld)).join('')}</select></div>
           <div class="veld"><label>Voorvoegsel bij nummeren</label><input data-veld="voorvoegsel" maxlength="10" value="${esc(v.inst.voorvoegsel)}"></div>
           <div class="veld"><label>Inspectie-interval (jaren)</label><input data-veld="interval" type="number" min="0.5" max="20" step="0.5" value="${esc(v.inst.interval)}" placeholder="leeg = geen planning"></div>
           <div class="veld"><label>Kleur</label><input data-veld="kleur" type="color" value="${esc(v.inst.kleur)}"></div>
@@ -7156,7 +7166,7 @@ async function toonImportVoorstel(kandidaten, fouten, { doel = null } = {}) {
         v.inst.typeveld = vast ? '' : e.target.value;
         v.inst.vastType = vast ? (v.inst.vastType || v.inst.type || '') : '';
       } else v.inst[veld] = e.target.value;
-      if (['actie', 'doelId', 'codeveld', 'typekeuze', 'vastType'].includes(veld)) teken();
+      if (['actie', 'doelId', 'codeveld', 'typekeuze', 'vastType', 'naamveld', 'naamveld2'].includes(veld)) teken();
       else if (veld === 'kleur') tekenVoorbeeld();
     });
     // Naamvelden groeien mee met de tekst, zodat lange laagnamen leesbaar blijven (Enter = geen nieuwe regel).
@@ -7237,7 +7247,7 @@ function nieuwObjectUitFeature(f, i, inst, { pid, laagId, nu, uniek, breedte }) 
   const nummer = String(i + 1).padStart(Math.max(3, breedte), '0');
   const bronCode = inst.codeveld ? String(f.properties[inst.codeveld] ?? '').trim() : '';
   const code = uniek(bronCode || `${inst.voorvoegsel || 'GV'}-${nummer}`);
-  const naam = inst.naamveld ? String(f.properties[inst.naamveld] ?? '').trim() : '';
+  const naam = IMP.naamUitKolommen(f.properties, inst.naamveld, inst.naamveld2);
   const type = IMP.typeVan(f.properties, inst, OBJECTTYPEN);
   const punt = gis.middelpunt(f.geometry);
   return {
@@ -7278,7 +7288,7 @@ async function importeerLaag(laag, inst, bestandsnaam, voortgang) {
     await db.bewaar('lagen', {
       id: laagId, projectId: pid, naam: inst.naam, bron: bestandsnaam, bronLaag: laag.bronLaag ?? laag.naam, kleur: inst.kleur,
       soort: laag.soort ?? gis.soortGeometrie(laag.features[0].geometry), aantal: objecten.length, velden: gis.velden(laag.features),
-      codeveld: inst.codeveld, naamveld: inst.naamveld, typeveld: inst.typeveld, vastType: inst.vastType, aangemaakt: nu, gewijzigd: nu,
+      codeveld: inst.codeveld, naamveld: inst.naamveld, naamveld2: inst.naamveld2 ?? '', typeveld: inst.typeveld, vastType: inst.vastType, aangemaakt: nu, gewijzigd: nu,
     });
   } catch (fout) {
     await db.verwijderVeel('objecten', opgeslagen).catch(() => {});
@@ -7294,7 +7304,7 @@ async function werkLaagBij(laag, nieuw, inst, bestandsnaam, plan, voortgang) {
   const start = (await inProject('objecten')).filter((o) => o.laagId === laag.id).length;
   const bij = plan.bijwerken.map(({ object: o, feature: f }) => {
     const punt = gis.middelpunt(f.geometry);
-    const naam = inst.naamveld ? String(f.properties[inst.naamveld] ?? '').trim() : '';
+    const naam = IMP.naamUitKolommen(f.properties, inst.naamveld, inst.naamveld2);
     return {
       ...o, type: IMP.typeVan(f.properties, inst, OBJECTTYPEN), geometrie: f.geometry, kenmerken: f.properties, lat: punt ? punt[1] : o.lat, lng: punt ? punt[0] : o.lng,
       bronCode: inst.codeveld ? String(f.properties[inst.codeveld] ?? '').trim() : (o.bronCode ?? ''), ...(naam ? { naam } : {}), gewijzigd: nu,
@@ -7311,7 +7321,7 @@ async function werkLaagBij(laag, nieuw, inst, bestandsnaam, plan, voortgang) {
   const aantal = plan.gelijk.length + bij.length + nieuweObjecten.length;
   await db.bewaar('lagen', {
     ...laag, bron: bestandsnaam, bronLaag: nieuw.bronLaag ?? nieuw.naam, soort: laag.soort ?? nieuw.soort, aantal,
-    velden: gis.velden(nieuw.features), codeveld: inst.codeveld, naamveld: inst.naamveld, typeveld: inst.typeveld, vastType: inst.vastType, kleur: inst.kleur || laag.kleur, gewijzigd: nu,
+    velden: gis.velden(nieuw.features), codeveld: inst.codeveld, naamveld: inst.naamveld, naamveld2: inst.naamveld2 ?? '', typeveld: inst.typeveld, vastType: inst.vastType, kleur: inst.kleur || laag.kleur, gewijzigd: nu,
   });
   return [`${bij.length} bijgewerkt`, `${nieuweObjecten.length} nieuw`, plan.verwijderen.length ? `${plan.verwijderen.length} verwijderd` : '', plan.behouden.length ? `${plan.behouden.length} los gemaakt` : ''].filter(Boolean).join(', ');
 }
@@ -7433,6 +7443,60 @@ function matenTekst(m, aantal) {
   return [`${aantal} objecten`, oppervlakteTekst(m.vlak), lengteTekst(m.lijn)].filter(Boolean).join(' · ');
 }
 
+/** Achteraf kiezen uit welke kolom(men) de naam van de objecten van een GIS-laag komt, met voorbeeld vooraf. */
+function naamKolomDialoog(laag, objecten) {
+  const velden = [...new Set([...(laag.velden ?? []), ...objecten.flatMap((o) => Object.keys(o.kenmerken ?? {}))])]
+    .filter((v) => objecten.some((o) => { const x = o.kenmerken?.[v]; return x !== null && x !== undefined && typeof x !== 'object' && String(x).trim() !== ''; }))
+    .sort((a, b) => a.localeCompare(b, 'nl'));
+  let keuze = { naamveld: laag.naamveld ?? '', naamveld2: laag.naamveld2 ?? '' };
+  const d = document.createElement('dialog');
+  d.className = 'dialoog naamdialoog';
+  const voorbeeld = (v) => { const w = objecten.map((o) => o.kenmerken?.[v]).find((x) => x !== null && x !== undefined && String(x).trim() !== ''); return w === undefined ? '' : String(w).slice(0, 30); };
+  const teken = () => {
+    const r = IMP.hernoemObjecten(objecten, keuze);
+    d.innerHTML = `<form method="dialog">
+      <h2 style="margin-top:0">Naam van de objecten · ${esc(laag.naam)}</h2>
+      <p style="margin:.25rem 0 .75rem"><small>Kies uit welke kolom van het GIS-bestand de naam komt. Objecten zonder waarde in die kolom houden hun huidige naam.
+        Codes, koppelingen en registraties blijven gewoon staan. De keuze geldt ook bij een volgende versie van het bestand.</small></p>
+      <div class="velden">
+        <div class="veld"><label for="nk-1">Naam uit kolom</label><select id="nk-1" data-nk="naamveld">${optie('', '— kies een kolom —', keuze.naamveld)}
+          ${velden.map((v) => optie(v, `${v}${voorbeeld(v) ? `  (bijv. ${voorbeeld(v)})` : ''}`, keuze.naamveld)).join('')}</select></div>
+        <div class="veld"><label for="nk-2">Aangevuld met (optioneel)</label><select id="nk-2" data-nk="naamveld2" ${keuze.naamveld ? '' : 'disabled'}>${optie('', '— niets —', keuze.naamveld2)}
+          ${velden.filter((v) => v !== keuze.naamveld).map((v) => optie(v, `${v}${voorbeeld(v) ? `  (bijv. ${voorbeeld(v)})` : ''}`, keuze.naamveld2)).join('')}</select>
+          <small>Bijvoorbeeld straat + huisnummer.</small></div>
+      </div>
+      ${keuze.naamveld ? `<div class="tegels" style="margin:.75rem 0">
+          <span class="tegel ${r.wijzigingen.length ? 'goed' : ''}"><strong>${r.wijzigingen.length}</strong><span>krijgen een nieuwe naam</span></span>
+          <span class="tegel"><strong>${r.ongewijzigd}</strong><span>staan al goed</span></span>
+          <span class="tegel ${r.zonderWaarde ? 'let' : ''}"><strong>${r.zonderWaarde}</strong><span>geen waarde (naam blijft)</span></span></div>
+        ${r.wijzigingen.length ? `<div class="tabelhouder" style="max-height:240px;overflow:auto"><table><thead><tr><th>Code</th><th>Nu</th><th>Wordt</th></tr></thead>
+          <tbody>${r.wijzigingen.slice(0, 100).map((x) => `<tr><td>${esc(x.object.code)}</td><td class="zacht">${esc(x.object.naam)}</td><td><strong>${esc(x.naam)}</strong></td></tr>`).join('')}</tbody></table></div>
+          ${r.wijzigingen.length > 100 ? `<p><small>+ ${r.wijzigingen.length - 100} meer</small></p>` : ''}` : ''}` : ''}
+      <div class="knoppen" style="justify-content:flex-end;margin-top:.75rem"><button class="knop" value="nee">Annuleren</button>
+        <button class="knop primair" value="ja" ${keuze.naamveld && (r.wijzigingen.length || keuze.naamveld !== laag.naamveld || keuze.naamveld2 !== (laag.naamveld2 ?? '')) ? '' : 'disabled'}>${I.vink} ${r.wijzigingen.length} naam${r.wijzigingen.length === 1 ? '' : 'en'} aanpassen</button></div></form>`;
+  };
+  teken();
+  d.addEventListener('change', (e) => {
+    const k = e.target.dataset.nk;
+    if (!k) return;
+    keuze = { ...keuze, [k]: e.target.value, ...(k === 'naamveld' && e.target.value === keuze.naamveld2 ? { naamveld2: '' } : {}) };
+    teken();
+  });
+  document.body.append(d);
+  d.showModal();
+  d.addEventListener('close', async () => {
+    const ok = d.returnValue === 'ja';
+    d.remove();
+    if (!ok) return;
+    const r = IMP.hernoemObjecten(objecten, keuze);
+    const nu = new Date().toISOString();
+    if (r.wijzigingen.length) await db.bewaarVeel('objecten', r.wijzigingen.map((x) => ({ ...x.object, naam: x.naam, gewijzigd: nu })));
+    await db.bewaar('lagen', { ...laag, naamveld: keuze.naamveld, naamveld2: keuze.naamveld2, gewijzigd: nu });
+    gedaan(`${r.wijzigingen.length} naam${r.wijzigingen.length === 1 ? '' : 'en'} aangepast`, { extra: `${laag.naam}: naam uit ${keuze.naamveld}${keuze.naamveld2 ? ` + ${keuze.naamveld2}` : ''}` });
+    router();
+  });
+}
+
 async function kaart() {
   if (!magBeheren()) {
     app.innerHTML = leegKaart('Kaart & GIS is alleen beschikbaar voor beheerders.', '<a class="knop" href="#/">Naar het dashboard</a>');
@@ -7469,12 +7533,19 @@ async function kaart() {
               <span class="kleurvak" style="background:${esc(g.kleur)}"></span>
               <span class="laagtekst"><strong title="${esc(g.naam)}">${esc(g.naam)}</strong><small>${matenTekst(areaalMaten(g.objecten), g.objecten.length)}</small>
                 ${g.laag ? `<small title="${esc(g.laag.bron)}">${I.bestand} ${esc(g.laag.bron)}${g.laag.gewijzigd ? ` · ${datumNL(String(g.laag.gewijzigd).slice(0, 10))}` : ''}</small>` : ''}</span></label>
-            ${g.laag && magBeheren() ? `<div class="laagknoppen"><a class="knop klein" href="#/gis/importeren?laag=${esc(g.id)}" title="Nieuwere versie van het bestand inladen; koppelingen blijven">${I.vernieuw}</a>
+            ${g.laag && magBeheren() ? `<div class="laagknoppen"><button type="button" class="knop klein" data-laag-naam="${esc(g.id)}" title="Kies uit welke kolom de naam van de objecten komt">${I.concept} Naam</button>
+              <a class="knop klein" href="#/gis/importeren?laag=${esc(g.id)}" title="Nieuwere versie van het bestand inladen; koppelingen blijven">${I.vernieuw}</a>
               <button class="knop klein gevaar" data-laag-weg="${esc(g.id)}" aria-label="Laag verwijderen" title="Laag verwijderen">${I.verwijder}</button></div>` : ''}
           </div>`).join('') : '<p class="leeg">Nog geen lagen. Laad een GIS-bestand in.</p>'}
       </aside>
     </div>`;
 
+  app.querySelectorAll('[data-laag-naam]').forEach((k) => {
+    k.onclick = () => {
+      const laag = lagen.find((l) => l.id === k.dataset.laagNaam);
+      if (laag) naamKolomDialoog(laag, objecten.filter((o) => o.laagId === laag.id));
+    };
+  });
   app.querySelectorAll('[data-laag-weg]').forEach((k) => {
     k.onclick = async () => {
       const laag = lagen.find((l) => l.id === k.dataset.laagWeg);

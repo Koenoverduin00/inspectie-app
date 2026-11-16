@@ -201,3 +201,32 @@ export function planBijwerken(features, inst, bestaand, metHistorie = new Set())
     behouden: weg.filter((o) => metHistorie.has(o.id)),
   };
 }
+
+/**
+ * Naam van een object uit één of twee kolommen van het GIS-bestand (bijv. straat + huisnummer), of '' als die leeg zijn.
+ * @param {object} props  kenmerken van het GIS-object
+ */
+export function naamUitKolommen(props, naamveld, naamveld2 = '') {
+  const w = (k) => (k ? String(props?.[k] ?? '').replace(/\s+/g, ' ').trim() : '');
+  // De eerste kolom is leidend: zonder waarde daarin geen naam (dan blijft de huidige naam staan).
+  if (!w(naamveld)) return '';
+  return [w(naamveld), w(naamveld2)].filter(Boolean).join(' ').slice(0, 160);
+}
+
+/**
+ * Nieuwe namen voor de objecten van een laag na het kiezen van een naamkolom (ook achteraf). Objecten zonder waarde in de
+ * kolom houden hun huidige naam. Geeft alleen de objecten terug waarvan de naam verandert.
+ * @returns {{ wijzigingen: {object, naam}[], zonderWaarde: number, ongewijzigd: number }}
+ */
+export function hernoemObjecten(objecten, { naamveld = '', naamveld2 = '' } = {}) {
+  const wijzigingen = [];
+  let zonderWaarde = 0;
+  let ongewijzigd = 0;
+  for (const o of objecten) {
+    const naam = naamUitKolommen(o.kenmerken, naamveld, naamveld2);
+    if (!naam) { zonderWaarde += 1; continue; }
+    if (naam === o.naam) { ongewijzigd += 1; continue; }
+    wijzigingen.push({ object: o, naam });
+  }
+  return { wijzigingen, zonderWaarde, ongewijzigd };
+}

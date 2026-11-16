@@ -84,3 +84,19 @@ test('objecttype komt uit een kolom', async () => {
   assert.ok(typeGekozen(zonderKolommen));
   assert.equal(VAST_TYPE, '__vast__');
 });
+
+test('naam van GIS-objecten uit een of twee kolommen, ook achteraf', async () => {
+  const IMP = await import('../js/gisimport.js');
+  assert.equal(IMP.naamUitKolommen({ straat: ' Oude  Gracht ', nr: 12 }, 'straat', 'nr'), 'Oude Gracht 12');
+  assert.equal(IMP.naamUitKolommen({ straat: '' }, 'straat'), '');
+  const objecten = [
+    { id: 'a', naam: 'punten 1', kenmerken: { omschrijving: 'Lichtmast Domplein', nr: 1 } },
+    { id: 'b', naam: 'punten 2', kenmerken: { omschrijving: '', nr: 2 } },
+    { id: 'c', naam: 'Lichtmast Vismarkt', kenmerken: { omschrijving: 'Lichtmast Vismarkt', nr: 3 } },
+  ];
+  const r = IMP.hernoemObjecten(objecten, { naamveld: 'omschrijving' });
+  assert.deepEqual(r.wijzigingen.map((x) => [x.object.id, x.naam]), [['a', 'Lichtmast Domplein']]);
+  assert.equal(r.zonderWaarde, 1);
+  assert.equal(r.ongewijzigd, 1);
+  assert.deepEqual(IMP.hernoemObjecten(objecten, { naamveld: 'omschrijving', naamveld2: 'nr' }).wijzigingen.map((x) => x.naam), ['Lichtmast Domplein 1', 'Lichtmast Vismarkt 3']);
+});

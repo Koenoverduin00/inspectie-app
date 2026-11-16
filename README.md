@@ -15,6 +15,11 @@ ook **offline in het veld**, synchroniseert tussen pc en telefoon, en is te inst
   werkpakketten, inspecties en taken koppel je daarna aan die objecten. Sleep één of meer bestanden in het vak:
   GeoPackage (.gpkg, **alle lagen tegelijk**), Shapefile (.zip) of GeoJSON. De app doet de rest:
   - een laag met vlakken, lijnen én punten wordt automatisch gesplitst in drie lagen;
+  - **naam van de objecten uit een kolom**: per laag kies je zichtbaar uit welke kolom de naam komt (bijv. `omschrijving` of
+    `straat`), eventueel *aangevuld met* een tweede kolom (bijv. huisnummer), met voorbeeldwaarden. Zonder keuze wordt het
+    *laagnaam + nummer*. **Ook achteraf**: bij *Kaart & GIS* staat per laag de knop **Naam**; kies de kolom(men), bekijk vooraf
+    welke namen veranderen ("nu → wordt") en pas toe. Objecten zonder waarde in die kolom houden hun naam; codes, koppelingen en
+    registraties blijven staan. De keuze wordt bij de laag bewaard en gebruikt bij een volgende versie van het bestand;
   - **objecttype uit een kolom (verplicht)**: per laag kies je de kolom waarin het type staat (bijv. `beheertype`);
     elk object krijgt de waarde uit die kolom, met de gevonden waarden en aantallen als controle. Een herkenbare
     kolom (type, objecttype, beheertype, categorie, soort…) is al voorgeselecteerd. Heeft het bestand geen
