@@ -476,6 +476,12 @@ dan zie je per object de koppeling met het **bouwdeel**:
   gekoppeld zijn en welke decompositieversie geldt. Tik op een regel om ernaartoe te zoomen.
 - **Locatiepagina**: bovenaan staat het bouwdeel van het object.
 
+**Twee keuzes bovenaan de mobiele kaart**: **Aan mij toegewezen** (de werkpakketten die jij ziet; zonder toewijzing geldt een pakket voor
+iedereen) en **Alle actuele** (alle lopende werkpakketten van het project, ook die van collega's). Tussen haakjes staat het aantal
+werkpakketten. De keuze wordt onthouden en geldt ook voor de locatiepagina. De kleur van een object geeft de status: **niet gereed**
+(oranje), **gereed** (groen) of **overgeslagen** (grijs). Tik je op een object, dan zie je onder *Uit te voeren* de werkpakketten die daar
+nog gedaan moeten worden (met code, en bij *Alle actuele* of het niet aan jou is toegewezen); wat al gereed of overgeslagen is staat er klein onder.
+
 **Kaart toont werkpakketten, geen rondes.** De mobiele kaart, de chips erboven en de popups tonen alleen **werkpakketten** (met code als
 namen gelijk zijn); een pakket met meerdere lopende rondes staat er één keer. Een object telt als *te doen* zolang er in één van de rondes
 nog iets open is. Pas na **Afmelden op deze locatie** (of door op een werkpakket in de popup te tikken) zie je de afzonderlijke rondes,

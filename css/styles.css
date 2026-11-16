@@ -1554,3 +1554,9 @@ td.actiecel .knoppen { justify-content: flex-end; flex-wrap: wrap; }
 .rondekenmerken strong { display: inline !important; font-size: inherit; }
 .loctussenkop { list-style: none; margin: 1rem 0 .1rem; font-weight: 700; font-size: .9rem; color: var(--zacht, #6b7785); display: flex; align-items: center; gap: .35rem; }
 .loctussenkop small { font-weight: 400; }
+.mkaartbereik { display: flex; margin: 0 0 .6rem; }
+.mkaartbereik label { flex: 1; }
+.mkaartbereik span { display: block; text-align: center; white-space: nowrap; font-size: .85rem; }
+.veldklaar { margin: .4rem 0; color: #1a7f37; font-weight: 600; font-size: .85rem; }
+.veldafgemeld { margin: .2rem 0 .4rem; color: var(--zacht, #6b7785); }
+.veldafgemeld .stip { display: inline-block; width: 8px; height: 8px; vertical-align: middle; }
