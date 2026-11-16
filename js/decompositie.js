@@ -411,3 +411,103 @@ export function leesCsvTekst(inhoud) {
   if (cel || regel.length) { regel.push(cel); regels.push(regel); }
   return regels;
 }
+
+/** Niveau van een tabblad op basis van de naam (bijv. "Objecten", "Elementen", "Bouwdelen"). */
+export function niveauVanBlad(naam) {
+  const s = norm(naam);
+  if (/bouwde(e)?l|onderde(e)?l/.test(s)) return 'bouwdeel';
+  if (/element/.test(s)) return 'element';
+  if (/object/.test(s)) return 'object';
+  return null;
+}
+
+const OUDER_NIVEAU = { element: 'object', bouwdeel: 'element' };
+
+/** Kolommen in een tabblad per niveau: code, naam, bovenliggend onderdeel, eenheid, hoeveelheid, GIS-code. */
+function bladKolommen(kop, niveau) {
+  const k = kop.map(norm);
+  const zoek = (...namen) => { for (const n of namen) { const i = k.indexOf(norm(n)); if (i >= 0) return i; } return -1; };
+  const ouder = OUDER_NIVEAU[niveau];
+  return {
+    code: zoek(`${niveau}code`, `${niveau} code`, `code ${niveau}`, `${niveau}id`, `${niveau} id`, 'code', 'id', 'nummer', 'nr'),
+    naam: zoek(`${niveau}naam`, `${niveau} naam`, 'naam', 'omschrijving', 'benaming', niveau, `${niveau}omschrijving`),
+    ouder: ouder ? zoek(`${ouder}code`, `${ouder} code`, `code ${ouder}`, `${ouder}id`, 'bovenliggende code', 'bovenliggend', 'ouder', 'ouder code', 'parent', 'parent code', 'hoort bij', ouder, `${ouder}naam`) : -1,
+    eenheid: zoek('eenheid', 'unit'),
+    hoeveelheid: zoek('hoeveelheid', 'aantal', 'omvang', 'quantity'),
+    gis: zoek('gis code', 'gis', 'gis id', 'gis objectcode', 'objectcode gis', 'beheer id', 'koppelcode'),
+  };
+}
+
+/**
+ * Leest een werkboek met (mogelijk) meerdere tabbladen.
+ *  - Tabbladen per niveau (Objecten / Elementen / Bouwdelen): elk blad heeft een code en naam, en (behalve objecten) een kolom met de
+ *    code of naam van het bovenliggende onderdeel. Andere tabbladen worden genegeerd.
+ *  - Anders: het tabblad met de meeste herkende onderdelen (lijst- of kolommenindeling).
+ * @param {{ naam: string, regels: any[][] }[]} bladen
+ * @returns {ReturnType<typeof leesDecompositie> & { bladen: { naam: string, niveau: string|null, rijen: number, gebruikt: boolean }[] }}
+ */
+export function leesBladen(bladen) {
+  const lijst = (bladen ?? []).filter((b) => (b.regels ?? []).some((r) => (r ?? []).some((c) => tekst(c))));
+  if (!lijst.length) return { knopen: [], fouten: ['Het bestand is leeg.'], indeling: null, kop: [], bladen: [] };
+  const perNiveau = lijst.map((b) => ({ ...b, niveau: niveauVanBlad(b.naam) })).filter((b) => b.niveau);
+  const niveaus = new Set(perNiveau.map((b) => b.niveau));
+  if (niveaus.size >= 2) {
+    const fouten = [];
+    const regels = [['Code', 'Naam', 'Niveau', 'Bovenliggende code', 'Eenheid', 'Hoeveelheid', 'GIS-code']];
+    const info = [];
+    const naamNaarCode = { object: new Map(), element: new Map() };
+    const codes = { object: new Set(), element: new Set() };
+    const tijdelijk = [];
+    for (const niveau of NIVEAUS) {
+      for (const b of perNiveau.filter((x) => x.niveau === niveau)) {
+        const rijen = b.regels.map((r) => (r ?? []).map(tekst));
+        const start = rijen.findIndex((r) => r.some((c) => c));
+        const kop = rijen[start];
+        const k = bladKolommen(kop, niveau);
+        let n = 0;
+        if (k.code < 0 && k.naam < 0) { fouten.push(`Tabblad "${b.naam}": geen kolom met code of naam gevonden.`); info.push({ naam: b.naam, niveau, rijen: 0, gebruikt: false }); continue; }
+        if (OUDER_NIVEAU[niveau] && k.ouder < 0) fouten.push(`Tabblad "${b.naam}": geen kolom met het bovenliggende ${OUDER_NIVEAU[niveau]} gevonden (bijv. "${OUDER_NIVEAU[niveau]}code").`);
+        rijen.slice(start + 1).forEach((r, i) => {
+          const code = k.code >= 0 ? r[k.code] : '';
+          const naam = k.naam >= 0 ? r[k.naam] : '';
+          if (!code && !naam) return;
+          n += 1;
+          if (niveau !== 'bouwdeel') {
+            // Sleutel zoals de lijst-indeling hem gebruikt: de code, of zonder code "niveau:naam".
+            const sleutel = code || `${niveau}:${naam}`;
+            codes[niveau].add(sleutel);
+            if (naam) naamNaarCode[niveau].set(norm(naam), sleutel);
+          }
+          tijdelijk.push({ code, naam, niveau, ouder: k.ouder >= 0 ? r[k.ouder] : '', eenheid: k.eenheid >= 0 ? r[k.eenheid] : '', hoeveelheid: k.hoeveelheid >= 0 ? r[k.hoeveelheid] : '',
+            gis: k.gis >= 0 ? r[k.gis] : '', blad: b.naam, rij: start + i + 2 });
+        });
+        info.push({ naam: b.naam, niveau, rijen: n, gebruikt: true });
+      }
+    }
+    for (const t of tijdelijk) {
+      let ouder = t.ouder;
+      const on = OUDER_NIVEAU[t.niveau];
+      // Bovenliggend onderdeel mag ook met de naam worden aangeduid.
+      if (on && ouder && !codes[on].has(ouder) && naamNaarCode[on].has(norm(ouder))) ouder = naamNaarCode[on].get(norm(ouder));
+      regels.push([t.code, t.naam, t.niveau, ouder, t.eenheid, t.hoeveelheid, t.gis]);
+    }
+    const res = leesDecompositie(regels);
+    // Regelnummers in meldingen verwijzen naar de samengevoegde lijst; zet ze om naar tabblad en regel.
+    res.fouten = [...fouten, ...res.fouten.map((f) => f.replace(/^Regel (\d+):/, (_, n) => {
+      const t = tijdelijk[Number(n) - 2];
+      return t ? `Tabblad "${t.blad}", regel ${t.rij}:` : `Regel ${n}:`;
+    }))];
+    for (const b of lijst.filter((x) => !niveauVanBlad(x.naam))) info.push({ naam: b.naam, niveau: null, rijen: 0, gebruikt: false });
+    return { ...res, indeling: 'tabbladen', kop: perNiveau.flatMap((b) => {
+      const rijen = b.regels.map((r) => (r ?? []).map(tekst));
+      return (rijen[rijen.findIndex((r) => r.some((c) => c))] ?? []).filter(Boolean).map((c) => `${b.naam} › ${c}`);
+    }), bladen: info };
+  }
+  // Eén tabblad met de hele decompositie: neem het blad met de meeste onderdelen.
+  let beste = null;
+  for (const b of lijst) {
+    const r = leesDecompositie(b.regels);
+    if (!beste || r.knopen.length > beste.res.knopen.length) beste = { b, res: r };
+  }
+  return { ...beste.res, bladen: lijst.map((b) => ({ naam: b.naam, niveau: null, rijen: b === beste.b ? beste.res.knopen.length : 0, gebruikt: b === beste.b })) };
+}

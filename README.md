@@ -506,8 +506,10 @@ Niet elke inspectie volgt NEN 2767. Per **inspectietype** kies je de methodiek (
 Voor opdrachtgevers die volgens NEN 2767 werken met een eigen decompositie (object → element → bouwdeel).
 
 - **Inlezen** (Instellingen → Decompositie, alleen beheerders): Excel (.xlsx) of CSV van de opdrachtgever. Twee indelingen worden herkend:
-  een lijst met *Code, Naam, Niveau, Bovenliggende code* (optioneel *Eenheid, Hoeveelheid, GIS-code*), of kolommen *Object, Element, Bouwdeel*
-  (met optionele codekolommen). Je ziet eerst een voorbeeld met aantallen en meldingen; pas na "Overnemen" verandert er iets.
+  een lijst met *Code, Naam, Niveau, Bovenliggende code* (optioneel *Eenheid, Hoeveelheid, GIS-code*), kolommen *Object, Element, Bouwdeel*
+  (met optionele codekolommen), of een werkboek met **tabbladen per niveau** (*Objecten*, *Elementen*, *Bouwdelen*; elementen verwijzen
+  naar hun object en bouwdelen naar hun element, op code of naam). Overige tabbladen worden genegeerd; het voorbeeld toont welke
+  tabbladen zijn gebruikt. Bij één tabblad met de hele decompositie neemt de app het tabblad met de meeste onderdelen. Je ziet eerst een voorbeeld met aantallen en meldingen; pas na "Overnemen" verandert er iets.
   Onderdelen houden een vaste id op basis van hun code, dus bij een nieuwe levering blijven koppelingen en scores behouden.
 - **Bijwerken met een nieuwe levering**: lees het nieuwe bestand in en kies **welke code hetzelfde is gebleven** (Code of GIS-code). Je ziet per onderdeel
   wat ongewijzigd, gewijzigd, nieuw of vervallen is; herkende onderdelen houden hun GIS-koppelingen en scores. **De kolommen moeten dezelfde namen

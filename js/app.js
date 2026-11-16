@@ -314,15 +314,17 @@ function bouwdeelScoreTabel(i, { kort = false } = {}) {
   }).join('')}</tbody></table></div>`;
 }
 
+/** Alle tabbladen van het bestand als { naam, regels } (CSV = één blad). */
 async function leesDecompBestand(bestand) {
-  if (/\.(csv|txt)$/i.test(bestand.name)) return D.leesCsvTekst(await bestand.text());
+  if (/\.(csv|txt)$/i.test(bestand.name)) return [{ naam: bestand.name, regels: D.leesCsvTekst(await bestand.text()) }];
   const ExcelJS = await PX.laadExcelJS();
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(await bestand.arrayBuffer());
-  const ws = wb.worksheets.find((w) => /decompositie/i.test(w.name)) ?? wb.worksheets[0];
-  const regels = [];
-  ws?.eachRow({ includeEmpty: true }, (row) => { regels.push(Array.isArray(row.values) ? row.values.slice(1) : []); });
-  return regels;
+  return wb.worksheets.filter((ws) => ws.state !== 'hidden' && ws.state !== 'veryHidden').map((ws) => {
+    const regels = [];
+    ws.eachRow({ includeEmpty: true }, (row) => { regels.push(Array.isArray(row.values) ? row.values.slice(1) : []); });
+    return { naam: ws.name, regels };
+  });
 }
 
 async function decompositiePagina(_, q) {
@@ -430,6 +432,9 @@ async function decompositiePagina(_, q) {
           Niveau is object, element of bouwdeel.</li>
         <li><strong>Kolommen</strong> – per regel <em>Object, Element, Bouwdeel</em> (met optioneel <em>Objectcode, Elementcode, Bouwdeelcode</em>,
           <em>Eenheid, Hoeveelheid, GIS-code</em>).</li>
+        <li><strong>Tabbladen per niveau</strong> – een Excel-bestand met tabbladen <em>Objecten</em>, <em>Elementen</em> en <em>Bouwdelen</em>.
+          Elk tabblad heeft een code en naam; Elementen verwijzen naar hun object (bijv. kolom <em>Objectcode</em>) en Bouwdelen naar hun element
+          (<em>Elementcode</em>), op code of naam. Andere tabbladen worden genegeerd.</li>
       </ol>
       <p><strong>Let op:</strong> gebruik bij elke volgende levering precies dezelfde kolomnamen als in het eerste bestand. Alleen dan kan de app gegevens
         bijwerken en nieuwe onderdelen inlezen. Geef elk onderdeel een vaste code: daarop herkent de app het onderdeel bij een nieuwe levering.</p>
@@ -580,6 +585,9 @@ async function decompositiePagina(_, q) {
         ${kolomCheck?.extra.length && !geblokkeerd ? `<p><small>${I.let} Extra kolommen die niet in het eerste bestand stonden: ${kolomCheck.extra.map(esc).join(', ')}.
           Alleen bekende kolommen worden gebruikt.</small></p>` : ''}
         ${res.knopen.length && !geblokkeerd ? `<p><strong>${tn.object}</strong> objecten, <strong>${tn.element}</strong> elementen en <strong>${tn.bouwdeel}</strong> bouwdelen in het bestand.</p>` : ''}
+        ${(res.bladen ?? []).length > 1 ? `<p><small>${I.lijst} Tabbladen: ${res.bladen.map((b) => b.gebruikt
+    ? `<strong>${esc(b.naam)}</strong>${b.niveau ? ` (${{ object: 'objecten', element: 'elementen', bouwdeel: 'bouwdelen' }[b.niveau]}, ${b.rijen} regel${b.rijen === 1 ? '' : 's'})` : ` (${b.rijen} onderdelen)`}`
+    : `<span class="zacht">${esc(b.naam)} (niet gebruikt)</span>`).join(' · ')}</small></p>` : ''}
         ${r ? `
           <div class="veld"><label><strong>Welke code is hetzelfde gebleven?</strong></label>
             <small>Daarop herkent de app de onderdelen uit de vorige levering. Herkende onderdelen houden hun GIS-koppelingen en conditiescores.</small>
@@ -624,7 +632,7 @@ async function decompositiePagina(_, q) {
     if (!bestand) return;
     let res;
     try {
-      res = D.leesDecompositie(await leesDecompBestand(bestand));
+      res = D.leesBladen(await leesDecompBestand(bestand));
     } catch (fout) {
       console.error(fout);
       return melding('Dit bestand kan niet worden gelezen. Gebruik Excel (.xlsx) of CSV.', 'fout');
@@ -854,10 +862,10 @@ async function inspectietypenPagina() {
         ${nVelden ? `<small> · ${nVelden} extra veld${nVelden === 1 ? '' : 'en'}</small>` : ''}</div></td>
       <td><small>${bronTekst(t)}</small></td>
       <td><small>${g.p} pakket${g.p === 1 ? '' : 'ten'} · ${g.i} inspectie${g.i === 1 ? '' : 's'}</small></td>
-      <td class="knoppen" style="justify-content:flex-end">
+      <td class="actiecel"><div class="knoppen">
         <a class="knop klein" href="#/inspectietypen/${encodeURIComponent(t.id)}">${I.concept} Bewerken</a>
         <button class="knop klein" data-naarbib="${esc(t.id)}" title="Opslaan in de formulierenbibliotheek van het bedrijf">${I.exporteer} Naar bibliotheek</button>
-        ${t.naam === CALAMITEIT ? '' : `<button class="knop klein gevaar" data-weg="${esc(t.id)}" title="${t.standaard ? 'Verbergen in dit project' : 'Verwijderen uit dit project'}">${t.standaard ? 'Verbergen' : I.verwijder}</button>`}</td></tr>`;
+        ${t.naam === CALAMITEIT ? '' : `<button class="knop klein gevaar" data-weg="${esc(t.id)}" title="${t.standaard ? 'Verbergen in dit project' : 'Verwijderen uit dit project'}">${t.standaard ? 'Verbergen' : I.verwijder}</button>`}</div></td></tr>`;
   };
   const zichtbaar = alle.filter((t) => !t.verborgen);
   const verborgen = alle.filter((t) => t.verborgen);
@@ -873,7 +881,7 @@ async function inspectietypenPagina() {
     <section class="kaart" style="padding:0"><div class="tabelhouder"><table class="typetabel">
       <thead><tr><th>Inspectietype</th><th>Methodiek</th><th>Herkomst</th><th>Gebruik</th><th></th></tr></thead>
       <tbody>${zichtbaar.map(rij).join('')}
-        ${PROTOCOLLEN.map((s) => `<tr class="vast"><td><strong>${esc(s)}</strong></td><td><span class="methodiekchip">Vast protocol</span></td><td><small>Ingebouwd</small></td><td></td><td></td></tr>`).join('')}</tbody>
+        ${PROTOCOLLEN.map((s) => `<tr class="vast"><td><strong>${esc(s)}</strong></td><td><span class="methodiekchip">Vast protocol</span></td><td><small>Ingebouwd</small></td><td><small>–</small></td><td class="actiecel"></td></tr>`).join('')}</tbody>
     </table></div></section>
     ${verborgen.length ? `<details class="kaart"><summary>${verborgen.length} verborgen standaardtype${verborgen.length === 1 ? '' : 'n'}</summary>
       <ul>${verborgen.map((t) => `<li>${esc(t.naam)} <button class="knop klein" data-toon="${esc(t.id)}">Weer tonen</button></li>`).join('')}</ul></details>` : ''}
@@ -1163,10 +1171,10 @@ async function bibliotheekPagina() {
         ${x.velden?.length ? `<small> · ${x.velden.length} extra veld${x.velden.length === 1 ? '' : 'en'}</small>` : ''}</div></td>
       <td>v${esc(x.versie)}<br><small>${datumNL(String(x.gewijzigd).slice(0, 10))}${x.door ? ` · ${esc(x.door)}` : ''}</small></td>
       <td><small>${g.length ? g.map((p) => esc(p.naam)).join(', ') : '–'}${oud ? `<br>${I.let} ${oud} met oudere versie` : ''}</small></td>
-      <td class="knoppen" style="justify-content:flex-end">
+      <td class="actiecel"><div class="knoppen">
         <a class="knop klein" href="#/bibliotheek/${encodeURIComponent(x.id)}">${I.concept} Bewerken</a>
         <button class="knop klein" data-naar="${esc(x.id)}">${I.kopie} Naar projecten</button>
-        <button class="knop klein gevaar" data-weg="${esc(x.id)}" aria-label="Verwijderen">${I.verwijder}</button></td></tr>`;
+        <button class="knop klein gevaar" data-weg="${esc(x.id)}" aria-label="Verwijderen">${I.verwijder}</button></div></td></tr>`;
   }).join('')}</tbody></table></div></section>`
     : leegKaart('De bibliotheek is nog leeg. Maak een nieuw formulier, voeg de voorbeelden toe (Staat verhardingen, Bebording, Eenvoudige schouw), of sla vanuit Inspectietypen een type van een project op in de bibliotheek.')}`;
 

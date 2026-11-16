@@ -142,3 +142,39 @@ test('aanpassen, toevoegen en verwijderen', () => {
   assert.equal(w.weg.size, 4);
   assert.equal(D.telling(w.knopen).bouwdeel, 2);
 });
+
+test('werkboek met tabbladen per niveau', () => {
+  const bladen = [
+    { naam: 'Objecten', regels: [['Objectcode', 'Naam'], ['EP2', 'Europoortkering 2'], ['EP3', 'Europoortkering 3']] },
+    { naam: 'Elementen', regels: [['Elementcode', 'Element', 'Objectcode'], ['EP2-D1', 'Europoortkering 2 sectie D1', 'EP2'], ['EP2-D2', 'Europoortkering 2 sectie D2', 'Europoortkering 2']] },
+    { naam: 'Bouwdelen', regels: [['Bouwdeelcode', 'Bouwdeel', 'Elementcode', 'Eenheid', 'Hoeveelheid'], ['B1', 'Bekleding', 'EP2-D1', 'm2', '120'], ['B2', 'Kruin', 'EP2-D2', 'm1', '40'], ['B3', 'Teen', 'XX', '', '']] },
+    { naam: 'Blad2', regels: [['iets'], ['anders']] },
+  ];
+  const r = D.leesBladen(bladen);
+  assert.equal(r.indeling, 'tabbladen');
+  assert.deepEqual(D.telling(r.knopen), { object: 2, element: 2, bouwdeel: 2 });
+  assert.equal(r.fouten.length, 1);
+  assert.match(r.fouten[0], /Tabblad "Bouwdelen", regel 4/);
+  assert.deepEqual(r.bladen.map((b) => [b.naam, b.niveau, b.rijen, b.gebruikt]), [['Objecten', 'object', 2, true], ['Elementen', 'element', 2, true], ['Bouwdelen', 'bouwdeel', 3, true], ['Blad2', null, 0, false]]);
+  const idx = D.index(r.knopen);
+  const b2 = r.knopen.find((k) => k.code === 'B2');
+  assert.equal(D.pad(idx, b2.id).map((k) => k.code).join('>'), 'EP2>EP2-D2>B2');
+  assert.ok(r.kop.includes('Bouwdelen › Bouwdeelcode'));
+});
+
+test('werkboek met één blad met de hele decompositie', () => {
+  const r = D.leesBladen([{ naam: 'Info', regels: [['Toelichting']] }, { naam: 'Decompositie', regels: D.SJABLOON }]);
+  assert.equal(r.indeling, 'lijst');
+  assert.equal(r.knopen.length, 7);
+  assert.deepEqual(r.bladen.map((b) => b.gebruikt), [false, true]);
+});
+
+test('tabbladen zonder codes: verwijzen op naam', () => {
+  const r = D.leesBladen([
+    { naam: 'Objecten', regels: [['Object'], ['Europoortkering 2']] },
+    { naam: 'Elementen', regels: [['Element', 'Object'], ['Europoortkering 2 sectie D1', 'Europoortkering 2']] },
+    { naam: 'Bouwdelen', regels: [['Bouwdeel', 'Element'], ['Bekleding', 'Europoortkering 2 sectie D1']] },
+  ]);
+  assert.deepEqual(r.fouten, []);
+  assert.deepEqual(D.telling(r.knopen), { object: 1, element: 1, bouwdeel: 1 });
+});

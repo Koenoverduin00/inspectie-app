@@ -1489,3 +1489,8 @@ body.geen-storing .storingtegel, body.geen-storing .storingoptie { display: none
 .segment label { min-width: 0; }
 .velden .veld { min-width: 0; }
 .velden input[type="datetime-local"], .velden input[type="date"], .velden input[type="time"] { min-width: 0; max-width: 100%; }
+
+/* Actieknoppen in een tabelcel: de cel blijft een tabelcel, de knoppen staan rechts */
+td.actiecel { text-align: right; vertical-align: middle; }
+td.actiecel .knoppen { justify-content: flex-end; flex-wrap: wrap; }
+.typetabel td { vertical-align: middle; }
