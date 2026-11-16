@@ -1246,7 +1246,7 @@ form:not(.afroep-inspectie) .a-insp { display: none; }
   color: var(--nk); border: 1px solid var(--nk); border-radius: 999px; padding: 0 .45rem; line-height: 1.5; vertical-align: middle; }
 .decompstats { display: flex; flex-wrap: wrap; gap: 1rem 2rem; align-items: center; }
 .decompstats > div:not(.decompstats-knoppen) { display: flex; flex-direction: column; }
-.decompstats strong { font-size: 1.4rem; line-height: 1.1; }
+.decompstats > div > strong { font-size: 1.4rem; line-height: 1.1; }
 .decompstats-knoppen { margin-left: auto; display: flex; gap: .5rem; flex-wrap: wrap; }
 .decompbron { flex-basis: 100%; margin: 0; }
 .decompraster { display: grid; grid-template-columns: minmax(300px, 2fr) 3fr; gap: 1rem; align-items: start; }

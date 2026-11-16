@@ -519,16 +519,19 @@ Voor opdrachtgevers die volgens NEN 2767 werken met een eigen decompositie (obje
 - **Aanpassen in de app**: kies een onderdeel en gebruik *Bewerken* (code, naam, eenheid, hoeveelheid, GIS-code), *＋ Element/Bouwdeel eronder*,
   *＋ Object* of *Verwijderen* (met alles eronder; GIS-koppelingen vervallen). Een code is verplicht en uniek per niveau. Wijzig je een code, dan
   vraagt de app om bevestiging: pas hem ook aan in het bestand van de opdrachtgever, of kies bij het bijwerken een andere code die hetzelfde is gebleven.
-- **Koppelen op kolom** (knop op de decompositiepagina): kies welke **GIS-kolom** (objectcode, naam of een kenmerk uit het GIS-bestand)
-  overeenkomt met welk **veld in de decompositie** (GIS-code, code, naam of **elke andere kolom uit het ingelezen bestand**), eventueel per
-  **niveau** en per **laag**. Bij het inlezen bewaart de app alle kolommen per onderdeel (kolommen met "object", "element" of "bouwdeel" in de naam
-  bij dat niveau, overige bij het bouwdeel; bij tabbladen per niveau de kolommen van het eigen tabblad). Bij een gekozen onderdeel zie je ze onder
-  *Alle kolommen uit het bestand*. Een eerder ingelezen decompositie lees je één keer opnieuw in om die kolommen te krijgen. Je ziet vooraf hoeveel
-  vlakken worden gekoppeld, al goed staan, al anders gekoppeld zijn, geen match hebben of op een dubbele waarde vallen, met een tabel
-  "waarde → GIS-object → onderdeel". Pas na **Toepassen** verandert er iets; bestaande koppelingen worden alleen overschreven als je dat aanvinkt.
-  Hoofdletters, spaties en streepjes tellen niet mee. De gekozen instelling wordt bewaard en gebruikt bij het automatisch koppelen na een nieuwe levering.
-- **GIS koppelen** op object-, element- of bouwdeelniveau: automatisch als de objectcode gelijk is aan de GIS-code (of code) in de decompositie,
-  daarna op de kaart naast de boom: kies een onderdeel en klik op de vlakken (nogmaals klikken ontkoppelt). Een GIS-object hoort bij één onderdeel.
+- **GIS koppelen gebeurt alleen bij het inlezen.** In het voorbeeld van het inlezen kies je welke **GIS-kolom** (objectcode, naam of een kenmerk
+  uit het GIS-bestand) overeenkomt met welk **veld in de decompositie** (GIS-code, code, naam of **elke andere kolom uit het ingelezen bestand**),
+  eventueel per **niveau** en per **laag**. Koppelen kan op object-, element- of bouwdeelniveau; een GIS-object hoort bij één onderdeel.
+  Bij het inlezen bewaart de app alle kolommen per onderdeel (kolommen met "object", "element" of "bouwdeel" in de naam bij dat niveau, overige
+  bij het bouwdeel; bij tabbladen per niveau de kolommen van het eigen tabblad). Bij een gekozen onderdeel zie je ze onder *Alle kolommen uit het bestand*.
+  Je ziet vooraf hoeveel vlakken worden gekoppeld, al goed staan, al anders gekoppeld zijn, geen match hebben of op een dubbele waarde vallen,
+  met een tabel "waarde → GIS-object → onderdeel". Pas na **Overnemen** verandert er iets; bestaande koppelingen worden alleen overschreven als je
+  dat aanvinkt. Hoofdletters, spaties en streepjes tellen niet mee. De gekozen instelling wordt bewaard, op de decompositiepagina getoond en
+  voorgesteld bij een volgende levering. Wil je de koppeling aanpassen, lees het bestand dan opnieuw in. Op de kaart, de decompositiepagina en
+  de objectpagina kun je koppelingen alleen **bekijken**, niet wijzigen.
+- **Hiërarchie op de kaart**: klik je in de boom op een object, element of bouwdeel, dan toont de kaart alleen de GIS-vlakken die daaronder hangen
+  (direct gekoppeld en via onderliggende onderdelen) en zoomt erop in; de lijst ernaast toont ze per onderdeel. Zonder keuze zie je alle vlakken.
+  Klik je op een vlak, dan zie je bij welk onderdeel het hoort, met *Toon in decompositie*.
 - **Inspecteren**: bij een gekoppeld GIS-object toont het formulier de bouwdelen die erbij horen (het bouwdeel zelf, of alle bouwdelen onder het
   element/object). Elk gebrek hoort bij een bouwdeel; een bouwdeel dat niet kon worden bekeken vink je af met een reden.
 - **Scores**: alleen bouwdelen krijgen een conditie (het slechtste gebrek op dat bouwdeel, of 1 zonder gebreken). Er wordt niets opgeteld naar
