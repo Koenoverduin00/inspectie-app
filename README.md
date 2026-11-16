@@ -524,6 +524,15 @@ Voor opdrachtgevers die volgens NEN 2767 werken met een eigen decompositie (syst
   tabblad is de bouwdeelcode. Bij één tabblad met de hele decompositie neemt de app het tabblad met de meeste onderdelen. Je ziet eerst een voorbeeld met aantallen en meldingen; pas na "Overnemen" verandert er iets.
   Onderdelen houden een vaste id op basis van hun code, dus bij een nieuwe levering blijven koppelingen en scores behouden.
   Onderdelen zonder eigen code worden bij het bijwerken herkend op hun naam en plaats in de boom.
+- **Versies / definitief maken**: na het inlezen of aanpassen is de decompositie een *concept*. Met **Definitief maken als versie N** leg je
+  de boom vast als versie 1, 2, … (met datum en wie). Werkpakketten gebruiken altijd de laatste definitieve versie; wijzig je daarna iets (nieuwe
+  levering of aanpassing in de app), dan zie je *Concept: gewijzigd na versie N* en blijven werkpakketten op versie N tot je de nieuwe versie
+  definitief maakt. De versiegeschiedenis staat op de decompositiepagina.
+- **Objecten kiezen in werkpakketten via de decompositie**: is er een definitieve versie, dan staat bij *Objecten samenstellen* de boom
+  *Kiezen via de NEN 2767-decompositie · versie N*. Per onderdeel zie je hoeveel gekoppelde GIS-objecten eronder hangen en hoeveel daarvan in het
+  pakket zitten; klik op een onderdeel om lijst en kaart daarop te filteren (combineerbaar met de andere filters), of gebruik ＋/− om alles eronder
+  toe te voegen of eruit te halen. Het pakket bewaart met welke versie het is samengesteld (zichtbaar op de pakketpagina). Is de decompositie nog
+  niet definitief, dan zie je daar alleen een melding.
 - **Bijwerken met een nieuwe levering**: lees het nieuwe bestand in en kies **welke code hetzelfde is gebleven** (Code of GIS-code). Je ziet per onderdeel
   wat ongewijzigd, gewijzigd, nieuw of vervallen is; herkende onderdelen houden hun GIS-koppelingen en scores. **De kolommen moeten dezelfde namen
   hebben als bij het eerste inlezen**: ontbreekt of heet een kolom anders, dan wordt het bijwerken geweigerd met de lijst van verwachte kolommen.

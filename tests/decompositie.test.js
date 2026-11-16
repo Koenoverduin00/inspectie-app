@@ -362,3 +362,25 @@ test('bijwerken: onderdelen zonder code worden herkend op hun vaste id', () => {
   assert.deepEqual(r.toegevoegd.map((k) => k.naam), ['Struiken']);
   assert.deepEqual(r.vervallen, []);
 });
+
+test('versies: definitief maken, concept na wijziging, werkpakketten gebruiken de definitieve boom', () => {
+  let dec = { knopen: D.leesDecompositie(D.SJABLOON).knopen, bestand: 'a.csv' };
+  assert.deepEqual(D.versieStatus(dec), { versie: null, op: '', door: '', concept: true, leeg: false });
+  assert.equal(D.definitieveBoom(dec), null);
+  dec = D.maakDefinitief(dec, { op: '2026-11-16T10:00:00Z', door: 'a@b.nl' });
+  assert.equal(D.versieStatus(dec).versie, 1);
+  assert.equal(D.versieStatus(dec).concept, false);
+  // wijziging na v1: concept, maar werkpakketten zien nog v1
+  const dek = dec.knopen.find((k) => k.naam === 'Brugdek');
+  dec = { ...dec, knopen: D.pasKnoopAan(dec.knopen, dek.id, { naam: 'Brugdek (beton)' }).knopen };
+  assert.equal(D.versieStatus(dec).concept, true);
+  assert.equal(D.definitieveBoom(dec).knopen.find((k) => k.id === dek.id).naam, 'Brugdek');
+  dec = D.maakDefinitief(dec, { door: 'a@b.nl' });
+  assert.equal(D.definitieveBoom(dec).versie, 2);
+  assert.deepEqual(dec.versies.map((v) => v.versie), [1, 2]);
+  assert.equal(dec.versies[1].telling.bouwdeel, 4);
+  // deelboom
+  const idx = D.index(dec.knopen);
+  const obj = dec.knopen.find((k) => k.niveau === 'object');
+  assert.equal(D.deelboom(idx, obj.id).size, 7);
+});

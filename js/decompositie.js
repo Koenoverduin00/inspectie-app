@@ -415,6 +415,41 @@ export function zetSysteemdelen(res, { kolom = '', naam = '' } = {}) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Versies: een beheerder maakt de decompositie "definitief" als versie 1, 2, …. Werkpakketten gebruiken alleen de laatste
+// definitieve versie (een momentopname van de boom); wijzigingen daarna zijn een concept tot de volgende versie definitief is.
+// ---------------------------------------------------------------------------
+const boomSleutel = (knopen) => JSON.stringify((knopen ?? []).map((k) => [k.id, k.code, k.naam, k.niveau, k.ouder ?? null, k.eenheid ?? '', k.hoeveelheid ?? '', k.gis ?? '']));
+
+/** Status van de decompositie: { versie (laatste definitieve, of null), op, door, concept (gewijzigd na die versie of nooit definitief) }. */
+export function versieStatus(dec) {
+  const d = dec?.definitief;
+  if (!dec?.knopen?.length) return { versie: d?.versie ?? null, op: d?.op ?? '', door: d?.door ?? '', concept: false, leeg: true };
+  return { versie: d?.versie ?? null, op: d?.op ?? '', door: d?.door ?? '', concept: !d || boomSleutel(d.knopen) !== boomSleutel(dec.knopen), leeg: false };
+}
+
+/** Maakt de huidige boom definitief als volgende versie. */
+export function maakDefinitief(dec, { op = new Date().toISOString(), door = '' } = {}) {
+  const versie = (dec?.definitief?.versie ?? 0) + 1;
+  const t = telling(dec.knopen);
+  return {
+    ...dec,
+    definitief: { versie, op, door, knopen: dec.knopen.map((k) => ({ ...k })) },
+    versies: [...(dec.versies ?? []), { versie, op, door, bestand: dec.bestand ?? '', telling: t }],
+  };
+}
+
+/** De boom die werkpakketten gebruiken: alleen de laatste definitieve versie, of null. */
+export const definitieveBoom = (dec) => (dec?.definitief?.knopen?.length ? { versie: dec.definitief.versie, op: dec.definitief.op, door: dec.definitief.door, knopen: dec.definitief.knopen } : null);
+
+/** Alle knoop-ids in de deelboom onder (en met) een knoop. */
+export function deelboom(idx, id) {
+  const uit = new Set();
+  const loop = (k) => { uit.add(k); (idx.kinderen.get(k) ?? []).forEach((c) => loop(c.id)); };
+  if (idx.perId.has(id)) loop(id);
+  return uit;
+}
+
 /** Aantallen per niveau. */
 export function telling(knopen) {
   const t = { systeemdeel: 0, object: 0, element: 0, bouwdeel: 0 };

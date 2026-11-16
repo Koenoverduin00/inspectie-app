@@ -293,6 +293,7 @@ function koppelTekst(kp) {
     : String(kp.veld).startsWith('kenmerk:') ? `kolom "${String(kp.veld).slice(8)}"` : D.KOPPEL_VELDEN[kp.veld]?.toLowerCase();
   return `${kolom} = ${veld}${kp.niveau ? `, alleen ${D.NIVEAU_MEERVOUD[kp.niveau]}` : ''}`;
 }
+const aantalNiveau = (aantal, n) => `${aantal} ${aantal === 1 ? D.NIVEAU_LABEL[n].toLowerCase() : D.NIVEAU_MEERVOUD[n]}`;
 const niveauChip = (n) => `<span class="niveauchip" style="--nk:${NIVEAU_KLEUR[n] ?? '#8a96a3'}">${esc(D.NIVEAU_LABEL[n] ?? n)}</span>`;
 const knoopNaam = (k) => (k ? `${k.code ? `${esc(k.code)} ` : ''}${esc(k.naam)}` : '');
 
@@ -410,6 +411,7 @@ async function decompositiePagina(_, q) {
       <div><strong id="d-gekoppeld"></strong><small>GIS-objecten gekoppeld</small></div>
       <div class="decompstats-knoppen">
         <button class="knop klein gevaar" id="d-wis">${I.verwijder} Verwijderen</button></div>
+      <div class="decompversie" id="d-versie"></div>
       <p class="decompbron"><small>${project.decompositie?.bestand ? `Bron: ${esc(project.decompositie.bestand)} · ` : ''}${project.decompositie?.op ? `ingelezen ${datumNL(project.decompositie.op.slice(0, 10))}` : ''}<span id="d-aangepast">${project.decompositie?.aangepast ? ` · handmatig aangepast ${datumNL(project.decompositie.aangepast.slice(0, 10))}` : ''}</span></small></p>
       <p class="decompkolommen"><small>${I.let} <strong>Nieuwe levering of aangepaste gegevens?</strong> Gebruik in het bestand precies dezelfde kolomnamen als bij het eerste inlezen,
         anders kunnen gegevens niet worden bijgewerkt of ingelezen.${project.decompositie?.kolommen?.length ? ` Kolommen: ${project.decompositie.kolommen.map((k) => `<code>${esc(k)}</code>`).join(' ')}` : ''}
@@ -664,7 +666,8 @@ async function decompositiePagina(_, q) {
       if (vb.vervallenObj.length && !confirm(`${vb.vervallenObj.length} GIS-koppeling(en) vervallen omdat het onderdeel niet meer in het bestand staat. Doorgaan?`)) return;
       const koppeling = { kolom: kp.kolom, veld: kp.veld, niveau: kp.niveau, laag: kp.laag };
       const auto = koppelRes?.wijzigingen ?? new Map();
-      await bewaarProject({ knopen: vb.nieuweKnopen, bestand: vb.bestand, op: new Date().toISOString(), kolommen: project.decompositie?.kolommen?.length ? project.decompositie.kolommen : res.kop, sleutel: vb.sleutel, koppeling, systeemdeelKolom: vb.sd });
+      await bewaarProject({ knopen: vb.nieuweKnopen, bestand: vb.bestand, op: new Date().toISOString(), kolommen: project.decompositie?.kolommen?.length ? project.decompositie.kolommen : res.kop, sleutel: vb.sleutel, koppeling, systeemdeelKolom: vb.sd,
+        ...(project.decompositie?.definitief ? { definitief: project.decompositie.definitief, versies: project.decompositie.versies ?? [] } : {}) });
       const w = new Map(vb.vervallenObj.map((o) => [o.id, '']));
       for (const [oid, kid] of auto) w.set(oid, kid);
       const n = await bewaarKoppelingen(w);
@@ -761,8 +764,36 @@ async function decompositiePagina(_, q) {
     kp = { ...kp, [v]: e.target.type === 'checkbox' ? e.target.checked : e.target.value };
     tekenKoppel();
   });
+  // Versie: definitief maken voor werkpakketten.
+  const tekenVersie = () => {
+    const el = app.querySelector('#d-versie');
+    if (!el) return;
+    const v = D.versieStatus(project.decompositie);
+    const volgende = (v.versie ?? 0) + 1;
+    const versies = project.decompositie?.versies ?? [];
+    el.innerHTML = `
+      <div class="decompversie-status">
+        ${v.versie ? `<span class="label-status afgerond">${I.vink} Definitief versie ${v.versie}</span>` : ''}
+        ${v.concept ? `<span class="label-status binnenkort">${v.versie ? `Concept: gewijzigd na versie ${v.versie}` : 'Concept: nog niet definitief'}</span>` : ''}
+        <small>${v.versie
+    ? `Werkpakketten gebruiken <strong>versie ${v.versie}</strong> (definitief ${datumNL(v.op.slice(0, 10))}${v.door ? ` door ${esc(v.door)}` : ''}).${v.concept ? ' Wijzigingen daarna zijn pas zichtbaar in werkpakketten als je ze definitief maakt.' : ''}`
+    : 'Pas als je de decompositie definitief maakt, kun je in werkpakketten objecten kiezen via de decompositie.'}</small>
+        ${v.concept ? `<button type="button" class="knop klein primair" id="d-definitief">${I.vink} Definitief maken als versie ${volgende}</button>` : ''}
+      </div>
+      ${versies.length ? `<details><summary><small>Versiegeschiedenis (${versies.length})</small></summary><ul class="versielijst">${versies.slice().reverse().map((x) => `<li><small><strong>Versie ${x.versie}</strong> · ${datumNL(String(x.op).slice(0, 10))}${x.door ? ` · ${esc(x.door)}` : ''}${x.bestand ? ` · ${esc(x.bestand)}` : ''}
+        · ${D.NIVEAUS.filter((n) => x.telling?.[n]).map((n) => aantalNiveau(x.telling[n], n)).join(', ')}</small></li>`).join('')}</ul></details>` : ''}`;
+    el.querySelector('#d-definitief')?.addEventListener('click', async () => {
+      const tn = D.telling(knopen);
+      if (!confirm(`Decompositie definitief maken als versie ${volgende}?\n\n${D.NIVEAUS.filter((n) => tn[n]).map((n) => aantalNiveau(tn[n], n)).join(', ')}.\n`
+        + 'Werkpakketten gebruiken daarna deze versie om objecten te kiezen.')) return;
+      await bewaarProject(D.maakDefinitief(project.decompositie, { door: ikEmail() || instelling.lees('inspecteur') || '' }));
+      gedaan(`Decompositie versie ${volgende} is definitief`, { extra: 'Werkpakketten gebruiken nu deze versie om objecten te kiezen.' });
+      tekenVersie();
+    });
+  };
+  tekenVersie();
   app.querySelector('#d-wis')?.addEventListener('click', async () => {
-    if (!confirm('De decompositie en alle koppelingen met GIS-objecten verwijderen? Afgeronde inspecties behouden hun bouwdeelscores.')) return;
+    if (!confirm(`De decompositie en alle koppelingen met GIS-objecten verwijderen?${project.decompositie?.definitief ? ' Ook de definitieve versies vervallen; werkpakketten houden hun objecten.' : ''} Afgeronde inspecties behouden hun bouwdeelscores.`)) return;
     await bewaarKoppelingen(new Map(objecten.filter((o) => o.decomp).map((o) => [o.id, ''])));
     await bewaarProject(null);
     melding('Decompositie verwijderd');
@@ -781,6 +812,7 @@ async function decompositiePagina(_, q) {
     if (r) kies(r.dataset.knoop === gekozen ? null : r.dataset.knoop);
   });
   const naWijziging = () => {
+    tekenVersie();
     const tn = D.telling(knopen);
     for (const n of D.NIVEAUS) { const x = app.querySelector(`#d-t-${n}`); if (x) x.textContent = tn[n]; }
     const a = app.querySelector('#d-aangepast');
@@ -8832,6 +8864,9 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
   }
   const planning = p.planning ?? (project?.planningswijze === 'afroep' ? 'afroep' : 'gepland');
   const leden = project?.leden ?? [];
+  // NEN 2767-decompositie: alleen de laatste definitieve versie (met versienummer) wordt gebruikt bij het kiezen van objecten.
+  const decBoom = D.definitieveBoom(project?.decompositie);
+  const decStatus = D.versieStatus(project?.decompositie);
   const terug = id ? `#/werkpakketten/${esc(id)}` : '#/werkpakketten';
 
   app.innerHTML = `
@@ -8897,6 +8932,15 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
           <input type="search" id="z-zoek" placeholder="Zoek code of naam…" aria-label="Zoeken">
           <select id="z-toon" aria-label="Toon">${optie('', 'Toon alle gefilterde')}${optie('in', 'Alleen in pakket')}${optie('uit', 'Alleen niet in pakket')}</select>
         </div>
+        ${decBoom ? `<details class="pk-decomp" id="pk-decomp" open>
+          <summary><strong>Kiezen via de NEN 2767-decompositie</strong> <span class="label-status afgerond">versie ${decBoom.versie}</span>
+            <small>definitief ${datumNL(decBoom.op.slice(0, 10))}${decStatus.concept ? ' · er is een nieuwer concept dat nog niet definitief is' : ''}</small></summary>
+          <p class="hulptekst" style="margin:.35rem 0">Klik op een onderdeel om de lijst en de kaart te filteren op de objecten die eronder hangen, of voeg ze in één keer toe (＋) of haal ze eruit (−).</p>
+          <div class="dk-zoekbalk"><input type="search" id="pk-dzoek" placeholder="Zoek in de decompositie…" autocomplete="off"></div>
+          <div id="pk-boom" class="pk-boom"></div>
+        </details>` : project?.decompositie?.knopen?.length ? `<p class="hulptekst">${I.let} Er is een NEN 2767-decompositie ingelezen, maar die is nog niet definitief gemaakt.
+          ${magBeheren() ? '<a href="#/decompositie">Maak hem definitief</a> om objecten via de decompositie te kunnen kiezen.' : ''}</p>` : ''}
+        <div id="pk-decompfilter"></div>
         <div class="knoppen" style="margin-bottom:.75rem">
           <button type="button" class="knop" id="alles-erin"></button>
           <button type="button" class="knop" id="alles-eruit"></button>
@@ -9020,10 +9064,88 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
   });
   const kf = kenmerkFilters($('#z-kenmerken'), { basis: () => filterObjecten(objecten, { laag: $('#z-laag').value, type: $('#z-type').value }), opWijzig: () => toon() });
   let zichtbaar = [];
+  // Decompositieboom met per onderdeel het aantal gekoppelde objecten (in het pakket / totaal).
+  const decIdx = D.index(decBoom?.knopen ?? []);
+  let decFilter = null;
+  const decOpen = new Set((decBoom?.knopen ?? []).filter((k) => k.niveau === 'systeemdeel').map((k) => k.id));
+  const objOnder = new Map();
+  if (decBoom) {
+    const perKnoop = new Map();
+    for (const o of objecten) if (o.decomp && decIdx.perId.has(o.decomp)) perKnoop.set(o.decomp, [...(perKnoop.get(o.decomp) ?? []), o.id]);
+    const verzamel = (k) => {
+      const ids = [...(perKnoop.get(k.id) ?? []), ...(decIdx.kinderen.get(k.id) ?? []).flatMap(verzamel)];
+      objOnder.set(k.id, ids);
+      return ids;
+    };
+    (decIdx.kinderen.get(null) ?? []).forEach(verzamel);
+  }
+  const tekenDecomp = () => {
+    const fel = $('#pk-decompfilter');
+    if (fel) {
+      const k = decFilter ? decIdx.perId.get(decFilter) : null;
+      fel.innerHTML = k ? `<div class="pk-filterchip">${I.filter ?? ''} Filter decompositie v${decBoom.versie}: ${niveauChip(k.niveau)} <strong>${esc(D.padTekst(decIdx, k.id))}</strong>
+        <button type="button" class="knop klein" data-dwis aria-label="Filter wissen">${I.kruis}</button></div>` : '';
+    }
+    const el = $('#pk-boom');
+    if (!el) return;
+    const termen = zoekTermen($('#pk-dzoek').value);
+    let zichtbaarK = null;
+    if (termen.length) {
+      zichtbaarK = new Set();
+      for (const k of decIdx.knopen) if (termen.every((x) => `${k.code} ${k.naam}`.toLowerCase().includes(x))) D.pad(decIdx, k.id).forEach((x) => zichtbaarK.add(x.id));
+    }
+    let verborgen = 0;
+    const rij = (k) => {
+      const ids = objOnder.get(k.id) ?? [];
+      if (!ids.length) { verborgen += 1; return ''; }
+      if (zichtbaarK && !zichtbaarK.has(k.id)) return '';
+      const kids = (decIdx.kinderen.get(k.id) ?? []).filter((c) => (objOnder.get(c.id) ?? []).length);
+      const isOpen = termen.length ? true : decOpen.has(k.id);
+      const inPak = ids.filter((x) => gekozen.has(x)).length;
+      return `<li><div class="dk-rij${k.id === decFilter ? ' gekozen' : ''}">
+        ${kids.length ? `<button type="button" class="dk-pijl" data-dklap="${esc(k.id)}" aria-label="${isOpen ? 'Inklappen' : 'Uitklappen'}">${isOpen ? '▾' : '▸'}</button>` : '<span class="dk-pijl"></span>'}
+        ${niveauChip(k.niveau)}
+        <button type="button" class="linkknop dk-naam" data-dfilter="${esc(k.id)}" title="Filter op wat hieronder hangt">${k.code ? `<small>${esc(k.code)}</small> ` : ''}${esc(k.naam)}</button>
+        <small class="pk-tel ${inPak === ids.length ? 'vol' : inPak ? 'deels' : ''}">${inPak}/${ids.length}</small>
+        <button type="button" class="knop klein" data-derin="${esc(k.id)}" ${inPak === ids.length ? 'disabled' : ''} title="Alle ${ids.length} objecten hieronder toevoegen" aria-label="Toevoegen">＋</button>
+        <button type="button" class="knop klein" data-deruit="${esc(k.id)}" ${inPak ? '' : 'disabled'} title="Objecten hieronder uit het pakket halen" aria-label="Eruit">−</button>
+      </div>${kids.length && isOpen ? `<ul>${kids.map(rij).join('')}</ul>` : ''}</li>`;
+    };
+    const html = (decIdx.kinderen.get(null) ?? []).map(rij).join('');
+    el.innerHTML = html ? `<ul class="dk-boom">${html}</ul>` : '<p class="leeg">Geen onderdelen met gekoppelde GIS-objecten gevonden.</p>';
+  };
+  app.querySelector('#pk-dzoek')?.addEventListener('input', tekenDecomp);
+  app.querySelector('#pk-decompfilter')?.addEventListener('click', (e) => { if (e.target.closest('[data-dwis]')) { decFilter = null; toon(); } });
+  app.querySelector('#pk-boom')?.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-dklap],[data-dfilter],[data-derin],[data-deruit]');
+    if (!t) return;
+    const { dklap, dfilter, derin, deruit } = t.dataset;
+    if (dklap) { if (decOpen.has(dklap)) decOpen.delete(dklap); else decOpen.add(dklap); return tekenDecomp(); }
+    if (dfilter) {
+      decFilter = decFilter === dfilter ? null : dfilter;
+      D.pad(decIdx, dfilter).forEach((x) => decOpen.add(x.id));
+      toon();
+      kaartKlaar.then((k) => k?.toon(new Set(zichtbaar.map((o) => o.id)), { inzoomen: true }));
+      return;
+    }
+    const kid = derin || deruit;
+    const ids = objOnder.get(kid) ?? [];
+    let n = 0;
+    for (const oid of ids) {
+      if (derin && !gekozen.has(oid)) { gekozen.add(oid); n += 1; }
+      if (deruit && gekozen.has(oid)) { gekozen.delete(oid); n += 1; }
+    }
+    if (n) formulierGewijzigd = true;
+    melding(`${n} object${n === 1 ? '' : 'en'} ${derin ? 'toegevoegd' : 'uit het pakket gehaald'} (${decIdx.perId.get(kid)?.naam ?? ''})`);
+    toon();
+  });
   const toon = () => {
     const toonKeuze = $('#z-toon').value;
+    const inDecomp = decFilter ? D.deelboom(decIdx, decFilter) : null;
     zichtbaar = filterObjecten(objecten, filters(), { status })
+      .filter((o) => !inDecomp || inDecomp.has(o.decomp))
       .filter((o) => (toonKeuze === 'in' ? gekozen.has(o.id) : toonKeuze === 'uit' ? !gekozen.has(o.id) : true));
+    tekenDecomp();
     const max = 500;
     $('#z-rijen').innerHTML = zichtbaar.length ? zichtbaar.slice(0, max).map((o) => `
       <tr class="${gekozen.has(o.id) ? 'gekozen' : ''}">
@@ -9122,6 +9244,8 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
       afroepInspectiesoort: form.elements.afroepInspectiesoort.value, reactietijd: form.elements.reactietijd.value === '' ? '' : Number(form.elements.reactietijd.value),
       toegewezen: [...form.querySelectorAll('input[name=toegewezen]:checked')].map((c) => c.value),
       vrijgaveVereist: form.elements.vrijgaveVereist.checked,
+      // Welke definitieve decompositieversie gold bij het samenstellen.
+      decompVersie: decBoom ? decBoom.versie : (bron?.decompVersie ?? null),
       objecten: objecten.filter((o) => gekozen.has(o.id)).map((o) => o.id), // vaste volgorde (op code)
       aangemaakt: (id ? bron.aangemaakt : null) ?? nu, gewijzigd: nu,
     };
@@ -9298,7 +9422,7 @@ async function pakketDetail(id, q = new URLSearchParams()) {
   app.innerHTML = `
     <div class="paginakop">
       <div><p><a href="#/werkpakketten">← Werkpakketten</a></p><h1>${esc(pr.naam)}</h1>
-        <p>${pr.code ? `${esc(pr.code)} · ` : ''}${(pr.objecten ?? []).length} objecten · ${pakketStatusLabel(pr.status)}${afroep ? ` <span class="afroeplabel">${I.wacht} Op afroep</span>` : ''}</p></div>
+        <p>${pr.code ? `${esc(pr.code)} · ` : ''}${(pr.objecten ?? []).length} objecten · ${pakketStatusLabel(pr.status)}${pr.decompVersie ? ` · <span title="Samengesteld met de definitieve NEN 2767-decompositie">decompositie v${esc(pr.decompVersie)}</span>` : ''}${afroep ? ` <span class="afroeplabel">${I.wacht} Op afroep</span>` : ''}</p></div>
       <div class="knoppen">
         ${magBeheren() ? `<a class="knop" href="#/werkpakketten/${esc(id)}/bewerken">Bewerken</a>
           ${afroep ? `<a class="knop primair" href="#/werkpakketten/${esc(id)}/afroep">＋ Afroep</a>` : `<a class="knop" href="#/planning?pakket=${esc(id)}">${I.kalender} Inplannen</a>

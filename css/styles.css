@@ -1503,3 +1503,16 @@ td.actiecel .knoppen { justify-content: flex-end; flex-wrap: wrap; }
 .koppelregel small { font-weight: 400; color: var(--tekst-zacht); }
 .koppelregel code { font-size: .78rem; }
 .koppelis { font-size: 1.4rem; font-weight: 700; color: var(--primair); padding-bottom: 1.6rem; }
+.decompversie { flex-basis: 100%; border-top: 1px solid var(--rand); padding-top: .6rem; }
+.decompversie-status { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .75rem; }
+.decompversie-status small { flex: 1 1 18rem; }
+.versielijst { margin: .25rem 0 0; padding-left: 1.2rem; }
+.pk-decomp { border: 1px solid var(--rand); border-radius: 8px; padding: .5rem .75rem; margin: 0 0 .75rem; }
+.pk-decomp > summary { cursor: pointer; display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .6rem; }
+.pk-boom { max-height: 360px; overflow: auto; }
+.pk-boom .dk-rij { display: flex; align-items: center; gap: .4rem; }
+.pk-boom .dk-naam { text-align: left; flex: 1; }
+.pk-tel { min-width: 3.2rem; text-align: right; color: var(--zacht, #6b7785); }
+.pk-tel.deels { color: #b06a00; font-weight: 600; }
+.pk-tel.vol { color: #1a7f37; font-weight: 600; }
+.pk-filterchip { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .4rem; background: var(--achtergrond); border: 1px solid var(--rand); border-radius: 999px; padding: .2rem .3rem .2rem .75rem; margin: 0 0 .75rem; }
