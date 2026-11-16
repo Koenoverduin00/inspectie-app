@@ -1494,3 +1494,12 @@ body.geen-storing .storingtegel, body.geen-storing .storingoptie { display: none
 td.actiecel { text-align: right; vertical-align: middle; }
 td.actiecel .knoppen { justify-content: flex-end; flex-wrap: wrap; }
 .typetabel td { vertical-align: middle; }
+
+/* Koppelen op kolom (decompositie) */
+.koppelpaneel { border: 2px solid var(--primair); }
+.koppelregel { display: flex; flex-wrap: wrap; gap: .75rem 1rem; align-items: flex-end; }
+.koppelregel > label:not(.vink) { display: flex; flex-direction: column; gap: .25rem; font-weight: 600; font-size: .9rem; min-width: 0; }
+.koppelregel select { min-width: 12rem; max-width: 22rem; }
+.koppelregel small { font-weight: 400; color: var(--tekst-zacht); }
+.koppelregel code { font-size: .78rem; }
+.koppelis { font-size: 1.4rem; font-weight: 700; color: var(--primair); padding-bottom: 1.6rem; }

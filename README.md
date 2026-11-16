@@ -519,6 +519,11 @@ Voor opdrachtgevers die volgens NEN 2767 werken met een eigen decompositie (obje
 - **Aanpassen in de app**: kies een onderdeel en gebruik *Bewerken* (code, naam, eenheid, hoeveelheid, GIS-code), *＋ Element/Bouwdeel eronder*,
   *＋ Object* of *Verwijderen* (met alles eronder; GIS-koppelingen vervallen). Een code is verplicht en uniek per niveau. Wijzig je een code, dan
   vraagt de app om bevestiging: pas hem ook aan in het bestand van de opdrachtgever, of kies bij het bijwerken een andere code die hetzelfde is gebleven.
+- **Koppelen op kolom** (knop op de decompositiepagina): kies welke **GIS-kolom** (objectcode, naam of een kenmerk uit het GIS-bestand)
+  overeenkomt met welk **veld in de decompositie** (GIS-code, code of naam), eventueel per **niveau** en per **laag**. Je ziet vooraf hoeveel
+  vlakken worden gekoppeld, al goed staan, al anders gekoppeld zijn, geen match hebben of op een dubbele waarde vallen, met een tabel
+  "waarde → GIS-object → onderdeel". Pas na **Toepassen** verandert er iets; bestaande koppelingen worden alleen overschreven als je dat aanvinkt.
+  Hoofdletters, spaties en streepjes tellen niet mee. De gekozen instelling wordt bewaard en gebruikt bij het automatisch koppelen na een nieuwe levering.
 - **GIS koppelen** op object-, element- of bouwdeelniveau: automatisch als de objectcode gelijk is aan de GIS-code (of code) in de decompositie,
   daarna op de kaart naast de boom: kies een onderdeel en klik op de vlakken (nogmaals klikken ontkoppelt). Een GIS-object hoort bij één onderdeel.
 - **Inspecteren**: bij een gekoppeld GIS-object toont het formulier de bouwdelen die erbij horen (het bouwdeel zelf, of alle bouwdelen onder het

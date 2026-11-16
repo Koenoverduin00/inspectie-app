@@ -224,3 +224,34 @@ test('ruime herkenning van kolomnamen (ID, nummer, omschrijving, type)', () => {
   // Lijst-indeling blijft ongemoeid
   assert.equal(D.leesDecompositie(D.SJABLOON).knopen.length, 7);
 });
+
+test('koppelen op een gekozen kolom', () => {
+  const kn = D.leesDecompositie(D.SJABLOON).knopen; // KW-001.1.1 heeft GIS-code KW-001-LH-N
+  const lh = kn.find((k) => k.code === 'KW-001.1.1');
+  const dek = kn.find((k) => k.naam === 'Brugdek');
+  const objecten = [
+    { id: 'a', code: 'X1', naam: 'Brugdek', kenmerken: { decomp_id: 'kw-001.1.1' }, laagId: 'L1' },
+    { id: 'b', code: 'X2', naam: 'Iets', kenmerken: { decomp_id: 'KW-001.2.1' }, laagId: 'L1' },
+    { id: 'c', code: 'X3', naam: 'Leuning', kenmerken: {}, laagId: 'L2' },
+    { id: 'd', code: 'X4', naam: 'Onbekend', kenmerken: { decomp_id: 'ZZZ' }, laagId: 'L1', decomp: lh.id },
+  ];
+  // kenmerk vergelijken met de code
+  let r = D.koppelOpKolom(kn, objecten, { kolom: 'kenmerk:decomp_id', veld: 'code' });
+  assert.equal(r.wijzigingen.get('a'), lh.id);
+  assert.equal(r.wijzigingen.get('b'), dek.id);
+  assert.equal(r.zonderWaarde, 1);
+  assert.deepEqual(r.zonderMatch.map((o) => o.id), ['d']);
+  // naam vergelijken, alleen bouwdelen, alleen laag L1
+  r = D.koppelOpKolom(kn, objecten, { kolom: 'naam', veld: 'naam', niveau: 'bouwdeel', laag: 'L1' });
+  assert.deepEqual([...r.wijzigingen.keys()], ['a']);
+  // bestaande koppeling niet overschrijven, wel als gevraagd
+  const o2 = [{ id: 'e', code: 'KW-001-LH-N', decomp: dek.id }];
+  r = D.koppelOpKolom(kn, o2, { kolom: 'code', veld: 'gis' });
+  assert.equal(r.anders.length, 1);
+  assert.equal(r.wijzigingen.size, 0);
+  r = D.koppelOpKolom(kn, o2, { kolom: 'code', veld: 'gis', overschrijven: true });
+  assert.equal(r.wijzigingen.get('e'), lh.id);
+  // dubbele waarden worden niet gekoppeld
+  r = D.koppelOpKolom(kn, [{ id: 'f', code: 'z', naam: 'Steenbekleding' }], { kolom: 'naam', veld: 'naam' });
+  assert.equal(r.wijzigingen.size, 0);
+});

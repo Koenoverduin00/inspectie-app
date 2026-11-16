@@ -286,6 +286,12 @@ function bouwdelenVanObject(o, idx = decompIndex()) {
   return D.bouwdelenOnder(idx, o.decomp);
 }
 const NIVEAU_KLEUR = { object: '#7d5ba6', element: '#c27c1e', bouwdeel: '#2f8f5b' };
+/** "Objectcode = GIS-code (bouwdelen)" – leesbare beschrijving van een koppelinstelling. */
+function koppelTekst(kp) {
+  const kolom = kp.kolom === 'code' ? 'objectcode' : kp.kolom === 'naam' ? 'naam' : `kenmerk "${String(kp.kolom).slice(8)}"`;
+  const veld = kp.veld === 'auto' || !kp.veld ? 'GIS-code of code' : D.KOPPEL_VELDEN[kp.veld]?.toLowerCase();
+  return `${kolom} = ${veld}${kp.niveau ? `, alleen ${{ object: 'objecten', element: 'elementen', bouwdeel: 'bouwdelen' }[kp.niveau]}` : ''}`;
+}
 const niveauChip = (n) => `<span class="niveauchip" style="--nk:${NIVEAU_KLEUR[n] ?? '#8a96a3'}">${esc(D.NIVEAU_LABEL[n] ?? n)}</span>`;
 const knoopNaam = (k) => (k ? `${k.code ? `${esc(k.code)} ` : ''}${esc(k.naam)}` : '');
 
@@ -401,13 +407,14 @@ async function decompositiePagina(_, q) {
       <div><strong id="d-t-bouwdeel">${t().bouwdeel}</strong><small>bouwdelen</small></div>
       <div><strong id="d-gekoppeld"></strong><small>GIS-objecten gekoppeld</small></div>
       <div class="decompstats-knoppen">
-        <button class="knop klein" id="d-auto" title="Koppel GIS-objecten waarvan de objectcode gelijk is aan de (GIS-)code in de decompositie">${I.vernieuw} Koppelen op code</button>
+        <button class="knop klein primair" id="d-auto" title="Kies welke GIS-kolom overeenkomt met welk veld in de decompositie, bekijk het resultaat en pas het toe">${I.vernieuw} Koppelen op kolom…</button>
         <button class="knop klein gevaar" id="d-wis">${I.verwijder} Verwijderen</button></div>
       <p class="decompbron"><small>${project.decompositie?.bestand ? `Bron: ${esc(project.decompositie.bestand)} · ` : ''}${project.decompositie?.op ? `ingelezen ${datumNL(project.decompositie.op.slice(0, 10))}` : ''}<span id="d-aangepast">${project.decompositie?.aangepast ? ` · handmatig aangepast ${datumNL(project.decompositie.aangepast.slice(0, 10))}` : ''}</span></small></p>
       <p class="decompkolommen"><small>${I.let} <strong>Nieuwe levering of aangepaste gegevens?</strong> Gebruik in het bestand precies dezelfde kolomnamen als bij het eerste inlezen,
         anders kunnen gegevens niet worden bijgewerkt of ingelezen.${project.decompositie?.kolommen?.length ? ` Kolommen: ${project.decompositie.kolommen.map((k) => `<code>${esc(k)}</code>`).join(' ')}` : ''}
         Bij het bijwerken kies je welke code hetzelfde is gebleven; daarop worden de onderdelen herkend.</small></p>
     </section>
+    <section class="kaart koppelpaneel" id="d-koppel" hidden></section>
     <div class="decompraster">
       <section class="kaart decompboom">
         <div class="dk-zoekbalk"><input type="search" id="d-zoek" placeholder="Zoek op code of naam…" autocomplete="off">
@@ -571,7 +578,8 @@ async function decompositiePagina(_, q) {
     const nieuweKnopen = r ? r.knopen : res.knopen;
     const nieuweIds = new Set(nieuweKnopen.map((k) => k.id));
     const vervallenObj = objecten.filter((o) => o.decomp && !nieuweIds.has(o.decomp));
-    const auto = D.koppelOpCode(nieuweKnopen, objecten.map((o) => (o.decomp && !nieuweIds.has(o.decomp) ? { ...o, decomp: '' } : o)));
+    const auto = D.koppelOpKolom(nieuweKnopen, objecten.map((o) => (o.decomp && !nieuweIds.has(o.decomp) ? { ...o, decomp: '' } : o)),
+      project.decompositie?.koppeling ?? D.STANDAARD_KOPPELING).wijzigingen;
     const verlorenScores = r ? r.vervallen.filter((k) => scores.has(k.id)).length : 0;
     Object.assign(vb, { r, nieuweKnopen, vervallenObj, auto });
     const telMatch = (s) => D.bijwerken(knopen, res.knopen, s).knopen.length - D.bijwerken(knopen, res.knopen, s).toegevoegd.length;
@@ -608,7 +616,7 @@ async function decompositiePagina(_, q) {
           ${r.toegevoegd.length && r.vervallen.length ? `<p><small>${I.let} Zie je hetzelfde onderdeel bij "nieuw" én bij "vervallen"? Dan is de gekozen code veranderd: kies hierboven een andere code die hetzelfde is gebleven.</small></p>` : ''}
           ${r.fouten.length ? lijstje(r.fouten.map(esc)) : ''}` : ''}
         ${res.knopen.length && !geblokkeerd ? `<ul>
-            <li>${auto.size} GIS-object${auto.size === 1 ? ' wordt' : 'en worden'} automatisch gekoppeld op code.</li>
+            <li>${auto.size} GIS-object${auto.size === 1 ? ' wordt' : 'en worden'} automatisch gekoppeld (${esc(koppelTekst(project.decompositie?.koppeling ?? D.STANDAARD_KOPPELING))}). Daarna kun je dit aanpassen met <strong>Koppelen op kolom</strong>.</li>
             ${vervallenObj.length ? `<li class="fouttekst">${vervallenObj.length} GIS-koppeling${vervallenObj.length === 1 ? '' : 'en'} vervallen omdat het onderdeel niet meer bestaat.</li>` : ''}
             ${verlorenScores ? `<li class="fouttekst">${verlorenScores} vervallen bouwde${verlorenScores === 1 ? 'el heeft' : 'len hebben'} een conditiescore; afgeronde inspecties blijven bewaard.</li>` : ''}
             ${tn.bouwdeel ? '' : '<li class="fouttekst">Er zitten geen bouwdelen in; zonder bouwdelen kan niets worden gescoord.</li>'}
@@ -657,12 +665,80 @@ async function decompositiePagina(_, q) {
     for (const r of regels.slice(1)) r.push((g.get(opCode.get(r[0])) ?? []).map((o) => o.code).join(', '));
     download(`decompositie-${String(project.naam ?? 'project').replace(/[^\w-]+/g, '_')}.csv`, csv(regels), 'text/csv;charset=utf-8');
   });
-  app.querySelector('#d-auto')?.addEventListener('click', async () => {
-    const n = await bewaarKoppelingen(D.koppelOpCode(knopen, objecten));
-    melding(n ? `${n} GIS-object${n === 1 ? '' : 'en'} gekoppeld op code` : 'Geen nieuwe koppelingen gevonden op code');
+  // Koppelen op kolom: zelf kiezen welke GIS-kolom overeenkomt met welk veld van de decompositie, met voorbeeld vooraf.
+  const lagen = await inProject('lagen');
+  let kp = { ...D.STANDAARD_KOPPELING, overschrijven: false, ...(project.decompositie?.koppeling ?? {}) };
+  let koppelRes = null;
+  const tekenKoppel = () => {
+    const el = app.querySelector('#d-koppel');
+    if (!el || el.hidden) return;
+    const inLaag = objecten.filter((o) => !kp.laag || (kp.laag === '-' ? !o.laagId : o.laagId === kp.laag));
+    const kenmerken = new Map();
+    for (const o of inLaag) for (const [k, v] of Object.entries(o.kenmerken ?? {})) if (v !== null && v !== '' && typeof v !== 'object' && !kenmerken.has(k)) kenmerken.set(k, String(v));
+    const voorbeeld = (lijst) => [...new Set(lijst.filter(Boolean))].slice(0, 3).map((x) => `<code>${esc(String(x).slice(0, 30))}</code>`).join(' ') || '<span class="zacht">leeg</span>';
+    const gisVb = voorbeeld(inLaag.map((o) => D.gisWaarde(o, kp.kolom)));
+    const decVb = voorbeeld(knopen.filter((k) => !kp.niveau || k.niveau === kp.niveau).map((k) => (kp.veld === 'auto' ? k.gis || k.code : k[kp.veld])));
+    koppelRes = D.koppelOpKolom(knopen, objecten, kp);
+    const r = koppelRes;
+    const tegel = (n, l, k = '') => `<span class="tegel ${k}"><strong>${n}</strong><span>${l}</span></span>`;
+    const regel = (x) => `<tr><td><code>${esc(D.gisWaarde(x.object, kp.kolom))}</code></td><td>${esc(x.object.code)}${x.object.naam && x.object.naam !== x.object.code ? ` – ${esc(x.object.naam)}` : ''}</td>
+      <td>${niveauChip(x.knoop.niveau)} ${knoopNaam(x.knoop)}</td><td>${x.was ? `<small>was: ${knoopNaam(x.was)}</small>` : ''}</td></tr>`;
+    el.innerHTML = `
+      <div class="paginakop" style="margin:0 0 .5rem"><h2 style="margin:0">${I.vernieuw} GIS-vlakken koppelen op een kolom</h2>
+        <button type="button" class="knop klein" data-kpsluit aria-label="Sluiten">${I.kruis}</button></div>
+      <p style="margin:.1rem 0 .75rem"><small>Kies welke kolom uit het GIS-bestand overeenkomt met welk veld in de decompositie (hoofdletters, spaties en streepjes tellen niet mee).
+        Je ziet eerst wat er gebeurt; pas na <strong>Toepassen</strong> verandert er iets. De keuze wordt bewaard en ook gebruikt bij een nieuwe levering.</small></p>
+      <div class="koppelregel">
+        <label>Laag<select data-kpv="laag"><option value="">Alle lagen</option>${lagen.map((l) => optie(l.id, l.naam, kp.laag)).join('')}${objecten.some((o) => !o.laagId) ? optie('-', 'Losse objecten', kp.laag) : ''}</select></label>
+        <label>GIS-kolom<select data-kpv="kolom">${optie('code', 'Objectcode', kp.kolom)}${optie('naam', 'Naam', kp.kolom)}
+          ${kenmerken.size ? `<optgroup label="Kenmerken uit het GIS-bestand">${[...kenmerken.entries()].sort((a, b) => a[0].localeCompare(b[0], 'nl')).map(([k, v]) => optie(`kenmerk:${k}`, `${k}  (bijv. ${v.slice(0, 20)})`, kp.kolom)).join('')}</optgroup>` : ''}</select>
+          <small>bijv. ${gisVb}</small></label>
+        <span class="koppelis">=</span>
+        <label>Veld in de decompositie<select data-kpv="veld">${optie('auto', 'GIS-code, anders code', kp.veld)}${Object.entries(D.KOPPEL_VELDEN).map(([k, l]) => optie(k, l, kp.veld)).join('')}</select>
+          <small>bijv. ${decVb}</small></label>
+        <label>Niveau<select data-kpv="niveau">${optie('', 'Alle niveaus', kp.niveau)}${D.NIVEAUS.map((n) => optie(n, D.NIVEAU_LABEL[n], kp.niveau)).join('')}</select></label>
+        <label class="vink"><input type="checkbox" data-kpv="overschrijven" ${kp.overschrijven ? 'checked' : ''}><span>Bestaande koppelingen overschrijven</span></label>
+      </div>
+      <div class="tegels" style="margin:.75rem 0">
+        ${tegel(r.nieuw.length, 'worden gekoppeld', r.nieuw.length ? 'goed' : '')}${tegel(r.alGoed, 'staan al goed')}
+        ${tegel(r.anders.length, 'al anders gekoppeld', r.anders.length ? 'let' : '')}${tegel(r.zonderMatch.length, 'geen match', r.zonderMatch.length ? 'let' : '')}
+        ${tegel(r.dubbel.length, 'dubbele waarden', r.dubbel.length ? 'slecht' : '')}${tegel(r.knopenZonderGis.length, 'onderdelen zonder GIS-vlak')}</div>
+      ${r.nieuw.length ? `<div class="tabelhouder" style="max-height:280px;overflow:auto"><table><thead><tr><th>Waarde</th><th>GIS-object</th><th>Wordt gekoppeld aan</th><th></th></tr></thead>
+        <tbody>${r.nieuw.slice(0, 200).map(regel).join('')}</tbody></table></div>${r.nieuw.length > 200 ? `<p><small>+ ${r.nieuw.length - 200} meer</small></p>` : ''}` : ''}
+      ${r.anders.length ? `<details><summary>${r.anders.length} al aan een ander onderdeel gekoppeld${kp.overschrijven ? '' : ' (vink "overschrijven" aan om ze te verplaatsen)'}</summary>
+        <div class="tabelhouder"><table><tbody>${r.anders.slice(0, 100).map(regel).join('')}</tbody></table></div></details>` : ''}
+      ${r.zonderMatch.length ? `<details><summary>${r.zonderMatch.length} GIS-object${r.zonderMatch.length === 1 ? '' : 'en'} zonder match</summary>
+        <p><small>${r.zonderMatch.slice(0, 60).map((o) => `<code>${esc(D.gisWaarde(o, kp.kolom))}</code>`).join(' ')}${r.zonderMatch.length > 60 ? ' …' : ''}</small></p></details>` : ''}
+      ${r.dubbel.length ? `<details><summary>${r.dubbel.length} waarde${r.dubbel.length === 1 ? '' : 'n'} komen in de decompositie meer dan eens voor (niet gekoppeld)</summary>
+        <ul>${r.dubbel.slice(0, 30).map((d) => `<li><small><code>${esc(d.waarde)}</code>: ${d.knopen.map(knoopNaam).join(', ')}</small></li>`).join('')}</ul></details>` : ''}
+      ${r.knopenZonderGis.length ? `<details><summary>${r.knopenZonderGis.length} onderde${r.knopenZonderGis.length === 1 ? 'el heeft' : 'len hebben'} (nog) geen GIS-vlak</summary>
+        <p><small>${r.knopenZonderGis.slice(0, 60).map(knoopNaam).join(' · ')}${r.knopenZonderGis.length > 60 ? ' …' : ''}</small></p></details>` : ''}
+      ${r.zonderWaarde ? `<p><small>${r.zonderWaarde} GIS-object${r.zonderWaarde === 1 ? ' heeft' : 'en hebben'} geen waarde in deze kolom.</small></p>` : ''}
+      <div class="knoppen" style="margin-top:.75rem"><button type="button" class="knop primair" data-kptoepassen ${r.wijzigingen.size ? '' : 'disabled'}>${I.vink} ${r.wijzigingen.size} koppeling${r.wijzigingen.size === 1 ? '' : 'en'} toepassen</button>
+        <button type="button" class="knop" data-kpsluit>Sluiten</button></div>`;
+  };
+  app.querySelector('#d-auto')?.addEventListener('click', () => {
+    const el = app.querySelector('#d-koppel');
+    el.hidden = !el.hidden;
+    tekenKoppel();
+    if (!el.hidden) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+  app.querySelector('#d-koppel')?.addEventListener('change', (e) => {
+    const v = e.target.dataset.kpv;
+    if (!v) return;
+    kp = { ...kp, [v]: e.target.type === 'checkbox' ? e.target.checked : e.target.value };
+    tekenKoppel();
+  });
+  app.querySelector('#d-koppel')?.addEventListener('click', async (e) => {
+    if (e.target.closest('[data-kpsluit]')) { app.querySelector('#d-koppel').hidden = true; return; }
+    if (!e.target.closest('[data-kptoepassen]') || !koppelRes?.wijzigingen.size) return;
+    const n = await bewaarKoppelingen(koppelRes.wijzigingen);
+    await bewaarProject({ ...(project.decompositie ?? {}), koppeling: { kolom: kp.kolom, veld: kp.veld, niveau: kp.niveau, laag: kp.laag } });
+    gedaan(`${n} GIS-object${n === 1 ? '' : 'en'} gekoppeld`, { extra: koppelTekst(kp) });
     kaartObj?.herkleur();
     tekenBoom();
     tekenSelectie();
+    tekenKoppel();
   });
   app.querySelector('#d-wis')?.addEventListener('click', async () => {
     if (!confirm('De decompositie en alle koppelingen met GIS-objecten verwijderen? Afgeronde inspecties behouden hun bouwdeelscores.')) return;

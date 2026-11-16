@@ -354,6 +354,71 @@ export function koppelOpCode(knopen, objecten, { overschrijven = false } = {}) {
   return uit;
 }
 
+/** Waarde van een GIS-object voor een koppelkolom: 'code', 'naam' of 'kenmerk:<naam>'. */
+export function gisWaarde(o, kolom) {
+  if (kolom === 'code') return o?.code ?? '';
+  if (kolom === 'naam') return o?.naam ?? '';
+  if (String(kolom).startsWith('kenmerk:')) {
+    const v = o?.kenmerken?.[String(kolom).slice(8)];
+    return v === null || v === undefined || typeof v === 'object' ? '' : String(v);
+  }
+  return '';
+}
+export const KOPPEL_VELDEN = { code: 'Code', gis: 'GIS-code', naam: 'Naam' };
+export const STANDAARD_KOPPELING = { kolom: 'code', veld: 'auto', niveau: '', laag: '' };
+
+/**
+ * Koppelt GIS-objecten aan onderdelen door een kolom van het GIS-object te vergelijken met een veld van de decompositie.
+ * @param {object[]} knopen
+ * @param {object[]} objecten
+ * @param {{ kolom?: string, veld?: 'code'|'gis'|'naam'|'auto', niveau?: ''|'object'|'element'|'bouwdeel', laag?: string, overschrijven?: boolean }} opties
+ *        veld 'auto' = GIS-code, en anders de code (zoals het automatisch koppelen bij inlezen).
+ * @returns {{ wijzigingen: Map<string,string>, nieuw: {object, knoop, was}[], alGoed: number, anders: {object, knoop, was}[],
+ *            dubbel: {waarde: string, knopen: object[]}[], zonderMatch: object[], zonderWaarde: number, knopenZonderGis: object[] }}
+ */
+export function koppelOpKolom(knopen, objecten, { kolom = 'code', veld = 'auto', niveau = '', laag = '', overschrijven = false } = {}) {
+  const perId = new Map(knopen.map((k) => [k.id, k]));
+  const kand = knopen.filter((k) => !niveau || k.niveau === niveau);
+  const opWaarde = new Map();
+  const zet = (w, k) => {
+    const s = norm(w);
+    if (!s) return;
+    const l = opWaarde.get(s) ?? [];
+    if (!l.includes(k)) l.push(k);
+    opWaarde.set(s, l);
+  };
+  for (const k of kand) {
+    if (veld === 'auto') { if (k.gis) zet(k.gis, k); else zet(k.code, k); }
+    else zet(k[veld], k);
+  }
+  const dubbel = [...opWaarde.entries()].filter(([, l]) => l.length > 1).map(([w, l]) => ({ waarde: w, knopen: l }));
+  const objs = objecten.filter((o) => !laag || (laag === '-' ? !o.laagId : o.laagId === laag));
+  const wijzigingen = new Map();
+  const nieuw = [];
+  const anders = [];
+  const zonderMatch = [];
+  const gekoppeld = new Set();
+  let alGoed = 0;
+  let zonderWaarde = 0;
+  for (const o of objs) {
+    const w = norm(gisWaarde(o, kolom));
+    if (!w) { zonderWaarde += 1; continue; }
+    const l = opWaarde.get(w);
+    if (!l) { zonderMatch.push(o); continue; }
+    if (l.length > 1) continue; // dubbele waarde: niet automatisch kiezen
+    const k = l[0];
+    gekoppeld.add(k.id);
+    if (o.decomp === k.id) { alGoed += 1; continue; }
+    const was = o.decomp && perId.has(o.decomp) ? perId.get(o.decomp) : null;
+    if (was && !overschrijven) { anders.push({ object: o, knoop: k, was }); continue; }
+    wijzigingen.set(o.id, k.id);
+    nieuw.push({ object: o, knoop: k, was });
+  }
+  for (const o of objecten) if (o.decomp && perId.has(o.decomp)) gekoppeld.add(o.decomp);
+  const knopenZonderGis = kand.filter((k) => !gekoppeld.has(k.id));
+  return { wijzigingen, nieuw, alGoed, anders, dubbel, zonderMatch, zonderWaarde, knopenZonderGis };
+}
+
 /** Is dit een inspectie per bouwdeel (uit de decompositie)? */
 export const perBouwdeel = (i) => Array.isArray(i?.bouwdelen) && i.bouwdelen.length > 0;
 
