@@ -1516,3 +1516,6 @@ td.actiecel .knoppen { justify-content: flex-end; flex-wrap: wrap; }
 .pk-tel.deels { color: #b06a00; font-weight: 600; }
 .pk-tel.vol { color: #1a7f37; font-weight: 600; }
 .pk-filterchip { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .4rem; background: var(--achtergrond); border: 1px solid var(--rand); border-radius: 999px; padding: .2rem .3rem .2rem .75rem; margin: 0 0 .75rem; }
+.periodekiezer { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
+.periodekiezer select, .periodekiezer input[type=date] { width: auto; margin: 0; }
+.bord-melding.zacht { color: var(--zacht, #6b7785); }

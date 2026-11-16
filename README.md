@@ -627,6 +627,11 @@ De weergave wordt automatisch gekozen op schermbreedte. Onder *Instellingen → 
   einddatum mee, en verleng je een balk in de planning, dan past de duur in het werkpakket zich aan.
 - **Planning**: werkpakketten maak je onder *Werkpakketten* (zonder datums); inplannen doe je hier op het
   **planningsbord**: per werkpakket de rondes als balken in de tijd (weken, maanden of jaar; ◀ Vandaag ▶).
+  - **Periode** (📅-keuzelijst, ook op het dashboard): standaard zie je alleen rondes in **dit kalenderjaar**, zodat een pakket met een
+    ronde per jaar niet alle jaren tegelijk toont. Kies *Volgend jaar*, *Komende 12 maanden*, een ander jaar, een *Eigen periode* (van/tot)
+    of *Alle jaren*. Een ronde telt mee als ze de periode overlapt; niet ingeplande rondes staan er altijd bij. Je ziet hoeveel rondes
+    buiten de periode verborgen zijn. De keuze geldt voor planning én dashboard (lopende rondes, achter op schema, start binnenkort,
+    voortgang per werkpakket) en wordt per gebruiker onthouden.
   - **Inplannen**: klik in een lege rij op de startdatum (de duur uit het werkpakket wordt gebruikt), of trek de periode.
   - **Verschuiven / verlengen**: sleep de balk, of sleep de linker- of rechterrand.
   - **Klik op een balk**: datums precies invullen, status (gepland / actief / afgerond), uit de planning halen (met

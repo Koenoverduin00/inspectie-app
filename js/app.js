@@ -1863,8 +1863,9 @@ async function dashboard() {
   const g = await pakketGegevens();
   // Alle rondes met hun schema-signaal.
   const rondes = [];
+  const periodeDash = rondePeriode();
   for (const p of g.pakketten) {
-    for (const r of rondesVan(p)) {
+    for (const r of rondesVan(p).filter((x) => PL.rondeInPeriode(x, periodeDash))) {
       const sleutel = `${p.id}:${r.id}`;
       const vg = g.rondeVoortgang.get(sleutel);
       rondes.push({ p, r, v: g.views.get(sleutel), vg, s: DB.schema(r, vg, nu) });
@@ -1995,7 +1996,7 @@ async function dashboard() {
     const sig = ergste(p);
     return `<a class="pakket" href="#/werkpakketten/${esc(p.id)}"><div class="pakketkop"><strong>${esc(p.naam)}</strong>${sig
       ? `<span class="label-status ${DB.SIGNAAL[sig].klasse}">${esc(sig)}</span>` : pakketStatusLabel(p.status)}</div>
-          <small>${pakketRondesTekst(p)}</small>${voortgangBalk(g.voortgangen.get(p.id))}</a>`;
+          <small>${pakketRondesTekst(p, periodeDash)}</small>${voortgangBalk(g.voortgangen.get(p.id))}</a>`;
   }).join('')}</div>` : '<p class="leeg">Geen lopende werkpakketten.</p>'}
         ${afgerondRecent.length ? `<p class="tussenkop">${I.vink} Afgerond in de laatste 60 dagen: ${afgerondRecent.map((x) => esc(x.v.naam)).join(', ')}</p>` : ''}</section>`,
     },
@@ -2138,6 +2139,7 @@ async function dashboard() {
       ${kop}
       <div class="knoppen">
         ${schakelaar}
+        ${periodeKiezer(g.pakketten.flatMap((p) => rondesVan(p)))}
         <button type="button" class="knop" data-dash="${bewerken ? 'klaar' : 'bewerk'}" title="Kies zelf welke blokken je ziet">${I.instellingen} ${bewerken ? 'Klaar met aanpassen' : 'Dashboard aanpassen'}</button>
         ${rol === 'opdrachtgever'
     ? '<a class="knop" href="#/planning">' + I.kalender + ' Planning</a><a class="knop primair" href="#/werkpakketten">' + I.pakket + ' Werkpakketten</a>'
@@ -2146,6 +2148,7 @@ async function dashboard() {
     </div>
     ${await inrichtingBanner()}
     ${inhoud}</div>`;
+  koppelPeriodeKiezer(app.querySelector('.dashpagina .paginakop'), () => dashboard());
   app.querySelectorAll('input[name=dashrol]').forEach((r) => r.addEventListener('change', () => {
     instelling.schrijf('dashboardRol', r.value);
     dashboard();
@@ -7619,8 +7622,10 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
     const k = PL.kop(b);
     const breedte = b.dagen * b.px;
     const x = (n) => (n - b.begin) * b.px;
+    const pb = rondePeriode();
+    let buiten = 0;
     const pakketten = g.pakketten
-      .map((p) => ({ p, rondes: rondesVan(p).filter((r) => !filterSoort || r.soort === filterSoort) }))
+      .map((p) => ({ p, rondes: rondesVan(p).filter((r) => !filterSoort || r.soort === filterSoort).filter((r) => (PL.rondeInPeriode(r, pb) ? true : (buiten += 1, false))) }))
       .filter(({ rondes }) => rondes.length)
       .sort((a, c) => {
         const eerste = (x2) => Math.min(...x2.rondes.map((r) => PL.dagNr(r.start) ?? 1e9));
@@ -7666,10 +7671,12 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
           <button class="knop klein" data-nav-bord="1" aria-label="Later">${I.start}</button>
         </div>
         <div class="segment bord-zoom">${Object.entries(PL.ZOOM).map(([kz, z]) => `<label><input type="radio" name="planzoom" value="${kz}" ${kz === zoom ? 'checked' : ''}><span>${z.label}</span></label>`).join('')}</div>
+        ${periodeKiezer(g.pakketten.flatMap((p) => rondesVan(p)))}
         <select id="bord-soort" aria-label="Soort">${optie('', 'Werk en inspecties', filterSoort)}${optie('werk', 'Werkzaamheden', filterSoort)}${optie('inspectie', 'Inspecties', filterSoort)}</select>
         <span class="bord-legenda"><i style="background:${BORD_KLEUR.werk}"></i>Werkzaamheid <i style="background:${BORD_KLEUR.inspectie}"></i>Inspectie
           <i class="gepland"></i>Gepland <i class="afgerond">${I.vink}</i>Afgerond <i class="telaat"></i>Te laat</span>
       </div>
+      ${buiten ? `<p class="bord-melding zacht">${I.kalender} ${buiten} ronde${buiten === 1 ? '' : 's'} buiten ${esc(pb.jaar ? String(pb.jaar) : pb.eigen ? `${datumNL(pb.van)} t/m ${datumNL(pb.tot)}` : pb.label.toLowerCase())} verborgen. Kies hierboven een andere periode of "Alle jaren" om ze te zien.</p>` : ''}
       ${nietGepland ? `<p class="bord-melding">${I.punaise} ${nietGepland} ronde${nietGepland === 1 ? '' : 's'} nog niet ingepland${beheer ? ' – klik in de rij op de startdatum (de duur uit het werkpakket wordt gebruikt), of sleep over de gewenste periode.' : '.'}</p>` : ''}
       ${pakketten.length ? `<div class="bord" style="--bord-breedte:${breedte}px">
         <div class="bord-kop">
@@ -7712,6 +7719,12 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
     });
     el.querySelectorAll('input[name=planzoom]').forEach((i) => { i.onchange = () => { instelling.schrijf('planZoom', i.value); planningsbord(el, { focusPakket }); }; });
     el.querySelector('#bord-soort').onchange = (e) => { filterSoort = e.target.value; teken(); };
+    koppelPeriodeKiezer(el.querySelector('.bord-balkje'), () => {
+      // Valt vandaag buiten de gekozen periode, spring dan naar het begin ervan.
+      const nb = rondePeriode();
+      if (nb && (vandaag() < nb.van || vandaag() > nb.tot)) { anker = nb.van; instelling.schrijf('planAnker', anker); } else if (nb) { anker = vandaag(); instelling.schrijf('planAnker', ''); }
+      teken();
+    });
     if (focusPakket && eerste) el.querySelector(`#bord-${CSS.escape(focusPakket)}`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     eerste = false;
     // Horizontaal: na een wijziging blijft het bord staan; bij een nieuwe periode of schaal naar vandaag.
@@ -8619,14 +8632,47 @@ function pakketSoortTekst(p) {
   return `${I.werk} ${esc(p.werksoort || 'Werkzaamheid')}`;
 }
 
-function pakketRondesTekst(p) {
-  const rondes = rondesVan(p);
+// Periodefilter voor rondes (planning en dashboard), per gebruiker onthouden. Standaard het lopende kalenderjaar.
+const rondePeriode = () => PL.periodeBereik(instelling.lees('rondePeriode') || PL.PERIODE_STANDAARD, vandaag());
+function periodeKiezer(alleRondes) {
+  const keuze = instelling.lees('rondePeriode') || PL.PERIODE_STANDAARD;
+  const nu = Number(vandaag().slice(0, 4));
+  const jaren = PL.jarenVanRondes(alleRondes, vandaag()).filter((j) => j !== nu && j !== nu + 1);
+  const b = PL.periodeBereik(keuze, vandaag());
+  return `<span class="periodekiezer">${I.kalender}<select data-rperiode aria-label="Periode van de rondes" title="Welke rondes je ziet: alleen rondes die in deze periode vallen (niet ingeplande rondes staan er altijd bij)">
+    ${optie('jaar', `Dit jaar (${nu})`, keuze)}${optie('volgend', `Volgend jaar (${nu + 1})`, keuze)}${optie('12mnd', 'Komende 12 maanden', keuze)}
+    ${jaren.length ? `<optgroup label="Ander kalenderjaar">${jaren.map((j) => optie(`j:${j}`, String(j), keuze)).join('')}</optgroup>` : ''}
+    ${optie(b?.eigen ? keuze : 'eigen', 'Eigen periode…', keuze)}${optie('alles', 'Alle jaren', keuze)}</select>
+    ${b?.eigen ? `<input type="date" data-rvan value="${esc(b.van)}" aria-label="Van"><input type="date" data-rtot value="${esc(b.tot)}" aria-label="Tot en met">` : ''}</span>`;
+}
+function koppelPeriodeKiezer(el, opWijzig) {
+  const sel = el.querySelector('[data-rperiode]');
+  if (!sel) return;
+  sel.onchange = () => {
+    let k = sel.value;
+    if (k === 'eigen') { const j = vandaag().slice(0, 4); k = `eigen:${j}-01-01:${j}-12-31`; }
+    instelling.schrijf('rondePeriode', k);
+    opWijzig();
+  };
+  const van = el.querySelector('[data-rvan]');
+  const tot = el.querySelector('[data-rtot]');
+  [van, tot].forEach((x) => x?.addEventListener('change', () => {
+    if (!van.value || !tot.value) return;
+    instelling.schrijf('rondePeriode', `eigen:${van.value}:${tot.value}`);
+    opWijzig();
+  }));
+}
+
+function pakketRondesTekst(p, bereik = null) {
+  const alle = rondesVan(p);
+  const rondes = bereik && !isAfroep(p) ? alle.filter((r) => PL.rondeInPeriode(r, bereik)) : alle;
   if (isAfroep(p)) {
     const lopend = rondes.filter((r) => r.status === 'actief').length;
     return `${I.wacht} Op afroep · ${lopend ? `${lopend} lopende afroep${lopend === 1 ? '' : 'en'}` : 'niets afgeroepen'}${rondes.length - lopend ? ` · ${rondes.length - lopend} afgerond` : ''}`;
   }
-  if (!p.rondes?.length) return pakketSoortTekst(rondes[0]);
+  if (!p.rondes?.length) return pakketSoortTekst(alle[0]);
   const actief = rondes.filter((r) => r.status === 'actief');
+  if (rondes.length !== alle.length) return `${rondes.length} van ${alle.length} rondes in ${esc(bereik.jaar ?? (bereik.eigen ? `${datumNL(bereik.van)} t/m ${datumNL(bereik.tot)}` : bereik.label.toLowerCase()))}${actief.length ? ` · actief: ${actief.map((r) => esc(`R${r.nummer} ${r.naam}`)).join(', ')}` : ''}`;
   return `${rondes.length} ronde${rondes.length === 1 ? '' : 's'}${actief.length ? ` · actief: ${actief.map((r) => esc(`R${r.nummer} ${r.naam}`)).join(', ')}` : ''}`;
 }
 

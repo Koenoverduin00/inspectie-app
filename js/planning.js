@@ -96,3 +96,54 @@ export function balkTekst(r, pct, breedte, { tekenBreedte = 6.6, marge = 18 } = 
 
 /** Weergave van een duur: "3 weken" of "10 dagen". */
 export const duurTekst = (dagen) => (dagen % 7 === 0 ? `${dagen / 7} ${dagen === 7 ? 'week' : 'weken'}` : `${dagen} ${dagen === 1 ? 'dag' : 'dagen'}`);
+
+// ---------------------------------------------------------------------------
+// Periodefilter voor rondes (planning en dashboard): standaard het lopende kalenderjaar, zodat een pakket met
+// een ronde per jaar niet alle jaren tegelijk toont. Keuze als tekst: 'jaar' | 'volgend' | '12mnd' | 'alles'
+// | 'j:2027' (een bepaald jaar) | 'eigen:2026-03-01:2026-10-31'.
+// ---------------------------------------------------------------------------
+export const PERIODE_STANDAARD = 'jaar';
+const isoOk = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s ?? '');
+
+/** Van/tot (ISO) en label van een periodekeuze, of null voor "alle jaren". */
+export function periodeBereik(keuze, vandaagIso) {
+  const jaar = Number(String(vandaagIso).slice(0, 4));
+  const k = String(keuze || PERIODE_STANDAARD);
+  const kalender = (j, label) => ({ van: `${j}-01-01`, tot: `${j}-12-31`, label, jaar: j });
+  if (k === 'alles') return null;
+  if (k === 'volgend') return kalender(jaar + 1, `Volgend jaar (${jaar + 1})`);
+  if (k === '12mnd') {
+    const v = dagNr(vandaagIso);
+    return { van: isoVan(v), tot: isoVan(v + 364), label: 'Komende 12 maanden' };
+  }
+  const j = k.match(/^j:(\d{4})$/);
+  if (j) return kalender(Number(j[1]), j[1]);
+  const e = k.match(/^eigen:(\d{4}-\d{2}-\d{2}):(\d{4}-\d{2}-\d{2})$/);
+  if (e && isoOk(e[1]) && isoOk(e[2])) {
+    const [van, tot] = e[1] <= e[2] ? [e[1], e[2]] : [e[2], e[1]];
+    return { van, tot, label: `${van} t/m ${tot}`, eigen: true };
+  }
+  return kalender(jaar, `Dit jaar (${jaar})`);
+}
+
+/**
+ * Valt een ronde in de periode? Een ronde telt mee als haar periode de gekozen periode overlapt.
+ * Niet ingeplande rondes (zonder startdatum) tellen altijd mee, zodat ze ingepland kunnen worden.
+ */
+export function rondeInPeriode(r, bereik) {
+  if (!bereik) return true;
+  const p = periode(r);
+  if (!p) return true;
+  return p.start <= dagNr(bereik.tot) && p.eind >= dagNr(bereik.van);
+}
+
+/** De jaren waarin rondes liggen (voor de keuzelijst), oplopend, altijd met het huidige jaar. */
+export function jarenVanRondes(rondes, vandaagIso) {
+  const s = new Set([Number(String(vandaagIso).slice(0, 4))]);
+  for (const r of rondes ?? []) {
+    const p = periode(r);
+    if (!p) continue;
+    for (let j = Number(isoVan(p.start).slice(0, 4)); j <= Number(isoVan(p.eind).slice(0, 4)); j += 1) s.add(j);
+  }
+  return [...s].sort((a, b) => a - b);
+}

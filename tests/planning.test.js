@@ -49,3 +49,25 @@ test('duur en balktekst', () => {
   assert.equal(PL.balkTekst({ ...r, status: 'afgerond' }, 100, 34), 'R1');
   assert.equal(PL.balkTekst(r, 40, 10), '');
 });
+
+test('periodefilter voor rondes: standaard dit kalenderjaar', async () => {
+  const PL = await import('../js/planning.js');
+  const nu = '2026-11-16';
+  const jaarlijks = [2024, 2025, 2026, 2027, 2028, 2029].map((j, i) => ({ id: `r${i}`, start: `${j}-04-01`, eind: `${j}-04-30` }));
+  const b = PL.periodeBereik('', nu);
+  assert.deepEqual([b.van, b.tot], ['2026-01-01', '2026-12-31']);
+  assert.deepEqual(jaarlijks.filter((r) => PL.rondeInPeriode(r, b)).map((r) => r.start), ['2026-04-01']);
+  assert.deepEqual(jaarlijks.filter((r) => PL.rondeInPeriode(r, PL.periodeBereik('volgend', nu))).map((r) => r.start), ['2027-04-01']);
+  assert.deepEqual(jaarlijks.filter((r) => PL.rondeInPeriode(r, PL.periodeBereik('j:2028', nu))).map((r) => r.start), ['2028-04-01']);
+  assert.equal(jaarlijks.filter((r) => PL.rondeInPeriode(r, PL.periodeBereik('alles', nu))).length, 6);
+  // komende 12 maanden: april 2027 valt erin, april 2026 niet
+  assert.deepEqual(jaarlijks.filter((r) => PL.rondeInPeriode(r, PL.periodeBereik('12mnd', nu))).map((r) => r.start), ['2027-04-01']);
+  // eigen periode (ook omgekeerd ingevuld) en overlap over de jaargrens
+  const e = PL.periodeBereik('eigen:2026-12-31:2026-03-01', nu);
+  assert.deepEqual([e.van, e.tot], ['2026-03-01', '2026-12-31']);
+  assert.equal(PL.rondeInPeriode({ start: '2025-12-15', eind: '2026-01-10' }, b), true);
+  // niet ingepland telt altijd mee
+  assert.equal(PL.rondeInPeriode({ start: '' }, b), true);
+  assert.deepEqual(PL.jarenVanRondes(jaarlijks, nu), [2024, 2025, 2026, 2027, 2028, 2029]);
+  assert.deepEqual(PL.jarenVanRondes([], nu), [2026]);
+});
