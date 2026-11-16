@@ -85,9 +85,11 @@ test('afmelden op locatie: planning die het dichtst bij vandaag ligt bovenaan', 
     { v: r('Q4', '2026-10-01', '2026-12-31'), st: 'open' },
     { v: r('Q3', '2026-07-01', '2026-09-30'), st: 'open' },
     { v: r('KLAAR', '2026-11-10', '2026-11-20'), st: 'gedaan' },
+    { v: r('OVERGESLAGEN', '2026-02-01', '2026-02-10'), st: 'overgeslagen' },
+    { v: r('KLAAR2', '2026-01-01', '2026-01-10'), st: 'gedaan' },
     { v: r('LOS', '', ''), st: 'open' },
     { v: r('BINNENKORT', '2026-11-19', '2026-11-25'), st: 'open' },
     { v: r('VERLOPEN', '2026-11-01', '2026-11-13'), st: 'open' },
   ];
-  assert.deepEqual(PL.dichtstbijEerst(lijst, nu).map((x) => x.v.code), ['Q4', 'BINNENKORT', 'VERLOPEN', 'Q3', 'Q1', 'LOS', 'KLAAR']);
+  assert.deepEqual(PL.dichtstbijEerst(lijst, nu).map((x) => x.v.code), ['Q4', 'BINNENKORT', 'VERLOPEN', 'Q3', 'Q1', 'LOS', 'KLAAR', 'OVERGESLAGEN', 'KLAAR2']);
 });

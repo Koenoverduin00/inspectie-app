@@ -1552,3 +1552,5 @@ td.actiecel .knoppen { justify-content: flex-end; flex-wrap: wrap; }
 .actueellabel { display: inline-flex; align-items: center; gap: .25rem; font-size: .75rem; font-weight: 700; color: #fff; background: var(--primair, #0b4f6c);
   border-radius: 999px; padding: .1rem .55rem; margin-bottom: .35rem; }
 .rondekenmerken strong { display: inline !important; font-size: inherit; }
+.loctussenkop { list-style: none; margin: 1rem 0 .1rem; font-weight: 700; font-size: .9rem; color: var(--zacht, #6b7785); display: flex; align-items: center; gap: .35rem; }
+.loctussenkop small { font-weight: 400; }

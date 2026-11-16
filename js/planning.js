@@ -161,16 +161,16 @@ export function afstandTotVandaag(r, vandaagIso) {
 }
 
 /**
- * Volgorde bij afmelden op een locatie: eerst wat nog open is, daarin de planning die het dichtst bij vandaag ligt bovenaan
- * (lopend vóór binnenkort vóór verlopen bij gelijke afstand), daarna gedaan en overgeslagen.
+ * Volgorde bij afmelden op een locatie: eerst wat nog open is, met de planning die het dichtst bij vandaag ligt bovenaan
+ * (lopend vóór binnenkort vóór verlopen bij gelijke afstand). Wat al is afgemeld (gedaan of overgeslagen) blijft daarna in de
+ * oorspronkelijke volgorde staan, zodat je ziet wat er gedaan is.
  * @param {{ v: object, st: 'open'|'gedaan'|'overgeslagen' }[]} lijst
  */
 export function dichtstbijEerst(lijst, vandaagIso) {
-  const rang = { open: 0, gedaan: 1, overgeslagen: 2 };
   const v = dagNr(vandaagIso);
   const later = (x) => { const p = periode(x.v); return p && p.start > v ? 1 : 0; };
-  return [...lijst].sort((a, b) => (rang[a.st] ?? 3) - (rang[b.st] ?? 3)
-    || afstandTotVandaag(a.v, vandaagIso) - afstandTotVandaag(b.v, vandaagIso)
+  const open = lijst.filter((x) => x.st === 'open').sort((a, b) => afstandTotVandaag(a.v, vandaagIso) - afstandTotVandaag(b.v, vandaagIso)
     || later(b) - later(a)
     || String(a.v.code ?? '').localeCompare(String(b.v.code ?? ''), 'nl', { numeric: true }));
+  return [...open, ...lijst.filter((x) => x.st !== 'open')];
 }

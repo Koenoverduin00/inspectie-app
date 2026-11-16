@@ -486,7 +486,8 @@ locatiepagina per werkpakket wat het verschil is: **pakketcode**, rondenummer (b
 Op de locatiepagina staat per ronde het verschil (code, ronde, periode, objecten); in de popup staan alleen de werkpakketten met hun code. Zijn werkpakketten volledig gelijk (naam, soort, periode en objecten), dan meldt de app dat ze waarschijnlijk dubbel
 zijn aangemaakt. Heet een ronde hetzelfde als het werkpakket, dan staat de naam nog maar één keer in beeld (niet "X – X").
 Bij **Afmelden op deze locatie** staat de planning die het **dichtst bij vandaag** ligt bovenaan (*Loopt nu* of *Dichtst bij vandaag*):
-eerst wat open is, op afstand van de periode tot vandaag (lopend, dan binnenkort, dan verlopen), daarna gedaan en overgeslagen.
+eerst wat open is, op afstand van de periode tot vandaag (lopend, dan binnenkort, dan verlopen). Daaronder, onder *Afgemeld*, staan de
+gedane en overgeslagen rondes in de **oorspronkelijke volgorde** (werkpakket, rondenummer), zodat je ziet wat er al gedaan is.
 De popup gebruikt dezelfde volgorde.
 
 ## GPS-locatie per gebrek of bevinding

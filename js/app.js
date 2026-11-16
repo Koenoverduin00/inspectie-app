@@ -5058,7 +5058,8 @@ async function mobielLocatie(objectId) {
     ${open.length > 1 ? `<div class="kaart locmelding">${I.let}<div><strong>${open.length} werkpakketten tegelijk gepland op deze locatie</strong>
       <small>Meld ze hier na elkaar af. Per werkpakket leg je bewust vast of het werk is gedaan of overgeslagen.</small></div></div>` : ''}
     ${!open.length && lijst.length ? `<div class="kaart mhier">${I.gereed} Alles op deze locatie is afgemeld.</div>` : ''}
-    ${lijst.length ? `<ul class="loclijst">${lijst.map(regel).join('')}</ul>` : '<p class="mleeg">Dit object zit in geen actieve ronde voor jou.</p>'}
+    ${lijst.length ? `<ul class="loclijst">${lijst.map((x, i) => `${x.st !== 'open' && (i === 0 || lijst[i - 1].st === 'open')
+    ? `<li class="loctussenkop">${I.vink} Afgemeld <small>in de oorspronkelijke volgorde</small></li>` : ''}${regel(x)}`).join('')}</ul>` : '<p class="mleeg">Dit object zit in geen actieve ronde voor jou.</p>'}
     <div class="knoppen mpakketknoppen">
       ${lat != null ? `<a class="knop" href="https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}" target="_blank" rel="noopener">${I.navigeer} Navigeer erheen</a>` : ''}
       <a class="knop" href="#/m/kaart">${I.kaart} Naar de kaart</a></div>`;
