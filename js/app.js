@@ -585,9 +585,15 @@ async function decompositiePagina(_, q) {
         ${kolomCheck?.extra.length && !geblokkeerd ? `<p><small>${I.let} Extra kolommen die niet in het eerste bestand stonden: ${kolomCheck.extra.map(esc).join(', ')}.
           Alleen bekende kolommen worden gebruikt.</small></p>` : ''}
         ${res.knopen.length && !geblokkeerd ? `<p><strong>${tn.object}</strong> objecten, <strong>${tn.element}</strong> elementen en <strong>${tn.bouwdeel}</strong> bouwdelen in het bestand.</p>` : ''}
-        ${(res.bladen ?? []).length > 1 ? `<p><small>${I.lijst} Tabbladen: ${res.bladen.map((b) => b.gebruikt
-    ? `<strong>${esc(b.naam)}</strong>${b.niveau ? ` (${{ object: 'objecten', element: 'elementen', bouwdeel: 'bouwdelen' }[b.niveau]}, ${b.rijen} regel${b.rijen === 1 ? '' : 's'})` : ` (${b.rijen} onderdelen)`}`
-    : `<span class="zacht">${esc(b.naam)} (niet gebruikt)</span>`).join(' · ')}</small></p>` : ''}
+        ${(res.bladen ?? []).length > 1 ? `<p><small>${I.lijst} ${res.indeling === 'tabblad-bouwdelen'
+    ? `Gelezen uit tabblad <strong>${esc(res.bladen.find((b) => b.gebruikt)?.naam ?? '')}</strong> (object, element en bouwdeel per regel)`
+    : 'Tabbladen'}: ${res.bladen.map((b) => (b.gebruikt
+    ? `<strong>${esc(b.naam)}</strong>${b.rol === 'decompositie' ? ` (${b.rijen} onderdelen)` : b.niveau ? ` (${{ object: 'objecten', element: 'elementen', bouwdeel: 'bouwdelen' }[b.niveau]}, ${b.rijen} regel${b.rijen === 1 ? '' : 's'})` : ` (${b.rijen} onderdelen)`}`
+    : b.rol === 'namen' ? `${esc(b.naam)} (alleen voor namen)` : `<span class="zacht">${esc(b.naam)} (niet gebruikt)</span>`)).join(' · ')}</small></p>` : ''}
+        ${(res.bladen ?? []).some((b) => b.herkend) ? `<details ${res.knopen.length && !tn.element ? 'open' : ''}><summary><small>Herkende kolommen per tabblad</small></summary>
+          <ul>${res.bladen.filter((b) => b.herkend).map((b) => `<li><small><strong>${esc(b.naam)}</strong>: ${esc(b.herkend)}</small></li>`).join('')}</ul></details>` : ''}
+        ${res.knopen.length && !tn.element ? `<p class="fouttekst">${I.let} <strong>Er zijn geen elementen gevonden.</strong> Controleer hierboven welke kolom als element (of in het tabblad Elementen als
+          "hoort bij object") is herkend. Een kolom met "element" of "object" in de naam en "code", "id", "nr", "naam" of "omschrijving" wordt herkend.</p>` : ''}
         ${r ? `
           <div class="veld"><label><strong>Welke code is hetzelfde gebleven?</strong></label>
             <small>Daarop herkent de app de onderdelen uit de vorige levering. Herkende onderdelen houden hun GIS-koppelingen en conditiescores.</small>

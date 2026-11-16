@@ -50,6 +50,20 @@ function niveauVan(v) {
   return null;
 }
 
+// Ruimere herkenning: elke kolom met "object", "element" of "bouwdeel" in de naam is een code (code, id, nr, nummer)
+// of een naam (naam, omschrijving, type) van dat niveau. Zo werken ook "Element ID", "Omschrijving element" of "Elementtype".
+const STAM = { object: /object/, element: /element/, bouwdeel: /bouwde(e)?l|onderde(e)?l/ };
+const IS_CODE = /(^|\s)(code|id|nr|nummer|identificatie|guid|sleutel|kenmerk)(\s|$)|(code|id|nr|nummer)$/;
+const IS_NAAM = /(^|\s)(naam|omschrijving|benaming|type|titel|beschrijving)(\s|$)|(naam|omschrijving|type)$/;
+function vindKolom(kop, niveau, soort, bezet = new Set()) {
+  const k = kop.map(norm);
+  const kand = k.map((h, i) => ({ h, i })).filter(({ h, i }) => h && !bezet.has(i) && STAM[niveau].test(h) && !/gis/.test(h)
+    // "Elementen" mag niet als bouwdeel tellen en "bouwdeel" niet als element.
+    && !(niveau === 'element' && STAM.bouwdeel.test(h)));
+  if (soort === 'code') return kand.find((x) => IS_CODE.test(x.h))?.i ?? -1;
+  return (kand.find((x) => IS_NAAM.test(x.h)) ?? kand.find((x) => !IS_CODE.test(x.h)))?.i ?? -1;
+}
+
 function kolommen(kop) {
   const genorm = kop.map(norm);
   const uit = {};
@@ -57,7 +71,26 @@ function kolommen(kop) {
     const i = genorm.findIndex((k) => namen.includes(k));
     if (i >= 0) uit[sleutel] = i;
   }
+  // Ruimer zoeken naar object-, element- en bouwdeelkolommen (niet bij een lijst met een kolom Niveau).
+  if (uit.niveau === undefined) {
+    const bezet = new Set(Object.values(uit));
+    for (const n of NIVEAUS) {
+      if (uit[`${n}code`] === undefined) { const i = vindKolom(kop, n, 'code', bezet); if (i >= 0) { uit[`${n}code`] = i; bezet.add(i); } }
+      if (uit[n] === undefined) { const i = vindKolom(kop, n, 'naam', bezet); if (i >= 0) { uit[n] = i; bezet.add(i); } }
+    }
+  }
   return uit;
+}
+
+/** Leesbare samenvatting van de herkende kolommen (voor het voorbeeld bij het inlezen). */
+export function herkendeKolommen(kop) {
+  const k = kolommen(kop.map(tekst));
+  const naam = (i) => (i === undefined || i < 0 ? null : kop[i]);
+  return NIVEAUS.map((n) => {
+    const c = naam(k[`${n}code`]);
+    const m = naam(k[n]);
+    return c || m ? `${NIVEAU_LABEL[n].toLowerCase()}: ${[c, m].filter(Boolean).join(' + ')}` : `${NIVEAU_LABEL[n].toLowerCase()}: –`;
+  }).join(' · ');
 }
 
 /**
@@ -136,7 +169,8 @@ function leesKolommen(data, k) {
     return kn;
   };
   for (const { r, rij } of data) {
-    const delen = NIVEAUS.map((n) => ({ niveau: n, code: val(r, `${n}code`), naam: val(r, n) }));
+    // Een losse kolom "Code" naast Object/Element/Bouwdeel hoort bij het diepste niveau (het bouwdeel).
+    const delen = NIVEAUS.map((n) => ({ niveau: n, code: val(r, `${n}code`) || (n === 'bouwdeel' && k.bouwdeelcode === undefined ? val(r, 'code') : ''), naam: val(r, n) }));
     const laatste = delen.map((d) => Boolean(d.code || d.naam)).lastIndexOf(true);
     if (laatste < 0) continue;
     if (delen.slice(0, laatste).some((d) => !d.code && !d.naam)) {
@@ -428,10 +462,32 @@ function bladKolommen(kop, niveau) {
   const k = kop.map(norm);
   const zoek = (...namen) => { for (const n of namen) { const i = k.indexOf(norm(n)); if (i >= 0) return i; } return -1; };
   const ouder = OUDER_NIVEAU[niveau];
+  const bezet = new Set();
+  const neem = (i) => { if (i >= 0) bezet.add(i); return i; };
+  // Eerst de kolommen van het bovenliggende niveau, zodat "Objectcode" in het tabblad Elementen niet als elementcode telt.
+  const ouderKol = ouder ? neem((() => {
+    const i = zoek(`${ouder}code`, `${ouder} code`, `code ${ouder}`, `${ouder}id`, 'bovenliggende code', 'bovenliggend', 'ouder', 'ouder code', 'parent', 'parent code', 'hoort bij');
+    if (i >= 0) return i;
+    const c = vindKolom(kop, ouder, 'code');
+    return c >= 0 ? c : (zoek(ouder, `${ouder}naam`) >= 0 ? zoek(ouder, `${ouder}naam`) : vindKolom(kop, ouder, 'naam'));
+  })()) : -1;
+  const code = neem((() => {
+    const i = zoek(`${niveau}code`, `${niveau} code`, `code ${niveau}`, `${niveau}id`, `${niveau} id`);
+    if (i >= 0) return i;
+    const v = vindKolom(kop, niveau, 'code', bezet);
+    if (v >= 0) return v;
+    const g = zoek('code', 'id', 'nummer', 'nr');
+    return bezet.has(g) ? -1 : g;
+  })());
+  const naamKol = (() => {
+    const i = zoek(`${niveau}naam`, `${niveau} naam`, 'naam', 'omschrijving', 'benaming', niveau, `${niveau}omschrijving`);
+    if (i >= 0 && !bezet.has(i)) return i;
+    return vindKolom(kop, niveau, 'naam', bezet);
+  })();
   return {
-    code: zoek(`${niveau}code`, `${niveau} code`, `code ${niveau}`, `${niveau}id`, `${niveau} id`, 'code', 'id', 'nummer', 'nr'),
-    naam: zoek(`${niveau}naam`, `${niveau} naam`, 'naam', 'omschrijving', 'benaming', niveau, `${niveau}omschrijving`),
-    ouder: ouder ? zoek(`${ouder}code`, `${ouder} code`, `code ${ouder}`, `${ouder}id`, 'bovenliggende code', 'bovenliggend', 'ouder', 'ouder code', 'parent', 'parent code', 'hoort bij', ouder, `${ouder}naam`) : -1,
+    code,
+    naam: naamKol,
+    ouder: ouderKol,
     eenheid: zoek('eenheid', 'unit'),
     hoeveelheid: zoek('hoeveelheid', 'aantal', 'omvang', 'quantity'),
     gis: zoek('gis code', 'gis', 'gis id', 'gis objectcode', 'objectcode gis', 'beheer id', 'koppelcode'),
@@ -450,6 +506,41 @@ export function leesBladen(bladen) {
   const lijst = (bladen ?? []).filter((b) => (b.regels ?? []).some((r) => (r ?? []).some((c) => tekst(c))));
   if (!lijst.length) return { knopen: [], fouten: ['Het bestand is leeg.'], indeling: null, kop: [], bladen: [] };
   const perNiveau = lijst.map((b) => ({ ...b, niveau: niveauVanBlad(b.naam) })).filter((b) => b.niveau);
+  const kopVan = (b) => {
+    const rijen = b.regels.map((r) => (r ?? []).map(tekst));
+    return (rijen[rijen.findIndex((r) => r.some((c) => c))] ?? []).filter(Boolean);
+  };
+  // Standaard: het tabblad Bouwdelen, als daarin per regel object, element en bouwdeel (met codes) staan.
+  const bdBlad = perNiveau.find((b) => b.niveau === 'bouwdeel');
+  if (bdBlad) {
+    const r = leesDecompositie(bdBlad.regels);
+    const t = telling(r.knopen);
+    if (r.indeling === 'kolommen' && t.object && t.bouwdeel) {
+      // Namen die in Bouwdelen ontbreken (alleen een code) aanvullen uit de tabbladen Objecten en Elementen.
+      const gebruiktVoorNamen = new Set();
+      for (const niveau of ['object', 'element']) {
+        const namen = new Map();
+        for (const b of perNiveau.filter((x) => x.niveau === niveau)) {
+          const rijen = b.regels.map((x) => (x ?? []).map(tekst));
+          const start = rijen.findIndex((x) => x.some((c) => c));
+          const k = bladKolommen(rijen[start], niveau);
+          if (k.code < 0 || k.naam < 0 || k.code === k.naam) continue;
+          for (const x of rijen.slice(start + 1)) if (x[k.code] && x[k.naam]) namen.set(norm(x[k.code]), x[k.naam]);
+          if (namen.size) gebruiktVoorNamen.add(b.naam);
+        }
+        for (const kn of r.knopen) if (kn.niveau === niveau && kn.code && (!kn.naam || kn.naam === kn.code) && namen.has(norm(kn.code))) kn.naam = namen.get(norm(kn.code));
+      }
+      return {
+        ...r, indeling: 'tabblad-bouwdelen', kop: kopVan(bdBlad).map((c) => `${bdBlad.naam} › ${c}`),
+        fouten: r.fouten.map((f) => f.replace(/^Regel (\d+):/, `Tabblad "${bdBlad.naam}", regel $1:`)),
+        bladen: lijst.map((b) => {
+          const deze = b.naam === bdBlad.naam;
+          return { naam: b.naam, niveau: niveauVanBlad(b.naam), rijen: deze ? r.knopen.length : 0,
+            gebruikt: deze, rol: deze ? 'decompositie' : gebruiktVoorNamen.has(b.naam) ? 'namen' : '', herkend: deze ? herkendeKolommen(kopVan(bdBlad)) : '' };
+        }),
+      };
+    }
+  }
   const niveaus = new Set(perNiveau.map((b) => b.niveau));
   if (niveaus.size >= 2) {
     const fouten = [];
@@ -481,7 +572,9 @@ export function leesBladen(bladen) {
           tijdelijk.push({ code, naam, niveau, ouder: k.ouder >= 0 ? r[k.ouder] : '', eenheid: k.eenheid >= 0 ? r[k.eenheid] : '', hoeveelheid: k.hoeveelheid >= 0 ? r[k.hoeveelheid] : '',
             gis: k.gis >= 0 ? r[k.gis] : '', blad: b.naam, rij: start + i + 2 });
         });
-        info.push({ naam: b.naam, niveau, rijen: n, gebruikt: true });
+        const kn = (i) => (i >= 0 ? kop[i] : '–');
+        info.push({ naam: b.naam, niveau, rijen: n, gebruikt: true,
+          herkend: `code: ${kn(k.code)} · naam: ${kn(k.naam)}${OUDER_NIVEAU[niveau] ? ` · hoort bij ${OUDER_NIVEAU[niveau]}: ${kn(k.ouder)}` : ''}` });
       }
     }
     for (const t of tijdelijk) {

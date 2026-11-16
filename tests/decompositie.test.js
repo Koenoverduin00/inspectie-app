@@ -169,6 +169,29 @@ test('werkboek met één blad met de hele decompositie', () => {
   assert.deepEqual(r.bladen.map((b) => b.gebruikt), [false, true]);
 });
 
+test('standaard het tabblad Bouwdelen met alle codes; namen uit de andere tabbladen', () => {
+  const r = D.leesBladen([
+    { naam: 'Objecten', regels: [['Objectcode', 'Naam'], ['EPK2', 'Europoortkering 2']] },
+    { naam: 'Elementen', regels: [['Elementcode', 'Naam'], ['EPK2-D1', 'Europoortkering 2 sectie D1']] },
+    { naam: 'Bouwdelen', regels: [['Objectcode', 'Elementcode', 'Bouwdeelcode', 'Bouwdeel', 'Eenheid', 'Hoeveelheid'],
+      ['EPK2', 'EPK2-D1', 'B1', 'Steenbekleding', 'm2', '1200'], ['EPK2', 'EPK2-D1', 'B2', 'Kruin', 'm1', '300'], ['EPK2', 'EPK2-D2', 'B3', 'Teen', '', '']] },
+    { naam: 'Blad2', regels: [['x']] },
+  ]);
+  assert.equal(r.indeling, 'tabblad-bouwdelen');
+  assert.deepEqual(D.telling(r.knopen), { object: 1, element: 2, bouwdeel: 3 });
+  assert.equal(r.knopen.find((k) => k.code === 'EPK2').naam, 'Europoortkering 2');
+  assert.equal(r.knopen.find((k) => k.code === 'EPK2-D1').naam, 'Europoortkering 2 sectie D1');
+  assert.equal(r.knopen.find((k) => k.code === 'EPK2-D2').naam, 'EPK2-D2');
+  assert.equal(r.knopen.find((k) => k.code === 'B1').hoeveelheid, 1200);
+  assert.deepEqual(r.bladen.map((b) => [b.naam, b.gebruikt, b.rol]), [['Objecten', false, 'namen'], ['Elementen', false, 'namen'], ['Bouwdelen', true, 'decompositie'], ['Blad2', false, '']]);
+  assert.ok(r.kop.every((k) => k.startsWith('Bouwdelen › ')));
+});
+
+test('kolommen: losse kolom Code is de bouwdeelcode', () => {
+  const r = D.leesDecompositie([['Object', 'Element', 'Bouwdeel', 'Code'], ['Brug', 'Onderbouw', 'Landhoofd', 'B-01']]);
+  assert.equal(r.knopen.find((k) => k.niveau === 'bouwdeel').code, 'B-01');
+});
+
 test('tabbladen zonder codes: verwijzen op naam', () => {
   const r = D.leesBladen([
     { naam: 'Objecten', regels: [['Object'], ['Europoortkering 2']] },
@@ -177,4 +200,27 @@ test('tabbladen zonder codes: verwijzen op naam', () => {
   ]);
   assert.deepEqual(r.fouten, []);
   assert.deepEqual(D.telling(r.knopen), { object: 1, element: 1, bouwdeel: 1 });
+});
+
+test('ruime herkenning van kolomnamen (ID, nummer, omschrijving, type)', () => {
+  // Tabbladen per niveau met afwijkende koppen
+  const r = D.leesBladen([
+    { naam: 'Objecten', regels: [['Object ID', 'Objectnaam'], ['O1', 'Europoortkering 2 sectie D1']] },
+    { naam: 'Elementen', regels: [['Element ID', 'Elementtype', 'Object ID'], ['E1', 'Bekleding', 'O1'], ['E2', 'Kruin', 'O1']] },
+    { naam: 'Bouwdelen', regels: [['Bouwdeelnummer', 'Omschrijving', 'Element ID'], ['B1', 'Steen', 'E1'], ['B2', 'Gras', 'E2']] },
+  ]);
+  assert.deepEqual(D.telling(r.knopen), { object: 1, element: 2, bouwdeel: 2 });
+  assert.match(r.bladen[1].herkend, /hoort bij object: Object ID/);
+  // Tabblad Bouwdelen met de hele keten en afwijkende koppen
+  const b = D.leesBladen([
+    { naam: 'Objecten', regels: [['Object nr', 'Omschrijving'], ['O1', 'Europoortkering 2 sectie D1']] },
+    { naam: 'Bouwdelen', regels: [['Object nr', 'Element nr', 'Omschrijving element', 'Bouwdeel nr', 'Omschrijving bouwdeel'],
+      ['O1', 'E1', 'Bekleding', 'B1', 'Steen'], ['O1', 'E2', 'Kruin', 'B2', 'Gras']] },
+  ]);
+  assert.equal(b.indeling, 'tabblad-bouwdelen');
+  assert.deepEqual(D.telling(b.knopen), { object: 1, element: 2, bouwdeel: 2 });
+  assert.equal(b.knopen.find((k) => k.code === 'E1').naam, 'Bekleding');
+  assert.equal(b.knopen.find((k) => k.code === 'O1').naam, 'Europoortkering 2 sectie D1');
+  // Lijst-indeling blijft ongemoeid
+  assert.equal(D.leesDecompositie(D.SJABLOON).knopen.length, 7);
 });
