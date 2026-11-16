@@ -4819,7 +4819,7 @@ async function mobielKaart() {
   const dv = await veldDecompositie();
   const ik = sync.sessie()?.gebruiker?.email ?? '';
   const bereik = kaartBereik();
-  const alleActueel = actieveRondes(g);
+  const alleActueel = kaartRondes(g);
   const mijnRondes = alleActueel.filter(({ pakket }) => pakketVoorMij(pakket, ik));
   const rondes = bereik === 'alle' ? alleActueel : mijnRondes;
   const telPakketten = (lijst) => new Set(lijst.map((x) => x.pakket.id)).size;
@@ -4843,11 +4843,19 @@ async function mobielKaart() {
   // De kaart toont werkpakketten, niet de afzonderlijke rondes: die zie je pas bij "Afmelden op deze locatie".
   const pakketten = new Map();
   for (const { pakket: v } of rondes) {
-    if (!pakketten.has(v.id)) pakketten.set(v.id, { id: v.id, naam: v.pakketNaam ?? v.naam, code: v.code ?? '', objecten: new Set() });
+    if (!pakketten.has(v.id)) pakketten.set(v.id, { id: v.id, naam: v.pakketNaam ?? v.naam, code: v.code ?? '', objecten: new Set(), rondes: [] });
     v.objecten.forEach((oid) => pakketten.get(v.id).objecten.add(oid));
+    pakketten.get(v.id).rondes.push(v);
   }
   const naamTel = new Map();
   for (const pk of pakketten.values()) naamTel.set(pk.naam, (naamTel.get(pk.naam) ?? 0) + 1);
+  // De actuele ronde van een pakket (bij een ronde per jaar: die van nu), als korte tekst.
+  const actueleRondeTekst = (pk) => {
+    if (pk.rondes.length !== 1) return '';
+    const v = pk.rondes[0];
+    const naam = v.rondeNaam && v.rondeNaam !== pk.naam ? v.rondeNaam : (rondesVan(g.pakketten.find((x) => x.id === pk.id) ?? {}).length > 1 ? `R${v.nummer ?? 1}` : '');
+    return [naam, periodeTekst(v)].filter(Boolean).map(esc).join(', ');
+  };
   const pakketLabel = (pk) => `${naamTel.get(pk.naam) > 1 && pk.code ? `<b>${esc(pk.code)}</b> ` : ''}${esc(pk.naam)}`;
   /** Werkpakketten op een object met de samengevatte status (open zodra één ronde daar nog open is). */
   const pakkettenOp = (oid) => {
@@ -4866,7 +4874,8 @@ async function mobielKaart() {
     <div class="segment mkaartbereik" role="radiogroup" aria-label="Welke werkpakketten">
       <label><input type="radio" name="mkb" value="mij" ${bereik === 'mij' ? 'checked' : ''}><span>Aan mij toegewezen (${telPakketten(mijnRondes)})</span></label>
       <label><input type="radio" name="mkb" value="alle" ${bereik === 'alle' ? 'checked' : ''}><span>Alle actuele (${telPakketten(alleActueel)})</span></label></div>
-    <div class="mkaartkop"><div><h1>Kaart</h1><small>${rondes.length ? `${open} open · ${lijst.length - open} klaar · ${pakketten.size} werkpakket${pakketten.size === 1 ? '' : 'ten'}` : 'Geen actieve werkpakketten'}</small></div>
+    <div class="mkaartkop"><div><h1>Kaart</h1><small>${rondes.length ? `${open} open · ${lijst.length - open} klaar · ${pakketten.size} werkpakket${pakketten.size === 1 ? '' : 'ten'}` : 'Geen actieve werkpakketten'}</small>
+      <div class="mperiode" title="Welke ronde per werkpakket telt: de actuele ronde in deze periode">${periodeKiezer(g.pakketten.flatMap((p) => rondesVan(p)))}</div></div>
       ${rondes.length ? `<button class="knop" id="mijnlocatie" type="button">${I.locatie} Mijn locatie</button>` : ''}</div>
     ${pakketten.size > 1 ? `<div class="mpakketchips" role="group" aria-label="Werkpakket op de kaart">
       <button type="button" class="gfchip${gekozenPk.size ? '' : ' actief'}" data-mkp="" aria-pressed="${gekozenPk.size ? 'false' : 'true'}">Alle (${pakketten.size})</button>
@@ -4880,6 +4889,7 @@ async function mobielKaart() {
       : '<div class="kaart leeg"><p>Er loopt op dit moment geen werkpakket.</p><p><small>Zodra de beheerder een ronde actief zet, zie je de objecten hier.</small></p></div>'}
     ${rondes.length && dv ? '<section class="kaart mbdlijst" id="mbdlijst"></section>' : ''}`;
   app.querySelectorAll('input[name=mkb]').forEach((x) => x.addEventListener('change', () => { instelling.schrijf('mKaartBereik', x.value); mobielKaart(); }));
+  koppelPeriodeKiezer(app.querySelector('.mperiode'), () => mobielKaart());
   if (!rondes.length) return;
   const navigeer = (o) => {
     const geom = objectGeometrie(o);
@@ -4897,9 +4907,9 @@ async function mobielKaart() {
       return `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br><small>${esc(o.type || '')}</small>${dv?.html(o) ?? ''}
         ${uitTeVoeren.length ? `<div class="veldmelding">${I.let} <strong>Uit te voeren: ${uitTeVoeren.length} werkpakket${uitTeVoeren.length === 1 ? '' : 'ten'}</strong></div>
         <ul class="veldrondes">${uitTeVoeren.map(({ pk }) => `<li><a href="${locatiePagina(o.id)}"><span class="stip open"></span>
-          <span><span class="rondenaam">${esc(pk.naam)}</span><small class="rondekenmerken">${pk.code ? `<strong>${esc(pk.code)}</strong>` : ''}${nietVanMij(pk) ? `${pk.code ? ' · ' : ''}niet aan jou toegewezen` : ''}</small></span></a></li>`).join('')}</ul>`
+          <span><span class="rondenaam">${esc(pk.naam)}</span><small class="rondekenmerken">${[pk.code ? `<strong>${esc(pk.code)}</strong>` : '', actueleRondeTekst(pk), nietVanMij(pk) ? 'niet aan jou toegewezen' : ''].filter(Boolean).join(' · ')}</small></span></a></li>`).join('')}</ul>`
     : `<div class="veldklaar">${I.gereed} Op dit object is niets meer uit te voeren.</div>`}
-        ${klaar.length ? `<p class="veldafgemeld"><small>${klaar.map(({ pk, st }) => `<span class="stip ${st}"></span> ${esc(pk.code || pk.naam)} ${st === 'gedaan' ? 'gereed' : 'overgeslagen'}`).join(' · ')}</small></p>` : ''}
+        ${klaar.length ? `<p class="veldafgemeld"><small>${klaar.map(({ pk, st }) => `<span class="stip ${st}"></span> ${esc(pk.code || pk.naam)}${actueleRondeTekst(pk) ? ` (${actueleRondeTekst(pk)})` : ''} ${st === 'gedaan' ? 'gereed' : 'overgeslagen'}`).join(' · ')}</small></p>` : ''}
         <div class="popupknoppen"><a class="knop klein primair" href="${locatiePagina(o.id)}">${uitTeVoeren.length ? `${I.start} Afmelden op deze locatie` : 'Bekijken'}</a>
         <a class="knop klein" href="${navigeer(o)}" target="_blank" rel="noopener">${I.navigeer} Navigeer</a></div>`;
     },
@@ -4951,7 +4961,7 @@ async function mobielKaart() {
       if (x.dataset.mkp) x.innerHTML = `${aan ? I.vink : ''}${pakketLabel(pakketten.get(x.dataset.mkp))}`;
     });
     const h = app.querySelector('#mkeuzehint');
-    if (h) h.innerHTML = gekozenPk.size ? `${gekozenPk.size} werkpakket${gekozenPk.size === 1 ? '' : 'ten'} op de kaart · ${inBeeld().length} objecten` : 'Tik op werkpakketten om er één of meer tegelijk te tonen.';
+    if (h) { h.hidden = !gekozenPk.size; h.innerHTML = gekozenPk.size ? `${gekozenPk.size} werkpakket${gekozenPk.size === 1 ? '' : 'ten'} op de kaart · ${inBeeld().length} objecten` : ''; }
   };
   tekenChips();
   toonPakket(gekozenPk.size > 0);
@@ -5008,8 +5018,25 @@ async function mobielKaart() {
 const kaartBereik = () => (instelling.lees('mKaartBereik') === 'alle' ? 'alle' : 'mij');
 const inKaartBereik = (v, ik, bereik = kaartBereik()) => (bereik === 'alle' ? true : pakketVoorMij(v, ik));
 
+/**
+ * Rondes voor de kaart en de locatiepagina: per werkpakket alleen de actuele ronde (in de gekozen periode, het dichtst bij vandaag).
+ * Afgeronde rondes tellen mee, zodat werk dat dit jaar al gedaan is groen blijft; pakketten op afroep houden al hun lopende afroepen.
+ */
+function kaartRondes(g) {
+  const uit = [];
+  for (const p of g.pakketten) {
+    for (const r of rondesVan(p).filter((x) => x.status === 'actief' || (x.status === 'afgerond' && !isAfroep(p)))) {
+      const sleutel = `${p.id}:${r.id}`;
+      uit.push({ pakket: g.views.get(sleutel), open: g.rondeVoortgang.get(sleutel).open, voortgang: g.rondeVoortgang.get(sleutel), afroep: isAfroep(p) });
+    }
+  }
+  const bereik = rondePeriode();
+  const gewoon = PL.actueelPerPakket(uit.filter((x) => !x.afroep), vandaag(), bereik);
+  return uit.filter((x) => (x.afroep ? true : gewoon.includes(x)));
+}
+
 function rondesOpObject(g, objectId, ik) {
-  return actieveRondes(g)
+  return kaartRondes(g)
     .filter(({ pakket: v }) => inKaartBereik(v, ik) && v.objecten.includes(objectId))
     .map(({ pakket: v, voortgang: vg }) => ({
       v, vg, st: vg.gedaan.has(objectId) ? 'gedaan' : vg.overgeslagen.has(objectId) ? 'overgeslagen' : 'open',

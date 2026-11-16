@@ -477,6 +477,12 @@ dan zie je per object de koppeling met het **bouwdeel**:
   gekoppeld zijn en welke decompositieversie geldt. Tik op een regel om ernaartoe te zoomen.
 - **Locatiepagina**: bovenaan staat het bouwdeel van het object.
 
+**Eén actuele ronde per werkpakket.** Heeft een werkpakket meerdere rondes (bijvoorbeeld één per jaar), dan telt op de kaart en op de
+locatiepagina alleen de **actuele ronde**: van de rondes in de gekozen periode (standaard dit kalenderjaar, dezelfde instelling als planning
+en dashboard; te kiezen onder *Kaart*) de ronde waarvan de planning het dichtst bij vandaag ligt. Afgeronde rondes tellen mee, zodat werk
+dat dit jaar al gedaan is groen blijft en de rondes van de komende jaren het object niet weer op *niet gereed* zetten. In de popup staat
+welke ronde dat is (naam en periode). Kies *Volgend jaar* om de volgende ronde te bekijken. Pakketten op afroep houden al hun lopende afroepen.
+
 **Twee keuzes bovenaan de mobiele kaart**: **Aan mij toegewezen** (de werkpakketten die jij ziet; zonder toewijzing geldt een pakket voor
 iedereen) en **Alle actuele** (alle lopende werkpakketten van het project, ook die van collega's). Tussen haakjes staat het aantal
 werkpakketten. De keuze wordt onthouden en geldt ook voor de locatiepagina. De kleur van een object geeft de status: **niet gereed**

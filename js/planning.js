@@ -174,3 +174,24 @@ export function dichtstbijEerst(lijst, vandaagIso) {
     || String(a.v.code ?? '').localeCompare(String(b.v.code ?? ''), 'nl', { numeric: true }));
   return [...open, ...lijst.filter((x) => x.st !== 'open')];
 }
+
+/**
+ * De actuele ronde per werkpakket: van de rondes in de gekozen periode de ronde waarvan de planning het dichtst bij vandaag ligt
+ * (lopend vóór binnenkort vóór verlopen). Zo telt een pakket met een ronde per jaar op de kaart alleen met de ronde van nu,
+ * niet met de rondes van de komende jaren.
+ * @param {{ pakket: object }[]} items  rondes als view (pakket.id = werkpakket, pakket.start/eind = periode van de ronde)
+ * @param {{van: string, tot: string}|null} bereik  periode (null = alle jaren)
+ */
+export function actueelPerPakket(items, vandaagIso, bereik) {
+  const v = dagNr(vandaagIso);
+  const later = (x) => { const p = periode(x.pakket); return p && p.start > v ? 1 : 0; };
+  const beste = new Map();
+  for (const x of items) {
+    if (!rondeInPeriode(x.pakket, bereik)) continue;
+    const huidig = beste.get(x.pakket.id);
+    if (!huidig) { beste.set(x.pakket.id, x); continue; }
+    const d = afstandTotVandaag(x.pakket, vandaagIso) - afstandTotVandaag(huidig.pakket, vandaagIso);
+    if (d < 0 || (d === 0 && later(x) > later(huidig))) beste.set(x.pakket.id, x);
+  }
+  return items.filter((x) => beste.get(x.pakket.id) === x);
+}

@@ -1562,3 +1562,15 @@ td.actiecel .knoppen { justify-content: flex-end; flex-wrap: wrap; }
 .veldafgemeld .stip { display: inline-block; width: 8px; height: 8px; vertical-align: middle; }
 .mpakketchips .gfchip .ico { width: 14px; height: 14px; margin-right: .2rem; vertical-align: -2px; }
 .mkeuzehint { margin: -.15rem 0 .35rem; font-size: .78rem; color: var(--zacht, #6b7785); }
+.mperiode { margin-top: .25rem; }
+.mperiode .periodekiezer { gap: .25rem; }
+.mperiode select { font-size: .8rem; padding: .15rem .35rem; min-height: 0; height: auto; }
+/* Compacte kop boven de mobiele kaart, zodat de kaart zelf zoveel mogelijk ruimte houdt */
+.mkaartbereik { margin: 0 0 .4rem; }
+.mkaartbereik span { padding: .3rem .4rem !important; font-size: .8rem; min-height: 0; }
+.mkaartkop { margin-bottom: .35rem; align-items: flex-start; }
+.mkaartkop h1 { margin: 0; font-size: 1.3rem; }
+.mkaartkop #mijnlocatie { padding: .35rem .6rem; font-size: .85rem; white-space: nowrap; min-height: 0; }
+.mpakketchips { padding-bottom: .25rem; }
+.mpakketchips .gfchip { padding: .25rem .6rem; font-size: .82rem; }
+.mlegenda { margin-bottom: .35rem; }

@@ -93,3 +93,20 @@ test('afmelden op locatie: planning die het dichtst bij vandaag ligt bovenaan', 
   ];
   assert.deepEqual(PL.dichtstbijEerst(lijst, nu).map((x) => x.v.code), ['Q4', 'BINNENKORT', 'VERLOPEN', 'Q3', 'Q1', 'LOS', 'KLAAR', 'OVERGESLAGEN', 'KLAAR2']);
 });
+
+test('actuele ronde per werkpakket: een ronde per jaar telt alleen met de ronde van nu', async () => {
+  const PL = await import('../js/planning.js');
+  const nu = '2026-11-16';
+  const jaar = (j) => ({ pakket: { id: 'P', rondeId: `r${j}`, start: `${j}-04-01`, eind: `${j}-04-30` } });
+  const items = [2026, 2027, 2028, 2029, 2030, 2031].map(jaar);
+  const ander = { pakket: { id: 'Q', rondeId: 'q1', start: '2026-11-01', eind: '2026-11-30' } };
+  const q2 = { pakket: { id: 'Q', rondeId: 'q2', start: '2026-12-01', eind: '2026-12-31' } };
+  const dit = PL.periodeBereik('jaar', nu);
+  assert.deepEqual(PL.actueelPerPakket([...items, ander, q2], nu, dit).map((x) => x.pakket.rondeId), ['r2026', 'q1']);
+  // volgend jaar bekijken: dan de ronde van 2027
+  assert.deepEqual(PL.actueelPerPakket(items, nu, PL.periodeBereik('volgend', nu)).map((x) => x.pakket.rondeId), ['r2027']);
+  // alle jaren: de dichtstbijzijnde (april 2027 ligt dichter bij 16 nov 2026 dan april 2026)
+  assert.deepEqual(PL.actueelPerPakket(items, nu, null).map((x) => x.pakket.rondeId), ['r2027']);
+  // niet ingepland telt mee als er niets anders is
+  assert.deepEqual(PL.actueelPerPakket([{ pakket: { id: 'Z', rondeId: 'z', start: '' } }], nu, dit).map((x) => x.pakket.rondeId), ['z']);
+});
