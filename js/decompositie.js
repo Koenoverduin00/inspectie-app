@@ -1,10 +1,12 @@
-// NEN 2767-decompositie: object → element → bouwdeel, aangeleverd door de opdrachtgever (Excel/CSV).
+// NEN 2767-decompositie: (systeemdeel →) object → element → bouwdeel, aangeleverd door de opdrachtgever (Excel/CSV).
 // GIS-objecten worden op elk niveau aan een knoop gekoppeld; alleen bouwdelen krijgen een conditiescore
 // (er wordt niets opgeteld naar element of object). Puur en testbaar: geen DOM, geen opslag.
 import { gebrekScore } from './nen2767.js';
 
-export const NIVEAUS = ['object', 'element', 'bouwdeel'];
-export const NIVEAU_LABEL = { object: 'Object', element: 'Element', bouwdeel: 'Bouwdeel' };
+// Systeemdeel is een optionele groepering boven de objecten (bijv. "Kunstwerken", "Verharding"); objecten mogen ook zonder.
+export const NIVEAUS = ['systeemdeel', 'object', 'element', 'bouwdeel'];
+export const NIVEAU_LABEL = { systeemdeel: 'Systeemdeel', object: 'Object', element: 'Element', bouwdeel: 'Bouwdeel' };
+export const NIVEAU_MEERVOUD = { systeemdeel: 'systeemdelen', object: 'objecten', element: 'elementen', bouwdeel: 'bouwdelen' };
 
 const norm = (s) => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
   .replace(/[*()_.:-]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -33,6 +35,8 @@ const KOPPEN = {
   eenheid: ['eenheid', 'unit'],
   hoeveelheid: ['hoeveelheid', 'aantal', 'omvang', 'quantity'],
   gis: ['gis code', 'gis', 'gis id', 'gis objectcode', 'objectcode gis', 'beheer id', 'koppelcode'],
+  systeemdeel: ['systeemdeel', 'systeemdeelnaam', 'systeemdeel naam', 'systeem', 'systeemnaam'],
+  systeemdeelcode: ['systeemdeelcode', 'systeemdeel code', 'code systeemdeel', 'systeemcode', 'systeem code'],
   object: ['object', 'objectnaam', 'object naam'],
   objectcode: ['objectcode', 'object code', 'code object'],
   element: ['element', 'elementnaam', 'element naam'],
@@ -44,6 +48,7 @@ const KOPPEN = {
 function niveauVan(v) {
   const s = norm(v);
   if (!s) return '';
+  if (/^(s|sd|sys|systeem|systeemdeel|0|niveau 0)$/.test(s) || s.startsWith('systeem')) return 'systeemdeel';
   if (/^(o|obj|object|1|niveau 1)$/.test(s) || s.startsWith('object')) return 'object';
   if (/^(e|el|element|2|niveau 2)$/.test(s) || s.startsWith('element')) return 'element';
   if (/^(b|bd|bouwdeel|3|niveau 3)$/.test(s) || s.startsWith('bouwdeel') || s.startsWith('onderdeel')) return 'bouwdeel';
@@ -52,7 +57,7 @@ function niveauVan(v) {
 
 // Ruimere herkenning: elke kolom met "object", "element" of "bouwdeel" in de naam is een code (code, id, nr, nummer)
 // of een naam (naam, omschrijving, type) van dat niveau. Zo werken ook "Element ID", "Omschrijving element" of "Elementtype".
-const STAM = { object: /object/, element: /element/, bouwdeel: /bouwde(e)?l|onderde(e)?l/ };
+const STAM = { systeemdeel: /systeemde(e)?l/, object: /object/, element: /element/, bouwdeel: /bouwde(e)?l|onderde(e)?l/ };
 const IS_CODE = /(^|\s)(code|id|nr|nummer|identificatie|guid|sleutel|kenmerk)(\s|$)|(code|id|nr|nummer)$/;
 const IS_NAAM = /(^|\s)(naam|omschrijving|benaming|type|titel|beschrijving)(\s|$)|(naam|omschrijving|type)$/;
 function vindKolom(kop, niveau, soort, bezet = new Set()) {
@@ -80,6 +85,7 @@ function kolomNiveau(h) {
   if (STAM.bouwdeel.test(s)) return 'bouwdeel';
   if (STAM.element.test(s)) return 'element';
   if (STAM.object.test(s) && !/gis/.test(s)) return 'object';
+  if (STAM.systeemdeel.test(s)) return 'systeemdeel';
   return null;
 }
 
@@ -105,7 +111,7 @@ function kolommen(kop) {
 export function herkendeKolommen(kop) {
   const k = kolommen(kop.map(tekst));
   const naam = (i) => (i === undefined || i < 0 ? null : kop[i]);
-  return NIVEAUS.map((n) => {
+  return NIVEAUS.filter((n) => n !== 'systeemdeel' || naam(k[`${n}code`]) || naam(k[n])).map((n) => {
     const c = naam(k[`${n}code`]);
     const m = naam(k[n]);
     return c || m ? `${NIVEAU_LABEL[n].toLowerCase()}: ${[c, m].filter(Boolean).join(' + ')}` : `${NIVEAU_LABEL[n].toLowerCase()}: –`;
@@ -115,7 +121,7 @@ export function herkendeKolommen(kop) {
 /**
  * Leest een decompositie uit tabelregels (eerste regel = kolomkoppen). Twee indelingen:
  *  1. Lijst: Code · Naam · Niveau · Bovenliggende code (· Eenheid · Hoeveelheid · GIS-code)
- *  2. Kolommen: Object · Element · Bouwdeel (met optioneel Objectcode/Elementcode/Bouwdeelcode, Eenheid, Hoeveelheid, GIS-code)
+ *  2. Kolommen: (Systeemdeel ·) Object · Element · Bouwdeel (met optioneel Objectcode/Elementcode/Bouwdeelcode, Eenheid, Hoeveelheid, GIS-code)
  * @param {Array<Array<any>>} regels
  * @returns {{ knopen: object[], fouten: string[], indeling: 'lijst'|'kolommen'|null }}
  */
@@ -128,7 +134,7 @@ export function leesDecompositie(regels) {
   const data = rijen.slice(start + 1).map((r, i) => ({ r, rij: start + i + 2 })).filter(({ r }) => r.some((c) => c));
   const kopRuw = rijen[start];
   if (k.niveau !== undefined && (k.code !== undefined || k.naam !== undefined)) return { ...leesLijst(data, k, kopRuw), kop };
-  if (k.object !== undefined || k.element !== undefined || k.bouwdeel !== undefined
+  if (k.systeemdeel !== undefined || k.systeemdeelcode !== undefined || k.object !== undefined || k.element !== undefined || k.bouwdeel !== undefined
     || k.objectcode !== undefined || k.elementcode !== undefined || k.bouwdeelcode !== undefined) return { ...leesKolommen(data, k, kopRuw), kop };
   return {
     knopen: [], indeling: null, kop,
@@ -144,7 +150,7 @@ function leesLijst(data, k, kopRuw = []) {
     const niveau = niveauVan(r[k.niveau]);
     const code = k.code !== undefined ? r[k.code] : '';
     const naam = k.naam !== undefined ? r[k.naam] : '';
-    if (!niveau) { fouten.push(`Regel ${rij}: onbekend niveau "${r[k.niveau]}" (gebruik object, element of bouwdeel).`); continue; }
+    if (!niveau) { fouten.push(`Regel ${rij}: onbekend niveau "${r[k.niveau]}" (gebruik systeemdeel, object, element of bouwdeel).`); continue; }
     if (!code && !naam) { fouten.push(`Regel ${rij}: code en naam ontbreken.`); continue; }
     const sleutel = code || `${niveau}:${naam}`;
     if (perCode.has(sleutel)) { fouten.push(`Regel ${rij}: code "${sleutel}" komt dubbel voor.`); continue; }
@@ -157,11 +163,13 @@ function leesLijst(data, k, kopRuw = []) {
     perCode.set(sleutel, knoop);
     knopen.push(knoop);
   }
-  const verwacht = { object: null, element: 'object', bouwdeel: 'element' };
+  const verwacht = { systeemdeel: null, object: 'systeemdeel', element: 'object', bouwdeel: 'element' };
   for (const kn of knopen) {
     const oc = kn._ouder;
-    if (kn.niveau === 'object') {
-      if (oc) fouten.push(`Regel ${kn._rij}: een object heeft geen bovenliggende code ("${oc}" genegeerd).`);
+    if (kn.niveau === 'systeemdeel') {
+      if (oc) fouten.push(`Regel ${kn._rij}: een systeemdeel heeft geen bovenliggende code ("${oc}" genegeerd).`);
+    } else if (kn.niveau === 'object' && !oc) {
+      // Object zonder systeemdeel: bovenaan in de boom.
     } else if (!oc) {
       fouten.push(`Regel ${kn._rij}: ${kn.niveau} "${kn.naam}" heeft geen bovenliggende code.`);
     } else {
@@ -171,12 +179,12 @@ function leesLijst(data, k, kopRuw = []) {
       else kn.ouder = ouder.id;
     }
   }
-  return { knopen: opgeschoond(knopen.filter((kn) => kn.niveau === 'object' || kn.ouder)), fouten, indeling: 'lijst' };
+  return { knopen: opgeschoond(knopen.filter((kn) => (kn.niveau === 'object' && !kn._ouder) || kn.niveau === 'systeemdeel' || kn.ouder)), fouten, indeling: 'lijst' };
 }
 
 function leesKolommen(data, k, kopRuw = []) {
   // Kolommen met "object", "element" of "bouwdeel" in de naam horen bij dat niveau; de rest bij het diepste onderdeel van de regel.
-  const perNiveauKol = { object: [], element: [], bouwdeel: [], rest: [] };
+  const perNiveauKol = { systeemdeel: [], object: [], element: [], bouwdeel: [], rest: [] };
   kopRuw.forEach((h, i) => { if (tekst(h)) perNiveauKol[kolomNiveau(h) ?? 'rest'].push(i); });
   const fouten = [];
   const knopen = [];
@@ -197,13 +205,15 @@ function leesKolommen(data, k, kopRuw = []) {
     const delen = NIVEAUS.map((n) => ({ niveau: n, code: val(r, `${n}code`) || (n === 'bouwdeel' && k.bouwdeelcode === undefined ? val(r, 'code') : ''), naam: val(r, n) }));
     const laatste = delen.map((d) => Boolean(d.code || d.naam)).lastIndexOf(true);
     if (laatste < 0) continue;
-    if (delen.slice(0, laatste).some((d) => !d.code && !d.naam)) {
-      fouten.push(`Regel ${rij}: ${delen[laatste].niveau} zonder bovenliggend ${delen.slice(0, laatste).find((d) => !d.code && !d.naam).niveau}.`);
+    // Het systeemdeel (index 0) is optioneel; vanaf het object moet elk niveau boven het laatste gevuld zijn.
+    const leeg = (d) => !d.code && !d.naam;
+    if (delen.slice(1, laatste).some(leeg)) {
+      fouten.push(`Regel ${rij}: ${delen[laatste].niveau} zonder bovenliggend ${delen.slice(1, laatste).find(leeg).niveau}.`);
       continue;
     }
     let ouder = null;
     let kn = null;
-    for (let i = 0; i <= laatste; i += 1) {
+    for (let i = leeg(delen[0]) ? 1 : 0; i <= laatste; i += 1) {
       kn = zoekOfMaak(delen[i].niveau, delen[i].code, delen[i].naam, ouder, rij);
       ouder = kn.id;
       const eigen = rijKenmerken(kopRuw, r, [...perNiveauKol[delen[i].niveau], ...(i === laatste ? perNiveauKol.rest : [])]);
@@ -284,7 +294,7 @@ export function bijwerken(oud, nieuw, sleutel = 'code') {
   return { knopen, gewijzigd, toegevoegd, vervallen, ongewijzigd, fouten };
 }
 
-export const KIND_NIVEAU = { object: 'element', element: 'bouwdeel', bouwdeel: null };
+export const KIND_NIVEAU = { systeemdeel: 'object', object: 'element', element: 'bouwdeel', bouwdeel: null };
 
 /** Past één onderdeel aan (naam, code, eenheid, hoeveelheid, GIS-code). Code moet uniek zijn binnen het niveau. */
 export function pasKnoopAan(knopen, id, wijziging) {
@@ -298,11 +308,11 @@ export function pasKnoopAan(knopen, id, wijziging) {
   return { knopen: knopen.map((x) => (x.id === id ? nieuw : x)) };
 }
 
-/** Voegt een onderdeel toe: een object bovenaan (ouder = null) of een element/bouwdeel onder de ouder. */
-export function voegKnoopToe(knopen, ouderId, data, id) {
+/** Voegt een onderdeel toe: bovenaan (ouder = null) een systeemdeel of object, of het niveau eronder onder de ouder. */
+export function voegKnoopToe(knopen, ouderId, data, id, bovenNiveau = 'object') {
   const ouder = ouderId ? knopen.find((x) => x.id === ouderId) : null;
   if (ouderId && !ouder) return { fout: 'Bovenliggend onderdeel niet gevonden.' };
-  const niveau = ouder ? KIND_NIVEAU[ouder.niveau] : 'object';
+  const niveau = ouder ? KIND_NIVEAU[ouder.niveau] : (bovenNiveau === 'systeemdeel' ? 'systeemdeel' : 'object');
   if (!niveau) return { fout: 'Onder een bouwdeel kan niets meer worden toegevoegd.' };
   const k = { id, code: '', naam: '', niveau, ouder: ouder?.id ?? null, eenheid: '', hoeveelheid: '', gis: '' };
   const r = pasKnoopAan([...knopen, k], id, data);
@@ -332,7 +342,7 @@ export function index(knopen) {
   return { perId, kinderen, knopen: knopen ?? [] };
 }
 
-/** Voorouders + de knoop zelf, van object naar beneden. */
+/** Voorouders + de knoop zelf, van boven naar beneden. */
 export function pad(idx, id) {
   const uit = [];
   let k = idx.perId.get(id);
@@ -352,7 +362,7 @@ export function bouwdelenOnder(idx, id) {
 
 /** Aantallen per niveau. */
 export function telling(knopen) {
-  const t = { object: 0, element: 0, bouwdeel: 0 };
+  const t = { systeemdeel: 0, object: 0, element: 0, bouwdeel: 0 };
   for (const k of knopen ?? []) t[k.niveau] = (t[k.niveau] ?? 0) + 1;
   return t;
 }
@@ -520,7 +530,8 @@ export function naarRegels(knopen) {
 
 export const SJABLOON = [
   ['Code', 'Naam', 'Niveau', 'Bovenliggende code', 'Eenheid', 'Hoeveelheid', 'GIS-code'],
-  ['KW-001', 'Brug Molenweg', 'Object', '', '', '', ''],
+  ['SD-KW', 'Kunstwerken', 'Systeemdeel', '', '', '', ''],
+  ['KW-001', 'Brug Molenweg', 'Object', 'SD-KW', '', '', ''],
   ['KW-001.1', 'Onderbouw', 'Element', 'KW-001', '', '', ''],
   ['KW-001.1.1', 'Landhoofd noord', 'Bouwdeel', 'KW-001.1', 'st', 1, 'KW-001-LH-N'],
   ['KW-001.1.2', 'Landhoofd zuid', 'Bouwdeel', 'KW-001.1', 'st', 1, 'KW-001-LH-Z'],
@@ -553,16 +564,18 @@ export function leesCsvTekst(inhoud) {
   return regels;
 }
 
-/** Niveau van een tabblad op basis van de naam (bijv. "Objecten", "Elementen", "Bouwdelen"). */
+/** Niveau van een tabblad op basis van de naam (bijv. "Systeemdelen", "Objecten", "Elementen", "Bouwdelen"). */
 export function niveauVanBlad(naam) {
   const s = norm(naam);
   if (/bouwde(e)?l|onderde(e)?l/.test(s)) return 'bouwdeel';
+  if (/systeemde(e)?l|^systemen$/.test(s)) return 'systeemdeel';
   if (/element/.test(s)) return 'element';
   if (/object/.test(s)) return 'object';
   return null;
 }
 
-const OUDER_NIVEAU = { element: 'object', bouwdeel: 'element' };
+const OUDER_NIVEAU = { object: 'systeemdeel', element: 'object', bouwdeel: 'element' };
+const OUDER_OPTIONEEL = new Set(['object']); // een object mag zonder systeemdeel
 
 /** Kolommen in een tabblad per niveau: code, naam, bovenliggend onderdeel, eenheid, hoeveelheid, GIS-code. */
 function bladKolommen(kop, niveau) {
@@ -603,7 +616,7 @@ function bladKolommen(kop, niveau) {
 
 /**
  * Leest een werkboek met (mogelijk) meerdere tabbladen.
- *  - Tabbladen per niveau (Objecten / Elementen / Bouwdelen): elk blad heeft een code en naam, en (behalve objecten) een kolom met de
+ *  - Tabbladen per niveau ((Systeemdelen /) Objecten / Elementen / Bouwdelen): elk blad heeft een code en naam, en (behalve objecten) een kolom met de
  *    code of naam van het bovenliggende onderdeel. Andere tabbladen worden genegeerd.
  *  - Anders: het tabblad met de meeste herkende onderdelen (lijst- of kolommenindeling).
  * @param {{ naam: string, regels: any[][] }[]} bladen
@@ -625,7 +638,7 @@ export function leesBladen(bladen) {
     if (r.indeling === 'kolommen' && t.object && t.bouwdeel) {
       // Namen die in Bouwdelen ontbreken (alleen een code) aanvullen uit de tabbladen Objecten en Elementen.
       const gebruiktVoorNamen = new Set();
-      for (const niveau of ['object', 'element']) {
+      for (const niveau of ['systeemdeel', 'object', 'element']) {
         const namen = new Map();
         const kenm = new Map();
         for (const b of perNiveau.filter((x) => x.niveau === niveau)) {
@@ -663,8 +676,8 @@ export function leesBladen(bladen) {
     const fouten = [];
     const regels = [['Code', 'Naam', 'Niveau', 'Bovenliggende code', 'Eenheid', 'Hoeveelheid', 'GIS-code']];
     const info = [];
-    const naamNaarCode = { object: new Map(), element: new Map() };
-    const codes = { object: new Set(), element: new Set() };
+    const naamNaarCode = { systeemdeel: new Map(), object: new Map(), element: new Map() };
+    const codes = { systeemdeel: new Set(), object: new Set(), element: new Set() };
     const tijdelijk = [];
     for (const niveau of NIVEAUS) {
       for (const b of perNiveau.filter((x) => x.niveau === niveau)) {
@@ -674,7 +687,7 @@ export function leesBladen(bladen) {
         const k = bladKolommen(kop, niveau);
         let n = 0;
         if (k.code < 0 && k.naam < 0) { fouten.push(`Tabblad "${b.naam}": geen kolom met code of naam gevonden.`); info.push({ naam: b.naam, niveau, rijen: 0, gebruikt: false }); continue; }
-        if (OUDER_NIVEAU[niveau] && k.ouder < 0) fouten.push(`Tabblad "${b.naam}": geen kolom met het bovenliggende ${OUDER_NIVEAU[niveau]} gevonden (bijv. "${OUDER_NIVEAU[niveau]}code").`);
+        if (OUDER_NIVEAU[niveau] && !OUDER_OPTIONEEL.has(niveau) && k.ouder < 0) fouten.push(`Tabblad "${b.naam}": geen kolom met het bovenliggende ${OUDER_NIVEAU[niveau]} gevonden (bijv. "${OUDER_NIVEAU[niveau]}code").`);
         rijen.slice(start + 1).forEach((r, i) => {
           const code = k.code >= 0 ? r[k.code] : '';
           const naam = k.naam >= 0 ? r[k.naam] : '';
@@ -691,7 +704,7 @@ export function leesBladen(bladen) {
         });
         const kn = (i) => (i >= 0 ? kop[i] : '–');
         info.push({ naam: b.naam, niveau, rijen: n, gebruikt: true,
-          herkend: `code: ${kn(k.code)} · naam: ${kn(k.naam)}${OUDER_NIVEAU[niveau] ? ` · hoort bij ${OUDER_NIVEAU[niveau]}: ${kn(k.ouder)}` : ''}` });
+          herkend: `code: ${kn(k.code)} · naam: ${kn(k.naam)}${OUDER_NIVEAU[niveau] && (k.ouder >= 0 || !OUDER_OPTIONEEL.has(niveau)) ? ` · hoort bij ${OUDER_NIVEAU[niveau]}: ${kn(k.ouder)}` : ''}` });
       }
     }
     for (const t of tijdelijk) {

@@ -285,13 +285,13 @@ function bouwdelenVanObject(o, idx = decompIndex()) {
   if (!idx || !o?.decomp || !idx.perId.has(o.decomp)) return [];
   return D.bouwdelenOnder(idx, o.decomp);
 }
-const NIVEAU_KLEUR = { object: '#7d5ba6', element: '#c27c1e', bouwdeel: '#2f8f5b' };
+const NIVEAU_KLEUR = { systeemdeel: '#b0417a', object: '#7d5ba6', element: '#c27c1e', bouwdeel: '#2f8f5b' };
 /** "Objectcode = GIS-code (bouwdelen)" – leesbare beschrijving van een koppelinstelling. */
 function koppelTekst(kp) {
   const kolom = kp.kolom === 'code' ? 'objectcode' : kp.kolom === 'naam' ? 'naam' : `kenmerk "${String(kp.kolom).slice(8)}"`;
   const veld = kp.veld === 'auto' || !kp.veld ? 'GIS-code of code'
     : String(kp.veld).startsWith('kenmerk:') ? `kolom "${String(kp.veld).slice(8)}"` : D.KOPPEL_VELDEN[kp.veld]?.toLowerCase();
-  return `${kolom} = ${veld}${kp.niveau ? `, alleen ${{ object: 'objecten', element: 'elementen', bouwdeel: 'bouwdelen' }[kp.niveau]}` : ''}`;
+  return `${kolom} = ${veld}${kp.niveau ? `, alleen ${D.NIVEAU_MEERVOUD[kp.niveau]}` : ''}`;
 }
 const niveauChip = (n) => `<span class="niveauchip" style="--nk:${NIVEAU_KLEUR[n] ?? '#8a96a3'}">${esc(D.NIVEAU_LABEL[n] ?? n)}</span>`;
 const knoopNaam = (k) => (k ? `${k.code ? `${esc(k.code)} ` : ''}${esc(k.naam)}` : '');
@@ -393,7 +393,7 @@ async function decompositiePagina(_, q) {
   const t = () => D.telling(knopen);
   app.innerHTML = `
     <div class="paginakop"><div><h1>Decompositie (NEN 2767)</h1>
-      <p>De decompositie van de opdrachtgever: object → element → bouwdeel. GIS-objecten worden bij het inlezen gekoppeld op een kolom die je zelf kiest;
+      <p>De decompositie van de opdrachtgever: systeemdeel → object → element → bouwdeel (systeemdelen zijn optioneel). GIS-objecten worden bij het inlezen gekoppeld op een kolom die je zelf kiest;
       bij een inspectie geeft de inspecteur alleen <strong>bouwdelen</strong> een conditiescore.</p></div>
       <div class="knoppen">
         <label class="knop primair">${I.bestand} ${knopen.length ? 'Bijwerken met nieuw bestand' : 'Decompositie inlezen'}<input type="file" id="d-bestand" accept=".xlsx,.csv,.txt" hidden></label>
@@ -403,6 +403,7 @@ async function decompositiePagina(_, q) {
     <div id="d-voorbeeld"></div>
     ${knopen.length ? `
     <section class="kaart decompstats">
+      <div><strong id="d-t-systeemdeel">${t().systeemdeel}</strong><small>systeemdelen</small></div>
       <div><strong id="d-t-object">${t().object}</strong><small>objecten</small></div>
       <div><strong id="d-t-element">${t().element}</strong><small>elementen</small></div>
       <div><strong id="d-t-bouwdeel">${t().bouwdeel}</strong><small>bouwdelen</small></div>
@@ -419,14 +420,15 @@ async function decompositiePagina(_, q) {
     <div class="decompraster">
       <section class="kaart decompboom">
         <div class="dk-zoekbalk"><input type="search" id="d-zoek" placeholder="Zoek op code of naam…" autocomplete="off">
-          <button type="button" class="knop klein" id="d-nieuw-object" title="Nieuw object toevoegen">＋ Object</button></div>
+          <button type="button" class="knop klein" id="d-nieuw-systeemdeel" title="Nieuw systeemdeel (groepering van objecten) toevoegen">＋ Systeemdeel</button>
+          <button type="button" class="knop klein" id="d-nieuw-object" title="Nieuw object toevoegen, zonder systeemdeel">＋ Object</button></div>
         <div id="d-boom"></div>
       </section>
       <div>
         <section class="kaart" id="d-selectie"></section>
         <section class="kaart" style="padding:.5rem">
           <div class="kaartlegenda"><span style="--k:#1f6feb">gekozen</span><span style="--k:#7fb0ff">eronder</span>
-            <span style="--k:${NIVEAU_KLEUR.object}">object</span><span style="--k:${NIVEAU_KLEUR.element}">element</span>
+            <span style="--k:${NIVEAU_KLEUR.systeemdeel}">systeemdeel</span><span style="--k:${NIVEAU_KLEUR.object}">object</span><span style="--k:${NIVEAU_KLEUR.element}">element</span>
             <span style="--k:${NIVEAU_KLEUR.bouwdeel}">bouwdeel</span><span style="--k:#b4bcc4">niet gekoppeld</span></div>
           ${metGeom.length ? '<div id="d-kaart" class="kaartvlak" style="height:520px"></div>' : '<p class="leeg">Nog geen GIS-objecten in dit project. Laad eerst een GIS-bestand in via Kaart & GIS.</p>'}
         </section>
@@ -437,12 +439,12 @@ async function decompositiePagina(_, q) {
       <p>Lees het bestand van de opdrachtgever in (Excel .xlsx of CSV). Twee indelingen worden herkend:</p>
       <ol>
         <li><strong>Lijst</strong> – kolommen <em>Code, Naam, Niveau, Bovenliggende code</em>, optioneel <em>Eenheid, Hoeveelheid, GIS-code</em>.
-          Niveau is object, element of bouwdeel.</li>
-        <li><strong>Kolommen</strong> – per regel <em>Object, Element, Bouwdeel</em> (met optioneel <em>Objectcode, Elementcode, Bouwdeelcode</em>,
+          Niveau is systeemdeel, object, element of bouwdeel. Een object hoort onder een systeemdeel, of heeft geen bovenliggende code.</li>
+        <li><strong>Kolommen</strong> – per regel <em>(Systeemdeel,) Object, Element, Bouwdeel</em> (met optioneel <em>Systeemdeelcode, Objectcode, Elementcode, Bouwdeelcode</em>,
           <em>Eenheid, Hoeveelheid, GIS-code</em>).</li>
-        <li><strong>Tabbladen per niveau</strong> – een Excel-bestand met tabbladen <em>Objecten</em>, <em>Elementen</em> en <em>Bouwdelen</em>.
+        <li><strong>Tabbladen per niveau</strong> – een Excel-bestand met tabbladen (<em>Systeemdelen</em>,) <em>Objecten</em>, <em>Elementen</em> en <em>Bouwdelen</em>.
           Elk tabblad heeft een code en naam; Elementen verwijzen naar hun object (bijv. kolom <em>Objectcode</em>) en Bouwdelen naar hun element
-          (<em>Elementcode</em>), op code of naam. Andere tabbladen worden genegeerd.</li>
+          (<em>Elementcode</em>), op code of naam. Objecten mogen naar hun systeemdeel verwijzen (<em>Systeemdeelcode</em>). Andere tabbladen worden genegeerd.</li>
       </ol>
       <p><strong>Let op:</strong> gebruik bij elke volgende levering precies dezelfde kolomnamen als in het eerste bestand. Alleen dan kan de app gegevens
         bijwerken en nieuwe onderdelen inlezen. Geef elk onderdeel een vaste code: daarop herkent de app het onderdeel bij een nieuwe levering.</p>
@@ -506,7 +508,7 @@ async function decompositiePagina(_, q) {
     if (!el) return;
     if (bewerk?.modus === 'nieuw') {
       const ouder = bewerk.ouder ? idx.perId.get(bewerk.ouder) : null;
-      const niveau = ouder ? D.KIND_NIVEAU[ouder.niveau] : 'object';
+      const niveau = ouder ? D.KIND_NIVEAU[ouder.niveau] : (bewerk.niveau ?? 'object');
       el.innerHTML = knoopForm(`Nieuw ${D.NIVEAU_LABEL[niveau].toLowerCase()}`, null, niveau, ouder ? `Onder ${knoopNaam(ouder)}` : 'Op het hoogste niveau');
       el.querySelector('#dk-code').focus();
       return;
@@ -518,7 +520,7 @@ async function decompositiePagina(_, q) {
       return;
     }
     if (!k) {
-      el.innerHTML = `<p style="margin:0">${I.punaise} <strong>Kies links een object, element of bouwdeel.</strong> De kaart toont dan alleen de GIS-vlakken
+      el.innerHTML = `<p style="margin:0">${I.punaise} <strong>Kies links een systeemdeel, object, element of bouwdeel.</strong> De kaart toont dan alleen de GIS-vlakken
         die daar (hiërarchisch) onder hangen. De koppeling met GIS pas je aan door de decompositie opnieuw in te lezen.</p>`;
       return;
     }
@@ -596,11 +598,11 @@ async function decompositiePagina(_, q) {
           <p><small>Verwachte kolommen: ${project.decompositie.kolommen.map(esc).join(' · ')}</small></p>` : ''}
         ${kolomCheck?.extra.length && !geblokkeerd ? `<p><small>${I.let} Extra kolommen die niet in het eerste bestand stonden: ${kolomCheck.extra.map(esc).join(', ')}.
           Alleen bekende kolommen worden gebruikt.</small></p>` : ''}
-        ${res.knopen.length && !geblokkeerd ? `<p><strong>${tn.object}</strong> objecten, <strong>${tn.element}</strong> elementen en <strong>${tn.bouwdeel}</strong> bouwdelen in het bestand.</p>` : ''}
+        ${res.knopen.length && !geblokkeerd ? `<p>${tn.systeemdeel ? `<strong>${tn.systeemdeel}</strong> systeemdelen, ` : ''}<strong>${tn.object}</strong> objecten, <strong>${tn.element}</strong> elementen en <strong>${tn.bouwdeel}</strong> bouwdelen in het bestand.</p>` : ''}
         ${(res.bladen ?? []).length > 1 ? `<p><small>${I.lijst} ${res.indeling === 'tabblad-bouwdelen'
     ? `Gelezen uit tabblad <strong>${esc(res.bladen.find((b) => b.gebruikt)?.naam ?? '')}</strong> (object, element en bouwdeel per regel)`
     : 'Tabbladen'}: ${res.bladen.map((b) => (b.gebruikt
-    ? `<strong>${esc(b.naam)}</strong>${b.rol === 'decompositie' ? ` (${b.rijen} onderdelen)` : b.niveau ? ` (${{ object: 'objecten', element: 'elementen', bouwdeel: 'bouwdelen' }[b.niveau]}, ${b.rijen} regel${b.rijen === 1 ? '' : 's'})` : ` (${b.rijen} onderdelen)`}`
+    ? `<strong>${esc(b.naam)}</strong>${b.rol === 'decompositie' ? ` (${b.rijen} onderdelen)` : b.niveau ? ` (${D.NIVEAU_MEERVOUD[b.niveau]}, ${b.rijen} regel${b.rijen === 1 ? '' : 's'})` : ` (${b.rijen} onderdelen)`}`
     : b.rol === 'namen' ? `${esc(b.naam)} (alleen voor namen)` : `<span class="zacht">${esc(b.naam)} (niet gebruikt)</span>`)).join(' · ')}</small></p>` : ''}
         ${(res.bladen ?? []).some((b) => b.herkend) ? `<details ${res.knopen.length && !tn.element ? 'open' : ''}><summary><small>Herkende kolommen per tabblad</small></summary>
           <ul>${res.bladen.filter((b) => b.herkend).map((b) => `<li><small><strong>${esc(b.naam)}</strong>: ${esc(b.herkend)}</small></li>`).join('')}</ul></details>` : ''}
@@ -762,6 +764,7 @@ async function decompositiePagina(_, q) {
   };
   const bewaarKnopen = (nieuw) => bewaarProject({ ...(project.decompositie ?? {}), knopen: nieuw, aangepast: new Date().toISOString() });
   app.querySelector('#d-nieuw-object')?.addEventListener('click', () => { bewerk = { modus: 'nieuw', ouder: null }; tekenSelectie(); });
+  app.querySelector('#d-nieuw-systeemdeel')?.addEventListener('click', () => { bewerk = { modus: 'nieuw', ouder: null, niveau: 'systeemdeel' }; tekenSelectie(); });
   app.querySelector('#d-selectie')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = formulierData(e.target);
@@ -769,7 +772,7 @@ async function decompositiePagina(_, q) {
     if (!data.code) return melding('Vul de code in. Op die code wordt het onderdeel herkend bij een nieuwe levering.', 'fout');
     if (!data.naam) return melding('Vul een naam in.', 'fout');
     if (bewerk?.modus === 'nieuw') {
-      const r = D.voegKnoopToe(knopen, bewerk.ouder, data, `h${nieuwId().replace(/-/g, '').slice(0, 12)}`);
+      const r = D.voegKnoopToe(knopen, bewerk.ouder, data, `h${nieuwId().replace(/-/g, '').slice(0, 12)}`, bewerk.niveau);
       if (r.fout) return melding(r.fout, 'fout');
       await bewaarKnopen(r.knopen);
       gekozen = r.knoop.id;

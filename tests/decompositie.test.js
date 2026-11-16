@@ -6,11 +6,11 @@ test('lijst-indeling met ouders, eenheid en GIS-code', () => {
   const { knopen, fouten, indeling } = D.leesDecompositie(D.SJABLOON);
   assert.equal(indeling, 'lijst');
   assert.deepEqual(fouten, []);
-  assert.deepEqual(D.telling(knopen), { object: 1, element: 2, bouwdeel: 4 });
+  assert.deepEqual(D.telling(knopen), { systeemdeel: 1, object: 1, element: 2, bouwdeel: 4 });
   const idx = D.index(knopen);
   const dek = knopen.find((k) => k.naam === 'Brugdek');
   assert.equal(dek.hoeveelheid, 240);
-  assert.equal(D.pad(idx, dek.id).map((k) => k.niveau).join('>'), 'object>element>bouwdeel');
+  assert.equal(D.pad(idx, dek.id).map((k) => k.niveau).join('>'), 'systeemdeel>object>element>bouwdeel');
   const obj = knopen.find((k) => k.niveau === 'object');
   assert.equal(D.bouwdelenOnder(idx, obj.id).length, 4);
   assert.equal(D.bouwdelenOnder(idx, dek.id).length, 1);
@@ -45,7 +45,7 @@ test('kolommen-indeling Object/Element/Bouwdeel', () => {
   ]);
   assert.equal(indeling, 'kolommen');
   assert.equal(fouten.length, 1);
-  assert.deepEqual(D.telling(knopen), { object: 1, element: 2, bouwdeel: 3 });
+  assert.deepEqual(D.telling(knopen), { systeemdeel: 0, object: 1, element: 2, bouwdeel: 3 });
   assert.equal(knopen.find((k) => k.naam === 'Dek').hoeveelheid, 120.5);
   assert.equal(knopen.find((k) => k.naam === 'Landhoofd').gis, 'G1');
 });
@@ -93,13 +93,13 @@ test('export naar regels is weer in te lezen', () => {
 test('bijwerken op een code die hetzelfde is gebleven', () => {
   const oud = D.leesDecompositie(D.SJABLOON).knopen;
   const regels = D.SJABLOON.map((r) => [...r]);
-  regels[3][1] = 'Landhoofd noordzijde';          // naam gewijzigd
-  regels[6][5] = 260;                              // hoeveelheid gewijzigd
-  regels.splice(7, 1);                             // Leuning vervalt
+  regels[4][1] = 'Landhoofd noordzijde';          // naam gewijzigd
+  regels[7][5] = 260;                              // hoeveelheid gewijzigd
+  regels.splice(8, 1);                             // Leuning vervalt
   regels.push(['KW-001.2.3', 'Voegovergang', 'Bouwdeel', 'KW-001.2', 'm1', 12, '']);
   const nieuw = D.leesDecompositie(regels).knopen;
   const r = D.bijwerken(oud, nieuw, 'code');
-  assert.equal(r.ongewijzigd, 4);
+  assert.equal(r.ongewijzigd, 5);
   assert.deepEqual(r.gewijzigd.map((g) => `${g.knoop.code}:${g.velden.join('+')}`).sort(), ['KW-001.1.1:naam', 'KW-001.2.1:hoeveelheid']);
   assert.deepEqual(r.toegevoegd.map((k) => k.naam), ['Voegovergang']);
   assert.deepEqual(r.vervallen.map((k) => k.naam), ['Leuning']);
@@ -112,8 +112,8 @@ test('bijwerken op een code die hetzelfde is gebleven', () => {
 test('bijwerken op GIS-code behoudt id bij gewijzigde code', () => {
   const oud = D.leesDecompositie(D.SJABLOON).knopen;
   const regels = D.SJABLOON.map((r) => [...r]);
-  regels[3][0] = 'NIEUW-1';
-  const nieuw = D.leesDecompositie(regels.map((r, i) => (i === 3 ? [r[0], r[1], r[2], 'KW-001.1', r[4], r[5], r[6]] : r))).knopen;
+  regels[4][0] = 'NIEUW-1';
+  const nieuw = D.leesDecompositie(regels.map((r, i) => (i === 4 ? [r[0], r[1], r[2], 'KW-001.1', r[4], r[5], r[6]] : r))).knopen;
   const lh = oud.find((k) => k.gis === 'KW-001-LH-N');
   const r = D.bijwerken(oud, nieuw, 'gis');
   const k = r.knopen.find((x) => x.gis === 'KW-001-LH-N');
@@ -152,7 +152,7 @@ test('werkboek met tabbladen per niveau', () => {
   ];
   const r = D.leesBladen(bladen);
   assert.equal(r.indeling, 'tabbladen');
-  assert.deepEqual(D.telling(r.knopen), { object: 2, element: 2, bouwdeel: 2 });
+  assert.deepEqual(D.telling(r.knopen), { systeemdeel: 0, object: 2, element: 2, bouwdeel: 2 });
   assert.equal(r.fouten.length, 1);
   assert.match(r.fouten[0], /Tabblad "Bouwdelen", regel 4/);
   assert.deepEqual(r.bladen.map((b) => [b.naam, b.niveau, b.rijen, b.gebruikt]), [['Objecten', 'object', 2, true], ['Elementen', 'element', 2, true], ['Bouwdelen', 'bouwdeel', 3, true], ['Blad2', null, 0, false]]);
@@ -165,7 +165,7 @@ test('werkboek met tabbladen per niveau', () => {
 test('werkboek met één blad met de hele decompositie', () => {
   const r = D.leesBladen([{ naam: 'Info', regels: [['Toelichting']] }, { naam: 'Decompositie', regels: D.SJABLOON }]);
   assert.equal(r.indeling, 'lijst');
-  assert.equal(r.knopen.length, 7);
+  assert.equal(r.knopen.length, 8);
   assert.deepEqual(r.bladen.map((b) => b.gebruikt), [false, true]);
 });
 
@@ -178,7 +178,7 @@ test('standaard het tabblad Bouwdelen met alle codes; namen uit de andere tabbla
     { naam: 'Blad2', regels: [['x']] },
   ]);
   assert.equal(r.indeling, 'tabblad-bouwdelen');
-  assert.deepEqual(D.telling(r.knopen), { object: 1, element: 2, bouwdeel: 3 });
+  assert.deepEqual(D.telling(r.knopen), { systeemdeel: 0, object: 1, element: 2, bouwdeel: 3 });
   assert.equal(r.knopen.find((k) => k.code === 'EPK2').naam, 'Europoortkering 2');
   assert.equal(r.knopen.find((k) => k.code === 'EPK2-D1').naam, 'Europoortkering 2 sectie D1');
   assert.equal(r.knopen.find((k) => k.code === 'EPK2-D2').naam, 'EPK2-D2');
@@ -199,7 +199,7 @@ test('tabbladen zonder codes: verwijzen op naam', () => {
     { naam: 'Bouwdelen', regels: [['Bouwdeel', 'Element'], ['Bekleding', 'Europoortkering 2 sectie D1']] },
   ]);
   assert.deepEqual(r.fouten, []);
-  assert.deepEqual(D.telling(r.knopen), { object: 1, element: 1, bouwdeel: 1 });
+  assert.deepEqual(D.telling(r.knopen), { systeemdeel: 0, object: 1, element: 1, bouwdeel: 1 });
 });
 
 test('ruime herkenning van kolomnamen (ID, nummer, omschrijving, type)', () => {
@@ -209,7 +209,7 @@ test('ruime herkenning van kolomnamen (ID, nummer, omschrijving, type)', () => {
     { naam: 'Elementen', regels: [['Element ID', 'Elementtype', 'Object ID'], ['E1', 'Bekleding', 'O1'], ['E2', 'Kruin', 'O1']] },
     { naam: 'Bouwdelen', regels: [['Bouwdeelnummer', 'Omschrijving', 'Element ID'], ['B1', 'Steen', 'E1'], ['B2', 'Gras', 'E2']] },
   ]);
-  assert.deepEqual(D.telling(r.knopen), { object: 1, element: 2, bouwdeel: 2 });
+  assert.deepEqual(D.telling(r.knopen), { systeemdeel: 0, object: 1, element: 2, bouwdeel: 2 });
   assert.match(r.bladen[1].herkend, /hoort bij object: Object ID/);
   // Tabblad Bouwdelen met de hele keten en afwijkende koppen
   const b = D.leesBladen([
@@ -218,11 +218,11 @@ test('ruime herkenning van kolomnamen (ID, nummer, omschrijving, type)', () => {
       ['O1', 'E1', 'Bekleding', 'B1', 'Steen'], ['O1', 'E2', 'Kruin', 'B2', 'Gras']] },
   ]);
   assert.equal(b.indeling, 'tabblad-bouwdelen');
-  assert.deepEqual(D.telling(b.knopen), { object: 1, element: 2, bouwdeel: 2 });
+  assert.deepEqual(D.telling(b.knopen), { systeemdeel: 0, object: 1, element: 2, bouwdeel: 2 });
   assert.equal(b.knopen.find((k) => k.code === 'E1').naam, 'Bekleding');
   assert.equal(b.knopen.find((k) => k.code === 'O1').naam, 'Europoortkering 2 sectie D1');
   // Lijst-indeling blijft ongemoeid
-  assert.equal(D.leesDecompositie(D.SJABLOON).knopen.length, 7);
+  assert.equal(D.leesDecompositie(D.SJABLOON).knopen.length, 8);
 });
 
 test('koppelen op een gekozen kolom', () => {
@@ -277,4 +277,53 @@ test('alle kolommen worden per onderdeel bewaard en zijn te gebruiken bij koppel
     { naam: 'Bouwdelen', regels: [['Objectcode', 'Elementcode', 'Bouwdeelcode', 'Bouwdeel'], ['O1', 'E1', 'B1', 'Dek']] },
   ]);
   assert.equal(t.knopen.find((k) => k.code === 'O1').kenmerken.Beheerder, 'Gemeente');
+});
+
+test('systeemdeel: optionele groepering boven de objecten', () => {
+  // lijst: object onder een systeemdeel én een object zonder systeemdeel
+  const l = D.leesDecompositie([
+    ['Code', 'Naam', 'Niveau', 'Bovenliggende code'],
+    ['SD1', 'Kunstwerken', 'Systeemdeel', ''], ['O1', 'Brug', 'object', 'SD1'], ['E1', 'Dek', 'element', 'O1'], ['B1', 'Asfalt', 'bouwdeel', 'E1'],
+    ['O2', 'Gemaal', 'object', ''], ['O3', 'Fout', 'object', 'E1'],
+  ]);
+  assert.deepEqual(D.telling(l.knopen), { systeemdeel: 1, object: 2, element: 1, bouwdeel: 1 });
+  assert.equal(l.fouten.length, 1);
+  const idx = D.index(l.knopen);
+  const sd = l.knopen.find((k) => k.code === 'SD1');
+  assert.equal(D.bouwdelenOnder(idx, sd.id).length, 1);
+  assert.equal(D.padTekst(idx, l.knopen.find((k) => k.code === 'B1').id), 'SD1 Kunstwerken › O1 Brug › E1 Dek › B1 Asfalt');
+  assert.equal(l.knopen.find((k) => k.code === 'O2').ouder, null);
+  // kolommen: systeemdeel optioneel per regel
+  const k = D.leesDecompositie([
+    ['Systeemdeelcode', 'Systeemdeel', 'Objectcode', 'Object', 'Element', 'Bouwdeel'],
+    ['SD-V', 'Verharding', 'W1', 'Weg 1', 'Rijbaan', 'Asfalt'],
+    ['SD-V', 'Verharding', 'W2', 'Weg 2', 'Rijbaan', 'Klinkers'],
+    ['', '', 'G1', 'Gemaal', 'Pomp', 'Motor'],
+  ]);
+  assert.deepEqual(k.fouten, []);
+  assert.deepEqual(D.telling(k.knopen), { systeemdeel: 1, object: 3, element: 3, bouwdeel: 3 });
+  assert.equal(k.knopen.filter((x) => x.niveau === 'object' && !x.ouder).length, 1);
+  assert.match(D.herkendeKolommen(['Systeemdeelcode', 'Systeemdeel', 'Object']), /^systeemdeel: Systeemdeelcode \+ Systeemdeel/);
+  assert.doesNotMatch(D.herkendeKolommen(['Object', 'Element']), /systeemdeel/);
+  // tabbladen: Systeemdelen + Objecten met verwijzing
+  const t = D.leesBladen([
+    { naam: 'Systeemdelen', regels: [['Systeemdeelcode', 'Naam'], ['SD1', 'Waterkeringen']] },
+    { naam: 'Objecten', regels: [['Objectcode', 'Naam', 'Systeemdeelcode'], ['O1', 'Dijk', 'SD1'], ['O2', 'Los', '']] },
+    { naam: 'Elementen', regels: [['Elementcode', 'Naam', 'Objectcode'], ['E1', 'Bekleding', 'O1']] },
+  ]);
+  assert.deepEqual(t.fouten, []);
+  assert.deepEqual(D.telling(t.knopen), { systeemdeel: 1, object: 2, element: 1, bouwdeel: 0 });
+  assert.equal(t.knopen.find((x) => x.code === 'O1').ouder, t.knopen.find((x) => x.code === 'SD1').id);
+  // tabblad Bouwdelen met de hele keten, namen uit Systeemdelen
+  const b = D.leesBladen([
+    { naam: 'Systeemdelen', regels: [['Systeemdeelcode', 'Naam'], ['SD1', 'Waterkeringen']] },
+    { naam: 'Bouwdelen', regels: [['Systeemdeelcode', 'Objectcode', 'Elementcode', 'Bouwdeelcode', 'Bouwdeel'], ['SD1', 'O1', 'E1', 'B1', 'Steen']] },
+  ]);
+  assert.equal(b.indeling, 'tabblad-bouwdelen');
+  assert.equal(b.knopen.find((x) => x.code === 'SD1').naam, 'Waterkeringen');
+  // toevoegen: systeemdeel bovenaan, object eronder
+  const v = D.voegKnoopToe([], null, { naam: 'Groen', code: 'SD-G' }, 's1', 'systeemdeel');
+  assert.equal(v.knoop.niveau, 'systeemdeel');
+  assert.equal(D.voegKnoopToe(v.knopen, 's1', { naam: 'Park', code: 'P1' }, 'o1').knoop.niveau, 'object');
+  assert.equal(D.KIND_NIVEAU.systeemdeel, 'object');
 });

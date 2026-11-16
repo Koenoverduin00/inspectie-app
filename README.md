@@ -503,11 +503,17 @@ Niet elke inspectie volgt NEN 2767. Per **inspectietype** kies je de methodiek (
 
 ## NEN 2767-decompositie (scores per bouwdeel)
 
-Voor opdrachtgevers die volgens NEN 2767 werken met een eigen decompositie (object → element → bouwdeel).
+Voor opdrachtgevers die volgens NEN 2767 werken met een eigen decompositie (systeemdeel → object → element → bouwdeel).
+
+- **Systeemdelen** zijn een optionele groepering één niveau boven de objecten (bijv. *Kunstwerken*, *Verharding*, *Waterkeringen*). Een object hoort
+  onder een systeemdeel of staat zonder systeemdeel bovenaan; oude decomposities zonder systeemdelen werken ongewijzigd. Herkend als niveau
+  *Systeemdeel* in de lijst (objecten verwijzen er met *Bovenliggende code* naar), als kolommen *Systeemdeel*/*Systeemdeelcode* in de
+  kolommen-indeling of het tabblad Bouwdelen, of als tabblad *Systeemdelen* (objecten verwijzen met een kolom *Systeemdeelcode*). Klik je in de
+  boom op een systeemdeel, dan toont de kaart alle GIS-vlakken van de objecten daaronder. In de app voeg je er een toe met *＋ Systeemdeel*.
 
 - **Inlezen** (Instellingen → Decompositie, alleen beheerders): Excel (.xlsx) of CSV van de opdrachtgever. Twee indelingen worden herkend:
-  een lijst met *Code, Naam, Niveau, Bovenliggende code* (optioneel *Eenheid, Hoeveelheid, GIS-code*), kolommen *Object, Element, Bouwdeel*
-  (met optionele codekolommen), of een werkboek met **tabbladen per niveau** (*Objecten*, *Elementen*, *Bouwdelen*; elementen verwijzen
+  een lijst met *Code, Naam, Niveau, Bovenliggende code* (optioneel *Eenheid, Hoeveelheid, GIS-code*), kolommen *(Systeemdeel,) Object, Element, Bouwdeel*
+  (met optionele codekolommen), of een werkboek met **tabbladen per niveau** (*(Systeemdelen,) Objecten*, *Elementen*, *Bouwdelen*; elementen verwijzen
   naar hun object en bouwdelen naar hun element, op code of naam). Overige tabbladen worden genegeerd; het voorbeeld toont welke
   tabbladen zijn gebruikt. **Standaard leest de app het tabblad Bouwdelen** als daarin per regel object-, element- en bouwdeelcode staan
   (de hele keten); Objecten en Elementen worden dan alleen gebruikt om ontbrekende namen aan te vullen. Een losse kolom *Code* in dat
@@ -516,8 +522,8 @@ Voor opdrachtgevers die volgens NEN 2767 werken met een eigen decompositie (obje
 - **Bijwerken met een nieuwe levering**: lees het nieuwe bestand in en kies **welke code hetzelfde is gebleven** (Code of GIS-code). Je ziet per onderdeel
   wat ongewijzigd, gewijzigd, nieuw of vervallen is; herkende onderdelen houden hun GIS-koppelingen en scores. **De kolommen moeten dezelfde namen
   hebben als bij het eerste inlezen**: ontbreekt of heet een kolom anders, dan wordt het bijwerken geweigerd met de lijst van verwachte kolommen.
-- **Aanpassen in de app**: kies een onderdeel en gebruik *Bewerken* (code, naam, eenheid, hoeveelheid, GIS-code), *＋ Element/Bouwdeel eronder*,
-  *＋ Object* of *Verwijderen* (met alles eronder; GIS-koppelingen vervallen). Een code is verplicht en uniek per niveau. Wijzig je een code, dan
+- **Aanpassen in de app**: kies een onderdeel en gebruik *Bewerken* (code, naam, eenheid, hoeveelheid, GIS-code), *＋ Object/Element/Bouwdeel eronder*,
+  *＋ Systeemdeel*, *＋ Object* of *Verwijderen* (met alles eronder; GIS-koppelingen vervallen). Een code is verplicht en uniek per niveau. Wijzig je een code, dan
   vraagt de app om bevestiging: pas hem ook aan in het bestand van de opdrachtgever, of kies bij het bijwerken een andere code die hetzelfde is gebleven.
 - **GIS koppelen gebeurt alleen bij het inlezen.** In het voorbeeld van het inlezen kies je welke **GIS-kolom** (objectcode, naam of een kenmerk
   uit het GIS-bestand) overeenkomt met welk **veld in de decompositie** (GIS-code, code, naam of **elke andere kolom uit het ingelezen bestand**),
