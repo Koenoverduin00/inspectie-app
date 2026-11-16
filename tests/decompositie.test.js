@@ -327,3 +327,38 @@ test('systeemdeel: optionele groepering boven de objecten', () => {
   assert.equal(D.voegKnoopToe(v.knopen, 's1', { naam: 'Park', code: 'P1' }, 'o1').knoop.niveau, 'object');
   assert.equal(D.KIND_NIVEAU.systeemdeel, 'object');
 });
+
+test('systeemdelen uit een zelf gekozen kolom', () => {
+  const res = D.leesDecompositie([
+    ['Objectcode', 'Object', 'Element', 'Bouwdeel', 'Areaal', 'Areaalnaam'],
+    ['W1', 'Weg 1', 'Rijbaan', 'Asfalt', 'VH', 'Verharding'],
+    ['W1', 'Weg 1', 'Berm', 'Gras', 'GR', 'Groen'],
+    ['W2', 'Weg 2', 'Rijbaan', 'Klinkers', 'VH', 'Verharding'],
+    ['G1', 'Gemaal', 'Pomp', 'Motor', '', ''],
+  ]);
+  assert.equal(D.telling(res.knopen).systeemdeel, 0);
+  const r = D.zetSysteemdelen(res, { kolom: 'Areaal', naam: 'Areaalnaam' });
+  assert.deepEqual(D.telling(r.knopen), { systeemdeel: 1, object: 3, element: 4, bouwdeel: 4 });
+  assert.deepEqual(r.systeemdelen, [{ code: 'VH', naam: 'Verharding', objecten: 2 }]);
+  assert.equal(r.zonderSysteemdeel, 1);
+  assert.match(r.fouten.at(-1), /1 object heeft meer dan één waarde in de kolom "Areaal"/);
+  const idx = D.index(r.knopen);
+  assert.equal(D.padTekst(idx, r.knopen.find((k) => k.naam === 'Klinkers').id), 'VH Verharding › W2 Weg 2 › Rijbaan › Klinkers');
+  // ids van de objecten blijven gelijk, zodat koppelingen behouden blijven
+  assert.deepEqual(r.knopen.filter((k) => k.niveau === 'object').map((k) => k.id), res.knopen.filter((k) => k.niveau === 'object').map((k) => k.id));
+  // geen systeemdelen, en automatisch laat alles ongemoeid
+  const met = D.leesDecompositie(D.SJABLOON);
+  const geen = D.zetSysteemdelen(met, { kolom: '-' });
+  assert.equal(D.telling(geen.knopen).systeemdeel, 0);
+  assert.ok(geen.knopen.filter((k) => k.niveau === 'object').every((k) => !k.ouder));
+  assert.equal(D.zetSysteemdelen(met, { kolom: '' }), met);
+});
+
+test('bijwerken: onderdelen zonder code worden herkend op hun vaste id', () => {
+  const regels = [['Objectcode', 'Object', 'Element', 'Bouwdeel'], ['W1', 'Weg 1', 'Rijbaan', 'Asfalt'], ['W1', 'Weg 1', 'Berm', 'Gras']];
+  const oud = D.leesDecompositie(regels).knopen;
+  const r = D.bijwerken(oud, D.leesDecompositie([...regels, ['W1', 'Weg 1', 'Berm', 'Struiken']]).knopen, 'code');
+  assert.equal(r.ongewijzigd, 5);
+  assert.deepEqual(r.toegevoegd.map((k) => k.naam), ['Struiken']);
+  assert.deepEqual(r.vervallen, []);
+});

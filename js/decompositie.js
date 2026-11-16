@@ -263,12 +263,15 @@ export function bijwerken(oud, nieuw, sleutel = 'code') {
   const oudPer = new Map();
   for (const k of oud ?? []) if (sl(k)) oudPer.set(`${k.niveau}|${sl(k)}`, k);
   const oudeIds = new Set((oud ?? []).map((k) => k.id));
+  const oudPerIdNiv = new Map((oud ?? []).map((k) => [k.id, k]));
   const gebruikt = new Set();
   const idMap = new Map();
   let teller = 0;
   for (const k of nieuw ?? []) {
     const s = sl(k);
-    const o = s ? oudPer.get(`${k.niveau}|${s}`) : null;
+    // Zonder code: herkennen op de vaste id (afgeleid van naam en plaats in de boom).
+    const zelfde = oudPerIdNiv.get(k.id);
+    const o = s ? oudPer.get(`${k.niveau}|${s}`) : (zelfde && zelfde.niveau === k.niveau && !sl(zelfde) ? zelfde : null);
     if (o && gebruikt.has(o.id)) fouten.push(`${SLEUTELS[sleutel]} "${k[sleutel]}" komt dubbel voor bij ${NIVEAU_LABEL[k.niveau].toLowerCase()}en; de tweede wordt als nieuw onderdeel gezien.`);
     if (o && !gebruikt.has(o.id)) {
       gebruikt.add(o.id);
@@ -358,6 +361,58 @@ export function bouwdelenOnder(idx, id) {
   if (!k) return [];
   if (k.niveau === 'bouwdeel') return [k];
   return (idx.kinderen.get(k.id) ?? []).flatMap((c) => bouwdelenOnder(idx, c.id));
+}
+
+/**
+ * Zet de systeemdelen op basis van een zelf gekozen kolom uit het bestand (na het inlezen, op de bewaarde kolommen per onderdeel).
+ * Per object wordt de waarde gezocht bij het object zelf of bij de onderdelen eronder (de eerste gevonden waarde telt).
+ * @param {{ knopen: object[], fouten: string[] }} res  resultaat van leesDecompositie/leesBladen
+ * @param {{ kolom?: string, naam?: string }} keuze  kolom: '' = automatisch herkend, '-' = geen systeemdelen, anders de kolomnaam;
+ *        naam: optionele kolom met de naam van het systeemdeel (anders is de naam gelijk aan de waarde).
+ * @returns {typeof res & { systeemdelen?: { code: string, naam: string, objecten: number }[], zonderSysteemdeel?: number }}
+ */
+export function zetSysteemdelen(res, { kolom = '', naam = '' } = {}) {
+  if (!kolom || !res?.knopen?.length) return res;
+  const knopen = res.knopen.map((k) => ({ ...k }));
+  const idx = index(knopen);
+  const rest = knopen.filter((k) => k.niveau !== 'systeemdeel');
+  if (kolom === '-') {
+    for (const k of rest) if (k.niveau === 'object') k.ouder = null;
+    return { ...res, knopen: rest, systeemdelen: [], zonderSysteemdeel: rest.filter((k) => k.niveau === 'object').length };
+  }
+  const waarden = (o, h) => {
+    const uit = [];
+    const loop = (k) => { const v = tekst(k.kenmerken?.[h]); if (v && !uit.includes(v)) uit.push(v); (idx.kinderen.get(k.id) ?? []).forEach(loop); };
+    loop(o);
+    const ouder = o.ouder ? idx.perId.get(o.ouder) : null;
+    if (!uit.length && tekst(ouder?.kenmerken?.[h])) uit.push(tekst(ouder.kenmerken[h]));
+    return uit;
+  };
+  const sds = new Map();
+  const telObj = new Map();
+  let zonder = 0;
+  let verschil = 0;
+  for (const o of rest.filter((k) => k.niveau === 'object')) {
+    const w = waarden(o, kolom);
+    if (w.length > 1) verschil += 1;
+    if (!w.length) { o.ouder = null; zonder += 1; continue; }
+    const code = w[0];
+    let sd = sds.get(norm(code));
+    if (!sd) {
+      const nm = naam ? waarden(o, naam)[0] ?? '' : '';
+      sd = { id: maakId('systeemdeel', code), code, naam: nm || code, niveau: 'systeemdeel', ouder: null, eenheid: '', hoeveelheid: '', gis: '',
+        kenmerken: { [kolom]: code, ...(naam && nm ? { [naam]: nm } : {}) } };
+      sds.set(norm(code), sd);
+    }
+    o.ouder = sd.id;
+    telObj.set(sd.id, (telObj.get(sd.id) ?? 0) + 1);
+  }
+  const fouten = [...(res.fouten ?? [])];
+  if (verschil) fouten.push(`${verschil} object${verschil === 1 ? ' heeft' : 'en hebben'} meer dan één waarde in de kolom "${kolom}"; de eerste is gebruikt.`);
+  return {
+    ...res, knopen: [...sds.values(), ...rest], fouten,
+    systeemdelen: [...sds.values()].map((sd) => ({ code: sd.code, naam: sd.naam, objecten: telObj.get(sd.id) })), zonderSysteemdeel: zonder,
+  };
 }
 
 /** Aantallen per niveau. */

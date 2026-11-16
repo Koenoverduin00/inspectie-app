@@ -510,6 +510,10 @@ Voor opdrachtgevers die volgens NEN 2767 werken met een eigen decompositie (syst
   *Systeemdeel* in de lijst (objecten verwijzen er met *Bovenliggende code* naar), als kolommen *Systeemdeel*/*Systeemdeelcode* in de
   kolommen-indeling of het tabblad Bouwdelen, of als tabblad *Systeemdelen* (objecten verwijzen met een kolom *Systeemdeelcode*). Klik je in de
   boom op een systeemdeel, dan toont de kaart alle GIS-vlakken van de objecten daaronder. In de app voeg je er een toe met *＋ Systeemdeel*.
+  **Zelf de kolom kiezen**: in het voorbeeld van het inlezen kies je bij *Kolom met systeemdelen* elke kolom uit het bestand (bijv. *Areaal*),
+  en eventueel een aparte kolom met de naam. Per object telt de waarde bij het object zelf of bij de onderdelen eronder; je ziet meteen welke
+  systeemdelen er ontstaan, met het aantal objecten en hoeveel objecten geen waarde hebben. *Automatisch herkennen* gebruikt de standaardkolommen,
+  *Geen systeemdelen* laat ze weg. De keuze wordt bewaard, op de decompositiepagina getoond en bij een volgende levering weer voorgesteld.
 
 - **Inlezen** (Instellingen → Decompositie, alleen beheerders): Excel (.xlsx) of CSV van de opdrachtgever. Twee indelingen worden herkend:
   een lijst met *Code, Naam, Niveau, Bovenliggende code* (optioneel *Eenheid, Hoeveelheid, GIS-code*), kolommen *(Systeemdeel,) Object, Element, Bouwdeel*
@@ -519,6 +523,7 @@ Voor opdrachtgevers die volgens NEN 2767 werken met een eigen decompositie (syst
   (de hele keten); Objecten en Elementen worden dan alleen gebruikt om ontbrekende namen aan te vullen. Een losse kolom *Code* in dat
   tabblad is de bouwdeelcode. Bij één tabblad met de hele decompositie neemt de app het tabblad met de meeste onderdelen. Je ziet eerst een voorbeeld met aantallen en meldingen; pas na "Overnemen" verandert er iets.
   Onderdelen houden een vaste id op basis van hun code, dus bij een nieuwe levering blijven koppelingen en scores behouden.
+  Onderdelen zonder eigen code worden bij het bijwerken herkend op hun naam en plaats in de boom.
 - **Bijwerken met een nieuwe levering**: lees het nieuwe bestand in en kies **welke code hetzelfde is gebleven** (Code of GIS-code). Je ziet per onderdeel
   wat ongewijzigd, gewijzigd, nieuw of vervallen is; herkende onderdelen houden hun GIS-koppelingen en scores. **De kolommen moeten dezelfde namen
   hebben als bij het eerste inlezen**: ontbreekt of heet een kolom anders, dan wordt het bijwerken geweigerd met de lijst van verwachte kolommen.

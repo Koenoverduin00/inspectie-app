@@ -416,6 +416,8 @@ async function decompositiePagina(_, q) {
         Bij het bijwerken kies je welke code hetzelfde is gebleven; daarop worden de onderdelen herkend.</small></p>
       <p class="decompkolommen"><small>${I.kaart} <strong>Koppeling met GIS:</strong> ${esc(koppelTekst(project.decompositie?.koppeling ?? D.STANDAARD_KOPPELING))}.
         De koppeling wordt alleen bij het inlezen gemaakt. Wil je haar aanpassen, lees het bestand dan opnieuw in en kies een andere kolom.</small></p>
+      ${project.decompositie?.systeemdeelKolom?.kolom ? `<p class="decompkolommen"><small>${I.lijst} <strong>Systeemdelen:</strong> ${project.decompositie.systeemdeelKolom.kolom === '-' ? 'geen'
+    : `uit de kolom <code>${esc(project.decompositie.systeemdeelKolom.kolom)}</code>${project.decompositie.systeemdeelKolom.naam ? `, naam uit <code>${esc(project.decompositie.systeemdeelKolom.naam)}</code>` : ''}`}. Aanpassen doe je bij het opnieuw inlezen.</small></p>` : ''}
     </section>
     <div class="decompraster">
       <section class="kaart decompboom">
@@ -575,8 +577,24 @@ async function decompositiePagina(_, q) {
   const toonVoorbeeld = () => {
     const vb = voorbeeld;
     const el = app.querySelector('#d-voorbeeld');
-    const res = vb.res;
+    const res = D.zetSysteemdelen(vb.res, vb.sd);
     const tn = D.telling(res.knopen);
+    const bestandKolommen = D.decompKolommen(vb.res.knopen).sort((a, b) => a[0].localeCompare(b[0], 'nl'));
+    const autoSd = D.telling(vb.res.knopen).systeemdeel;
+    const sdKeuze = res.knopen.length ? `
+      <div class="koppelregel sdkeuze">
+        <label>Kolom met systeemdelen<select data-sd="kolom">
+          ${optie('', `Automatisch herkennen${autoSd ? ` (${autoSd} gevonden)` : ' (niets gevonden)'}`, vb.sd.kolom)}${optie('-', 'Geen systeemdelen', vb.sd.kolom)}
+          <optgroup label="Kolommen uit het bestand">${bestandKolommen.map(([h, v]) => optie(h, `${h}  (bijv. ${String(v).slice(0, 24)})`, vb.sd.kolom)).join('')}</optgroup></select></label>
+        ${vb.sd.kolom && vb.sd.kolom !== '-' ? `<label>Naam van het systeemdeel<select data-sd="naam">${optie('', 'Zelfde als de kolom', vb.sd.naam)}
+          <optgroup label="Kolommen uit het bestand">${bestandKolommen.filter(([h]) => h !== vb.sd.kolom).map(([h, v]) => optie(h, `${h}  (bijv. ${String(v).slice(0, 24)})`, vb.sd.naam)).join('')}</optgroup></select></label>` : ''}
+      </div>
+      <p style="margin:.25rem 0 .5rem"><small>${res.systeemdelen
+    ? (res.systeemdelen.length
+      ? `${res.systeemdelen.length} systeemde${res.systeemdelen.length === 1 ? 'el' : 'len'}: ${res.systeemdelen.slice(0, 12).map((x) => `<strong>${esc(x.naam)}</strong>${x.naam !== x.code ? ` <code>${esc(x.code)}</code>` : ''} (${x.objecten})`).join(' · ')}${res.systeemdelen.length > 12 ? ' …' : ''}`
+      : 'Geen systeemdelen.')
+      + (res.zonderSysteemdeel ? ` · <span class="${res.systeemdelen.length ? 'fouttekst' : ''}">${res.zonderSysteemdeel} object${res.zonderSysteemdeel === 1 ? '' : 'en'} zonder systeemdeel</span>` : '')
+    : 'Een systeemdeel groepeert objecten. Staan ze in een kolom die niet automatisch wordt herkend, kies die kolom dan hier.'}</small></p>` : '';
     const bijwerk = knopen.length > 0;
     const kolomCheck = bijwerk && project.decompositie?.kolommen?.length ? D.vergelijkKolommen(project.decompositie.kolommen, res.kop) : null;
     const geblokkeerd = Boolean(kolomCheck?.ontbreekt.length);
@@ -598,6 +616,7 @@ async function decompositiePagina(_, q) {
           <p><small>Verwachte kolommen: ${project.decompositie.kolommen.map(esc).join(' · ')}</small></p>` : ''}
         ${kolomCheck?.extra.length && !geblokkeerd ? `<p><small>${I.let} Extra kolommen die niet in het eerste bestand stonden: ${kolomCheck.extra.map(esc).join(', ')}.
           Alleen bekende kolommen worden gebruikt.</small></p>` : ''}
+        ${sdKeuze}
         ${res.knopen.length && !geblokkeerd ? `<p>${tn.systeemdeel ? `<strong>${tn.systeemdeel}</strong> systeemdelen, ` : ''}<strong>${tn.object}</strong> objecten, <strong>${tn.element}</strong> elementen en <strong>${tn.bouwdeel}</strong> bouwdelen in het bestand.</p>` : ''}
         ${(res.bladen ?? []).length > 1 ? `<p><small>${I.lijst} ${res.indeling === 'tabblad-bouwdelen'
     ? `Gelezen uit tabblad <strong>${esc(res.bladen.find((b) => b.gebruikt)?.naam ?? '')}</strong> (object, element en bouwdeel per regel)`
@@ -633,6 +652,10 @@ async function decompositiePagina(_, q) {
           ${res.knopen.length && !geblokkeerd ? `<button class="knop primair" id="d-overnemen">${I.vink} ${bijwerk ? 'Decompositie bijwerken' : 'Overnemen'}</button>` : ''}
           <button class="knop" id="d-annuleer">Annuleren</button></div>
       </section>`;
+    el.querySelectorAll('[data-sd]').forEach((x) => x.addEventListener('change', () => {
+      vb.sd = { ...vb.sd, [x.dataset.sd]: x.value, ...(x.dataset.sd === 'kolom' ? { naam: '' } : {}) };
+      toonVoorbeeld();
+    }));
     el.querySelectorAll('input[name=d-sleutel]').forEach((x) => x.addEventListener('change', () => { voorbeeld.sleutel = x.value; toonVoorbeeld(); }));
     el.querySelector('#d-annuleer').onclick = () => { voorbeeld = null; el.innerHTML = ''; };
     tekenKoppel();
@@ -641,7 +664,7 @@ async function decompositiePagina(_, q) {
       if (vb.vervallenObj.length && !confirm(`${vb.vervallenObj.length} GIS-koppeling(en) vervallen omdat het onderdeel niet meer in het bestand staat. Doorgaan?`)) return;
       const koppeling = { kolom: kp.kolom, veld: kp.veld, niveau: kp.niveau, laag: kp.laag };
       const auto = koppelRes?.wijzigingen ?? new Map();
-      await bewaarProject({ knopen: vb.nieuweKnopen, bestand: vb.bestand, op: new Date().toISOString(), kolommen: project.decompositie?.kolommen?.length ? project.decompositie.kolommen : res.kop, sleutel: vb.sleutel, koppeling });
+      await bewaarProject({ knopen: vb.nieuweKnopen, bestand: vb.bestand, op: new Date().toISOString(), kolommen: project.decompositie?.kolommen?.length ? project.decompositie.kolommen : res.kop, sleutel: vb.sleutel, koppeling, systeemdeelKolom: vb.sd });
       const w = new Map(vb.vervallenObj.map((o) => [o.id, '']));
       for (const [oid, kid] of auto) w.set(oid, kid);
       const n = await bewaarKoppelingen(w);
@@ -660,7 +683,11 @@ async function decompositiePagina(_, q) {
       console.error(fout);
       return melding('Dit bestand kan niet worden gelezen. Gebruik Excel (.xlsx) of CSV.', 'fout');
     }
-    voorbeeld = { res, bestand: bestand.name, sleutel: project.decompositie?.sleutel ?? 'code' };
+    // Eerder gekozen kolom met systeemdelen opnieuw voorstellen, als die kolom er nog in staat.
+    const kolNamen = new Set(D.decompKolommen(res.knopen).map(([h]) => h));
+    const vorigSd = project.decompositie?.systeemdeelKolom ?? {};
+    const sd = { kolom: vorigSd.kolom === '-' || kolNamen.has(vorigSd.kolom) ? vorigSd.kolom : '', naam: kolNamen.has(vorigSd.naam) ? vorigSd.naam : '' };
+    voorbeeld = { res, bestand: bestand.name, sleutel: project.decompositie?.sleutel ?? 'code', sd };
     toonVoorbeeld();
     app.querySelector('#d-voorbeeld').scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
