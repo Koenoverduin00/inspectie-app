@@ -44,6 +44,12 @@ ook **offline in het veld**, synchroniseert tussen pc en telefoon, en is te inst
 
 ## Werkpakketten
 
+**Wie ziet welke werkpakketten?** Op de pc ziet een **beheerder alle werkpakketten** van het project (net als in de planning),
+ook als ze aan anderen zijn toegewezen; andere gebruikers zien alleen de pakketten die aan hen zijn toegewezen (of aan iedereen).
+Boven de lijst staan een **zoekveld** (code of naam, bijv. *OHA-0152*), een **statusfilter** en voor beheerders de keuze
+*Alle werkpakketten* / *Aan mij toegewezen*; de keuze wordt onthouden. Op de telefoon kies je op de kaart zelf tussen
+*Aan mij toegewezen* en *Alle actuele*.
+
 Structuur: **werkpakket → rondes (taken) → objecten**. Een werkpakket is het contractonderdeel op een vaste set
 objecten (bijv. *WP-2027-001 Groenonderhoud Park Zuid*); de rondes zijn de keren dat er iets gebeurt
 (*R1 Maaien april*, *R2 Maaien juni*, *R3 Schouw*), elk met eigen soort, periode, status en voortgang.

@@ -6070,6 +6070,9 @@ function mijnRechten(p = huidigProject) {
 const mag = (recht) => mijnRechten()[recht] !== false;
 
 /** Ziet deze gebruiker dit werkpakket (of deze ronde)? */
+/** Op de pc: een beheerder ziet alle werkpakketten van het project (zoals in de planning); anderen alleen de hunne. */
+const pakketZichtbaar = (p) => magBeheren() || pakketVoorMij(p);
+
 function pakketVoorMij(p, email = ikEmail()) {
   if (!toegangActief()) return pakketVoorMijBasis(p, email);
   const lijst = (p.toegewezen ?? []).map((x) => String(x).toLowerCase());
@@ -9078,7 +9081,9 @@ async function storingenPagina() {
 async function werkpakkettenLijst() {
   const g0 = await pakketGegevens();
   const { voortgangen } = g0;
-  const pakketten = g0.pakketten.filter((p) => pakketVoorMij(p));
+  const pakketten = g0.pakketten.filter(pakketZichtbaar);
+  const ik = ikEmail();
+  const filt = (() => { try { return JSON.parse(instelling.lees('pakketFilter') || '{}'); } catch { return {}; } })();
   app.innerHTML = `
     <div class="paginakop">
       <div><h1>Werkpakketten</h1><p>Werkpakket → rondes (taken) → objecten, met voortgang per ronde en per object.</p></div>
@@ -9090,14 +9095,35 @@ async function werkpakkettenLijst() {
         <a class="knop primair" href="#/werkpakketten/nieuw">+ Nieuw werkpakket</a></div>` : ''}
     </div>
     ${await storingenKaart()}
-    ${pakketten.length ? `<div class="pakketten">${pakketten.map((p) => `
-      <a class="kaart pakket" href="#/werkpakketten/${esc(p.id)}">
+    ${pakketten.length > 1 ? `<div class="filters pakketfilters">
+      <input type="search" id="pf-zoek" placeholder="Zoek op code of naam…" value="${esc(filt.zoek ?? '')}" aria-label="Zoek werkpakket">
+      <select id="pf-status" aria-label="Status">${optie('', 'Alle statussen', filt.status ?? '')}${Object.entries(PAKKETSTATUS).map(([k, x]) => optie(k, x, filt.status ?? '')).join('')}</select>
+      ${magBeheren() && ik ? `<select id="pf-wie" aria-label="Toegewezen">${optie('', 'Alle werkpakketten', filt.wie ?? '')}${optie('mij', 'Aan mij toegewezen', filt.wie ?? '')}</select>` : ''}
+      <small id="pf-aantal"></small></div>` : ''}
+    ${pakketten.length ? `<div class="pakketten" id="pakketlijst">${pakketten.map((p) => `
+      <a class="kaart pakket" href="#/werkpakketten/${esc(p.id)}" data-zoek="${esc(`${p.code ?? ''} ${p.naam ?? ''}`.toLowerCase())}" data-status="${esc(p.status ?? '')}" data-mij="${pakketVoorMij(p, ik) ? '1' : ''}">
         <div class="pakketkop"><strong>${esc(p.naam)}</strong>${pakketStatusLabel(p.status)}</div>
         <small>${p.code ? `${esc(p.code)} · ` : ''}${pakketRondesTekst(p)}</small>
         ${voortgangBalk(voortgangen.get(p.id))}
         ${p.toegewezen?.length ? `<small>${I.gebruiker} ${p.toegewezen.map(esc).join(', ')}</small>` : ''}
       </a>`).join('')}</div>`
     : leegKaart('Nog geen werkpakketten in dit project.', magBeheren() ? '<a class="knop primair" href="#/werkpakketten/nieuw">+ Nieuw werkpakket</a>' : '')}`;
+  // Zoeken en filteren in de lijst (onthouden per gebruiker).
+  const filter = () => {
+    const f = { zoek: app.querySelector('#pf-zoek')?.value ?? '', status: app.querySelector('#pf-status')?.value ?? '', wie: app.querySelector('#pf-wie')?.value ?? '' };
+    instelling.schrijf('pakketFilter', JSON.stringify(f));
+    const termen = zoekTermen(f.zoek);
+    let n = 0;
+    app.querySelectorAll('#pakketlijst > .pakket').forEach((el) => {
+      const toon = termen.every((t) => el.dataset.zoek.includes(t)) && (!f.status || el.dataset.status === f.status) && (f.wie !== 'mij' || el.dataset.mij);
+      el.hidden = !toon;
+      if (toon) n += 1;
+    });
+    const a = app.querySelector('#pf-aantal');
+    if (a) a.textContent = n === pakketten.length ? `${n} werkpakketten` : `${n} van ${pakketten.length} werkpakketten`;
+  };
+  app.querySelector('.pakketfilters')?.addEventListener('input', filter);
+  filter();
   app.querySelector('#uitkomsten-xls')?.addEventListener('click', () => exporteerUitkomsten());
   app.querySelector('#xls-sjabloon')?.addEventListener('click', () => maakPakketExcel({ metGegevens: false }));
   app.querySelector('#xls-export')?.addEventListener('click', () => maakPakketExcel({ metGegevens: true }));
@@ -9675,7 +9701,7 @@ function volgendeRondeNaam(naam) {
 // --- Detail met kaart (pc) ----------------------------------------------------
 async function pakketDetail(id, q = new URLSearchParams()) {
   const g = await pakketGegevens();
-  const pr = g.pakketten.find((x) => x.id === id && pakketVoorMij(x));
+  const pr = g.pakketten.find((x) => x.id === id && pakketZichtbaar(x));
   if (!pr) {
     app.innerHTML = leegKaart('Werkpakket niet gevonden of niet aan jou toegewezen.', '<a class="knop" href="#/werkpakketten">Terug</a>');
     return;
@@ -9812,7 +9838,7 @@ async function exporteerUitkomsten({ voorPakket = null } = {}) {
     + g.inspecties.filter((i) => i.werkpakketId === p.id && i.status === 'afgerond').length
     + g.overgeslagen.filter((o) => o.pakketId === p.id).length;
   const STORINGEN = { id: '__storingen', code: '', naam: 'Storingen en gebreken (zonder werkpakket)', status: 'actief', objecten: [] };
-  const pakketten = [...g.pakketten.filter((p) => pakketVoorMij(p)), ...(g.werkzaamheden.some((w) => w.storing) ? [STORINGEN] : [])];
+  const pakketten = [...g.pakketten.filter(pakketZichtbaar), ...(g.werkzaamheden.some((w) => w.storing) ? [STORINGEN] : [])];
   if (!pakketten.length) return melding('Er zijn nog geen werkpakketten.', 'fout');
   const pakketVan = (r) => (r.storing && !r.werkpakketId ? STORINGEN.id : r.werkpakketId);
   const d = document.createElement('dialog');
