@@ -476,10 +476,14 @@ dan zie je per object de koppeling met het **bouwdeel**:
   gekoppeld zijn en welke decompositieversie geldt. Tik op een regel om ernaartoe te zoomen.
 - **Locatiepagina**: bovenaan staat het bouwdeel van het object.
 
+**Kaart toont werkpakketten, geen rondes.** De mobiele kaart, de chips erboven en de popups tonen alleen **werkpakketten** (met code als
+namen gelijk zijn); een pakket met meerdere lopende rondes staat er één keer. Een object telt als *te doen* zolang er in één van de rondes
+nog iets open is. Pas na **Afmelden op deze locatie** (of door op een werkpakket in de popup te tikken) zie je de afzonderlijke rondes,
+met Start/Gereed/Overslaan per ronde; na het opslaan kom je terug op die locatie.
+
 **Meerdere werkpakketten op één locatie.** Staan er meer werkpakketten (rondes) op hetzelfde GIS-object, dan zie je in de popup en op de
 locatiepagina per werkpakket wat het verschil is: **pakketcode**, rondenummer (bij pakketten met meer rondes), **periode** en **aantal objecten**.
-Elke regel in de popup is aan te tikken en opent direct dat werkpakket voor dit object. Heten ze hetzelfde, dan staat de code ook in de
-chips boven de kaart. Zijn werkpakketten volledig gelijk (naam, soort, periode en objecten), dan meldt de app dat ze waarschijnlijk dubbel
+Op de locatiepagina staat per ronde het verschil (code, ronde, periode, objecten); in de popup staan alleen de werkpakketten met hun code. Zijn werkpakketten volledig gelijk (naam, soort, periode en objecten), dan meldt de app dat ze waarschijnlijk dubbel
 zijn aangemaakt. Heet een ronde hetzelfde als het werkpakket, dan staat de naam nog maar één keer in beeld (niet "X – X").
 Bij **Afmelden op deze locatie** staat de planning die het **dichtst bij vandaag** ligt bovenaan (*Loopt nu* of *Dichtst bij vandaag*):
 eerst wat open is, op afstand van de periode tot vandaag (lopend, dan binnenkort, dan verlopen), daarna gedaan en overgeslagen.

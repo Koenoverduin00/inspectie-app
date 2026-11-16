@@ -4836,16 +4836,34 @@ async function mobielKaart() {
   };
   const lijst = [...perObject.values()];
   const open = lijst.filter(({ o }) => statusVan(o.id) === 'open').length;
+  // De kaart toont werkpakketten, niet de afzonderlijke rondes: die zie je pas bij "Afmelden op deze locatie".
+  const pakketten = new Map();
+  for (const { pakket: v } of rondes) {
+    if (!pakketten.has(v.id)) pakketten.set(v.id, { id: v.id, naam: v.pakketNaam ?? v.naam, code: v.code ?? '', objecten: new Set() });
+    v.objecten.forEach((oid) => pakketten.get(v.id).objecten.add(oid));
+  }
+  const naamTel = new Map();
+  for (const pk of pakketten.values()) naamTel.set(pk.naam, (naamTel.get(pk.naam) ?? 0) + 1);
+  const pakketLabel = (pk) => `${naamTel.get(pk.naam) > 1 && pk.code ? `<b>${esc(pk.code)}</b> ` : ''}${esc(pk.naam)}`;
+  /** Werkpakketten op een object met de samengevatte status (open zodra één ronde daar nog open is). */
+  const pakkettenOp = (oid) => {
+    const m = new Map();
+    for (const { v, st } of perObject.get(oid)?.rondes ?? []) {
+      const x = m.get(v.id) ?? { pk: pakketten.get(v.id), st };
+      if (st === 'open' || (st === 'gedaan' && x.st === 'overgeslagen')) x.st = st;
+      m.set(v.id, x);
+    }
+    return [...m.values()].sort((a, b) => (a.st === 'open' ? 0 : 1) - (b.st === 'open' ? 0 : 1) || a.pk.naam.localeCompare(b.pk.naam, 'nl'));
+  };
   let kaartPakket = instelling.lees('mKaartPakket');
-  if (!rondes.some(({ pakket: v }) => `${v.id}:${v.rondeId}` === kaartPakket)) kaartPakket = '';
+  if (!pakketten.has(kaartPakket)) kaartPakket = '';
   let labelsAan = instelling.lees('mKaartLabels', '1') === '1';
   app.innerHTML = `
-    <div class="mkaartkop"><div><h1>Kaart</h1><small>${rondes.length ? `${open} open · ${lijst.length - open} klaar · ${rondes.length} ronde${rondes.length === 1 ? '' : 's'}` : 'Geen actieve rondes'}</small></div>
+    <div class="mkaartkop"><div><h1>Kaart</h1><small>${rondes.length ? `${open} open · ${lijst.length - open} klaar · ${pakketten.size} werkpakket${pakketten.size === 1 ? '' : 'ten'}` : 'Geen actieve werkpakketten'}</small></div>
       ${rondes.length ? `<button class="knop" id="mijnlocatie" type="button">${I.locatie} Mijn locatie</button>` : ''}</div>
-    ${rondes.length > 1 ? `<div class="mpakketchips" role="group" aria-label="Werkpakket op de kaart">
-      <button type="button" class="gfchip${kaartPakket ? '' : ' actief'}" data-mkp="">Alle (${rondes.length})</button>
-      ${(() => { const ond = rondeOnderscheid(rondes.map((x) => x.pakket)); return rondes.map(({ pakket: v }) => { const x = ond.get(`${v.id}:${v.rondeId}`);
-    return `<button type="button" class="gfchip${kaartPakket === `${v.id}:${v.rondeId}` ? ' actief' : ''}" data-mkp="${esc(v.id)}:${esc(v.rondeId)}" title="${esc(v.naam)}">${x.zelfdeNaam && (x.code || x.ronde) ? `<b>${esc([x.code, x.ronde].filter(Boolean).join(' '))}</b> ` : ''}${esc(v.naam)}</button>`; }).join(''); })()}</div>` : ''}
+    ${pakketten.size > 1 ? `<div class="mpakketchips" role="group" aria-label="Werkpakket op de kaart">
+      <button type="button" class="gfchip${kaartPakket ? '' : ' actief'}" data-mkp="">Alle (${pakketten.size})</button>
+      ${[...pakketten.values()].map((pk) => `<button type="button" class="gfchip${kaartPakket === pk.id ? ' actief' : ''}" data-mkp="${esc(pk.id)}" title="${esc(pk.naam)}">${pakketLabel(pk)}</button>`).join('')}</div>` : ''}
     <div class="mlegenda"><span><i style="background:${PAKKET_KLEUR.open}"></i>Te doen</span><span><i style="background:${PAKKET_KLEUR.gedaan}"></i>Gedaan</span><span><i style="background:${PAKKET_KLEUR.overgeslagen}"></i>Overgeslagen</span>
       ${dv ? `<label class="mlabelschakel"><input type="checkbox" id="bdlabels" ${labelsAan ? 'checked' : ''}> Bouwdelen op de kaart</label>` : ''}</div>
     ${rondes.length ? '<div id="veldkaart" class="veldkaart"><p class="leeg">Kaart laden…</p></div>'
@@ -4861,30 +4879,21 @@ async function mobielKaart() {
     objecten: lijst.map((x) => x.o),
     kleurVan: (o) => PAKKET_KLEUR[statusVan(o.id)],
     popup: (o) => {
-      const rr = PL.dichtstbijEerst(perObject.get(o.id).rondes, vandaag());
-      const nOpen = rr.filter((x) => x.st === 'open').length;
-      if (rr.length > 1) {
-        return `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br><small>${esc(o.type || '')}</small>${dv?.html(o) ?? ''}
-          <div class="veldmelding">${I.let} <strong>${rr.length} werkpakketten op deze locatie</strong>${nOpen ? ` · ${nOpen} open` : ''}</div>
-          ${dubbelMelding(rondeOnderscheid(rr.map((x) => x.v)))}
-          <ul class="veldrondes">${(() => { const ond = rondeOnderscheid(rr.map((x) => x.v)); return rr.map(({ v, st }) => `<li><a href="${st === 'open' ? pakketHref(v, o.id, true) : locatiePagina(o.id)}"><span class="stip ${st}"></span>
-            <span><span class="rondenaam">${esc(v.naam)}</span>${rondeKenmerkenHtml(v, ond.get(`${v.id}:${v.rondeId}`))}</span></a></li>`).join(''); })()}</ul>
-          <div class="popupknoppen"><a class="knop klein primair" href="${locatiePagina(o.id)}">${nOpen ? `${I.start} Afmelden op deze locatie` : 'Bekijken'}</a>
-          <a class="knop klein" href="${navigeer(o)}" target="_blank" rel="noopener">${I.navigeer} Navigeer</a></div>`;
-      }
+      const pp = pakkettenOp(o.id);
+      const nOpen = pp.filter((x) => x.st === 'open').length;
       return `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br><small>${esc(o.type || '')}</small>${dv?.html(o) ?? ''}
-      <div class="veldpopup">${rr.map(({ v, st }) => `<div class="veldronde"><small>${esc(v.naam)}</small>${rondeKenmerkenHtml(v, rondeOnderscheid([v]).get(`${v.id}:${v.rondeId}`))}
-        ${st === 'open' ? `<div class="popupknoppen"><a class="knop klein primair" href="${pakketHref(v, o.id, true)}">${I.start} Start</a>
-          <button class="knop klein" data-overslaan="${esc(o.id)}" data-pakket="${esc(v.id)}:${esc(v.rondeId)}">${I.overslaan} Overslaan</button></div>`
-    : `<span class="label-status ${st === 'gedaan' ? 'afgerond' : ''}">${st === 'gedaan' ? I.vink + ' Gedaan' : I.overslaan + ' Overgeslagen'}</span>`}</div>`).join('')}</div>
-      <a class="knop klein" href="${navigeer(o)}" target="_blank" rel="noopener">${I.navigeer} Navigeer erheen</a>`;
+        ${pp.length > 1 ? `<div class="veldmelding">${I.let} <strong>${pp.length} werkpakketten op deze locatie</strong>${nOpen ? ` · ${nOpen} open` : ''}</div>` : ''}
+        <ul class="veldrondes">${pp.map(({ pk, st }) => `<li><a href="${locatiePagina(o.id)}"><span class="stip ${st}"></span>
+          <span><span class="rondenaam">${esc(pk.naam)}</span>${pk.code ? `<small class="rondekenmerken"><strong>${esc(pk.code)}</strong>${st === 'open' ? '' : ` · ${st === 'gedaan' ? 'gedaan' : 'overgeslagen'}`}</small>` : ''}</span></a></li>`).join('')}</ul>
+        <div class="popupknoppen"><a class="knop klein primair" href="${locatiePagina(o.id)}">${nOpen ? `${I.start} Afmelden op deze locatie` : 'Bekijken'}</a>
+        <a class="knop klein" href="${navigeer(o)}" target="_blank" rel="noopener">${I.navigeer} Navigeer</a></div>`;
     },
   });
   if (!kaart) return;
   const L = window.L;
   // Per werkpakket: kaart filteren, bouwdeelnamen als label en een lijst met de koppeling met de decompositie.
   const labelLaag = L.layerGroup().addTo(kaart.map);
-  const inBeeld = () => (kaartPakket ? lijst.filter(({ o }) => g.views.get(kaartPakket)?.objecten.includes(o.id)) : lijst);
+  const inBeeld = () => (kaartPakket ? lijst.filter(({ o }) => pakketten.get(kaartPakket)?.objecten.has(o.id)) : lijst);
   const tekenLabels = () => {
     labelLaag.clearLayers();
     if (!dv || !labelsAan || kaart.map.getZoom() < 16) return;
@@ -4902,7 +4911,7 @@ async function mobielKaart() {
   const tekenLijst = () => {
     const el = app.querySelector('#mbdlijst');
     if (!el) return;
-    const v = kaartPakket ? g.views.get(kaartPakket) : null;
+    const v = kaartPakket ? pakketten.get(kaartPakket) : null;
     const items = inBeeld().map(({ o }) => ({ o, d: dv.van(o) }))
       .sort((a, b) => (a.d ? 0 : 1) - (b.d ? 0 : 1) || dv.label(a.o).localeCompare(dv.label(b.o), 'nl') || String(a.o.code).localeCompare(String(b.o.code), 'nl', { numeric: true }));
     const zonder = items.filter((x) => !x.d).length;
@@ -4939,8 +4948,8 @@ async function mobielKaart() {
     app.querySelector('#veldkaart').scrollIntoView({ behavior: 'smooth', block: 'start' });
     kaart.zoomNaar(z.dataset.mzoom);
   });
-  for (const { o, rondes: rr } of lijst) {
-    const nOpen = rr.filter((x) => x.st === 'open').length;
+  for (const { o } of lijst) {
+    const nOpen = pakkettenOp(o.id).filter((x) => x.st === 'open').length;
     if (nOpen < 2) continue;
     const geom = objectGeometrie(o);
     if (!geom) continue;
@@ -4950,13 +4959,6 @@ async function mobielKaart() {
       keyboard: false,
     }).on('click', () => { location.hash = locatiePagina(o.id); }).addTo(kaart.map);
   }
-  app.querySelector('#veldkaart').addEventListener('click', async (e) => {
-    const over = e.target.closest('[data-overslaan]');
-    if (!over) return;
-    const [pid, rid] = over.dataset.pakket.split(':');
-    const v = g.views.get(`${pid}:${rid}`);
-    if (v && await slaObjectOver(v, g.objectMap.get(over.dataset.overslaan))) router();
-  });
   const toonLocatie = (stil) => bepaalPositie(() => {
     kaart.zetPositie(laatstePositie);
     if (!stil) kaart.map.setView([laatstePositie[1], laatstePositie[0]], Math.max(kaart.map.getZoom(), 17), { animate: false });
