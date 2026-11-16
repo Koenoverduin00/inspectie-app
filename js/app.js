@@ -4767,8 +4767,42 @@ function groet() {
 // ---------------------------------------------------------------------------
 // Mobiel: kaart met alle objecten van je actieve rondes
 // ---------------------------------------------------------------------------
+// Koppeling met de NEN 2767-decompositie voor het veld: de definitieve versie (of, zolang die er niet is, de ingelezen boom).
+async function veldDecompositie() {
+  const dec = (await actiefProject())?.decompositie;
+  const boom = D.definitieveBoom(dec) ?? (dec?.knopen?.length ? { versie: null, knopen: dec.knopen } : null);
+  if (!boom) return null;
+  const idx = D.index(boom.knopen);
+  const van = (o) => {
+    const k = o?.decomp ? idx.perId.get(o.decomp) : null;
+    if (!k) return null;
+    const bd = D.bouwdelenOnder(idx, k.id);
+    return { k, bd, pad: D.pad(idx, k.id).slice(0, -1) };
+  };
+  /** Korte naam voor een label op de kaart: het bouwdeel, anders het onderdeel met het aantal bouwdelen. */
+  const label = (o) => {
+    const d = van(o);
+    if (!d) return '';
+    if (d.k.niveau === 'bouwdeel') return d.k.naam;
+    return d.bd.length === 1 ? d.bd[0].naam : `${d.k.naam}${d.bd.length ? ` (${d.bd.length} bouwdelen)` : ''}`;
+  };
+  /** Blok voor een popup of locatiepagina: bouwdeelnaam groot, het pad eronder klein. */
+  const html = (o, { klein = false } = {}) => {
+    const d = van(o);
+    if (!d) return '';
+    const isBd = d.k.niveau === 'bouwdeel';
+    return `<div class="veld-decomp${klein ? ' klein' : ''}">
+      <div class="veld-bd">${isBd ? '' : niveauChip(d.k.niveau)}<strong>${esc(isBd ? d.k.naam : label(o))}</strong>${d.k.code ? ` <small>${esc(d.k.code)}</small>` : ''}</div>
+      ${d.pad.length ? `<small class="veld-pad">${d.pad.map((x) => esc(x.naam)).join(' › ')}</small>` : ''}
+      ${!isBd && d.bd.length > 1 ? `<small class="veld-bdlijst">Bouwdelen: ${d.bd.slice(0, 8).map((b) => esc(b.naam)).join(', ')}${d.bd.length > 8 ? ' …' : ''}</small>` : ''}
+    </div>`;
+  };
+  return { versie: boom.versie, van, label, html };
+}
+
 async function mobielKaart() {
   const g = await pakketGegevens();
+  const dv = await veldDecompositie();
   const ik = sync.sessie()?.gebruiker?.email ?? '';
   const rondes = actieveRondes(g).filter(({ pakket }) => pakketVoorMij(pakket, ik));
   // Per object: in welke rondes het zit en wat de status daar is.
@@ -4788,12 +4822,20 @@ async function mobielKaart() {
   };
   const lijst = [...perObject.values()];
   const open = lijst.filter(({ o }) => statusVan(o.id) === 'open').length;
+  let kaartPakket = instelling.lees('mKaartPakket');
+  if (!rondes.some(({ pakket: v }) => `${v.id}:${v.rondeId}` === kaartPakket)) kaartPakket = '';
+  let labelsAan = instelling.lees('mKaartLabels', '1') === '1';
   app.innerHTML = `
     <div class="mkaartkop"><div><h1>Kaart</h1><small>${rondes.length ? `${open} open · ${lijst.length - open} klaar · ${rondes.length} ronde${rondes.length === 1 ? '' : 's'}` : 'Geen actieve rondes'}</small></div>
       ${rondes.length ? `<button class="knop" id="mijnlocatie" type="button">${I.locatie} Mijn locatie</button>` : ''}</div>
-    <div class="mlegenda"><span><i style="background:${PAKKET_KLEUR.open}"></i>Te doen</span><span><i style="background:${PAKKET_KLEUR.gedaan}"></i>Gedaan</span><span><i style="background:${PAKKET_KLEUR.overgeslagen}"></i>Overgeslagen</span></div>
+    ${rondes.length > 1 ? `<div class="mpakketchips" role="group" aria-label="Werkpakket op de kaart">
+      <button type="button" class="gfchip${kaartPakket ? '' : ' actief'}" data-mkp="">Alle (${rondes.length})</button>
+      ${rondes.map(({ pakket: v }) => `<button type="button" class="gfchip${kaartPakket === `${v.id}:${v.rondeId}` ? ' actief' : ''}" data-mkp="${esc(v.id)}:${esc(v.rondeId)}">${esc(v.naam)}</button>`).join('')}</div>` : ''}
+    <div class="mlegenda"><span><i style="background:${PAKKET_KLEUR.open}"></i>Te doen</span><span><i style="background:${PAKKET_KLEUR.gedaan}"></i>Gedaan</span><span><i style="background:${PAKKET_KLEUR.overgeslagen}"></i>Overgeslagen</span>
+      ${dv ? `<label class="mlabelschakel"><input type="checkbox" id="bdlabels" ${labelsAan ? 'checked' : ''}> Bouwdelen op de kaart</label>` : ''}</div>
     ${rondes.length ? '<div id="veldkaart" class="veldkaart"><p class="leeg">Kaart laden…</p></div>'
-    : '<div class="kaart leeg"><p>Er loopt op dit moment geen ronde voor jou.</p><p><small>Zodra de beheerder een ronde actief zet, zie je de objecten hier.</small></p></div>'}`;
+    : '<div class="kaart leeg"><p>Er loopt op dit moment geen ronde voor jou.</p><p><small>Zodra de beheerder een ronde actief zet, zie je de objecten hier.</small></p></div>'}
+    ${rondes.length && dv ? '<section class="kaart mbdlijst" id="mbdlijst"></section>' : ''}`;
   if (!rondes.length) return;
   const navigeer = (o) => {
     const geom = objectGeometrie(o);
@@ -4807,13 +4849,13 @@ async function mobielKaart() {
       const rr = perObject.get(o.id).rondes;
       const nOpen = rr.filter((x) => x.st === 'open').length;
       if (rr.length > 1) {
-        return `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br><small>${esc(o.type || '')}</small>
+        return `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br><small>${esc(o.type || '')}</small>${dv?.html(o) ?? ''}
           <div class="veldmelding">${I.let} <strong>${rr.length} werkpakketten op deze locatie</strong>${nOpen ? ` · ${nOpen} open` : ''}</div>
           <ul class="veldrondes">${rr.map(({ v, st }) => `<li><span class="stip ${st}"></span>${esc(v.naam)}</li>`).join('')}</ul>
           <div class="popupknoppen"><a class="knop klein primair" href="${locatiePagina(o.id)}">${nOpen ? `${I.start} Afmelden op deze locatie` : 'Bekijken'}</a>
           <a class="knop klein" href="${navigeer(o)}" target="_blank" rel="noopener">${I.navigeer} Navigeer</a></div>`;
       }
-      return `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br><small>${esc(o.type || '')}</small>
+      return `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br><small>${esc(o.type || '')}</small>${dv?.html(o) ?? ''}
       <div class="veldpopup">${rr.map(({ v, st }) => `<div class="veldronde"><small>${esc(v.naam)}</small>
         ${st === 'open' ? `<div class="popupknoppen"><a class="knop klein primair" href="${pakketHref(v, o.id, true)}">${I.start} Start</a>
           <button class="knop klein" data-overslaan="${esc(o.id)}" data-pakket="${esc(v.id)}:${esc(v.rondeId)}">${I.overslaan} Overslaan</button></div>`
@@ -4823,6 +4865,63 @@ async function mobielKaart() {
   });
   if (!kaart) return;
   const L = window.L;
+  // Per werkpakket: kaart filteren, bouwdeelnamen als label en een lijst met de koppeling met de decompositie.
+  const labelLaag = L.layerGroup().addTo(kaart.map);
+  const inBeeld = () => (kaartPakket ? lijst.filter(({ o }) => g.views.get(kaartPakket)?.objecten.includes(o.id)) : lijst);
+  const tekenLabels = () => {
+    labelLaag.clearLayers();
+    if (!dv || !labelsAan || kaart.map.getZoom() < 16) return;
+    const grens = kaart.map.getBounds().pad(0.2);
+    for (const { o } of inBeeld()) {
+      const tekst = dv.label(o);
+      const geom = objectGeometrie(o);
+      if (!tekst || !geom) continue;
+      const [lng, lat] = geom.type === 'Point' ? geom.coordinates : gis.middelpunt(geom);
+      if (!grens.contains([lat, lng])) continue;
+      L.marker([lat, lng], { interactive: false, keyboard: false,
+        icon: L.divIcon({ className: 'bdlabel', html: `<span>${esc(tekst)}</span>`, iconSize: null, iconAnchor: [0, -10] }) }).addTo(labelLaag);
+    }
+  };
+  const tekenLijst = () => {
+    const el = app.querySelector('#mbdlijst');
+    if (!el) return;
+    const v = kaartPakket ? g.views.get(kaartPakket) : null;
+    const items = inBeeld().map(({ o }) => ({ o, d: dv.van(o) }))
+      .sort((a, b) => (a.d ? 0 : 1) - (b.d ? 0 : 1) || dv.label(a.o).localeCompare(dv.label(b.o), 'nl') || String(a.o.code).localeCompare(String(b.o.code), 'nl', { numeric: true }));
+    const zonder = items.filter((x) => !x.d).length;
+    el.innerHTML = `<details ${kaartPakket ? 'open' : ''}><summary><strong>${I.lijst} Bouwdelen${v ? ` in ${esc(v.naam)}` : ''}</strong>
+        <small>${items.length - zonder} van ${items.length} objecten gekoppeld${dv.versie ? ` · decompositie v${dv.versie}` : ''}</small></summary>
+      <ul class="mbd">${items.map(({ o, d }) => `<li><button type="button" data-mzoom="${esc(o.id)}">
+        <span class="stip ${statusVan(o.id)}"></span>
+        <span><strong>${d ? esc(dv.label(o)) : '<span class="zacht">Geen bouwdeel gekoppeld</span>'}</strong>
+        <small>${esc(o.code)}${o.naam && o.naam !== o.code ? ` – ${esc(o.naam)}` : ''}${d?.pad.length ? ` · ${esc(d.pad.map((x) => x.naam).join(' › '))}` : ''}</small></span></button></li>`).join('')}</ul></details>`;
+  };
+  const toonPakket = (inzoomen) => {
+    kaart.toon(new Set(inBeeld().map(({ o }) => o.id)), { inzoomen });
+    tekenLabels();
+    tekenLijst();
+  };
+  kaart.map.on('zoomend moveend', tekenLabels);
+  toonPakket(Boolean(kaartPakket));
+  app.querySelector('.mpakketchips')?.addEventListener('click', (e) => {
+    const c = e.target.closest('[data-mkp]');
+    if (!c) return;
+    kaartPakket = c.dataset.mkp;
+    instelling.schrijf('mKaartPakket', kaartPakket);
+    app.querySelectorAll('.mpakketchips [data-mkp]').forEach((x) => x.classList.toggle('actief', x === c));
+    toonPakket(true);
+  });
+  app.querySelector('#bdlabels')?.addEventListener('change', (e) => {
+    labelsAan = e.target.checked;
+    instelling.schrijf('mKaartLabels', labelsAan ? '1' : '0');
+    tekenLabels();
+  });
+  app.querySelector('#mbdlijst')?.addEventListener('click', (e) => {
+    const z = e.target.closest('[data-mzoom]');
+    if (!z) return;
+    app.querySelector('#veldkaart').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    kaart.zoomNaar(z.dataset.mzoom);
+  });
   for (const { o, rondes: rr } of lijst) {
     const nOpen = rr.filter((x) => x.st === 'open').length;
     if (nOpen < 2) continue;
@@ -4899,6 +4998,7 @@ async function mobielLocatie(objectId) {
     return;
   }
   const ik = sync.sessie()?.gebruiker?.email ?? '';
+  const dvLoc = await veldDecompositie();
   const lijst = rondesOpObject(g, objectId, ik);
   const open = lijst.filter((x) => x.st === 'open');
   const snel = new Map(await Promise.all(open.map(async (x) => [`${x.v.id}:${x.v.rondeId}`, await magSnelAfvinken(x.v, objectId)])));
@@ -4928,6 +5028,7 @@ async function mobielLocatie(objectId) {
     ${opslagKaart(opslagBevestiging(), { objectMap: g.objectMap })}
     <div class="mkop"><a href="#/m/kaart" class="mterug" aria-label="Terug naar de kaart">←</a>
       <div style="flex:1;min-width:0"><small>${I.locatie} Locatie</small><h1>${esc(o.code)} – ${esc(o.naam)}</h1></div></div>
+    ${dvLoc?.van(o) ? `<div class="kaart mdecomp">${dvLoc.html(o)}</div>` : ''}
     ${open.length > 1 ? `<div class="kaart locmelding">${I.let}<div><strong>${open.length} werkpakketten tegelijk gepland op deze locatie</strong>
       <small>Meld ze hier na elkaar af. Per werkpakket leg je bewust vast of het werk is gedaan of overgeslagen.</small></div></div>` : ''}
     ${!open.length && lijst.length ? `<div class="kaart mhier">${I.gereed} Alles op deze locatie is afgemeld.</div>` : ''}

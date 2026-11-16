@@ -1519,3 +1519,24 @@ td.actiecel .knoppen { justify-content: flex-end; flex-wrap: wrap; }
 .periodekiezer { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
 .periodekiezer select, .periodekiezer input[type=date] { width: auto; margin: 0; }
 .bord-melding.zacht { color: var(--zacht, #6b7785); }
+/* Mobiele kaart: werkpakketkeuze en koppeling met de decompositie (bouwdeel) */
+.mpakketchips { display: flex; gap: .35rem; overflow-x: auto; padding: 0 0 .4rem; scrollbar-width: none; }
+.mpakketchips .gfchip { flex: 0 0 auto; white-space: nowrap; }
+.mlabelschakel { display: inline-flex; align-items: center; gap: .3rem; margin-left: auto; font-size: .8rem; }
+.mlabelschakel input { width: auto; margin: 0; }
+.veld-decomp { margin: .4rem 0; padding: .35rem .5rem; border-left: 3px solid #2f8f5b; background: var(--achtergrond); border-radius: 4px; }
+.veld-decomp .veld-bd { font-size: 1.02rem; line-height: 1.25; display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; }
+.veld-decomp .veld-pad, .veld-decomp .veld-bdlijst { display: block; color: var(--zacht, #6b7785); line-height: 1.3; }
+.mdecomp { padding: .5rem .75rem; }
+.mdecomp .veld-decomp { margin: 0; border-left: 0; background: none; padding: 0; }
+.mdecomp .veld-bd { font-size: 1.15rem; }
+.bdlabel { background: none; border: 0; }
+.bdlabel span { display: inline-block; transform: translateX(-50%); white-space: nowrap; max-width: 12rem; overflow: hidden; text-overflow: ellipsis;
+  background: rgba(255,255,255,.92); color: #13202b; border: 1px solid #2f8f5b; border-radius: 4px; padding: 0 .3rem; font-size: .72rem; font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+.mbdlijst summary { cursor: pointer; display: flex; flex-direction: column; gap: .1rem; }
+.mbd { list-style: none; margin: .5rem 0 0; padding: 0; }
+.mbd li + li { border-top: 1px solid var(--rand); }
+.mbd button { all: unset; box-sizing: border-box; width: 100%; display: flex; gap: .55rem; align-items: center; padding: .55rem .1rem; cursor: pointer; }
+.mbd button > span:last-child { display: flex; flex-direction: column; min-width: 0; }
+.mbd small { color: var(--zacht, #6b7785); overflow: hidden; text-overflow: ellipsis; }
+.mbd .stip { flex: 0 0 auto; }

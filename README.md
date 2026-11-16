@@ -465,6 +465,17 @@ openen of aan te passen. "Van jou" is wat je met je account hebt ingediend, of w
 
 De knop **Mijn locatie** op de kaart verschijnt alleen als er een ronde voor je loopt.
 
+**Decompositie op de mobiele kaart.** Is er een NEN 2767-decompositie (de definitieve versie, of zolang die er niet is de ingelezen boom),
+dan zie je per object de koppeling met het **bouwdeel**:
+- **Per werkpakket**: met de chips boven de kaart kies je *Alle* of één werkpakket (ronde); de kaart toont dan alleen die objecten en zoomt erop in.
+  De keuze wordt onthouden.
+- **Popup**: de bouwdeelnaam staat groot (met code), daaronder het pad systeemdeel › object › element. Is een object aan een element of object
+  gekoppeld, dan zie je de bouwdelen die eronder vallen.
+- **Labels op de kaart**: vanaf zoomniveau 16 staat de bouwdeelnaam bij elk object (uit te zetten met *Bouwdelen op de kaart*).
+- **Lijst onder de kaart**: *Bouwdelen in <werkpakket>* met per object het bouwdeel, de status (stip) en het pad, plus hoeveel objecten
+  gekoppeld zijn en welke decompositieversie geldt. Tik op een regel om ernaartoe te zoomen.
+- **Locatiepagina**: bovenaan staat het bouwdeel van het object.
+
 ## GPS-locatie per gebrek of bevinding
 
 Elk gebrek (NEN 2767, boomveiligheidscontrole), elke bevinding (oordeel) en elk controlepunt dat niet in orde is, heeft standaard een veld
