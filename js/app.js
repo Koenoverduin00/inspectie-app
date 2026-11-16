@@ -289,7 +289,8 @@ const NIVEAU_KLEUR = { object: '#7d5ba6', element: '#c27c1e', bouwdeel: '#2f8f5b
 /** "Objectcode = GIS-code (bouwdelen)" – leesbare beschrijving van een koppelinstelling. */
 function koppelTekst(kp) {
   const kolom = kp.kolom === 'code' ? 'objectcode' : kp.kolom === 'naam' ? 'naam' : `kenmerk "${String(kp.kolom).slice(8)}"`;
-  const veld = kp.veld === 'auto' || !kp.veld ? 'GIS-code of code' : D.KOPPEL_VELDEN[kp.veld]?.toLowerCase();
+  const veld = kp.veld === 'auto' || !kp.veld ? 'GIS-code of code'
+    : String(kp.veld).startsWith('kenmerk:') ? `kolom "${String(kp.veld).slice(8)}"` : D.KOPPEL_VELDEN[kp.veld]?.toLowerCase();
   return `${kolom} = ${veld}${kp.niveau ? `, alleen ${{ object: 'objecten', element: 'elementen', bouwdeel: 'bouwdelen' }[kp.niveau]}` : ''}`;
 }
 const niveauChip = (n) => `<span class="niveauchip" style="--nk:${NIVEAU_KLEUR[n] ?? '#8a96a3'}">${esc(D.NIVEAU_LABEL[n] ?? n)}</span>`;
@@ -535,6 +536,8 @@ async function decompositiePagina(_, q) {
     ? `Krijgt een conditiescore bij inspectie.${s ? ` Laatste: ${scoreLabel(s.score)} op <a href="#/inspecties/${esc(s.inspectieId)}">${datumNL(s.datum)}</a>.` : ' Nog niet geïnspecteerd.'}`
     : `Inspectie op een hieraan gekoppeld GIS-object scoort de ${bd.length} bouwde${bd.length === 1 ? 'el' : 'len'} eronder.`}
         ${k.hoeveelheid !== '' && k.hoeveelheid != null ? `<br>Hoeveelheid: ${esc(k.hoeveelheid)} ${esc(k.eenheid ?? '')}` : ''}</p>
+      ${Object.keys(k.kenmerken ?? {}).length ? `<details class="knoopkenmerken"><summary><small>Alle kolommen uit het bestand (${Object.keys(k.kenmerken).length})</small></summary>
+        <dl class="gegevens">${Object.entries(k.kenmerken).map(([h, v]) => `<dt>${esc(h)}</dt><dd>${esc(v)}</dd>`).join('')}</dl></details>` : ''}
       <h3 style="margin:.75rem 0 .25rem">Gekoppelde GIS-objecten (${eigen.length})</h3>
       ${eigen.length ? `<ul class="dk-objecten">${eigen.map((o) => `<li><button type="button" class="linkknop" data-zoom="${esc(o.id)}">${esc(o.code)}${o.naam && o.naam !== o.code ? ` – ${esc(o.naam)}` : ''}</button>
         <button type="button" class="knop klein" data-los="${esc(o.id)}" title="Ontkoppelen">${I.kruis}</button></li>`).join('')}</ul>`
@@ -677,7 +680,8 @@ async function decompositiePagina(_, q) {
     for (const o of inLaag) for (const [k, v] of Object.entries(o.kenmerken ?? {})) if (v !== null && v !== '' && typeof v !== 'object' && !kenmerken.has(k)) kenmerken.set(k, String(v));
     const voorbeeld = (lijst) => [...new Set(lijst.filter(Boolean))].slice(0, 3).map((x) => `<code>${esc(String(x).slice(0, 30))}</code>`).join(' ') || '<span class="zacht">leeg</span>';
     const gisVb = voorbeeld(inLaag.map((o) => D.gisWaarde(o, kp.kolom)));
-    const decVb = voorbeeld(knopen.filter((k) => !kp.niveau || k.niveau === kp.niveau).map((k) => (kp.veld === 'auto' ? k.gis || k.code : k[kp.veld])));
+    const decVb = voorbeeld(knopen.filter((k) => !kp.niveau || k.niveau === kp.niveau).map((k) => D.knoopWaarde(k, kp.veld)));
+    const decKolommen = D.decompKolommen(knopen, kp.niveau).sort((a, b) => a[0].localeCompare(b[0], 'nl'));
     koppelRes = D.koppelOpKolom(knopen, objecten, kp);
     const r = koppelRes;
     const tegel = (n, l, k = '') => `<span class="tegel ${k}"><strong>${n}</strong><span>${l}</span></span>`;
@@ -694,7 +698,9 @@ async function decompositiePagina(_, q) {
           ${kenmerken.size ? `<optgroup label="Kenmerken uit het GIS-bestand">${[...kenmerken.entries()].sort((a, b) => a[0].localeCompare(b[0], 'nl')).map(([k, v]) => optie(`kenmerk:${k}`, `${k}  (bijv. ${v.slice(0, 20)})`, kp.kolom)).join('')}</optgroup>` : ''}</select>
           <small>bijv. ${gisVb}</small></label>
         <span class="koppelis">=</span>
-        <label>Veld in de decompositie<select data-kpv="veld">${optie('auto', 'GIS-code, anders code', kp.veld)}${Object.entries(D.KOPPEL_VELDEN).map(([k, l]) => optie(k, l, kp.veld)).join('')}</select>
+        <label>Veld in de decompositie<select data-kpv="veld">${optie('auto', 'GIS-code, anders code', kp.veld)}${Object.entries(D.KOPPEL_VELDEN).map(([k, l]) => optie(k, l, kp.veld)).join('')}
+          ${decKolommen.length ? `<optgroup label="Kolommen uit de ingelezen decompositie">${decKolommen.map(([h, v]) => optie(`kenmerk:${h}`, `${h}  (bijv. ${String(v).slice(0, 20)})`, kp.veld)).join('')}</optgroup>`
+    : '<optgroup label="Lees de decompositie opnieuw in om ook de andere kolommen te kunnen kiezen"></optgroup>'}</select>
           <small>bijv. ${decVb}</small></label>
         <label>Niveau<select data-kpv="niveau">${optie('', 'Alle niveaus', kp.niveau)}${D.NIVEAUS.map((n) => optie(n, D.NIVEAU_LABEL[n], kp.niveau)).join('')}</select></label>
         <label class="vink"><input type="checkbox" data-kpv="overschrijven" ${kp.overschrijven ? 'checked' : ''}><span>Bestaande koppelingen overschrijven</span></label>

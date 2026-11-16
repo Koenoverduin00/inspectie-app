@@ -520,7 +520,10 @@ Voor opdrachtgevers die volgens NEN 2767 werken met een eigen decompositie (obje
   *＋ Object* of *Verwijderen* (met alles eronder; GIS-koppelingen vervallen). Een code is verplicht en uniek per niveau. Wijzig je een code, dan
   vraagt de app om bevestiging: pas hem ook aan in het bestand van de opdrachtgever, of kies bij het bijwerken een andere code die hetzelfde is gebleven.
 - **Koppelen op kolom** (knop op de decompositiepagina): kies welke **GIS-kolom** (objectcode, naam of een kenmerk uit het GIS-bestand)
-  overeenkomt met welk **veld in de decompositie** (GIS-code, code of naam), eventueel per **niveau** en per **laag**. Je ziet vooraf hoeveel
+  overeenkomt met welk **veld in de decompositie** (GIS-code, code, naam of **elke andere kolom uit het ingelezen bestand**), eventueel per
+  **niveau** en per **laag**. Bij het inlezen bewaart de app alle kolommen per onderdeel (kolommen met "object", "element" of "bouwdeel" in de naam
+  bij dat niveau, overige bij het bouwdeel; bij tabbladen per niveau de kolommen van het eigen tabblad). Bij een gekozen onderdeel zie je ze onder
+  *Alle kolommen uit het bestand*. Een eerder ingelezen decompositie lees je één keer opnieuw in om die kolommen te krijgen. Je ziet vooraf hoeveel
   vlakken worden gekoppeld, al goed staan, al anders gekoppeld zijn, geen match hebben of op een dubbele waarde vallen, met een tabel
   "waarde → GIS-object → onderdeel". Pas na **Toepassen** verandert er iets; bestaande koppelingen worden alleen overschreven als je dat aanvinkt.
   Hoofdletters, spaties en streepjes tellen niet mee. De gekozen instelling wordt bewaard en gebruikt bij het automatisch koppelen na een nieuwe levering.

@@ -64,6 +64,25 @@ function vindKolom(kop, niveau, soort, bezet = new Set()) {
   return (kand.find((x) => IS_NAAM.test(x.h)) ?? kand.find((x) => !IS_CODE.test(x.h)))?.i ?? -1;
 }
 
+/** Alle (niet-lege) kolommen van een regel als { kolomnaam: waarde }; bewaard per onderdeel ("kenmerken"). */
+function rijKenmerken(kopRuw, r, indexen = null) {
+  const uit = {};
+  (indexen ?? kopRuw.map((_, i) => i)).forEach((i) => {
+    const h = tekst(kopRuw[i]);
+    const v = tekst(r[i]);
+    if (h && v && !(h in uit)) uit[h] = v;
+  });
+  return uit;
+}
+/** Niveau waar een kolom bij hoort (op de kolomnaam), of null. */
+function kolomNiveau(h) {
+  const s = norm(h);
+  if (STAM.bouwdeel.test(s)) return 'bouwdeel';
+  if (STAM.element.test(s)) return 'element';
+  if (STAM.object.test(s) && !/gis/.test(s)) return 'object';
+  return null;
+}
+
 function kolommen(kop) {
   const genorm = kop.map(norm);
   const uit = {};
@@ -107,16 +126,17 @@ export function leesDecompositie(regels) {
   const k = kolommen(rijen[start]);
   const kop = rijen[start].filter(Boolean);
   const data = rijen.slice(start + 1).map((r, i) => ({ r, rij: start + i + 2 })).filter(({ r }) => r.some((c) => c));
-  if (k.niveau !== undefined && (k.code !== undefined || k.naam !== undefined)) return { ...leesLijst(data, k), kop };
+  const kopRuw = rijen[start];
+  if (k.niveau !== undefined && (k.code !== undefined || k.naam !== undefined)) return { ...leesLijst(data, k, kopRuw), kop };
   if (k.object !== undefined || k.element !== undefined || k.bouwdeel !== undefined
-    || k.objectcode !== undefined || k.elementcode !== undefined || k.bouwdeelcode !== undefined) return { ...leesKolommen(data, k), kop };
+    || k.objectcode !== undefined || k.elementcode !== undefined || k.bouwdeelcode !== undefined) return { ...leesKolommen(data, k, kopRuw), kop };
   return {
     knopen: [], indeling: null, kop,
     fouten: ['Kolommen niet herkend. Gebruik "Code, Naam, Niveau, Bovenliggende code" of "Object, Element, Bouwdeel".'],
   };
 }
 
-function leesLijst(data, k) {
+function leesLijst(data, k, kopRuw = []) {
   const fouten = [];
   const knopen = [];
   const perCode = new Map();
@@ -132,6 +152,7 @@ function leesLijst(data, k) {
       id: maakId(niveau, sleutel), code, naam: naam || code, niveau, ouder: null,
       eenheid: k.eenheid !== undefined ? r[k.eenheid] : '', hoeveelheid: k.hoeveelheid !== undefined ? getal(r[k.hoeveelheid]) : '',
       gis: k.gis !== undefined ? r[k.gis] : '', _ouder: k.ouder !== undefined ? r[k.ouder] : '', _rij: rij,
+      kenmerken: rijKenmerken(kopRuw, r),
     };
     perCode.set(sleutel, knoop);
     knopen.push(knoop);
@@ -153,7 +174,10 @@ function leesLijst(data, k) {
   return { knopen: opgeschoond(knopen.filter((kn) => kn.niveau === 'object' || kn.ouder)), fouten, indeling: 'lijst' };
 }
 
-function leesKolommen(data, k) {
+function leesKolommen(data, k, kopRuw = []) {
+  // Kolommen met "object", "element" of "bouwdeel" in de naam horen bij dat niveau; de rest bij het diepste onderdeel van de regel.
+  const perNiveauKol = { object: [], element: [], bouwdeel: [], rest: [] };
+  kopRuw.forEach((h, i) => { if (tekst(h)) perNiveauKol[kolomNiveau(h) ?? 'rest'].push(i); });
   const fouten = [];
   const knopen = [];
   const perSleutel = new Map();
@@ -162,7 +186,7 @@ function leesKolommen(data, k) {
     const sleutel = `${niveau}|${ouder ?? ''}|${code || norm(naam)}`;
     let kn = perSleutel.get(sleutel);
     if (!kn) {
-      kn = { id: maakId(niveau, `${ouder ?? ''}/${code || naam}`), code, naam: naam || code, niveau, ouder, eenheid: '', hoeveelheid: '', gis: '', _rij: rij };
+      kn = { id: maakId(niveau, `${ouder ?? ''}/${code || naam}`), code, naam: naam || code, niveau, ouder, eenheid: '', hoeveelheid: '', gis: '', _rij: rij, kenmerken: {} };
       perSleutel.set(sleutel, kn);
       knopen.push(kn);
     }
@@ -182,6 +206,8 @@ function leesKolommen(data, k) {
     for (let i = 0; i <= laatste; i += 1) {
       kn = zoekOfMaak(delen[i].niveau, delen[i].code, delen[i].naam, ouder, rij);
       ouder = kn.id;
+      const eigen = rijKenmerken(kopRuw, r, [...perNiveauKol[delen[i].niveau], ...(i === laatste ? perNiveauKol.rest : [])]);
+      for (const [h, v] of Object.entries(eigen)) if (!(h in kn.kenmerken)) kn.kenmerken[h] = v;
     }
     // Eenheid, hoeveelheid en GIS-code horen bij het diepste niveau van de regel.
     if (val(r, 'eenheid')) kn.eenheid = val(r, 'eenheid');
@@ -365,6 +391,21 @@ export function gisWaarde(o, kolom) {
   return '';
 }
 export const KOPPEL_VELDEN = { code: 'Code', gis: 'GIS-code', naam: 'Naam' };
+/** Waarde van een onderdeel voor een koppelveld: 'auto', 'code', 'gis', 'naam' of 'kenmerk:<kolom>'. */
+export function knoopWaarde(k, veld) {
+  if (veld === 'auto' || !veld) return k?.gis || k?.code || '';
+  if (String(veld).startsWith('kenmerk:')) return k?.kenmerken?.[String(veld).slice(8)] ?? '';
+  return k?.[veld] ?? '';
+}
+/** Alle kolomnamen uit de ingelezen decompositie (eventueel voor één niveau), met een voorbeeldwaarde. */
+export function decompKolommen(knopen, niveau = '') {
+  const m = new Map();
+  for (const k of knopen ?? []) {
+    if (niveau && k.niveau !== niveau) continue;
+    for (const [h, v] of Object.entries(k.kenmerken ?? {})) if (!m.has(h)) m.set(h, v);
+  }
+  return [...m.entries()];
+}
 export const STANDAARD_KOPPELING = { kolom: 'code', veld: 'auto', niveau: '', laag: '' };
 
 /**
@@ -389,6 +430,7 @@ export function koppelOpKolom(knopen, objecten, { kolom = 'code', veld = 'auto',
   };
   for (const k of kand) {
     if (veld === 'auto') { if (k.gis) zet(k.gis, k); else zet(k.code, k); }
+    else if (String(veld).startsWith('kenmerk:')) zet(k.kenmerken?.[String(veld).slice(8)], k);
     else zet(k[veld], k);
   }
   const dubbel = [...opWaarde.entries()].filter(([, l]) => l.length > 1).map(([w, l]) => ({ waarde: w, knopen: l }));
@@ -585,15 +627,25 @@ export function leesBladen(bladen) {
       const gebruiktVoorNamen = new Set();
       for (const niveau of ['object', 'element']) {
         const namen = new Map();
+        const kenm = new Map();
         for (const b of perNiveau.filter((x) => x.niveau === niveau)) {
           const rijen = b.regels.map((x) => (x ?? []).map(tekst));
           const start = rijen.findIndex((x) => x.some((c) => c));
           const k = bladKolommen(rijen[start], niveau);
-          if (k.code < 0 || k.naam < 0 || k.code === k.naam) continue;
-          for (const x of rijen.slice(start + 1)) if (x[k.code] && x[k.naam]) namen.set(norm(x[k.code]), x[k.naam]);
-          if (namen.size) gebruiktVoorNamen.add(b.naam);
+          if (k.code < 0) continue;
+          for (const x of rijen.slice(start + 1)) {
+            if (!x[k.code]) continue;
+            if (x[k.naam]) namen.set(norm(x[k.code]), x[k.naam]);
+            kenm.set(norm(x[k.code]), { ...(kenm.get(norm(x[k.code])) ?? {}), ...rijKenmerken(rijen[start], x) });
+          }
+          if (namen.size || kenm.size) gebruiktVoorNamen.add(b.naam);
         }
-        for (const kn of r.knopen) if (kn.niveau === niveau && kn.code && (!kn.naam || kn.naam === kn.code) && namen.has(norm(kn.code))) kn.naam = namen.get(norm(kn.code));
+        for (const kn of r.knopen) {
+          if (kn.niveau !== niveau || !kn.code) continue;
+          if ((!kn.naam || kn.naam === kn.code) && namen.has(norm(kn.code))) kn.naam = namen.get(norm(kn.code));
+          // Alle kolommen uit het tabblad Objecten/Elementen erbij (zonder die uit Bouwdelen te overschrijven).
+          for (const [h, v] of Object.entries(kenm.get(norm(kn.code)) ?? {})) if (!(h in (kn.kenmerken ??= {}))) kn.kenmerken[h] = v;
+        }
       }
       return {
         ...r, indeling: 'tabblad-bouwdelen', kop: kopVan(bdBlad).map((c) => `${bdBlad.naam} › ${c}`),
@@ -635,7 +687,7 @@ export function leesBladen(bladen) {
             if (naam) naamNaarCode[niveau].set(norm(naam), sleutel);
           }
           tijdelijk.push({ code, naam, niveau, ouder: k.ouder >= 0 ? r[k.ouder] : '', eenheid: k.eenheid >= 0 ? r[k.eenheid] : '', hoeveelheid: k.hoeveelheid >= 0 ? r[k.hoeveelheid] : '',
-            gis: k.gis >= 0 ? r[k.gis] : '', blad: b.naam, rij: start + i + 2 });
+            gis: k.gis >= 0 ? r[k.gis] : '', blad: b.naam, rij: start + i + 2, kenmerken: rijKenmerken(kop, r) });
         });
         const kn = (i) => (i >= 0 ? kop[i] : '–');
         info.push({ naam: b.naam, niveau, rijen: n, gebruikt: true,
@@ -650,6 +702,9 @@ export function leesBladen(bladen) {
       regels.push([t.code, t.naam, t.niveau, ouder, t.eenheid, t.hoeveelheid, t.gis]);
     }
     const res = leesDecompositie(regels);
+    // De kolommen van het eigen tabblad horen bij het onderdeel (niet de kolommen van de samengevoegde lijst).
+    const kenmPer = new Map(tijdelijk.map((t) => [`${t.niveau}|${norm(t.code || t.naam)}`, t.kenmerken]));
+    for (const kn of res.knopen) kn.kenmerken = kenmPer.get(`${kn.niveau}|${norm(kn.code || kn.naam)}`) ?? {};
     // Regelnummers in meldingen verwijzen naar de samengevoegde lijst; zet ze om naar tabblad en regel.
     res.fouten = [...fouten, ...res.fouten.map((f) => f.replace(/^Regel (\d+):/, (_, n) => {
       const t = tijdelijk[Number(n) - 2];

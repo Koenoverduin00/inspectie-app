@@ -255,3 +255,26 @@ test('koppelen op een gekozen kolom', () => {
   r = D.koppelOpKolom(kn, [{ id: 'f', code: 'z', naam: 'Steenbekleding' }], { kolom: 'naam', veld: 'naam' });
   assert.equal(r.wijzigingen.size, 0);
 });
+
+test('alle kolommen worden per onderdeel bewaard en zijn te gebruiken bij koppelen', () => {
+  // lijst
+  const l = D.leesDecompositie([['Code', 'Naam', 'Niveau', 'Bovenliggende code', 'Beheerder', 'Vak ID'], ['O1', 'Brug', 'object', '', 'Gemeente', ''], ['B1', 'Dek', 'bouwdeel', 'E1', '', 'V-9'], ['E1', 'Boven', 'element', 'O1', '', '']]);
+  assert.equal(l.knopen.find((k) => k.code === 'O1').kenmerken.Beheerder, 'Gemeente');
+  assert.equal(l.knopen.find((k) => k.code === 'B1').kenmerken['Vak ID'], 'V-9');
+  // kolommen: per niveau verdeeld, rest bij het bouwdeel
+  const c = D.leesDecompositie([['Objectcode', 'Object GUID', 'Elementcode', 'Bouwdeelcode', 'Bouwdeel', 'Vak ID'], ['O1', 'g-1', 'E1', 'B1', 'Dek', 'V-1'], ['O1', 'g-1', 'E1', 'B2', 'Leuning', 'V-2']]);
+  assert.deepEqual(c.knopen.find((k) => k.code === 'O1').kenmerken, { Objectcode: 'O1', 'Object GUID': 'g-1' });
+  assert.equal(c.knopen.find((k) => k.code === 'B2').kenmerken['Vak ID'], 'V-2');
+  assert.ok(!('Vak ID' in c.knopen.find((k) => k.code === 'E1').kenmerken));
+  assert.deepEqual(D.decompKolommen(c.knopen, 'bouwdeel').map(([h]) => h).sort(), ['Bouwdeel', 'Bouwdeelcode', 'Vak ID']);
+  // koppelen op een kolom uit de decompositie
+  const r = D.koppelOpKolom(c.knopen, [{ id: 'x', code: 'GIS-1', kenmerken: { vak: 'v 2' } }], { kolom: 'kenmerk:vak', veld: 'kenmerk:Vak ID' });
+  assert.equal(c.knopen.find((k) => k.id === r.wijzigingen.get('x')).code, 'B2');
+  assert.equal(D.knoopWaarde(c.knopen.find((k) => k.code === 'B1'), 'kenmerk:Vak ID'), 'V-1');
+  // tabbladen: kolommen uit Objecten komen bij het object
+  const t = D.leesBladen([
+    { naam: 'Objecten', regels: [['Objectcode', 'Naam', 'Beheerder'], ['O1', 'Brug', 'Gemeente']] },
+    { naam: 'Bouwdelen', regels: [['Objectcode', 'Elementcode', 'Bouwdeelcode', 'Bouwdeel'], ['O1', 'E1', 'B1', 'Dek']] },
+  ]);
+  assert.equal(t.knopen.find((k) => k.code === 'O1').kenmerken.Beheerder, 'Gemeente');
+});
