@@ -4859,8 +4859,8 @@ async function mobielKaart() {
     }
     return [...m.values()].sort((a, b) => (a.st === 'open' ? 0 : 1) - (b.st === 'open' ? 0 : 1) || a.pk.naam.localeCompare(b.pk.naam, 'nl'));
   };
-  let kaartPakket = instelling.lees('mKaartPakket');
-  if (!pakketten.has(kaartPakket)) kaartPakket = '';
+  // Meerdere werkpakketten tegelijk: een set gekozen pakketten; leeg = alle.
+  const gekozenPk = new Set((() => { try { return JSON.parse(instelling.lees('mKaartPakketten') || '[]'); } catch { return []; } })().filter((id) => pakketten.has(id)));
   let labelsAan = instelling.lees('mKaartLabels', '1') === '1';
   app.innerHTML = `
     <div class="segment mkaartbereik" role="radiogroup" aria-label="Welke werkpakketten">
@@ -4869,8 +4869,9 @@ async function mobielKaart() {
     <div class="mkaartkop"><div><h1>Kaart</h1><small>${rondes.length ? `${open} open · ${lijst.length - open} klaar · ${pakketten.size} werkpakket${pakketten.size === 1 ? '' : 'ten'}` : 'Geen actieve werkpakketten'}</small></div>
       ${rondes.length ? `<button class="knop" id="mijnlocatie" type="button">${I.locatie} Mijn locatie</button>` : ''}</div>
     ${pakketten.size > 1 ? `<div class="mpakketchips" role="group" aria-label="Werkpakket op de kaart">
-      <button type="button" class="gfchip${kaartPakket ? '' : ' actief'}" data-mkp="">Alle (${pakketten.size})</button>
-      ${[...pakketten.values()].map((pk) => `<button type="button" class="gfchip${kaartPakket === pk.id ? ' actief' : ''}" data-mkp="${esc(pk.id)}" title="${esc(pk.naam)}">${pakketLabel(pk)}</button>`).join('')}</div>` : ''}
+      <button type="button" class="gfchip${gekozenPk.size ? '' : ' actief'}" data-mkp="" aria-pressed="${gekozenPk.size ? 'false' : 'true'}">Alle (${pakketten.size})</button>
+      ${[...pakketten.values()].map((pk) => `<button type="button" class="gfchip${gekozenPk.has(pk.id) ? ' actief' : ''}" data-mkp="${esc(pk.id)}" aria-pressed="${gekozenPk.has(pk.id)}" title="${esc(pk.naam)}">${gekozenPk.has(pk.id) ? I.vink : ''}${pakketLabel(pk)}</button>`).join('')}</div>
+    <p class="mkeuzehint" id="mkeuzehint"></p>` : ''}
     <div class="mlegenda"><span><i style="background:${PAKKET_KLEUR.open}"></i>Niet gereed</span><span><i style="background:${PAKKET_KLEUR.gedaan}"></i>Gereed</span><span><i style="background:${PAKKET_KLEUR.overgeslagen}"></i>Overgeslagen</span>
       ${dv ? `<label class="mlabelschakel"><input type="checkbox" id="bdlabels" ${labelsAan ? 'checked' : ''}> Bouwdelen op de kaart</label>` : ''}</div>
     ${rondes.length ? '<div id="veldkaart" class="veldkaart"><p class="leeg">Kaart laden…</p></div>'
@@ -4907,7 +4908,7 @@ async function mobielKaart() {
   const L = window.L;
   // Per werkpakket: kaart filteren, bouwdeelnamen als label en een lijst met de koppeling met de decompositie.
   const labelLaag = L.layerGroup().addTo(kaart.map);
-  const inBeeld = () => (kaartPakket ? lijst.filter(({ o }) => pakketten.get(kaartPakket)?.objecten.has(o.id)) : lijst);
+  const inBeeld = () => (gekozenPk.size ? lijst.filter(({ o }) => [...gekozenPk].some((id) => pakketten.get(id)?.objecten.has(o.id))) : lijst);
   const tekenLabels = () => {
     labelLaag.clearLayers();
     if (!dv || !labelsAan || kaart.map.getZoom() < 16) return;
@@ -4925,11 +4926,11 @@ async function mobielKaart() {
   const tekenLijst = () => {
     const el = app.querySelector('#mbdlijst');
     if (!el) return;
-    const v = kaartPakket ? pakketten.get(kaartPakket) : null;
+    const v = gekozenPk.size === 1 ? pakketten.get([...gekozenPk][0]) : gekozenPk.size ? { naam: `${gekozenPk.size} werkpakketten` } : null;
     const items = inBeeld().map(({ o }) => ({ o, d: dv.van(o) }))
       .sort((a, b) => (a.d ? 0 : 1) - (b.d ? 0 : 1) || dv.label(a.o).localeCompare(dv.label(b.o), 'nl') || String(a.o.code).localeCompare(String(b.o.code), 'nl', { numeric: true }));
     const zonder = items.filter((x) => !x.d).length;
-    el.innerHTML = `<details ${kaartPakket ? 'open' : ''}><summary><strong>${I.lijst} Bouwdelen${v ? ` in ${esc(v.naam)}` : ''}</strong>
+    el.innerHTML = `<details ${gekozenPk.size ? 'open' : ''}><summary><strong>${I.lijst} Bouwdelen${v ? ` in ${esc(v.naam)}` : ''}</strong>
         <small>${items.length - zonder} van ${items.length} objecten gekoppeld${dv.versie ? ` · decompositie v${dv.versie}` : ''}</small></summary>
       <ul class="mbd">${items.map(({ o, d }) => `<li><button type="button" data-mzoom="${esc(o.id)}">
         <span class="stip ${statusVan(o.id)}"></span>
@@ -4942,13 +4943,28 @@ async function mobielKaart() {
     tekenLijst();
   };
   kaart.map.on('zoomend moveend', tekenLabels);
-  toonPakket(Boolean(kaartPakket));
+  const tekenChips = () => {
+    app.querySelectorAll('.mpakketchips [data-mkp]').forEach((x) => {
+      const aan = x.dataset.mkp ? gekozenPk.has(x.dataset.mkp) : !gekozenPk.size;
+      x.classList.toggle('actief', aan);
+      x.setAttribute('aria-pressed', String(aan));
+      if (x.dataset.mkp) x.innerHTML = `${aan ? I.vink : ''}${pakketLabel(pakketten.get(x.dataset.mkp))}`;
+    });
+    const h = app.querySelector('#mkeuzehint');
+    if (h) h.innerHTML = gekozenPk.size ? `${gekozenPk.size} werkpakket${gekozenPk.size === 1 ? '' : 'ten'} op de kaart · ${inBeeld().length} objecten` : 'Tik op werkpakketten om er één of meer tegelijk te tonen.';
+  };
+  tekenChips();
+  toonPakket(gekozenPk.size > 0);
   app.querySelector('.mpakketchips')?.addEventListener('click', (e) => {
     const c = e.target.closest('[data-mkp]');
     if (!c) return;
-    kaartPakket = c.dataset.mkp;
-    instelling.schrijf('mKaartPakket', kaartPakket);
-    app.querySelectorAll('.mpakketchips [data-mkp]').forEach((x) => x.classList.toggle('actief', x === c));
+    const id = c.dataset.mkp;
+    if (!id) gekozenPk.clear();
+    else if (gekozenPk.has(id)) gekozenPk.delete(id);
+    else gekozenPk.add(id);
+    if (gekozenPk.size === pakketten.size) gekozenPk.clear(); // alles gekozen = Alle
+    instelling.schrijf('mKaartPakketten', JSON.stringify([...gekozenPk]));
+    tekenChips();
     toonPakket(true);
   });
   app.querySelector('#bdlabels')?.addEventListener('change', (e) => {

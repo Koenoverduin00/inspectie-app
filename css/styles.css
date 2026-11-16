@@ -1560,3 +1560,5 @@ td.actiecel .knoppen { justify-content: flex-end; flex-wrap: wrap; }
 .veldklaar { margin: .4rem 0; color: #1a7f37; font-weight: 600; font-size: .85rem; }
 .veldafgemeld { margin: .2rem 0 .4rem; color: var(--zacht, #6b7785); }
 .veldafgemeld .stip { display: inline-block; width: 8px; height: 8px; vertical-align: middle; }
+.mpakketchips .gfchip .ico { width: 14px; height: 14px; margin-right: .2rem; vertical-align: -2px; }
+.mkeuzehint { margin: -.15rem 0 .35rem; font-size: .78rem; color: var(--zacht, #6b7785); }

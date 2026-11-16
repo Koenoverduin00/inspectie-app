@@ -467,8 +467,9 @@ De knop **Mijn locatie** op de kaart verschijnt alleen als er een ronde voor je 
 
 **Decompositie op de mobiele kaart.** Is er een NEN 2767-decompositie (de definitieve versie, of zolang die er niet is de ingelezen boom),
 dan zie je per object de koppeling met het **bouwdeel**:
-- **Per werkpakket**: met de chips boven de kaart kies je *Alle* of één werkpakket (ronde); de kaart toont dan alleen die objecten en zoomt erop in.
-  De keuze wordt onthouden.
+- **Per werkpakket**: met de chips boven de kaart kies je *Alle* of **één of meer werkpakketten tegelijk** (tik om aan of uit te zetten,
+  een vinkje toont wat gekozen is); de kaart toont dan de objecten van al die werkpakketten samen en zoomt erop in. Onder de chips staat
+  hoeveel werkpakketten en objecten in beeld zijn. *Alle* (of alles aanvinken) toont weer alles. De keuze wordt onthouden.
 - **Popup**: de bouwdeelnaam staat groot (met code), daaronder het pad systeemdeel › object › element. Is een object aan een element of object
   gekoppeld, dan zie je de bouwdelen die eronder vallen.
 - **Labels op de kaart**: vanaf zoomniveau 16 staat de bouwdeelnaam bij elk object (uit te zetten met *Bouwdelen op de kaart*).
