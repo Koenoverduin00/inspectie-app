@@ -709,7 +709,9 @@ De weergave wordt automatisch gekozen op schermbreedte. Onder *Instellingen → 
   **planningsbord**: per werkpakket de rondes als balken in de tijd (weken, maanden of jaar; ◀ Vandaag ▶).
   - **Leesbaarheid**: maandgrenzen zijn een dikke lijn met afwisselend gekleurde maanden, weekgrenzen een dunne lijn.
   - **Zoeken**: typ in *Zoek werkpakket of ronde…* een deel van de naam of code; alleen passende werkpakketten en rondes blijven staan.
-  - **Klik op een ronde**: je ziet het **percentage uitgevoerd**, **objecten gedaan x/y**, overgeslagen en nog open, en je kunt een
+  - **Klik op een ronde** (brede popup): rechts een **kaartje met de voortgang van die ronde** (elk object oranje = te doen,
+    groen = gedaan, grijs = overgeslagen, met aantallen; klik op een object voor de status). Links het **percentage uitgevoerd**,
+    **objecten gedaan x/y**, overgeslagen en nog open, en je kunt een
     **opmerking over deze ronde** plaatsen (bijv. vertraging door weer). De opmerking blijft bij de ronde (ook na bewerken van het
     werkpakket of bijwerken via Excel) en is op het bord te herkennen aan 💬; wie geen planningsrechten heeft, kan de opmerking wel opslaan.
   - **Takenlijst** onder het bord is standaard ingeklapt (klik op *Taken* om hem te openen), met een zoekveld op de naam van de taak.

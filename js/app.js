@@ -8168,11 +8168,16 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
     const p = await db.haal('werkpakketten', rij.dataset.pakket);
     const r = rondesVan(p).find((x) => x.id === rij.dataset.ronde);
     const v = rondeView(p, r);
-    const vg = (await pakketGegevens()).rondeVoortgang.get(`${p.id}:${r.id}`);
+    const gR = await pakketGegevens();
+    const vg = gR.rondeVoortgang.get(`${p.id}:${r.id}`);
     const klaar = vg ? vg.gedaan.size + vg.overgeslagen.size : 0;
+    // Objecten van deze ronde met hun status, voor het kaartje.
+    const rondeObjecten = (v.objecten ?? []).map((oid) => gR.objectMap.get(oid)).filter(Boolean);
+    const stVan = (oid) => (vg?.gedaan.has(oid) ? 'gedaan' : vg?.overgeslagen.has(oid) ? 'overgeslagen' : 'open');
+    const metKaart = rondeObjecten.some((o) => objectGeometrie(o));
     const d = document.createElement('dialog');
-    d.className = 'dialoog';
-    d.innerHTML = `<form method="dialog">
+    d.className = 'dialoog rondedialoog';
+    d.innerHTML = `<form method="dialog" class="${metKaart ? 'rd-raster' : ''}"><div class="rd-gegevens">
       <h2>R${r.nummer} ${esc(r.naam)}</h2>
       <p><small>${esc(p.code ? `${p.code} · ` : '')}${esc(p.naam)} · ${pakketSoortTekst(v)}</small></p>
       ${vg ? `<div class="rondestand">
@@ -8190,7 +8195,10 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
           <textarea id="d-opm" maxlength="1000" rows="3" placeholder="bijv. vertraging door weer, extra ploeg ingezet, afspraak met opdrachtgever">${esc(r.opmerking ?? '')}</textarea>
           ${r.opmerkingOp ? `<small class="zacht">Laatst aangepast ${datumNL(r.opmerkingOp.slice(0, 10))}${r.opmerkingDoor ? ` door ${esc(r.opmerkingDoor)}` : ''}</small>` : ''}</div>
       </div>
-      <div class="knoppen" style="margin-top:1rem;justify-content:space-between">
+      </div>
+      ${metKaart ? `<div class="rd-kaart"><div class="rd-kaartvlak" id="rd-kaart"><p class="leeg">Kaart laden…</p></div>
+        <div class="mlegenda"><span><i style="background:${PAKKET_KLEUR.open}"></i>Te doen (${vg ? vg.totaal - klaar : rondeObjecten.length})</span><span><i style="background:${PAKKET_KLEUR.gedaan}"></i>Gedaan (${vg?.gedaan.size ?? 0})</span>${vg?.overgeslagen.size ? `<span><i style="background:${PAKKET_KLEUR.overgeslagen}"></i>Overgeslagen (${vg.overgeslagen.size})</span>` : ''}</div></div>` : ''}
+      <div class="knoppen rd-voet" style="margin-top:1rem;justify-content:space-between">
         <a class="knop" href="${pakketPagina(v, false)}">Werkpakket openen</a>
         <span class="knoppen">${bewerkbaar && r.start ? '<button class="knop gevaar" value="wis">Uit planning halen</button>' : ''}
           <button class="knop" value="nee">${bewerkbaar ? 'Annuleren' : 'Sluiten'}</button>${bewerkbaar ? '<button class="knop primair" value="ja">Opslaan</button>' : '<button class="knop primair" value="opm">Opmerking opslaan</button>'}</span>
@@ -8198,6 +8206,14 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
     document.body.append(d);
     d.querySelector('a').onclick = () => d.close('nee');
     d.showModal();
+    if (metKaart) {
+      // Kaartje met de voortgang van deze ronde: elk object in de kleur van zijn status.
+      tekenObjectenKaart(d.querySelector('#rd-kaart'), {
+        objecten: rondeObjecten,
+        kleurVan: (o) => PAKKET_KLEUR[stVan(o.id)],
+        popup: (o) => `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br><small>${{ open: 'Te doen', gedaan: 'Gedaan', overgeslagen: 'Overgeslagen' }[stVan(o.id)]}</small>`,
+      }).then((k) => { if (k) { k.toon(new Set(rondeObjecten.map((o) => o.id)), { inzoomen: true }); setTimeout(() => k.map.invalidateSize(), 60); } }).catch(() => {});
+    }
     const keuze = await new Promise((ok) => d.addEventListener('close', () => ok(d.returnValue), { once: true }));
     const start = d.querySelector('#d-start').value;
     const eind = d.querySelector('#d-eind').value;

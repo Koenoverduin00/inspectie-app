@@ -1611,3 +1611,15 @@ td.actiecel .knoppen { justify-content: flex-end; flex-wrap: wrap; }
 .takenblok > summary h2 { display: inline; }
 .takenblok > summary small { color: var(--zacht, #6b7785); font-weight: 400; }
 .takenblok #taak-zoek { flex: 1 1 14rem; margin: 0; }
+/* Planning: ronde-dialoog breder, met kaartje van de voortgang */
+.dialoog.rondedialoog { width: min(980px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); }
+.rondedialoog .rd-raster { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 0 1.25rem; align-items: start; }
+.rondedialoog .rd-raster .rd-voet { grid-column: 1 / -1; }
+.rondedialoog .rd-kaart { position: sticky; top: 0; }
+.rondedialoog .rd-kaartvlak { height: 420px; border-radius: 10px; overflow: hidden; border: 1px solid var(--rand); }
+.rondedialoog .rd-kaart .mlegenda { margin-top: .4rem; }
+@media (max-width: 760px) {
+  .rondedialoog .rd-raster { grid-template-columns: minmax(0, 1fr); }
+  .rondedialoog .rd-kaartvlak { height: 260px; }
+  .rondedialoog .rd-kaart { position: static; margin-top: .75rem; }
+}
