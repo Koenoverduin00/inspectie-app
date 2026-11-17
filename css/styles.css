@@ -1584,3 +1584,15 @@ td.actiecel .knoppen { justify-content: flex-end; flex-wrap: wrap; }
 .il-naamkeuze select { width: auto; min-width: 12rem; margin: 0; }
 .il-naamkeuze small { flex-basis: 100%; color: var(--zacht, #6b7785); }
 .naamdialoog { max-width: 720px; width: calc(100% - 2rem); }
+.bvcinst-raster { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: .75rem 1rem; }
+.bvcinst-raster label { display: flex; flex-direction: column; gap: .25rem; font-weight: 600; font-size: .9rem; }
+.bvcinst-raster select, .bvcinst-raster input { margin: 0; font-weight: 400; }
+.bvcinst-raster small { font-weight: 400; }
+.basisgegevens > details > summary { cursor: pointer; list-style-position: outside; }
+.basisgegevens #basis-samenvatting { color: var(--zacht, #6b7785); margin-left: .35rem; }
+.herkomst { display: block; color: #1a7f37; }
+.vastveld { padding: .5rem .65rem; background: var(--achtergrond); border: 1px solid var(--rand); border-radius: 6px; min-height: 2.4rem; }
+.basisgegevens > details > summary { cursor: pointer; }
+.basisgegevens #basis-samenvatting { color: var(--zacht, #6b7785); margin-left: .35rem; }
+.herkomst { display: block; color: #1a7f37; }
+.vastveld { padding: .5rem .65rem; background: var(--achtergrond); border: 1px solid var(--rand); border-radius: 6px; min-height: 2.4rem; }

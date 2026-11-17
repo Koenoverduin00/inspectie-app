@@ -9287,6 +9287,7 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
           schuif je de rondes in de tijd. Een ronde geldt voor alle objecten van het pakket, tenzij er (via Excel) een deelselectie is opgegeven.</p>
         <div id="rondes"></div>
       </section>
+      <section class="kaart bvcinst" id="bvc-inst" hidden></section>
       <section class="kaart">
         <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">Objecten samenstellen</h2>
           <span class="label-status afgerond" id="teller" style="font-size:.95rem"></span></div>
@@ -9403,6 +9404,7 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
     rondes[Number(i)][e.target.dataset.veld] = e.target.value;
     formulierGewijzigd = true;
     if (e.target.dataset.veld === 'soort' || e.target.dataset.veld === 'status') tekenRondes();
+    tekenBvcInst();
   });
   $('#rondes').addEventListener('click', (e) => {
     const w = e.target.closest('[data-ronde-weg]');
@@ -9426,6 +9428,51 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
     $('#aantal-rondes').value = rondes.length;
     tekenRondes();
   };
+
+  // --- Boomveiligheidscontrole: basisgegevens eenmalig instellen (bron per veld + eigenaar) ---
+  const isBvcPakket = () => rondes.some((r) => r.soort === 'inspectie' && r.inspectiesoort === BV.BVC_SOORT)
+    || (form.elements.planning?.value === 'afroep' && form.elements.afroepSoort?.value === 'inspectie' && form.elements.afroepInspectiesoort?.value === BV.BVC_SOORT);
+  const decKnopen = project?.decompositie ? (D.definitieveBoom(project.decompositie)?.knopen ?? project.decompositie.knopen ?? []) : [];
+  const decIdxBvc = D.index(decKnopen);
+  const decKetting = (o) => (o.decomp && decIdxBvc.perId.has(o.decomp) ? D.pad(decIdxBvc, o.decomp).reverse() : []);
+  const gisKolommenBvc = [...new Set(objecten.slice(0, 3000).flatMap((o) => Object.entries(o.kenmerken ?? {}).filter(([, v]) => v !== null && v !== '' && typeof v !== 'object').map(([k]) => k)))]
+    .sort((a, b) => a.localeCompare(b, 'nl'));
+  const decKolommenBvc = D.decompKolommen(decKnopen).map(([k]) => k).sort((a, b) => a.localeCompare(b, 'nl'));
+  const bvcInst = { ...BV.raadBronnen(gisKolommenBvc, decKolommenBvc), eigenaar: project?.opdrachtgever ?? '', ...(p.bvc ?? {}) };
+  const tekenBvcInst = () => {
+    const el = $('#bvc-inst');
+    if (!el) return;
+    el.hidden = !isBvcPakket();
+    if (el.hidden) return;
+    const bomen = objecten.filter((o) => gekozen.has(o.id));
+    const resultaten = bomen.map((o) => BV.basisUitBronnen(o, decKetting(o), bvcInst).waarden);
+    const bronKeuze = (veld) => `<select data-bvci="${veld}">${optie('', '— vult de inspecteur in —', bvcInst[veld] ?? '')}
+      ${gisKolommenBvc.length ? `<optgroup label="Kolom uit het GIS-bestand">${gisKolommenBvc.map((k) => optie(`gis:${k}`, k, bvcInst[veld] ?? '')).join('')}</optgroup>` : ''}
+      ${decKolommenBvc.length ? `<optgroup label="Kolom uit de decompositie">${decKolommenBvc.map((k) => optie(`decomp:${k}`, k, bvcInst[veld] ?? '')).join('')}</optgroup>` : ''}</select>`;
+    const dekking = (veld) => {
+      if (!bvcInst[veld]) return '<small class="zacht">niet vooraf ingevuld</small>';
+      const gevuld = resultaten.filter((r) => r[veld]);
+      const vb = [...new Set(gevuld.map((r) => r[veld]))].slice(0, 3);
+      return `<small class="${bomen.length && gevuld.length < bomen.length ? 'fouttekst' : 'zacht'}">${bomen.length ? `${gevuld.length} van ${bomen.length} bomen` : 'kies eerst objecten'}${vb.length ? ` · bijv. ${vb.map((x) => `<code>${esc(x)}</code>`).join(' ')}` : ''}</small>`;
+    };
+    el.innerHTML = `<h2>${I.boom} Boomveiligheidscontrole: basisgegevens (eenmalig instellen)</h2>
+      <p class="hulptekst">Kies één keer uit welke kolom van het GIS-bestand of de decompositie de basisgegevens komen. De inspecteur ziet ze dan al ingevuld
+        en controleert ze alleen (§ 6.2: eenmalig ingevuld, bij elke controle geverifieerd). Gegevens van een eerdere controle van dezelfde boom gaan voor.</p>
+      <div class="bvcinst-raster">
+        ${Object.entries(BV.BASIS_VELDEN).map(([veld, { label }]) => `<label>${esc(label)}${bronKeuze(veld)}${dekking(veld)}</label>`).join('')}
+        <label>Eigenaar (EIG)<input data-bvci="eigenaar" value="${esc(bvcInst.eigenaar ?? '')}" maxlength="100" placeholder="bijv. RWS West-Nederland Zuid">
+          <small class="zacht">Wordt door de opdrachtgever bepaald (naam district); de inspecteur hoeft dit niet in te vullen.</small></label>
+      </div>`;
+  };
+  $('#bvc-inst')?.addEventListener('change', (e) => {
+    const k = e.target.dataset.bvci;
+    if (!k) return;
+    bvcInst[k] = e.target.value;
+    formulierGewijzigd = true;
+    if (k !== 'eigenaar') tekenBvcInst();
+  });
+  $('#bvc-inst')?.addEventListener('input', (e) => { if (e.target.dataset.bvci === 'eigenaar') bvcInst.eigenaar = e.target.value; });
+  form.querySelectorAll('input[name=planning], #f-afroepsoort, #f-afroepinsp').forEach((x) => x.addEventListener('change', tekenBvcInst));
 
   const filters = () => ({
     laag: $('#z-laag').value, type: $('#z-type').value, kenmerken: kf.waarden(),
@@ -9530,6 +9577,7 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
     $('#alles-eruit').textContent = `− ${eruit} gefilterde verwijderen`;
     $('#alles-eruit').disabled = !eruit;
     $('#teller').textContent = `${gekozen.size} objecten in pakket`;
+    tekenBvcInst();
     kaartKlaar.then((k) => {
       if (!k) return;
       const n = k.toon(new Set(zichtbaar.map((o) => o.id)));
@@ -9615,6 +9663,8 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
       vrijgaveVereist: form.elements.vrijgaveVereist.checked,
       // Welke definitieve decompositieversie gold bij het samenstellen.
       decompVersie: decBoom ? decBoom.versie : (bron?.decompVersie ?? null),
+      // Boomveiligheidscontrole: uit welke kolom de basisgegevens komen en wie de eigenaar (EIG) is; eenmalig per werkpakket.
+      bvc: isBvcPakket() ? { ...bvcInst } : (bron?.bvc ?? null),
       objecten: objecten.filter((o) => gekozen.has(o.id)).map((o) => o.id), // vaste volgorde (op code)
       aangemaakt: (id ? bron.aangemaakt : null) ?? nu, gewijzigd: nu,
     };
@@ -10946,6 +10996,22 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
   }
   const naam = instelling.lees('inspecteur');
   const b0 = bestaand?.bvc ?? {};
+  // Basisgegevens vooraf: eerdere controle van deze boom > ingestelde bron (GIS/decompositie) bij het werkpakket > herkende GIS-kolom.
+  const pakketVooraf = await laadPakketView(bestaand?.werkpakketId ?? pakketId ?? '', bestaand?.rondeId ?? rondeId ?? '');
+  const projectBvc = await actiefProject();
+  const bvcInst = pakketVooraf?.bvc ?? {};
+  const decBvc = projectBvc?.decompositie ? (D.definitieveBoom(projectBvc.decompositie)?.knopen ?? projectBvc.decompositie.knopen ?? []) : [];
+  const decIdxBvc = D.index(decBvc);
+  const ketting = object.decomp && decIdxBvc.perId.has(object.decomp) ? D.pad(decIdxBvc, object.decomp).reverse() : [];
+  const uitBron = BV.basisUitBronnen(object, ketting, bvcInst);
+  const herkomst = {};
+  const vooraf = (veld, eerder, geraden) => {
+    if (eerder) { herkomst[veld] = 'vorige controle'; return eerder; }
+    if (uitBron.waarden[veld]) { herkomst[veld] = BV.bronTekst(uitBron.bron[veld]); return uitBron.waarden[veld]; }
+    if (geraden) { herkomst[veld] = 'herkende GIS-kolom'; return geraden; }
+    return '';
+  };
+  const eigenaarVooraf = bvcInst.eigenaar || object.beheerder || projectBvc?.opdrachtgever || '';
   const staat = {
     datum: bestaand?.datum ?? vandaag(),
     inspecteur: bestaand?.inspecteur ?? naam,
@@ -10955,20 +11021,24 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
     fotos: await laadFotos(bestaand?.fotoIds),
     bvc: {
       // Basisgegevens: eerst wat al bij de boom staat, anders uit de kenmerken van het GIS-bestand.
-      soort: object.boomsoort || gisBoomsoort(object), plantjaar: object.plantjaar || gisKenmerk(object, /^(plantjaar|aanlegjaar|jaar_?aanleg|plant_?jaar|jaar)$/i),
-      plantjaarSchatting: false, dbh: object.dbh || gisKenmerk(object, /^(dbh|diameter|stamdiameter|stamdiam|diam|stam_?diameter)$/i),
-      bijzonder: Boolean(object.bijzonder), ork: object.ork || gisOrk(object), gb: Boolean(object.gb ?? object.type === 'Gesloten beplanting'),
+      soort: vooraf('soort', object.boomsoort, gisBoomsoort(object)),
+      plantjaar: vooraf('plantjaar', object.plantjaar, BV.jaarUit(gisKenmerk(object, /^(plantjaar|aanlegjaar|jaar_?aanleg|plant_?jaar|jaar)$/i))),
+      plantjaarSchatting: false,
+      dbh: vooraf('dbh', object.dbh, BV.dbhUit(gisKenmerk(object, /^(dbh|diameter|stamdiameter|stamdiam|diam|stam_?diameter)$/i))),
+      bijzonder: Boolean(object.bijzonder), ork: vooraf('ork', object.ork, gisOrk(object)), gb: Boolean(object.gb ?? object.type === 'Gesloten beplanting'),
       aantalBomen: object.aantalBomen || gisKenmerk(object, /^(aantal|aantal_?bomen)$/i),
-      niet: false, eigenaar: object.beheerder ?? '', kwalificatie: instelling.lees('bvcKwalificatie'), certificaat: instelling.lees('bvcCertificaat'),
+      niet: false, eigenaar: eigenaarVooraf, kwalificatie: instelling.lees('bvcKwalificatie'), certificaat: instelling.lees('bvcCertificaat'),
       methode: instelling.lees('bvcMethode', 'VTA'), prikstok: false, klophamer: false, bvk: '', gemarkeerd: false,
-      beschermdeSoorten: false, opmerking: '', fotonummer: '',
+      beschermdeSoorten: false, opmerking: '',
       ...b0,
+      // EIG bepaalt de opdrachtgever (bijlage 2/4: niet muteren); bij een bestaande controle blijft wat er stond.
+      ...(b0.eigenaar ? {} : { eigenaar: eigenaarVooraf }),
       gebreken: await Promise.all((b0.gebreken ?? []).map(async (g) => ({ ...g, fotos: await laadFotos(g.fotoIds) }))),
       maatregelen: (b0.maatregelen ?? []).map((m) => ({ ...m })),
     },
   };
   const origineel = new Set([...(bestaand?.fotoIds ?? []), ...(b0.gebreken ?? []).flatMap((g) => g.fotoIds ?? [])]);
-  const pakket = await laadPakketView(staat.werkpakketId, staat.rondeId);
+  const pakket = pakketVooraf;
   if (pakket) staat.rondeId = pakket.rondeId;
   const taak = taakId ? await db.haal('taken', taakId) : null;
   const terug = pakket ? pakketPagina(pakket, mobiel)
@@ -11002,24 +11072,31 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
         <label class="vink" style="margin-top:.75rem"><input type="checkbox" data-b="niet" ${b.niet ? 'checked' : ''}><span><strong>Boom niet aangetroffen (NIET)</strong><small>Bijv. gekapt of verdwenen; verder hoeft niets ingevuld te worden.</small></span></label>
       </section>
       <div id="bvc-inhoud">
-      <section class="kaart">
-        <h2>Basisgegevens boom</h2>
+      <section class="kaart basisgegevens">
+        <details id="basis-details" ${b.soort && b.ork ? '' : 'open'}>
+        <summary><h2 style="display:inline">Basisgegevens boom</h2> <small id="basis-samenvatting"></small></summary>
+        <p class="hulptekst" style="margin:.35rem 0 .5rem">Vooraf ingevuld uit de bron die bij het werkpakket is ingesteld, de vorige controle of het GIS-bestand; controleer en pas zo nodig aan (§ 6.2).</p>
         <div class="velden">
           <div class="veld breed"><label for="b-soort" class="vereist">Boomsoort (SOORT)</label>
             <input id="b-soort" data-b="soort" list="boomsoorten" value="${esc(b.soort)}" placeholder="Typ Latijnse of Nederlandse naam" autocomplete="off">
             <datalist id="boomsoorten">${BV.GB_SOORTEN.map((g) => `<option value="${esc(g)}">gesloten beplanting</option>`).join('')}${BV.BOOMSOORTEN.map(([w, n]) => `<option value="${esc(w)}">${esc(n)}</option>`).join('')}</datalist>
-            <small id="soortnaam">${esc(soortNaam(b.soort))}</small></div>
+            <small id="soortnaam">${esc(soortNaam(b.soort))}</small>${herkomst.soort ? `<small class="herkomst">${I.vink} uit ${esc(herkomst.soort)}</small>` : ''}</div>
           <div class="veld"><label for="b-jaar">Plantjaar (JAAR)</label><input id="b-jaar" data-b="plantjaar" type="number" min="1700" max="2100" inputmode="numeric" value="${esc(b.plantjaar)}">
-            <label class="vink" style="margin-top:.35rem;padding:.4rem .6rem"><input type="checkbox" data-b="plantjaarSchatting" ${b.plantjaarSchatting ? 'checked' : ''}><span>Schatting</span></label></div>
+            <label class="vink" style="margin-top:.35rem;padding:.4rem .6rem"><input type="checkbox" data-b="plantjaarSchatting" ${b.plantjaarSchatting ? 'checked' : ''}><span>Schatting</span></label>
+            ${herkomst.plantjaar ? `<small class="herkomst">${I.vink} uit ${esc(herkomst.plantjaar)}</small>` : ''}</div>
           <div class="veld"><label for="b-dbh">Stamdiameter (cm, dbh)</label><input id="b-dbh" data-b="dbh" type="number" min="0" max="500" inputmode="numeric" value="${esc(b.dbh)}">
-            <small id="bijzonder-hint"></small></div>
+            <small id="bijzonder-hint"></small>${herkomst.dbh ? `<small class="herkomst">${I.vink} uit ${esc(herkomst.dbh)}</small>` : ''}
+            <small class="zacht">Optioneel; alleen voor het criterium bijzondere boom (bijlage 7).</small></div>
           <div class="veld breed"><label class="vereist">Omgevingsrisicoklasse (ORK)</label>
-            ${segment('ork', b.ork, Object.keys(BV.ORK).map((k) => [k, k]), 'data-b="ork"')}<small id="ork-uitleg">${esc(BV.ORK[b.ork]?.uitleg ?? '')}</small></div>
-          <div class="veld"><label for="b-eig">Eigenaar (EIG)</label><input id="b-eig" data-b="eigenaar" value="${esc(b.eigenaar)}"></div>
+            ${segment('ork', b.ork, Object.keys(BV.ORK).map((k) => [k, k]), 'data-b="ork"')}<small id="ork-uitleg">${esc(BV.ORK[b.ork]?.uitleg ?? '')}</small>
+            ${herkomst.ork ? `<small class="herkomst">${I.vink} uit ${esc(herkomst.ork)}</small>` : ''}</div>
+          <div class="veld"><label>Eigenaar (EIG)</label><div class="vastveld">${esc(b.eigenaar || '–')}</div>
+            <small class="zacht">Bepaald door de opdrachtgever (bij het werkpakket); niet door de inspecteur.</small></div>
           <div class="veld"><label>&nbsp;</label><label class="vink"><input type="checkbox" data-b="bijzonder" ${b.bijzonder ? 'checked' : ''}><span>Bijzondere boom (bijlage 7)</span></label></div>
           <div class="veld"><label>&nbsp;</label><label class="vink"><input type="checkbox" data-b="gb" ${b.gb ? 'checked' : ''}><span>Gesloten beplanting (GB)</span></label></div>
           <div class="veld" id="aantal-veld" ${b.gb ? '' : 'hidden'}><label for="b-aantal" class="vereist">Aantal bomen</label><input id="b-aantal" data-b="aantalBomen" type="number" min="1" value="${esc(b.aantalBomen)}"></div>
         </div>
+        </details>
       </section>
       <section>
         <div class="mtussen"><h2>Boomgebreken</h2><button type="button" class="knop" id="gebrek-plus">＋ Gebrek</button></div>
@@ -11047,8 +11124,8 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
           Schakel een ecologisch deskundige in voordat maatregelen worden uitgevoerd. <a href="${mobiel ? '#/m/vrijgave/nieuw' : '#/vrijgaven/nieuw'}?object=${esc(object.id)}">Flora- en fauna-vrijgave aanmaken →</a></p>
         <div class="velden" style="margin-top:.75rem">
           <div class="veld breed"><label for="b-opm">Opmerkingen (OPMERK)</label><textarea id="b-opm" data-b="opmerking" maxlength="255">${esc(b.opmerking)}</textarea></div>
-          <div class="veld"><label for="b-foto">Fotonummer (FOTO)</label><input id="b-foto" data-b="fotonummer" maxlength="60" value="${esc(b.fotonummer)}"></div>
-          <div class="veld breed"><label>Foto's van de boom</label><div id="algemene-fotos"></div></div>
+          <div class="veld breed"><label>Foto's van de boom</label><div id="algemene-fotos"></div>
+            <small class="zacht">Foto's worden automatisch aan deze boom gekoppeld; in de SUF-export vult de app het veld FOTO met de fotonamen.</small></div>
         </div>
       </section>
       </div>
@@ -11100,8 +11177,11 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
     $('#conclusie').innerHTML = b.bvk && b.ork
       ? `<p>${bvkLabel(b.bvk)} · ORK <strong>${esc(b.ork)}</strong></p>
          <p>Controlefrequentie: <strong>${BV.CONTROLEFREQUENTIE[jaren]}</strong> · volgende controle uiterlijk <strong>${datumNL(volgendeInspectie(datum, jaren))}</strong>
-         ${b.bvk === 'risico' ? '<br><small>Na uitvoering van de maatregel wordt het een boom zonder gebreken; frequentie volgens ORK.</small>' : ''}</p>`
+         ${b.bvk === 'risico' ? '<br><small>Na uitvoering van de maatregel wordt het een boom zonder gebreken; frequentie volgens ORK.</small>' : ''}</p>
+         ${BV.samenhang(b).map((x) => `<p class="${x.niveau === 'let' ? 'label-status binnenkort' : 'hulptekst'}" style="white-space:normal">${x.niveau === 'let' ? I.let : 'ℹ'} ${esc(x.tekst)}</p>`).join('')}`
       : '<p class="mleeg">Kies ORK en BVK om de controlefrequentie te bepalen.</p>';
+    const sam = $('#basis-samenvatting');
+    if (sam) sam.textContent = [b.soort ? soortNaam(b.soort).split(' – ').pop() : '', b.plantjaar ? `${b.plantjaar}` : '', b.dbh ? `${b.dbh} cm` : '', b.ork ? `ORK ${b.ork}` : ''].filter(Boolean).join(' · ');
     $('#ork-uitleg').textContent = BV.ORK[b.ork]?.uitleg ?? '';
     $('#periode').hidden = !datum || BV.inControleperiode(datum);
     $('#bijzonder-hint').textContent = BV.bijzondereBoomHint(b.dbh);
@@ -11314,7 +11394,7 @@ async function exporteerSuf(filter = () => true, naam = 'project') {
   }
   const lijst = [...laatste.values()].map((i) => ({ object: objectMap.get(i.objectId), inspectie: i })).filter((x) => x.object);
   if (!lijst.length) return melding('Nog geen afgeronde boomveiligheidscontroles.', 'fout');
-  const { bomen, gebreken, maatregelen } = BV.sufRijen(lijst);
+  const { bomen, gebreken, maatregelen } = BV.sufRijen(lijst, { eigenaar: (await actiefProject())?.opdrachtgever ?? '' });
   const basis = `SUF-BVC-${naam.replace(/[^\w-]+/g, '_')}-${vandaag()}`;
   download(`${basis}-boom.csv`, csv(bomen), 'text/csv;charset=utf-8');
   setTimeout(() => download(`${basis}-boomgebreken.csv`, csv(gebreken), 'text/csv;charset=utf-8'), 300);

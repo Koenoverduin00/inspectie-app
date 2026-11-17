@@ -364,11 +364,15 @@ operationeel deel* (STOWA VIW 2008-02).
 ## Boomveiligheidscontrole (BVC)
 
 Onder de tegel *Schouw & inspectie* (keuze 🌳 Boomveiligheid). Gebaseerd op het **Boomveiligheidsprotocol
-Rijkswaterstaat** (Loo Plan, 8 februari 2017, definitief) en het CROW **Standaard Uitwisselingsformaat (SUF-BVC)**.
+Rijkswaterstaat** (Loo Plan, 30 oktober 2019, definitief) en het CROW **Standaard Uitwisselingsformaat (SUF-BVC)**.
 
 - **Opnamekenmerken (bijlage 2/4)**: KEY, RD-coördinaten, eigenaar, boomsoort (naamlijst RWS, bijlage 8), plantjaar,
   omgevingsrisicoklasse (ORK), controlefrequentie, controleur, datum, boomveiligheidsklasse (BVK), niet aangetroffen,
-  gesloten beplanting (met aantal bomen), opmerking en fotonummer.
+  gesloten beplanting (met aantal bomen) en opmerking. **KEY** is de sleutel van RWS als het GIS-bestand een kolom *KEY*/*GUID*
+  heeft (niet muteren), anders de eigen id. **FOTO** vult de app bij de export automatisch met de fotonamen van de boom
+  (bijv. `BM-101_1;BM-101_2`); de inspecteur vult geen fotonummer in, foto's zijn al aan de boom gekoppeld.
+  **EIG** (eigenaar) wordt niet door de inspecteur ingevuld (bijlage 2: door RWS, naam district; bijlage 4: niet muteren):
+  het staat bij het werkpakket, standaard de opdrachtgever van het project.
 - **Boomgebreken (bijlage 3)** met type, plaats (kroon, stam, stamvoet, maaiveld) en gevolg (takbreuk, stambreuk,
   instabiliteit); hinderlijke takken en wortelopdruk worden als bruikbaarheid (geen boomveiligheid) aangeduid.
 - **Conclusie**: BVK *geen gebreken / attentieboom / risicoboom / risico- en attentieboom*; de controlefrequentie
@@ -385,6 +389,17 @@ Rijkswaterstaat** (Loo Plan, 8 februari 2017, definitief) en het CROW **Standaar
   Bij het inladen worden laagnamen als *bomen* en *singels/houtwallen* herkend als *Boom* of *Gesloten beplanting*,
   kolommen als *boomnummer* als code, en kenmerken als *boomsoort* (Latijn of Nederlands), *plantjaar*,
   *diameter*, *ORK* en *aantal* gebruikt als voorinvulling van de controle.
+- **Basisgegevens eenmalig instellen per BVC-werkpakket**: bij een ronde *Boomveiligheidscontrole* staat in het werkpakket
+  het blok *Basisgegevens (eenmalig instellen)*. Kies per veld uit welke **kolom van het GIS-bestand of de decompositie**
+  boomsoort, plantjaar, stamdiameter en ORK komen (herkenbare kolommen zijn voorgeselecteerd), met per veld hoeveel bomen een
+  waarde hebben en voorbeelden; en vul de eigenaar (EIG) in. De inspecteur ziet de basisgegevens dan al ingevuld en ingeklapt
+  (*Zomereik · 1968 · 58 cm · ORK Midden*), met per veld de herkomst, en controleert ze alleen (§ 6.2). Gegevens van een eerdere
+  controle van dezelfde boom gaan voor. Boomsoorten worden herkend in Latijn of Nederlands (bijlage 8), plantjaren ook uit
+  een datum. Stamdiameter is geen SUF-kenmerk en alleen nodig voor het criterium bijzondere boom (bijlage 7).
+- **Samenhang ORK en BVK** (adviezen bij de conclusie): ORK is de plek, BVK de boom. *Risicoboom bij ORK Laag* kan (na de
+  maatregel 6-jaarlijks, tabel 2). *Attentieboom bij ORK Laag/Midden*: volgens tabel 1 horen attentiebomen bij ORK Hoog.
+  *ORK Geen*: buiten valafstand, alleen bureau-analyse. *Attentieboom in gesloten beplanting*: wordt niet onderscheiden.
+  *Nader onderzoek*: alleen bij bijzondere bomen (§ 6.3.2).
 - **Nieuwe boom inmeten** met GPS (protocol: max. ca. 3 m afwijking); basisgegevens worden bij de boom bewaard en
   bij elke controle geverifieerd.
 - **Rapport** per boom (bijlage 5) en **SUF-BVC export** (boom, boomgebreken, maatregelen) per project of werkpakket;

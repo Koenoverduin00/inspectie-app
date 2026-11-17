@@ -81,3 +81,41 @@ test('BVC: RD-coördinaten, termijnen en SUF', () => {
   assert.deepEqual(suf.gebreken[1], ['k1', '20260801', 'Afgestorven tak', 'Mechanisch defect', 'Kroon', 'Takbreuk']);
   assert.deepEqual(suf.maatregelen[1], ['k1', '20260801', 'Veiligheidssnoei', 'Binnen 3 maanden']);
 });
+
+test('BVC: samenhang ORK/BVK, basisgegevens uit GIS of decompositie, FOTO en EIG in de SUF', async () => {
+  const B = await import('../js/bvc.js');
+  assert.deepEqual(B.samenhang({ ork: 'Laag', bvk: 'risico' }).map((x) => x.niveau), ['info']);
+  assert.deepEqual(B.samenhang({ ork: 'Midden', bvk: 'attentie' }).map((x) => x.niveau), ['let']);
+  assert.deepEqual(B.samenhang({ ork: 'Hoog', bvk: 'attentie' }), []);
+  assert.equal(B.samenhang({ ork: 'Geen', bvk: 'geen' })[0].niveau, 'let');
+  // bronnen raden en toepassen
+  const inst = B.raadBronnen(['BOOMSOORT', 'Plant_jaar', 'objectid'], ['Stamdiameter']);
+  assert.deepEqual(inst, { soort: 'gis:BOOMSOORT', plantjaar: 'gis:Plant_jaar', dbh: 'decomp:Stamdiameter', ork: '' });
+  const object = { kenmerken: { BOOMSOORT: 'zomereik', Plant_jaar: '01-03-1978' } };
+  const keten = [{ kenmerken: {} }, { kenmerken: { Stamdiameter: '45,5 cm' } }];
+  const r = B.basisUitBronnen(object, keten, inst);
+  assert.deepEqual(r.waarden, { soort: 'Quercus robur', plantjaar: '1978', dbh: '46' });
+  assert.equal(r.bron.dbh, 'decomp:Stamdiameter');
+  assert.equal(B.bronTekst('gis:BOOMSOORT'), 'GIS-kolom "BOOMSOORT"');
+  assert.equal(B.orkUit('hoog'), 'Hoog');
+  // FOTO automatisch uit de foto's, EIG uit het werkpakket
+  assert.equal(B.fotoVeld('BM-001', 3), 'BM-001_1;BM-001_2;BM-001_3');
+  assert.equal(B.fotoVeld('BM-001', 0), '');
+  assert.ok(B.fotoVeld('BOOM-000000001', 9).length <= 60);
+  const suf = B.sufRijen([{ object: { id: 'k1', code: 'BM-1' }, inspectie: { datum: '2026-08-01', fotoIds: ['a', 'b'], bvc: { soort: 'Quercus robur', ork: 'Midden', bvk: 'geen', gebreken: [{ fotoIds: ['c'] }] } } }], { eigenaar: 'RWS Oost-Nederland' });
+  assert.equal(suf.bomen[1][3], 'RWS Oost-Nederland');
+  assert.equal(suf.bomen[1][14], 'BM-1_1;BM-1_2;BM-1_3');
+});
+
+test('BVC: KEY van RWS uit het GIS, nader onderzoek alleen bij bijzondere bomen, geen attentiebomen in gesloten beplanting', async () => {
+  const B = await import('../js/bvc.js');
+  assert.equal(B.sufKey({ id: 'x', kenmerken: { KEY: '{A1B2}' } }), '{A1B2}');
+  assert.equal(B.sufKey({ id: 'x', kenmerken: {} }), 'x');
+  const suf = B.sufRijen([{ object: { id: 'x', kenmerken: { key: 'RWS-1' } }, inspectie: { datum: '2026-08-01', bvc: { bvk: 'risico', ork: 'Hoog', gebreken: [{ omschrijving: 'Holte' }], maatregelen: [{ bvcMaatregel: 'Boom verwijderen', termijn: 'acuut' }] } } }]);
+  assert.equal(suf.bomen[1][0], 'RWS-1');
+  assert.equal(suf.gebreken[1][0], 'RWS-1');
+  assert.equal(suf.maatregelen[1][0], 'RWS-1');
+  assert.equal(B.samenhang({ ork: 'Hoog', bvk: 'risico', maatregelen: [{ bvcMaatregel: 'Nader onderzoek' }] })[0].niveau, 'let');
+  assert.deepEqual(B.samenhang({ ork: 'Hoog', bvk: 'risico', bijzonder: true, maatregelen: [{ bvcMaatregel: 'Nader onderzoek' }] }), []);
+  assert.match(B.samenhang({ ork: 'Hoog', bvk: 'attentie', gb: true })[0].tekst, /gesloten beplanting/);
+});

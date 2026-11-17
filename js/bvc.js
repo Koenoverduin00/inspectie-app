@@ -1,5 +1,5 @@
 // Boomveiligheidscontrole (BVC) volgens het Boomveiligheidsprotocol Rijkswaterstaat
-// (Loo Plan, 8 februari 2017, status definitief) en het CROW Standaard
+// (Loo Plan, 30 oktober 2019, status definitief) en het CROW Standaard
 // Uitwisselingsformaat (SUF-BVC). Paragraafnummers verwijzen naar dat protocol.
 import { rdNaarWgs84 } from './gis.js';
 
@@ -234,6 +234,113 @@ export function controleer(b) {
   return fouten;
 }
 
+/**
+ * Samenhang tussen omgevingsrisicoklasse (ORK, de plek) en boomveiligheidsklasse (BVK, de boom): adviezen, geen blokkades.
+ *  - Risicoboom kan bij elke ORK binnen valafstand (ook Laag: na de maatregel 6-jaarlijks, tabel 2).
+ *  - Attentiebomen vallen volgens tabel 1 onder ORK Hoog (controle jaarlijks).
+ *  - ORK Geen = buiten valafstand: alleen 6-jaarlijkse bureau-analyse, geen veldopname (tabel 1).
+ * @returns {{ niveau: 'let'|'info', tekst: string }[]}
+ */
+export function samenhang(b) {
+  const uit = [];
+  if (!b || b.niet) return uit;
+  const attentie = b.bvk === 'attentie' || b.bvk === 'risicoattentie';
+  if (b.ork === 'Geen' && b.bvk) {
+    uit.push({ niveau: 'let', tekst: 'ORK Geen betekent: buiten valafstand (> ca. 30 m). Zulke bomen worden alleen in de 6-jaarlijkse bureau-analyse bekeken, niet in het veld opgenomen (tabel 1). Staat de boom binnen valafstand, kies dan Laag, Midden of Hoog.' });
+  }
+  if (attentie && (b.ork === 'Laag' || b.ork === 'Midden')) {
+    uit.push({ niveau: 'let', tekst: `Attentiebomen vallen volgens tabel 1 onder ORK Hoog (jaarlijkse controle). Overweeg ORK Hoog in plaats van ${b.ork}.` });
+  }
+  if (b.gb && attentie) {
+    uit.push({ niveau: 'let', tekst: 'In gesloten beplanting worden geen attentiebomen onderscheiden (tabel 2): een gevaarzettende boom wordt geveld. Kies Risicoboom met maatregel "Boom verwijderen", of Boom zonder gebreken.' });
+  }
+  if ((b.maatregelen ?? []).some((m) => m.bvcMaatregel === 'Nader onderzoek') && !b.bijzonder) {
+    uit.push({ niveau: 'let', tekst: 'Nader onderzoek wordt bij RWS als regel niet toegepast, alleen bij bijzondere bomen (§ 6.3.2, bijlage 7). Vink "Bijzondere boom" aan of kies een andere maatregel.' });
+  }
+  if (b.bvk === 'risico' && b.ork === 'Laag') {
+    uit.push({ niveau: 'info', tekst: 'Risicoboom bij ORK Laag kan: de maatregel blijft nodig (binnen 3 maanden, acuut binnen 48 uur). Daarna wordt het een boom zonder gebreken met 6-jaarlijkse controle (tabel 2).' });
+  }
+  return uit;
+}
+
+// ---------------------------------------------------------------------------
+// Basisgegevens uit het GIS-bestand of de decompositie (§ 6.2: eenmalig ingevuld, bij elke controle geverifieerd).
+// Per BVC-werkpakket stelt de beheerder één keer in uit welke kolom boomsoort, plantjaar, stamdiameter en ORK komen.
+// Een bron is 'gis:<kolom>' (kenmerk van het GIS-object) of 'decomp:<kolom>' (kolom uit de ingelezen decompositie,
+// van het gekoppelde onderdeel of de onderdelen erboven).
+// ---------------------------------------------------------------------------
+export const BASIS_VELDEN = {
+  soort: { label: 'Boomsoort (SOORT)', hint: /^(boomsoort|soort|soortnaam|latijnse_?naam|wetenschappelijke_?naam|species|taxon|boomsoort_?lat|sortiment)$/i },
+  plantjaar: { label: 'Plantjaar (JAAR)', hint: /^(plantjaar|aanlegjaar|jaar_?aanleg|plant_?jaar|jaar|aanleg)$/i },
+  dbh: { label: 'Stamdiameter (cm)', hint: /^(dbh|diameter|stamdiameter|stamdiam|diam|stam_?diameter|diameter_?cm|stamdikte)$/i },
+  ork: { label: 'Omgevingsrisicoklasse (ORK)', hint: /^(ork|omgevingsrisico(klasse)?|risicoklasse)$/i },
+};
+
+const leeg = (v) => v === null || v === undefined || typeof v === 'object' || String(v).trim() === '';
+
+/** Ruwe waarde uit een bron voor één boom. @param {object[]} decKetting gekoppeld onderdeel en de onderdelen erboven */
+export function bronWaarde(object, decKetting, bron) {
+  if (!bron) return '';
+  const [soort, ...rest] = String(bron).split(':');
+  const kolom = rest.join(':');
+  if (soort === 'gis') { const v = object?.kenmerken?.[kolom]; return leeg(v) ? '' : String(v).trim(); }
+  if (soort === 'decomp') {
+    for (const k of decKetting ?? []) { const v = k?.kenmerken?.[kolom]; if (!leeg(v)) return String(v).trim(); }
+  }
+  return '';
+}
+
+/** Boomsoort uit een vrije waarde: Latijnse of Nederlandse naam uit de RWS-naamlijst (bijlage 8), anders de waarde zelf. */
+export function soortUit(ruw) {
+  const v = String(ruw ?? '').trim();
+  if (!v) return '';
+  const l = v.toLowerCase();
+  const hit = BOOMSOORTEN.find(([w, n]) => w.toLowerCase() === l || n.toLowerCase() === l || n.toLowerCase().startsWith(`${l} (`));
+  return hit ? hit[0] : v;
+}
+export const jaarUit = (ruw) => { const m = String(ruw ?? '').match(/\b(1[6-9]\d\d|20\d\d|2100)\b/); return m ? m[1] : ''; };
+export const dbhUit = (ruw) => { const n = Number(String(ruw ?? '').replace(',', '.').replace(/[^\d.]/g, '')); return n > 0 ? String(Math.round(n)) : ''; };
+export const orkUit = (ruw) => ({ geen: 'Geen', laag: 'Laag', midden: 'Midden', hoog: 'Hoog' }[String(ruw ?? '').trim().toLowerCase()] ?? '');
+const OMZET = { soort: soortUit, plantjaar: jaarUit, dbh: dbhUit, ork: orkUit };
+
+/** Basisgegevens van één boom volgens de instellingen: { soort, plantjaar, dbh, ork } met per veld de bron. */
+export function basisUitBronnen(object, decKetting, inst = {}) {
+  const uit = {};
+  const bron = {};
+  for (const veld of Object.keys(BASIS_VELDEN)) {
+    const w = OMZET[veld](bronWaarde(object, decKetting, inst[veld]));
+    if (w) { uit[veld] = w; bron[veld] = inst[veld]; }
+  }
+  return { waarden: uit, bron };
+}
+
+/** Raadt per basisveld een bron uit de beschikbare kolommen (GIS eerst, dan decompositie). */
+export function raadBronnen(gisKolommen = [], decKolommen = []) {
+  const uit = {};
+  for (const [veld, { hint }] of Object.entries(BASIS_VELDEN)) {
+    const g = gisKolommen.find((k) => hint.test(k));
+    const d = decKolommen.find((k) => hint.test(k));
+    uit[veld] = g ? `gis:${g}` : d ? `decomp:${d}` : '';
+  }
+  return uit;
+}
+
+/** Leesbare naam van een bron. */
+export const bronTekst = (bron) => {
+  if (!bron) return '';
+  const [s, ...r] = String(bron).split(':');
+  return `${s === 'gis' ? 'GIS-kolom' : 'decompositie'} "${r.join(':')}"`;
+};
+
+/** FOTO voor de SUF (bijlage 4: bij export in te vullen): de fotonamen van deze boom, max. 60 tekens. */
+export function fotoVeld(code, aantal) {
+  if (!(aantal > 0)) return '';
+  const namen = Array.from({ length: aantal }, (_, n) => `${code}_${n + 1}`);
+  let uit = '';
+  for (const x of namen) { const volgende = uit ? `${uit};${x}` : x; if (volgende.length > 60) break; uit = volgende; }
+  return uit;
+}
+
 /** WGS84 → RD New (inverse van rdNaarWgs84 met Newton-iteratie, nauwkeurig op < 1 cm t.o.v. die formule). */
 export function wgs84NaarRd(lng, lat) {
   let x = 155000 + (lng - 5.387206) * 68000;
@@ -251,13 +358,20 @@ export function wgs84NaarRd(lng, lat) {
   return [Math.round(x * 100) / 100, Math.round(y * 100) / 100];
 }
 
+/** KEY voor de SUF: de sleutel van RWS uit het GIS-bestand (bijlage 4: niet muteren), anders de eigen id. */
+export function sufKey(o) {
+  const k = Object.keys(o?.kenmerken ?? {}).find((x) => /^(key|guid|bvc_?key)$/i.test(x));
+  const v = k ? String(o.kenmerken[k] ?? '').trim() : '';
+  return v || o?.id || '';
+}
+
 const jjjjmmdd = (iso) => String(iso ?? '').slice(0, 10).replaceAll('-', '');
 
 /**
  * Rijen voor het Standaard Uitwisselingsformaat (bijlage 4): boom, boomgebreken en maatregelen.
  * @param {{ object: object, inspectie: object }[]} lijst
  */
-export function sufRijen(lijst) {
+export function sufRijen(lijst, { eigenaar = '' } = {}) {
   const bomen = [['KEY', 'X', 'Y', 'EIG', 'SOORT', 'JAAR', 'ORK', 'CONFREQ', 'INSP', 'DATUM', 'BVK', 'NIET', 'GB', 'OPMERK', 'FOTO']];
   const gebreken = [['KEY', 'datum', 'omschrijving', 'type', 'plaats', 'gevolg']];
   const maatregelen = [['KEY', 'datum', 'bvcmaatregel', 'urgentie']];
@@ -267,10 +381,12 @@ export function sufRijen(lijst) {
     const [x, y] = Number.isFinite(lat) && Number.isFinite(lng) ? wgs84NaarRd(lng, lat) : ['', ''];
     const datum = jjjjmmdd(i.datum);
     const opmerking = [b.opmerking, b.gb && b.aantalBomen ? `${b.aantalBomen} bomen` : ''].filter(Boolean).join('; ');
-    bomen.push([o.id, x, y, o.beheerder ?? '', b.soort ?? '', b.plantjaar ?? '', b.ork ?? '', CONTROLEFREQUENTIE[frequentie(b.bvk, b.ork)] ?? '',
-      i.inspecteur ?? b.controleur ?? '', datum, BVK[b.bvk]?.label ?? '', b.niet ? 'X' : '', b.gb ? 'X' : '', opmerking.slice(0, 255), b.fotonummer ?? '']);
-    for (const g of b.gebreken ?? []) gebreken.push([o.id, datum, g.omschrijving, gebrekType(g.omschrijving), g.plaats, g.gevolg]);
-    for (const m of b.maatregelen ?? []) maatregelen.push([o.id, datum, m.bvcMaatregel, m.termijn === 'acuut' ? 'Acuut' : 'Binnen 3 maanden']);
+    const fotos = (i.fotoIds?.length ?? 0) + (b.gebreken ?? []).reduce((t, g) => t + (g.fotoIds?.length ?? 0), 0);
+    const key = sufKey(o);
+    bomen.push([key, x, y, b.eigenaar || eigenaar || o.beheerder || '', b.soort ?? '', b.plantjaar ?? '', b.ork ?? '', CONTROLEFREQUENTIE[frequentie(b.bvk, b.ork)] ?? '',
+      i.inspecteur ?? b.controleur ?? '', datum, BVK[b.bvk]?.label ?? '', b.niet ? 'X' : '', b.gb ? 'X' : '', opmerking.slice(0, 255), fotoVeld(o.code || o.id, fotos) || (b.fotonummer ?? '')]);
+    for (const g of b.gebreken ?? []) gebreken.push([key, datum, g.omschrijving, gebrekType(g.omschrijving), g.plaats, g.gevolg]);
+    for (const m of b.maatregelen ?? []) maatregelen.push([key, datum, m.bvcMaatregel, m.termijn === 'acuut' ? 'Acuut' : 'Binnen 3 maanden']);
   }
   return { bomen, gebreken, maatregelen };
 }
