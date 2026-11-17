@@ -707,6 +707,9 @@ De weergave wordt automatisch gekozen op schermbreedte. Onder *Instellingen → 
   *Laag*, *Objecttype* of *Laatste oordeel*. De keuze wordt onthouden.
 - **Planning**: werkpakketten maak je onder *Werkpakketten* (zonder datums); inplannen doe je hier op het
   **planningsbord**: per werkpakket de rondes als balken in de tijd (weken, maanden of jaar; ◀ Vandaag ▶).
+  - **Waarschuwing ⚠ bij rondes die nog niet zijn ingepland** (geen startdatum): in de werkpakkettenlijst (met aantal), op de
+    pakketpagina bij de ronde, op het planningsbord bij de ronde en vóór de pakketnaam (met aantal), en in het werkpakketformulier.
+    De uitleg staat in de tooltip. Afgeronde rondes en pakketten op afroep krijgen geen waarschuwing.
   - **Leesbaarheid**: maandgrenzen zijn een dikke lijn met afwisselend gekleurde maanden, weekgrenzen een dunne lijn.
   - **Zoeken**: typ in *Zoek werkpakket of ronde…* een deel van de naam of code; alleen passende werkpakketten en rondes blijven staan.
   - **Klik op een ronde** (brede popup): rechts een **kaartje met de voortgang van die ronde** (elk object oranje = te doen,

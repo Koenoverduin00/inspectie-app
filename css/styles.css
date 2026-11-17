@@ -1625,3 +1625,11 @@ td.actiecel .knoppen { justify-content: flex-end; flex-wrap: wrap; }
 }
 .passendknop a { display: flex !important; align-items: center; justify-content: center; width: 30px; height: 30px; color: #333; }
 .passendknop .ico { width: 18px; height: 18px; }
+/* Waarschuwing: ronde nog niet ingepland */
+.inplanlet { display: inline-flex; align-items: center; gap: .1rem; color: #b45d00; vertical-align: middle; cursor: help; }
+.inplanlet .ico { width: 15px; height: 15px; }
+.inplanlet b { font-size: .72rem; line-height: 1; }
+.label-status .inplanlet { color: inherit; }
+.bord-pakketnaam { display: flex; align-items: center; gap: .3rem; min-width: 0; }
+.bord-pakketnaam a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bord-pakketnaam .inplanlet { flex: none; }

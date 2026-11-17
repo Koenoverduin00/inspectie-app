@@ -8031,7 +8031,7 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
       const letter = r.afroep ? 'A' : 'R';
       const titel = `${letter}${r.nummer} ${r.naam} · ${r.afroep ? `afroep (${r.afroep.reden}) · ` : ''}${periodeTekst(v) || 'nog niet ingepland'} · ${vg.gedaan.size + vg.overgeslagen.size}/${vg.totaal}`;
       return `<div class="bord-rij" data-pakket="${esc(p.id)}" data-ronde="${esc(r.id)}">
-        <div class="bord-label"><div class="bord-labelregel"><a href="${pakketPagina(v, false)}"><span class="bord-soort" style="background:${kleur}"></span>${letter}${r.nummer} ${esc(r.naam)}</a>${r.opmerking ? ` <span class="bord-opm" title="${esc(r.opmerking)}">💬</span>` : ''}${r.afroep?.spoed ? ' <span class="afroeplabel spoedlabel">Spoed</span>' : ''}
+        <div class="bord-label"><div class="bord-labelregel"><a href="${pakketPagina(v, false)}"><span class="bord-soort" style="background:${kleur}"></span>${letter}${r.nummer} ${esc(r.naam)}</a>${rondeNietIngepland(p, r) ? ` ${inplanLet()}` : ''}${r.opmerking ? ` <span class="bord-opm" title="${esc(r.opmerking)}">💬</span>` : ''}${r.afroep?.spoed ? ' <span class="afroeplabel spoedlabel">Spoed</span>' : ''}
             <span class="bord-pct ${r.status === 'afgerond' ? 'klaar' : ''}" title="${vg.gedaan.size + vg.overgeslagen.size} van ${vg.totaal} objecten">${r.status === 'afgerond' ? I.vink + ' ' : ''}${vg.percentage}%</span></div>
           <small>${r.soort === 'inspectie' ? esc(r.inspectiesoort || 'Inspectie') : esc(r.werksoort || 'Werkzaamheid')} · ${PL.duurTekst(PL.duurVan(r))}</small></div>
         <div class="bord-spoor ${beheer ? 'bewerkbaar' : ''}" style="width:${breedte}px">
@@ -8080,7 +8080,7 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
     const som = per.length ? PL.balk({ start: PL.isoVan(Math.min(...per.map((q) => q.start))), eind: PL.isoVan(Math.max(...per.map((q) => q.eind))) }, b) : null;
     return `<div class="bord-pakket ${focusPakket === p.id ? 'focus' : ''}" id="bord-${esc(p.id)}">
             <div class="bord-rij pakketrij">
-              <div class="bord-label"><a href="#/werkpakketten/${esc(p.id)}"><strong>${esc(p.code ? `${p.code} · ` : '')}${esc(p.naam)}</strong></a>
+              <div class="bord-label"><div class="bord-pakketnaam">${nietIngepland(p).length ? `${inplanLet(nietIngepland(p).length, `${nietIngepland(p).length === 1 ? '1 ronde is' : `${nietIngepland(p).length} rondes zijn`} nog niet ingepland`)} ` : ''}<a href="#/werkpakketten/${esc(p.id)}"><strong>${esc(p.code ? `${p.code} · ` : '')}${esc(p.naam)}</strong></a></div>
                 <small>${(p.objecten ?? []).length} objecten · ${totaal.percentage}% gedaan${p.toegewezen?.length ? ` · ${I.gebruiker} ${p.toegewezen.length}` : ''}</small></div>
               <div class="bord-spoor" style="width:${breedte}px">${som ? `<div class="bord-somlijn" style="left:${som.left}px;width:${som.width}px"></div>` : ''}</div>
             </div>
@@ -9057,6 +9057,14 @@ function pakketSoortTekst(p) {
   return `${I.werk} ${esc(p.werksoort || 'Werkzaamheid')}`;
 }
 
+// Waarschuwingsteken bij rondes zonder planning (geen startdatum). Afgeronde rondes en pakketten op afroep tellen niet mee.
+const nietIngepland = (p) => (isAfroep(p) ? [] : rondesVan(p).filter((r) => !r.start && r.status !== 'afgerond'));
+const rondeNietIngepland = (p, r) => !isAfroep(p) && !r.afroep && !r.start && r.status !== 'afgerond';
+function inplanLet(aantal = 1, titel = '') {
+  const t = titel || (aantal > 1 ? `${aantal} rondes zijn nog niet ingepland` : 'Deze ronde is nog niet ingepland');
+  return `<span class="inplanlet" title="${esc(t)}" role="img" aria-label="${esc(t)}">${I.let}${aantal > 1 ? `<b>${aantal}</b>` : ''}</span>`;
+}
+
 // Periodefilter voor rondes (planning en dashboard), per gebruiker onthouden. Standaard het lopende kalenderjaar.
 const rondePeriode = () => PL.periodeBereik(instelling.lees('rondePeriode') || PL.PERIODE_STANDAARD, vandaag());
 function periodeKiezer(alleRondes) {
@@ -9298,7 +9306,7 @@ async function werkpakkettenLijst() {
       <small id="pf-aantal"></small></div>` : ''}
     ${pakketten.length ? `<div class="pakketten" id="pakketlijst">${pakketten.map((p) => `
       <a class="kaart pakket" href="#/werkpakketten/${esc(p.id)}" data-zoek="${esc(`${p.code ?? ''} ${p.naam ?? ''}`.toLowerCase())}" data-status="${esc(p.status ?? '')}" data-mij="${pakketVoorMij(p, ik) ? '1' : ''}">
-        <div class="pakketkop"><strong>${esc(p.naam)}</strong>${pakketStatusLabel(p.status)}</div>
+        <div class="pakketkop"><strong>${esc(p.naam)}${nietIngepland(p).length ? ` ${inplanLet(nietIngepland(p).length, `${nietIngepland(p).length === 1 ? '1 ronde is' : `${nietIngepland(p).length} rondes zijn`} nog niet ingepland`)}` : ''}</strong>${pakketStatusLabel(p.status)}</div>
         <small>${p.code ? `${esc(p.code)} · ` : ''}${pakketRondesTekst(p)}</small>
         ${voortgangBalk(voortgangen.get(p.id))}
         ${p.toegewezen?.length ? `<small>${I.gebruiker} ${p.toegewezen.map(esc).join(', ')}</small>` : ''}
@@ -9483,7 +9491,7 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
           <div class="veld"><label>Duur</label><div class="duurveld">
             <input type="number" min="1" max="${r.duurEenheid === 'dagen' ? 365 : 52}" data-r="${i}" data-duur="aantal" value="${esc(r.duurEenheid === 'dagen' ? PL.duurVan(r) : Math.max(1, Math.round(PL.duurVan(r) / 7)))}">
             <select data-r="${i}" data-duur="eenheid">${optie('weken', 'weken', r.duurEenheid === 'dagen' ? 'dagen' : 'weken')}${optie('dagen', 'dagen', r.duurEenheid === 'dagen' ? 'dagen' : 'weken')}</select></div></div>
-          <div class="veld"><label>Planning</label><div class="planningtekst">${r.start ? `${I.kalender} ${periodeTekst({ ...r, eind: r.eind || PL.isoVan(PL.dagNr(r.start) + PL.duurVan(r) - 1) })}` : '<span class="label-status binnenkort">Nog niet ingepland</span>'}
+          <div class="veld"><label>Planning</label><div class="planningtekst">${r.start ? `${I.kalender} ${periodeTekst({ ...r, eind: r.eind || PL.isoVan(PL.dagNr(r.start) + PL.duurVan(r) - 1) })}` : `<span class="label-status binnenkort">${r.status === 'afgerond' ? '' : `${inplanLet()} `}Nog niet ingepland</span>`}
             <small>Startdatum kies je in de <a href="#/planning${id ? `?pakket=${esc(id)}` : ''}">Planning</a>.</small></div></div>
           <div class="veld"><label>Status</label><select data-r="${i}" data-veld="status">${Object.entries(PAKKETSTATUS).map(([k, x]) => optie(k, x, r.status)).join('')}</select></div>
           <div class="veld"><label>Objecten</label><div>${r.objectIds?.length
@@ -9987,7 +9995,7 @@ async function pakketDetail(id, q = new URLSearchParams()) {
         <tbody>${alleRondes.slice().sort((a, b) => (afroep ? (a.status === 'actief' ? 0 : 1) - (b.status === 'actief' ? 0 : 1) || (Number(b.nummer) || 0) - (Number(a.nummer) || 0) : 0)).map((r) => {
     const rv = g.views.get(`${id}:${r.id}`);
     return `<tr class="${r.id === ronde.id ? 'gekozen' : ''}">
-          <td><a href="${pakketPagina(rv, false)}"><strong>${afroep ? `A${r.nummer}` : `R${r.nummer}`}</strong> ${esc(r.naam)}</a>${rv.deelselectie ? ` <small>(${(r.objectIds ?? []).length} object${(r.objectIds ?? []).length === 1 ? '' : 'en'})</small>` : ''}${r.afroep?.spoed ? ' <span class="afroeplabel spoedlabel">Spoed</span>' : ''}</td>
+          <td><a href="${pakketPagina(rv, false)}"><strong>${afroep ? `A${r.nummer}` : `R${r.nummer}`}</strong> ${esc(r.naam)}</a>${rondeNietIngepland(pr, r) ? ` ${inplanLet()}` : ''}${rv.deelselectie ? ` <small>(${(r.objectIds ?? []).length} object${(r.objectIds ?? []).length === 1 ? '' : 'en'})</small>` : ''}${r.afroep?.spoed ? ' <span class="afroeplabel spoedlabel">Spoed</span>' : ''}</td>
           <td>${afroep ? `${esc(r.afroep?.reden ?? '–')}<br><small>${pakketSoortTekst(rv)}</small>` : pakketSoortTekst(rv)}</td>
           <td class="verberg-mobiel">${afroep ? `${datumNL(r.start)}${r.afroep?.door ? ` · ${esc(r.afroep.door)}` : ''}<br><small>gereed vóór ${r.eind ? datumNL(r.eind) : '–'}${PL.teLaat(r, vandaag()) ? ` · <b style="color:var(--gevaar)">te laat</b>` : ''}</small>` : periodeTekst(rv) || '–'}</td><td>${pakketStatusLabel(r.status)}</td>
           <td style="min-width:160px">${voortgangBalk(g.rondeVoortgang.get(`${id}:${r.id}`))}</td>
