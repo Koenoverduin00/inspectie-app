@@ -534,6 +534,8 @@ export function verwerkImport(raw, c) {
       return {
         id: o?.id ?? c.nieuwId(), nummer: r.nummer, naam: r.naam, soort: r.soort, werksoort: r.werksoort, inspectiesoort: r.inspectiesoort,
         start: r.start, eind: r.eind, status: r.status || o?.status || 'gepland', objectIds: null, _oud: o ?? null, _nieuw: true,
+        // Opmerkingen bij de ronde (uit de planning) blijven bewaard bij bijwerken via Excel.
+        ...(o?.opmerking ? { opmerking: o.opmerking, opmerkingOp: o.opmerkingOp ?? '', opmerkingDoor: o.opmerkingDoor ?? '' } : {}),
       };
     });
     for (const o of oudeRondes) {

@@ -1596,3 +1596,18 @@ td.actiecel .knoppen { justify-content: flex-end; flex-wrap: wrap; }
 .basisgegevens #basis-samenvatting { color: var(--zacht, #6b7785); margin-left: .35rem; }
 .herkomst { display: block; color: #1a7f37; }
 .vastveld { padding: .5rem .65rem; background: var(--achtergrond); border: 1px solid var(--rand); border-radius: 6px; min-height: 2.4rem; }
+/* Planning: duidelijkere week- en maandgrenzen */
+.bord-raster i { border-left: 1px solid color-mix(in srgb, var(--rand) 90%, transparent); }
+.bord-raster .maandlijn { position: absolute; top: 0; bottom: 0; border-left: 2px solid color-mix(in srgb, var(--tekst-zacht, #6b7785) 55%, transparent); }
+.bord-raster .maandvlak { position: absolute; top: 0; bottom: 0; text-decoration: none; }
+.bord-raster .maandvlak.even { background: color-mix(in srgb, var(--rand) 22%, transparent); }
+.bord-maanden span { border-left: 2px solid color-mix(in srgb, var(--tekst-zacht, #6b7785) 55%, transparent); background: color-mix(in srgb, var(--vlak) 92%, var(--rand)); }
+.bord-weken span { border-left: 1px solid var(--rand); }
+.bord-balkje #bord-zoek { width: auto; min-width: 14rem; margin: 0; }
+.bord-opm { font-size: .8rem; cursor: help; }
+.rondestand { margin: .5rem 0 .75rem; }
+.rondestand .tegels { margin-bottom: .5rem; }
+.takenblok > summary { cursor: pointer; margin: 1rem 0 .5rem; }
+.takenblok > summary h2 { display: inline; }
+.takenblok > summary small { color: var(--zacht, #6b7785); font-weight: 400; }
+.takenblok #taak-zoek { flex: 1 1 14rem; margin: 0; }

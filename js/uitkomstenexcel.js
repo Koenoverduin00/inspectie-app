@@ -85,6 +85,22 @@ export function bevindingenVan(i) {
  * @param {boolean} [p.metUren]
  * @param {boolean} [p.metKosten]
  */
+/** Alle foto's van één registratie met een onderwerp: algemeen, extra velden, gebreken/bevindingen en waarnemingen. */
+export function fotosVan(r) {
+  const uit = [];
+  const voeg = (ids, onderwerp) => { for (const id of ids ?? []) if (id) uit.push({ fotoId: id, onderwerp }); };
+  voeg(r?.fotoIds, 'Algemeen');
+  voeg(r?.extraFotoIds, 'Formulier');
+  (r?.gebreken ?? []).forEach((g, n) => voeg(g.fotoIds, `Bevinding ${n + 1}${g.gebrek || g.omschrijving ? `: ${g.gebrek || g.omschrijving}` : ''}`));
+  (r?.bvc?.gebreken ?? []).forEach((g, n) => voeg(g.fotoIds, `Boomgebrek ${n + 1}${g.omschrijving ? `: ${g.omschrijving}` : ''}`));
+  (r?.stowa?.waarnemingen ?? []).forEach((w, n) => voeg(w.fotoIds, `Waarneming ${n + 1}${w.omschrijving ? `: ${w.omschrijving}` : ''}`));
+  (r?.checklist ?? []).forEach((c) => voeg(c.fotoIds, `Checklist: ${c.punt ?? ''}`));
+  (r?.maatregelen ?? []).forEach((m, n) => voeg(m.fotoIds, `Maatregel ${n + 1}`));
+  // dubbele ids maar één keer
+  const gezien = new Set();
+  return uit.filter((f) => !gezien.has(f.fotoId) && gezien.add(f.fotoId));
+}
+
 export function uitkomstRijen({ registraties, extra = () => [], beoordeling = () => '', metUren = true, metKosten = true }) {
   const extraLabels = [];
   const checkPunten = [];
@@ -183,8 +199,11 @@ export function uitkomstRijen({ registraties, extra = () => [], beoordeling = ()
     });
   }
   vervolg.sort((a, b) => a.rang - b.rang || String(a.waarden[0]).localeCompare(String(b.waarden[0]), 'nl', { numeric: true }));
+  const fotos = registraties.filter((x) => x.soort !== 'overgeslagen').flatMap((x) => fotosVan(x.r).map((f) => ({
+    ...f, objectcode: x.object?.code ?? '', registratie: `${x.soort === 'werk' ? (x.r.soort || 'Werkzaamheid') : x.soort === 'inspectie' ? inspectieSoortTekst(x.r) : ''}${x.r.datum ? ` · ${String(x.r.datum).slice(0, 10)}` : ''}`,
+  })));
   return {
-    kolommen, rijen, antwoorden, bevindingen, vervolg,
+    kolommen, rijen, antwoorden, bevindingen, vervolg, fotos,
     telling: {
       werk: registraties.filter((x) => x.soort === 'werk').length, inspecties: registraties.filter((x) => x.soort === 'inspectie').length,
       overgeslagen: registraties.filter((x) => x.soort === 'overgeslagen').length, bevindingen: bevindingen.length, vervolg: vervolg.length,
@@ -265,5 +284,23 @@ export function maakWerkboek(ExcelJS, r, meta) {
   const vk = meta.metKosten === false ? VERVOLG_KOLOMMEN.filter(([k]) => k !== 'Raming (€)') : VERVOLG_KOLOMMEN;
   const vr = meta.metKosten === false ? r.vervolg.map((x) => ({ ...x, waarden: x.waarden.filter((_, n) => n !== 9) })) : r.vervolg;
   blad('Vervolgacties', vk, vr, 8, 'FFE8710A');
+  // Optioneel: blad met de foto's per object en registratie.
+  const fotoData = meta.fotoData;
+  if (fotoData?.size) {
+    const ws = wb.addWorksheet("Foto's", { views: [{ state: 'frozen', ySplit: 1 }] });
+    ws.columns = [{ header: 'Objectcode', width: 14 }, { header: 'Registratie', width: 26 }, { header: 'Onderwerp', width: 34 }, { header: 'Foto', width: 42 }];
+    ws.getRow(1).eachCell((c) => { c.style = kop; });
+    let rij = 2;
+    for (const f of r.fotos ?? []) {
+      const data = fotoData.get(f.fotoId);
+      const m = data ? String(data).match(/^data:image\/(png|jpe?g|gif);base64,/i) : null;
+      if (!m) continue;
+      [f.objectcode, f.registratie, f.onderwerp].forEach((v, n) => { const c = ws.getCell(rij, n + 1); c.value = v; c.alignment = { vertical: 'top', wrapText: true }; });
+      ws.getRow(rij).height = 170;
+      const id = wb.addImage({ base64: data, extension: m[1].toLowerCase() === 'jpg' ? 'jpeg' : m[1].toLowerCase() });
+      ws.addImage(id, { tl: { col: 3.05, row: rij - 1 + 0.05 }, ext: { width: 290, height: 218 } });
+      rij++;
+    }
+  }
   return wb;
 }

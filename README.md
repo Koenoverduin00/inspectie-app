@@ -474,6 +474,8 @@ Kies je een andere laag of type, dan vervallen kenmerkfilters die daar niet voor
 
 Werkpakketten → **Uitkomsten naar Excel** (of op de pagina van één werkpakket). Kies de werkpakketten, eventueel een periode, welke registraties
 (werkzaamheden, inspecties, overgeslagen objecten) en of je alleen goedgekeurde registraties wilt. Het bestand heeft vijf bladen:
+Vink **Foto's opnemen** aan voor een extra blad *Foto's* met per object en registratie de foto's (algemeen, formulier, bevindingen,
+boomgebreken, waarnemingen); handig bij de resultaten van een schouwronde. Het bestand wordt dan groter.
 
 | Blad | Inhoud |
 |---|---|
@@ -701,8 +703,16 @@ De weergave wordt automatisch gekozen op schermbreedte. Onder *Instellingen → 
 - **Werkpakket ↔ planning**: in het werkpakket geef je het **aantal rondes** en per ronde de **duur** (weken of
   dagen; elke ronde mag anders zijn). In de planning kies je de startdatum; wijzig je later de duur, dan schuift de
   einddatum mee, en verleng je een balk in de planning, dan past de duur in het werkpakket zich aan.
+- **Objectenkaart** (Objecten → Kaart): standaard gekleurd per **laag** (niet op voortgang of oordeel); kies bij *Kleur op* zelf
+  *Laag*, *Objecttype* of *Laatste oordeel*. De keuze wordt onthouden.
 - **Planning**: werkpakketten maak je onder *Werkpakketten* (zonder datums); inplannen doe je hier op het
   **planningsbord**: per werkpakket de rondes als balken in de tijd (weken, maanden of jaar; ◀ Vandaag ▶).
+  - **Leesbaarheid**: maandgrenzen zijn een dikke lijn met afwisselend gekleurde maanden, weekgrenzen een dunne lijn.
+  - **Zoeken**: typ in *Zoek werkpakket of ronde…* een deel van de naam of code; alleen passende werkpakketten en rondes blijven staan.
+  - **Klik op een ronde**: je ziet het **percentage uitgevoerd**, **objecten gedaan x/y**, overgeslagen en nog open, en je kunt een
+    **opmerking over deze ronde** plaatsen (bijv. vertraging door weer). De opmerking blijft bij de ronde (ook na bewerken van het
+    werkpakket of bijwerken via Excel) en is op het bord te herkennen aan 💬; wie geen planningsrechten heeft, kan de opmerking wel opslaan.
+  - **Takenlijst** onder het bord is standaard ingeklapt (klik op *Taken* om hem te openen), met een zoekveld op de naam van de taak.
   - **Periode** (📅-keuzelijst, ook op het dashboard): standaard zie je alleen rondes in **dit kalenderjaar**, zodat een pakket met een
     ronde per jaar niet alle jaren tegelijk toont. Kies *Volgend jaar*, *Komende 12 maanden*, een ander jaar, een *Eigen periode* (van/tot)
     of *Alle jaren*. Een ronde telt mee als ze de periode overlapt; niet ingeplande rondes staan er altijd bij. Je ziet hoeveel rondes

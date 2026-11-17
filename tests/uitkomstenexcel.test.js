@@ -49,3 +49,11 @@ test('bevindingen NEN en oordeel', () => {
   assert.equal(o[0].oordeel, 'Slecht');
   assert.equal(o[0].open, false);
 });
+
+test("foto's per registratie voor het blad Foto's", async () => {
+  const UX = await import('../js/uitkomstenexcel.js');
+  const f = UX.fotosVan({ fotoIds: ['a'], extraFotoIds: ['b'], gebreken: [{ gebrek: 'Scheur', fotoIds: ['c', 'a'] }], bvc: { gebreken: [{ omschrijving: 'Holte', fotoIds: ['d'] }] } });
+  assert.deepEqual(f.map((x) => [x.fotoId, x.onderwerp]), [['a', 'Algemeen'], ['b', 'Formulier'], ['c', 'Bevinding 1: Scheur'], ['d', 'Boomgebrek 1: Holte']]);
+  const r = UX.uitkomstRijen({ registraties: [{ soort: 'werk', r: { soort: 'Schouw', datum: '2026-05-01', fotoIds: ['x'] }, object: { code: 'GV-1' } }, { soort: 'overgeslagen', r: { fotoIds: ['y'] }, object: { code: 'GV-2' } }] });
+  assert.deepEqual(r.fotos.map((x) => [x.objectcode, x.fotoId, x.registratie]), [['GV-1', 'x', 'Schouw · 2026-05-01']]);
+});

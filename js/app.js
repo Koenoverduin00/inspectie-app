@@ -2732,6 +2732,23 @@ async function objectenLijst() {
   const typen = [...new Set(objecten.map((o) => o.type).filter(Boolean))].sort();
   const lagen = await inProject('lagen');
   const kanKiezen = magBeheren() && !isMobiel();
+  // Kleur op de kaart: standaard de laagkleur (geen voortgang of oordeel), zelf te kiezen.
+  let objKleurOp = ['laag', 'type', 'oordeel'].includes(instelling.lees('objectKleurOp')) ? instelling.lees('objectKleurOp') : 'laag';
+  const laagKleur = new Map(lagen.map((l) => [l.id, l.kleur || '#1f78b4']));
+  const typeKleur = new Map([...new Set(objecten.map((o) => o.type || 'Overig'))].sort((a, b) => a.localeCompare(b, 'nl')).map((t, n) => [t, CATEGORIEKLEUREN[n % CATEGORIEKLEUREN.length]]));
+  const objKleur = (o) => {
+    if (objKleurOp === 'type') return typeKleur.get(o.type || 'Overig') ?? OVERIG_KLEUR;
+    if (objKleurOp === 'oordeel') { const s = status.get(o.id); return s?.laatste ? oordeelKleur(s.laatste) : '#1f6feb'; }
+    return laagKleur.get(o.laagId) ?? '#0b4f6c';
+  };
+  const tekenObjLegenda = () => {
+    const el = app.querySelector('#olegenda');
+    if (!el) return;
+    const items = objKleurOp === 'type' ? [...typeKleur.entries()].slice(0, 12)
+      : objKleurOp === 'oordeel' ? [...[1, 2, 3, 4, 5, 6].map((c) => [`${c} · ${CONDITIES[c].label}`, CONDITIES[c].kleur]), ['Niet geïnspecteerd', '#1f6feb']]
+        : [...lagen.map((l) => [l.naam, laagKleur.get(l.id)]), ...(objecten.some((o) => !o.laagId) ? [['Losse objecten', '#0b4f6c']] : [])];
+    el.innerHTML = items.map(([l, k]) => `<span style="--k:${esc(k)}">${esc(l)}</span>`).join('');
+  };
   const gekozen = new Set();
   app.innerHTML = `
     <div class="paginakop">
@@ -2765,6 +2782,9 @@ async function objectenLijst() {
         <div id="objectkaart" class="kaart objectenkaart"><p class="leeg">Kaart laden…</p></div>
         <aside class="kaart lagenpaneel objectpaneel">
           <div id="vindpaneel">
+            <div class="veld" style="margin-bottom:.5rem"><label for="okleur">Kleur op</label>
+              <select id="okleur">${optie('laag', 'Laag', objKleurOp)}${optie('type', 'Objecttype', objKleurOp)}${optie('oordeel', 'Laatste oordeel', objKleurOp)}</select></div>
+            <div class="legenda" id="olegenda"></div>
             <h2>Gevonden</h2>
             <p id="okaart-telling"><small></small></p>
             <ul class="vindlijst" id="vindlijst"></ul>
@@ -2849,16 +2869,20 @@ async function objectenLijst() {
     if (kaartKlaar) return;
     kaartKlaar = tekenObjectenKaart(app.querySelector('#objectkaart'), {
       objecten,
-      kleurVan: (o) => {
-        const s = status.get(o.id);
-        return s?.laatste ? oordeelKleur(s.laatste) : '#1f6feb';
-      },
+      kleurVan: objKleur,
       popup: (o) => {
         const s = status.get(o.id);
         return `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br><small>${esc(o.type || '')}${o.locatie ? ` · ${esc(o.locatie)}` : ''}</small><br>
           ${oordeelLabel(s)} ${s?.laatste ? `<small>laatste inspectie ${datumNL(s.laatste.datum)}</small>` : ''}<br><a href="#/objecten/${esc(o.id)}">Object openen</a> · <small>logboek staat rechts</small>`;
       },
       opOpen: (o) => openLogboek(o.id),
+    });
+    tekenObjLegenda();
+    app.querySelector('#okleur')?.addEventListener('change', async (e) => {
+      objKleurOp = e.target.value;
+      instelling.schrijf('objectKleurOp', objKleurOp);
+      tekenObjLegenda();
+      (await kaartKlaar)?.herkleur();
     });
     werkKaartBij();
   };
@@ -7912,7 +7936,27 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
   const zoom = PL.ZOOM[instelling.lees('planZoom')] ? instelling.lees('planZoom') : 'maanden';
   let anker = instelling.lees('planAnker') || vandaag();
   let filterSoort = '';
+  let zoekTekst = '';
   const vandaagNr = PL.dagNr(vandaag());
+  // Zoeken op naam (werkpakket, code of ronde): rijen tonen of verbergen zonder het bord opnieuw te tekenen.
+  const pasZoekToe = () => {
+    const termen = zoekTermen(zoekTekst);
+    let zichtbaar = 0;
+    el.querySelectorAll('.bord-pakket').forEach((pk) => {
+      const kop = pk.querySelector('.pakketrij .bord-label')?.textContent.toLowerCase() ?? '';
+      const pakketPast = termen.every((t) => kop.includes(t));
+      let rondes = 0;
+      pk.querySelectorAll('.bord-rij[data-ronde]').forEach((rij) => {
+        const past = pakketPast || termen.every((t) => (rij.querySelector('.bord-label')?.textContent.toLowerCase() ?? '').includes(t));
+        rij.hidden = !past;
+        if (past) rondes += 1;
+      });
+      pk.hidden = !rondes;
+      if (rondes) zichtbaar += 1;
+    });
+    const m = el.querySelector('#bord-zoekmelding');
+    if (m) { m.hidden = !termen.length; m.textContent = termen.length ? `${zichtbaar} werkpakket${zichtbaar === 1 ? '' : 'ten'} gevonden voor "${zoekTekst}"` : ''; }
+  };
 
   let eerste = true;
   let houdScroll = null; // horizontale positie bewaren zolang je op dezelfde schaal en periode werkt
@@ -7954,7 +7998,7 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
       const letter = r.afroep ? 'A' : 'R';
       const titel = `${letter}${r.nummer} ${r.naam} · ${r.afroep ? `afroep (${r.afroep.reden}) · ` : ''}${periodeTekst(v) || 'nog niet ingepland'} · ${vg.gedaan.size + vg.overgeslagen.size}/${vg.totaal}`;
       return `<div class="bord-rij" data-pakket="${esc(p.id)}" data-ronde="${esc(r.id)}">
-        <div class="bord-label"><div class="bord-labelregel"><a href="${pakketPagina(v, false)}"><span class="bord-soort" style="background:${kleur}"></span>${letter}${r.nummer} ${esc(r.naam)}</a>${r.afroep?.spoed ? ' <span class="afroeplabel spoedlabel">Spoed</span>' : ''}
+        <div class="bord-label"><div class="bord-labelregel"><a href="${pakketPagina(v, false)}"><span class="bord-soort" style="background:${kleur}"></span>${letter}${r.nummer} ${esc(r.naam)}</a>${r.opmerking ? ` <span class="bord-opm" title="${esc(r.opmerking)}">💬</span>` : ''}${r.afroep?.spoed ? ' <span class="afroeplabel spoedlabel">Spoed</span>' : ''}
             <span class="bord-pct ${r.status === 'afgerond' ? 'klaar' : ''}" title="${vg.gedaan.size + vg.overgeslagen.size} van ${vg.totaal} objecten">${r.status === 'afgerond' ? I.vink + ' ' : ''}${vg.percentage}%</span></div>
           <small>${r.soort === 'inspectie' ? esc(r.inspectiesoort || 'Inspectie') : esc(r.werksoort || 'Werkzaamheid')} · ${PL.duurTekst(PL.duurVan(r))}</small></div>
         <div class="bord-spoor ${beheer ? 'bewerkbaar' : ''}" style="width:${breedte}px">
@@ -7974,11 +8018,13 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
         </div>
         <div class="segment bord-zoom">${Object.entries(PL.ZOOM).map(([kz, z]) => `<label><input type="radio" name="planzoom" value="${kz}" ${kz === zoom ? 'checked' : ''}><span>${z.label}</span></label>`).join('')}</div>
         ${periodeKiezer(g.pakketten.flatMap((p) => rondesVan(p)))}
+        <input type="search" id="bord-zoek" placeholder="Zoek werkpakket of ronde…" value="${esc(zoekTekst)}" aria-label="Zoek op naam van werkpakket of ronde">
         <select id="bord-soort" aria-label="Soort">${optie('', 'Werk en inspecties', filterSoort)}${optie('werk', 'Werkzaamheden', filterSoort)}${optie('inspectie', 'Inspecties', filterSoort)}</select>
         <span class="bord-legenda"><i style="background:${BORD_KLEUR.werk}"></i>Werkzaamheid <i style="background:${BORD_KLEUR.inspectie}"></i>Inspectie
           <i class="gepland"></i>Gepland <i class="afgerond">${I.vink}</i>Afgerond <i class="telaat"></i>Te laat</span>
       </div>
       ${buiten ? `<p class="bord-melding zacht">${I.kalender} ${buiten} ronde${buiten === 1 ? '' : 's'} buiten ${esc(pb.jaar ? String(pb.jaar) : pb.eigen ? `${datumNL(pb.van)} t/m ${datumNL(pb.tot)}` : pb.label.toLowerCase())} verborgen. Kies hierboven een andere periode of "Alle jaren" om ze te zien.</p>` : ''}
+      <p class="bord-melding zacht" id="bord-zoekmelding" hidden></p>
       ${nietGepland ? `<p class="bord-melding">${I.punaise} ${nietGepland} ronde${nietGepland === 1 ? '' : 's'} nog niet ingepland${beheer ? ' – klik in de rij op de startdatum (de duur uit het werkpakket wordt gebruikt), of sleep over de gewenste periode.' : '.'}</p>` : ''}
       ${pakketten.length ? `<div class="bord" style="--bord-breedte:${breedte}px">
         <div class="bord-kop">
@@ -7990,7 +8036,9 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
         </div>
         <div class="bord-lijf">
           <div class="bord-raster" style="left:var(--label-breedte);width:${breedte}px">
+            ${k.maanden.map((m, n) => `<s class="maandvlak${n % 2 ? ' even' : ''}" style="left:${x(m.van)}px;width:${(m.tot - m.van + 1) * b.px}px"></s>`).join('')}
             ${k.weken.map((w) => `<i style="left:${x(w.van)}px"></i>`).join('')}
+            ${k.maanden.slice(1).map((m) => `<b class="maandlijn" style="left:${x(m.van)}px"></b>`).join('')}
             ${vandaagNr >= b.begin && vandaagNr <= b.eind ? `<b class="bord-vandaag" style="left:${x(vandaagNr) + b.px / 2}px" title="Vandaag"></b>` : ''}
           </div>
           ${pakketten.map(({ p, rondes }) => {
@@ -8021,6 +8069,8 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
     });
     el.querySelectorAll('input[name=planzoom]').forEach((i) => { i.onchange = () => { instelling.schrijf('planZoom', i.value); planningsbord(el, { focusPakket }); }; });
     el.querySelector('#bord-soort').onchange = (e) => { filterSoort = e.target.value; teken(); };
+    el.querySelector('#bord-zoek').oninput = (e) => { zoekTekst = e.target.value; pasZoekToe(); };
+    pasZoekToe();
     koppelPeriodeKiezer(el.querySelector('.bord-balkje'), () => {
       // Valt vandaag buiten de gekozen periode, spring dan naar het begin ervan.
       const nb = rondePeriode();
@@ -8118,20 +8168,32 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
     const p = await db.haal('werkpakketten', rij.dataset.pakket);
     const r = rondesVan(p).find((x) => x.id === rij.dataset.ronde);
     const v = rondeView(p, r);
+    const vg = (await pakketGegevens()).rondeVoortgang.get(`${p.id}:${r.id}`);
+    const klaar = vg ? vg.gedaan.size + vg.overgeslagen.size : 0;
     const d = document.createElement('dialog');
     d.className = 'dialoog';
     d.innerHTML = `<form method="dialog">
       <h2>R${r.nummer} ${esc(r.naam)}</h2>
       <p><small>${esc(p.code ? `${p.code} · ` : '')}${esc(p.naam)} · ${pakketSoortTekst(v)}</small></p>
+      ${vg ? `<div class="rondestand">
+        <div class="tegels klein">
+          <span class="tegel ${vg.percentage >= 100 ? 'goed' : ''}"><strong>${vg.percentage}%</strong><span>uitgevoerd</span></span>
+          <span class="tegel"><strong>${vg.gedaan.size}/${vg.totaal}</strong><span>objecten gedaan</span></span>
+          ${vg.overgeslagen.size ? `<span class="tegel let"><strong>${vg.overgeslagen.size}</strong><span>overgeslagen</span></span>` : ''}
+          <span class="tegel"><strong>${vg.totaal - klaar}</strong><span>nog open</span></span></div>
+        ${voortgangBalk(vg)}</div>` : ''}
       <div class="velden">
         <div class="veld"><label for="d-start">Start</label><input type="date" id="d-start" value="${esc(r.start ?? '')}" ${bewerkbaar ? '' : 'disabled'}></div>
         <div class="veld"><label for="d-eind">Gereed uiterlijk</label><input type="date" id="d-eind" value="${esc(r.eind ?? '')}" ${bewerkbaar ? '' : 'disabled'}></div>
         <div class="veld breed"><label>Status</label>${bewerkbaar ? segment('d-status', r.status, Object.entries(PAKKETSTATUS)) : pakketStatusLabel(r.status)}</div>
+        <div class="veld breed"><label for="d-opm">Opmerkingen over deze ronde</label>
+          <textarea id="d-opm" maxlength="1000" rows="3" placeholder="bijv. vertraging door weer, extra ploeg ingezet, afspraak met opdrachtgever">${esc(r.opmerking ?? '')}</textarea>
+          ${r.opmerkingOp ? `<small class="zacht">Laatst aangepast ${datumNL(r.opmerkingOp.slice(0, 10))}${r.opmerkingDoor ? ` door ${esc(r.opmerkingDoor)}` : ''}</small>` : ''}</div>
       </div>
       <div class="knoppen" style="margin-top:1rem;justify-content:space-between">
         <a class="knop" href="${pakketPagina(v, false)}">Werkpakket openen</a>
         <span class="knoppen">${bewerkbaar && r.start ? '<button class="knop gevaar" value="wis">Uit planning halen</button>' : ''}
-          <button class="knop" value="nee">${bewerkbaar ? 'Annuleren' : 'Sluiten'}</button>${bewerkbaar ? '<button class="knop primair" value="ja">Opslaan</button>' : ''}</span>
+          <button class="knop" value="nee">${bewerkbaar ? 'Annuleren' : 'Sluiten'}</button>${bewerkbaar ? '<button class="knop primair" value="ja">Opslaan</button>' : '<button class="knop primair" value="opm">Opmerking opslaan</button>'}</span>
       </div></form>`;
     document.body.append(d);
     d.querySelector('a').onclick = () => d.close('nee');
@@ -8140,7 +8202,13 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
     const start = d.querySelector('#d-start').value;
     const eind = d.querySelector('#d-eind').value;
     const status = d.querySelector('input[name=d-status]:checked')?.value ?? r.status;
+    const opmerking = d.querySelector('#d-opm').value.trim();
+    const opmWijziging = opmerking !== (r.opmerking ?? '') ? { opmerking, opmerkingOp: new Date().toISOString(), opmerkingDoor: ikEmail() || instelling.lees('inspecteur') || '' } : {};
     d.remove();
+    if (keuze === 'opm') {
+      if (Object.keys(opmWijziging).length) { await bewaarRonde(p.id, r.id, opmWijziging); melding('Opmerking opgeslagen'); teken(); }
+      return;
+    }
     if (keuze === 'wis') {
       if (!confirm(`Weet je zeker dat je R${r.nummer} ${r.naam} uit de planning wilt halen?\n\nDe ronde zelf en alle registraties blijven bestaan; alleen de periode vervalt.`)) return;
       await bewaarRonde(p.id, r.id, { start: '', eind: '' });
@@ -8150,7 +8218,7 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
     }
     if (keuze !== 'ja') return;
     if (start && eind && eind < start) { melding('De einddatum ligt vóór de start.', 'fout'); return; }
-    await bewaarRonde(p.id, r.id, { start, eind, status, ...(start && eind ? { duur: PL.dagNr(eind) - PL.dagNr(start) + 1 } : {}) });
+    await bewaarRonde(p.id, r.id, { start, eind, status, ...opmWijziging, ...(start && eind ? { duur: PL.dagNr(eind) - PL.dagNr(start) + 1 } : {}) });
     teken();
   };
 
@@ -8168,20 +8236,26 @@ async function takenPagina(_, q = new URLSearchParams()) {
       <div class="knoppen">${magBeheren() ? '<a class="knop" href="#/werkpakketten/nieuw">+ Werkpakket</a>' : ''}<a class="knop" href="#/taken/nieuw">+ Taak plannen</a></div>
     </div>
     <section class="kaart bordkaart"><div id="planningsbord"><p class="leeg">Planning laden…</p></div></section>
-    <h2>Taken</h2>
+    <details class="takenblok" id="takenblok">
+    <summary><h2>Taken <small id="taken-aantal"></small></h2></summary>
     <div class="filters">
+      <input type="search" id="taak-zoek" placeholder="Zoek op naam van de taak…" aria-label="Zoek taak">
       <select id="bron" aria-label="Bron"><option value="">Alle bronnen</option>${Object.entries(BRON_TEKST).map(([k, v]) => optie(k, v)).join('')}</select>
       <select id="soort" aria-label="Soort"><option value="">Inspecties en werk</option>${optie('inspectie', 'Inspecties')}${optie('werk', 'Werkzaamheden')}</select>
       <select id="wie" aria-label="Toegewezen"><option value="">Iedereen</option>${optie('-', 'Niet toegewezen')}${leden.map((l) => optie(l, l)).join('')}</select>
     </div>
     <div class="kaart" style="padding:0"><div class="tabelhouder"><table>
       <thead><tr><th>Urgentie</th><th>Taak</th><th>Object</th><th class="verberg-mobiel">Deadline</th><th class="verberg-mobiel">Toegewezen</th><th class="verberg-mobiel">Bron</th><th></th></tr></thead>
-      <tbody id="rijen"></tbody></table></div></div>`;
+      <tbody id="rijen"></tbody></table></div></div>
+    </details>`;
   planningsbord(app.querySelector('#planningsbord'), { focusPakket: q.get('pakket') ?? '' });
-  const [bron, soort, wie] = ['#bron', '#soort', '#wie'].map((s) => app.querySelector(s));
+  const [bron, soort, wie, zoek] = ['#bron', '#soort', '#wie', '#taak-zoek'].map((s) => app.querySelector(s));
   const toon = () => {
+    const termen = zoekTermen(zoek.value);
     const rijen = gesorteerd.filter((t) => (!bron.value || t.bron === bron.value) && (!soort.value || t.soort === soort.value)
-      && (!wie.value || (wie.value === '-' ? !t.toegewezenAan : t.toegewezenAan === wie.value)));
+      && (!wie.value || (wie.value === '-' ? !t.toegewezenAan : t.toegewezenAan === wie.value))
+      && termen.every((x) => `${t.titel ?? ''} ${t.omschrijving ?? ''} ${t.object?.code ?? ''} ${t.object?.naam ?? ''}`.toLowerCase().includes(x)));
+    app.querySelector('#taken-aantal').textContent = rijen.length === gesorteerd.length ? `(${gesorteerd.length})` : `(${rijen.length} van ${gesorteerd.length})`;
     app.querySelector('#rijen').innerHTML = rijen.length ? rijen.map((t) => `
       <tr>
         <td>${rangLabel(t.rang)}</td>
@@ -8197,7 +8271,7 @@ async function takenPagina(_, q = new URLSearchParams()) {
         </div></td>
       </tr>`).join('') : '<tr><td colspan="7" class="leeg">Geen openstaande taken.</td></tr>';
   };
-  [bron, soort, wie].forEach((f) => f.addEventListener('input', toon));
+  [bron, soort, wie, zoek].forEach((f) => f.addEventListener('input', toon));
   toon();
 }
 
@@ -9654,6 +9728,7 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
       werksoort: r.soort === 'werk' ? r.werksoort : '', inspectiesoort: r.soort === 'inspectie' ? r.inspectiesoort : '',
       start: r.start, eind: r.eind, status: r.status, objectIds: r.objectIds?.length ? r.objectIds : null,
       duur: PL.duurVan(r), duurEenheid: r.duurEenheid === 'dagen' ? 'dagen' : 'weken',
+      ...(r.opmerking ? { opmerking: r.opmerking, opmerkingOp: r.opmerkingOp ?? '', opmerkingDoor: r.opmerkingDoor ?? '' } : {}),
     }));
     const opslaan = {
       ...(id ? bron : {}), id: id ?? nieuwId(), projectId: (id ? bron.projectId : null) ?? projectId(), code, naam: d.naam,
@@ -9986,6 +10061,7 @@ async function exporteerUitkomsten({ voorPakket = null } = {}) {
       <label class="vink"><input type="checkbox" id="u-insp" checked><span>Inspecties</span></label>
       <label class="vink"><input type="checkbox" id="u-over" checked><span>Overgeslagen objecten</span></label>
       <label class="vink"><input type="checkbox" id="u-goed"><span>Alleen goedgekeurde registraties</span></label>
+      <label class="vink"><input type="checkbox" id="u-fotos"><span><strong>Foto's opnemen</strong><small>Extra blad met de foto's per object en registratie; het bestand wordt groter.</small></span></label>
     </div>
     <div class="formvoet"><button class="knop" value="nee" type="button" data-weg>Annuleren</button><button class="knop primair" value="ja" type="submit">${I.excel} Excel maken</button></div>
   </form>`;
@@ -10000,7 +10076,7 @@ async function exporteerUitkomsten({ voorPakket = null } = {}) {
       const ids = [...d.querySelectorAll('input[name=pakket]:checked')].map((c) => c.value);
       if (!ids.length) { melding('Kies minstens één werkpakket.', 'fout'); return; }
       ok({ ids: new Set(ids), van: d.querySelector('#u-van').value, tot: d.querySelector('#u-tot').value, werk: d.querySelector('#u-werk').checked,
-        insp: d.querySelector('#u-insp').checked, over: d.querySelector('#u-over').checked, goed: d.querySelector('#u-goed').checked });
+        insp: d.querySelector('#u-insp').checked, over: d.querySelector('#u-over').checked, goed: d.querySelector('#u-goed').checked, fotos: d.querySelector('#u-fotos').checked });
     };
   });
   d.close();
@@ -10043,7 +10119,11 @@ async function exporteerUitkomsten({ voorPakket = null } = {}) {
     }));
     const filter = [`${keuze.ids.size} werkpakket${keuze.ids.size === 1 ? '' : 'ten'}`, keuze.van || keuze.tot ? `periode ${keuze.van ? datumNL(keuze.van) : '…'} – ${keuze.tot ? datumNL(keuze.tot) : '…'}` : '',
       keuze.goed ? 'alleen goedgekeurd' : ''].filter(Boolean).join(' · ');
-    const wb = UX.maakWerkboek(ExcelJS, r, { titel: 'Uitkomsten werkpakketten', project: project?.naam ?? '', filter, rondes, metKosten: toonKosten() });
+    let fotoData = null;
+    if (keuze.fotos && r.fotos.length) {
+      fotoData = new Map((await laadFotos([...new Set(r.fotos.map((f) => f.fotoId))])).map((f) => [f.id, f.data]));
+    }
+    const wb = UX.maakWerkboek(ExcelJS, r, { titel: 'Uitkomsten werkpakketten', project: project?.naam ?? '', filter: `${filter}${fotoData ? ` · met ${fotoData.size} foto's` : ''}`, rondes, metKosten: toonKosten(), fotoData });
     const naam = keuze.ids.size === 1 ? `uitkomsten-${(perId.get([...keuze.ids][0]).code || perId.get([...keuze.ids][0]).naam)}` : 'uitkomsten-werkpakketten';
     download(`${naam.replace(/[^\w-]+/g, '_')}-${vandaag()}.xlsx`, await wb.xlsx.writeBuffer(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     melding(`Excel gemaakt: ${r.rijen.length} registraties, ${r.bevindingen.length} bevindingen, ${r.vervolg.length} vervolgacties`);
