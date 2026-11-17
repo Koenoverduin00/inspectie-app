@@ -2747,7 +2747,7 @@ async function objectenLijst() {
     const items = objKleurOp === 'type' ? [...typeKleur.entries()].slice(0, 12)
       : objKleurOp === 'oordeel' ? [...[1, 2, 3, 4, 5, 6].map((c) => [`${c} · ${CONDITIES[c].label}`, CONDITIES[c].kleur]), ['Niet geïnspecteerd', '#1f6feb']]
         : [...lagen.map((l) => [l.naam, laagKleur.get(l.id)]), ...(objecten.some((o) => !o.laagId) ? [['Losse objecten', '#0b4f6c']] : [])];
-    el.innerHTML = items.map(([l, k]) => `<span style="--k:${esc(k)}">${esc(l)}</span>`).join('');
+    el.innerHTML = items.map(([l, k]) => `<span><i style="background:${esc(k)}"></i>${esc(l)}</span>`).join('');
   };
   const gekozen = new Set();
   app.innerHTML = `
@@ -7378,6 +7378,11 @@ const ACHTERGRONDEN = {
     url: 'https://service.pdok.nl/hwh/luchtfotorgb/wmts/v1_0/Actueel_orthoHR/EPSG:3857/{z}/{x}/{y}.jpeg',
     opties: { maxZoom: 22, maxNativeZoom: 21, attribution: 'Luchtfoto &copy; <a href="https://www.pdok.nl" target="_blank" rel="noopener">PDOK</a> / Beeldmateriaal Nederland' },
   },
+  grijs: {
+    naam: 'Grijze kaart (PDOK)',
+    url: 'https://service.pdok.nl/brt/achtergrondkaart/wmts/v2_0/grijs/EPSG:3857/{z}/{x}/{y}.png',
+    opties: { maxZoom: 22, maxNativeZoom: 19, attribution: 'Kaart &copy; <a href="https://www.pdok.nl" target="_blank" rel="noopener">PDOK</a> / Kadaster BRT' },
+  },
   kaart: {
     naam: 'Kaart (OpenStreetMap)',
     url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -7420,6 +7425,34 @@ function voegAchtergrondToe(L, map) {
     },
   });
   new Helderheid().addTo(map);
+
+  // Knop: zoom naar alle objecten op deze kaart (wat op dat moment zichtbaar is). Objecten (met .object) gaan voor;
+  // zonder objecten telt elke getekende laag (bijv. een gekozen punt), maar niet de eigen locatie.
+  const Passend = L.Control.extend({
+    options: { position: 'topleft' },
+    onAdd() {
+      const div = L.DomUtil.create('div', 'leaflet-bar passendknop');
+      div.innerHTML = `<a href="#" role="button" title="Zoom naar alle objecten" aria-label="Zoom naar alle objecten">${I.passend}</a>`;
+      L.DomEvent.disableClickPropagation(div);
+      L.DomEvent.on(div.querySelector('a'), 'click', (e) => {
+        L.DomEvent.preventDefault(e);
+        const objecten = L.latLngBounds([]);
+        const overig = L.latLngBounds([]);
+        map.eachLayer((l) => {
+          if (l instanceof L.TileLayer || l.options?.interactive === false) return;
+          const b = l.getBounds ? l.getBounds() : l.getLatLng ? L.latLngBounds([l.getLatLng()]) : null;
+          if (!b?.isValid?.()) return;
+          (l.object ? objecten : overig).extend(b);
+        });
+        const doel = objecten.isValid() ? objecten : overig;
+        if (!doel.isValid()) return;
+        if (doel.getNorthEast().equals(doel.getSouthWest())) map.setView(doel.getCenter(), Math.max(map.getZoom(), 18), { animate: false });
+        else map.fitBounds(doel, { padding: [24, 24], maxZoom: 19, animate: false });
+      });
+      return div;
+    },
+  });
+  new Passend().addTo(map);
 }
 
 let leafletBelofte;

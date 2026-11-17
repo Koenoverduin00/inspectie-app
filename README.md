@@ -753,7 +753,7 @@ De weergave wordt automatisch gekozen op schermbreedte. Onder *Instellingen → 
 - **Dashboard** – stuurdashboard met schakelaar *Opdrachtnemer | Opdrachtgever* (wordt onthouden)
   (verlopen / binnenkort / op schema, op basis van laatste afgeronde inspectie + interval).
 - **Maatregelen** – alle onderhoudsadviezen gesorteerd op urgentie, totale raming, afvinken als uitgevoerd.
-- **Kaart** – objecten op de PDOK-luchtfoto (standaard 50% sterkte, vervaagd naar wit; instelbaar met de 🛰️-schuif; wisselen naar OpenStreetMap via de lagenknop). *Kaart & GIS* toont puur het areaal: kleur op laag, objecttype of een GIS-kenmerk, met aantallen, oppervlakte en lengte per laag. De achtergrond vereist internet.
+- **Kaart** – objecten op de PDOK-luchtfoto (standaard 50% sterkte, vervaagd naar wit; instelbaar met de 🛰️-schuif; wisselen via de lagenknop naar de **grijze kaart** van PDOK (BRT-achtergrondkaart grijs, waarop gekleurde objecten goed opvallen) of OpenStreetMap; de keuze wordt onthouden). Op **elke kaart** staat onder de zoomknoppen een knop **Zoom naar alle objecten** (vierkantje met stip): de kaart past zich aan zodat alle objecten die op dat moment op de kaart staan in beeld zijn. *Kaart & GIS* toont puur het areaal: kleur op laag, objecttype of een GIS-kenmerk, met aantallen, oppervlakte en lengte per laag. De achtergrond vereist internet.
 - **Inspectierapport** – printvriendelijk rapport, op te slaan als PDF via de printfunctie van de browser.
 - **Export / back-up** – CSV-export van objecten en maatregelen (Excel, puntkomma-gescheiden), JSON-back-up en -import.
 - **Voorbeelddata** om de app direct te verkennen.

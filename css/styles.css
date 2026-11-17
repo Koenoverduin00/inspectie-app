@@ -1623,3 +1623,5 @@ td.actiecel .knoppen { justify-content: flex-end; flex-wrap: wrap; }
   .rondedialoog .rd-kaartvlak { height: 260px; }
   .rondedialoog .rd-kaart { position: static; margin-top: .75rem; }
 }
+.passendknop a { display: flex !important; align-items: center; justify-content: center; width: 30px; height: 30px; color: #333; }
+.passendknop .ico { width: 18px; height: 18px; }
