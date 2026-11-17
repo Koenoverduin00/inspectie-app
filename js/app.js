@@ -2244,16 +2244,16 @@ async function dashboard() {
     };
     let regs = regPerObject();
     const kleurNr = new Map(g.pakketten.filter((p) => p.status !== 'afgerond' || st.pakketten.has(p.id)).map((p, n) => [p.id, PAKKET_PALET[n % PAKKET_PALET.length]]));
-    // Per pakket de rondes die meetellen: de actieve, anders de laatste.
-    const rondeVgs = (p) => {
-      const rs = rondesVan(p);
-      const actief = rs.filter((r) => r.status === 'actief');
-      return (actief.length ? actief : rs.slice(-1)).map((r) => ({ vg: g.rondeVoortgang.get(`${p.id}:${r.id}`), r })).filter((x) => x.vg);
-    };
+    // Per pakket alleen de actuele ronde (zoals op de mobiele kaart): in de gekozen periode de ronde die het dichtst bij
+    // vandaag ligt; afgeronde rondes tellen mee, pakketten op afroep houden hun lopende afroepen.
+    const actueel = new Map();
+    for (const x of kaartRondes(g)) actueel.set(x.pakket.id, [...(actueel.get(x.pakket.id) ?? []), x]);
+    const rondeVgs = (p) => (actueel.get(p.id) ?? []).map((x) => ({ vg: x.voortgang, r: rondesVan(p).find((r) => r.id === x.pakket.rondeId), v: x.pakket }))
+      .filter((x) => x.vg && x.r);
     const inPakket = (o, p) => (p.objecten ?? []).includes(o.id);
     const kleurWijze = () => (DASH_KAART_KLEUR[st.kleur] ? st.kleur : (st.pakketten.size ? 'voortgang' : 'oordeel'));
     const gekozenP = () => g.pakketten.filter((p) => st.pakketten.has(p.id));
-    const telPakketten = () => (st.pakketten.size ? gekozenP() : g.pakketten.filter((p) => p.status === 'actief'));
+    const telPakketten = () => (st.pakketten.size ? gekozenP() : g.pakketten.filter((p) => actueel.has(p.id)));
     const statusVan = (o) => DB.objectStatusInPakketten(o.id, telPakketten().flatMap((p) => rondeVgs(p).map((x) => x.vg)));
     const kleurVan = (o) => {
       if (st.reg) return regs.get(o.id)?.[0]?.kleur ?? '#c3cad1';
@@ -2290,8 +2290,10 @@ async function dashboard() {
     const popup = (o) => {
       const s = status.get(o.id);
       const regels = (st.pakketten.size ? gekozenP() : g.pakketten.filter((p) => p.status !== 'afgerond')).filter((p) => inPakket(o, p)).map((p) => {
-        const so = DB.objectStatusInPakketten(o.id, rondeVgs(p).map((x) => x.vg));
-        return `<li><i class="kpstip" style="background:${PAKKET_KLEUR[so] ?? '#8a96a3'}"></i>${esc(p.naam)}: ${so === 'open' ? 'te doen' : so ?? '–'}</li>`;
+        const rv = rondeVgs(p);
+        const so = DB.objectStatusInPakketten(o.id, rv.map((x) => x.vg));
+        const ronde = rv.length === 1 && rondesVan(p).length > 1 ? ` <small>(${esc(rv[0].r.naam)}${periodeTekst(rv[0].v) ? `, ${periodeTekst(rv[0].v)}` : ''})</small>` : '';
+        return `<li><i class="kpstip" style="background:${PAKKET_KLEUR[so] ?? '#8a96a3'}"></i>${esc(p.naam)}${ronde}: ${so === 'open' ? 'te doen' : so ?? (rv.length ? '–' : 'geen ronde in deze periode')}</li>`;
       });
       const rl = st.reg ? (regs.get(o.id) ?? []) : [];
       const regHtml = rl.length ? `<ul class="kppopup">${rl.slice(0, 4).map((x) => `<li><i class="kpstip" style="background:${esc(x.kleur)}"></i>
@@ -5022,9 +5024,9 @@ const inKaartBereik = (v, ik, bereik = kaartBereik()) => (bereik === 'alle' ? tr
  * Rondes voor de kaart en de locatiepagina: per werkpakket alleen de actuele ronde (in de gekozen periode, het dichtst bij vandaag).
  * Afgeronde rondes tellen mee, zodat werk dat dit jaar al gedaan is groen blijft; pakketten op afroep houden al hun lopende afroepen.
  */
-function kaartRondes(g) {
+function kaartRondes(g, pakketten = g.pakketten) {
   const uit = [];
-  for (const p of g.pakketten) {
+  for (const p of pakketten) {
     for (const r of rondesVan(p).filter((x) => x.status === 'actief' || (x.status === 'afgerond' && !isAfroep(p)))) {
       const sleutel = `${p.id}:${r.id}`;
       uit.push({ pakket: g.views.get(sleutel), open: g.rondeVoortgang.get(sleutel).open, voortgang: g.rondeVoortgang.get(sleutel), afroep: isAfroep(p) });

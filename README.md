@@ -446,6 +446,10 @@ maatregelen, Vervolgacties, Te beoordelen (alleen voor beoordelaars), Staat van 
 gebaseerd: **voortgang** (te doen / gedaan / overgeslagen in de actieve ronde), **werkpakket** (elk pakket een eigen kleur) of **laatste oordeel**.
 De legenda en het aantal objecten staan onder de kaart; een klik op een object toont per werkpakket de status. Je keuze wordt in je
 dashboardindeling bewaard.
+Net als op de mobiele kaart telt per werkpakket alleen de **actuele ronde**: van de rondes in de periode die bovenaan het
+dashboard is gekozen (standaard dit jaar) de ronde die het dichtst bij vandaag ligt; afgeronde rondes tellen mee. In de popup
+staat welke ronde dat is (bijv. *Jaarlijkse schouw (Schouw 2026, 1 apr – 30 apr 2026): gedaan*). Kies *Volgend jaar* om de
+volgende ronde te zien.
 
 Met **Registraties** bekijk je de kaart per soort registratie: werkzaamheden (alle of per werksoort), inspecties (alle of per
 inspectiesoort), open maatregelen, flora- en fauna-vrijgaven of overgeslagen objecten, over een **periode** (7/30/90 dagen, een jaar of alles).
