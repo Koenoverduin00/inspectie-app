@@ -271,6 +271,20 @@ Bovenaan schakel je tussen twee weergaven; de keuze wordt per apparaat onthouden
 periode (streepje in de balk). Meer dan 10 procentpunt achter = *achter*, meer dan 25 = *flinke achterstand*, na de einddatum
 niet klaar = *te laat*. Ook staat erbij hoeveel objecten per dag nog nodig zijn. Rondes die binnen 14 dagen starten staan eronder.
 
+## Kaart op de telefoon: filteren
+
+Bovenaan de kaart staat één compacte balk: **Kaart** met "x te doen · y klaar", een knop **Filter** (met het aantal actieve filters)
+en **Mijn locatie**. Daaronder:
+
+- **filterchips** die laten zien wat er nu getoond wordt: *Aan mij / Alle actuele*, de periode en de werkpakketten. Tik op een chip
+  om dat deel van het filter te openen; met × bij de werkpakketten toon je weer alles;
+- een vaste schakelaar **Alles | Alleen te doen** met aantallen, het meest gebruikte filter.
+
+**Filter** opent een onderblad met alles op één plek: werkpakketten van (aan mij / alle actuele), periode, tonen (alles / alleen te
+doen), een lijst met werkpakketten om aan te vinken (code + naam, "x te doen · y objecten", met zoekveld bij meer dan vijf) en
+bouwdeelnamen op de kaart. De knop **Toon N objecten** telt live mee; **Wis filters** zet alles terug. Annuleren verandert niets.
+De keuzes worden per apparaat onthouden. De legenda met de knop *Opmaak* staat onder de kaart.
+
 ## Werkpakketcode overal vóór de naam
 
 Een werkpakket (onderhoudstaak) staat in alle schermen als **code + naam**, bijv. **WP-DEMO-001** Groenonderhoud Park Zuid:

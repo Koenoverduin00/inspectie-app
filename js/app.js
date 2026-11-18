@@ -5174,37 +5174,55 @@ async function mobielKaart() {
   const g = await pakketGegevens();
   const dv = await veldDecompositie();
   const ik = sync.sessie()?.gebruiker?.email ?? '';
-  const bereik = kaartBereik();
-  const alleActueel = kaartRondes(g);
-  const mijnRondes = alleActueel.filter(({ pakket }) => pakketVoorMij(pakket, ik));
-  const rondes = bereik === 'alle' ? alleActueel : mijnRondes;
-  const telPakketten = (lijst) => new Set(lijst.map((x) => x.pakket.id)).size;
-  // Per object: in welke rondes het zit en wat de status daar is.
-  const perObject = new Map();
-  for (const { pakket: v, voortgang: vg } of rondes) {
-    for (const oid of v.objecten) {
-      const o = g.objectMap.get(oid);
-      if (!o) continue;
-      const st = vg.gedaan.has(oid) ? 'gedaan' : vg.overgeslagen.has(oid) ? 'overgeslagen' : 'open';
-      if (!perObject.has(oid)) perObject.set(oid, { o, rondes: [] });
-      perObject.get(oid).rondes.push({ v, st });
-    }
-  }
-  const statusVan = (oid) => {
-    const r = perObject.get(oid)?.rondes ?? [];
-    return r.some((x) => x.st === 'open') ? 'open' : r.some((x) => x.st === 'gedaan') ? 'gedaan' : 'overgeslagen';
+  const periodeLabel = (k) => {
+    const b = PL.periodeBereik(k, vandaag());
+    const nu = vandaag().slice(0, 4);
+    if (!b) return 'Alle jaren';
+    if (b.eigen) return `${datumNL(b.van)} – ${datumNL(b.tot)}`;
+    return b.jaar === Number(nu) ? `Dit jaar (${nu})` : b.label;
   };
-  const lijst = [...perObject.values()];
-  const open = lijst.filter(({ o }) => statusVan(o.id) === 'open').length;
-  // De kaart toont werkpakketten, niet de afzonderlijke rondes: die zie je pas bij "Afmelden op deze locatie".
-  const pakketten = new Map();
-  for (const { pakket: v } of rondes) {
-    if (!pakketten.has(v.id)) pakketten.set(v.id, { id: v.id, naam: v.pakketNaam ?? v.naam, code: v.code ?? '', objecten: new Set(), rondes: [] });
-    v.objecten.forEach((oid) => pakketten.get(v.id).objecten.add(oid));
-    pakketten.get(v.id).rondes.push(v);
-  }
-  const naamTel = new Map();
-  for (const pk of pakketten.values()) naamTel.set(pk.naam, (naamTel.get(pk.naam) ?? 0) + 1);
+  /** Alles wat de kaart toont voor een keuze van bereik en periode (ook gebruikt voor de telling in het filterscherm). */
+  const model = (bereikKeuze, periodeKeuze) => {
+    const alleActueel = kaartRondes(g, g.pakketten, PL.periodeBereik(periodeKeuze, vandaag()));
+    const mijnRondes = alleActueel.filter(({ pakket }) => pakketVoorMij(pakket, ik));
+    const rondes = bereikKeuze === 'alle' ? alleActueel : mijnRondes;
+    const perObject = new Map();
+    const pakketten = new Map();
+    for (const { pakket: v, voortgang: vg } of rondes) {
+      if (!pakketten.has(v.id)) pakketten.set(v.id, { id: v.id, naam: v.pakketNaam ?? v.naam, code: v.code ?? '', objecten: new Set(), openIds: new Set(), rondes: [] });
+      const pk = pakketten.get(v.id);
+      pk.rondes.push(v);
+      for (const oid of v.objecten) {
+        const o = g.objectMap.get(oid);
+        if (!o) continue;
+        const st = vg.gedaan.has(oid) ? 'gedaan' : vg.overgeslagen.has(oid) ? 'overgeslagen' : 'open';
+        if (!perObject.has(oid)) perObject.set(oid, { o, rondes: [] });
+        perObject.get(oid).rondes.push({ v, st });
+        pk.objecten.add(oid);
+        if (st === 'open') pk.openIds.add(oid);
+      }
+    }
+    const statusVan = (oid) => {
+      const r = perObject.get(oid)?.rondes ?? [];
+      return r.some((x) => x.st === 'open') ? 'open' : r.some((x) => x.st === 'gedaan') ? 'gedaan' : 'overgeslagen';
+    };
+    const lijst = [...perObject.values()];
+    return { alleActueel, mijnRondes, rondes, perObject, pakketten, statusVan, lijst, open: lijst.filter(({ o }) => statusVan(o.id) === 'open').length };
+  };
+  const telPakketten = (l) => new Set(l.map((x) => x.pakket.id)).size;
+  const leesPk = () => { try { return JSON.parse(instelling.lees('mKaartPakketten') || '[]'); } catch { return []; } };
+  // Filterstand (onthouden per apparaat).
+  const st = {
+    bereik: kaartBereik(),
+    periode: instelling.lees('rondePeriode') || PL.PERIODE_STANDAARD,
+    teDoen: instelling.lees('mKaartTeDoen', '') === '1',
+    labels: instelling.lees('mKaartLabels', '1') === '1',
+  };
+  const m = model(st.bereik, st.periode);
+  const { alleActueel, mijnRondes, rondes, perObject, pakketten, statusVan, lijst, open } = m;
+  st.pakketten = new Set(leesPk().filter((id) => pakketten.has(id)));
+  const gekozenPk = st.pakketten;
+  const zichtbaar = (mm, pk, teDoen) => mm.lijst.filter(({ o }) => (!pk.size || [...pk].some((id) => mm.pakketten.get(id)?.objecten.has(o.id))) && (!teDoen || mm.statusVan(o.id) === 'open'));
   // De actuele ronde van een pakket (bij een ronde per jaar: die van nu), als korte tekst.
   const actueleRondeTekst = (pk) => {
     if (pk.rondes.length !== 1) return '';
@@ -5212,42 +5230,141 @@ async function mobielKaart() {
     const naam = v.rondeNaam && v.rondeNaam !== pk.naam ? v.rondeNaam : (rondesVan(g.pakketten.find((x) => x.id === pk.id) ?? {}).length > 1 ? `R${v.nummer ?? 1}` : '');
     return [naam, periodeTekst(v)].filter(Boolean).map(esc).join(', ');
   };
-  const pakketLabel = (pk) => wpNaam(pk);
   /** Werkpakketten op een object met de samengevatte status (open zodra één ronde daar nog open is). */
   const pakkettenOp = (oid) => {
-    const m = new Map();
-    for (const { v, st } of perObject.get(oid)?.rondes ?? []) {
-      const x = m.get(v.id) ?? { pk: pakketten.get(v.id), st };
-      if (st === 'open' || (st === 'gedaan' && x.st === 'overgeslagen')) x.st = st;
-      m.set(v.id, x);
+    const mp = new Map();
+    for (const { v, st: s } of perObject.get(oid)?.rondes ?? []) {
+      const x = mp.get(v.id) ?? { pk: pakketten.get(v.id), st: s };
+      if (s === 'open' || (s === 'gedaan' && x.st === 'overgeslagen')) x.st = s;
+      mp.set(v.id, x);
     }
-    return [...m.values()].sort((a, b) => (a.st === 'open' ? 0 : 1) - (b.st === 'open' ? 0 : 1) || a.pk.naam.localeCompare(b.pk.naam, 'nl'));
+    return [...mp.values()].sort((a, b) => (a.st === 'open' ? 0 : 1) - (b.st === 'open' ? 0 : 1) || a.pk.naam.localeCompare(b.pk.naam, 'nl'));
   };
-  // Meerdere werkpakketten tegelijk: een set gekozen pakketten; leeg = alle.
-  const gekozenPk = new Set((() => { try { return JSON.parse(instelling.lees('mKaartPakketten') || '[]'); } catch { return []; } })().filter((id) => pakketten.has(id)));
-  let labelsAan = instelling.lees('mKaartLabels', '1') === '1';
-  let alleenTeDoen = instelling.lees('mKaartTeDoen', '') === '1';
+  const bereik = st.bereik;
+  const inPk = () => (gekozenPk.size ? lijst.filter(({ o }) => [...gekozenPk].some((id) => pakketten.get(id)?.objecten.has(o.id))) : lijst);
+  const openInPk = () => inPk().filter(({ o }) => statusVan(o.id) === 'open').length;
+  const aantalFilters = () => (gekozenPk.size ? 1 : 0) + (st.periode !== PL.PERIODE_STANDAARD ? 1 : 0) + (st.bereik === 'alle' ? 1 : 0);
+  const pkChipTekst = () => (gekozenPk.size === 1 ? metCode(pakketten.get([...gekozenPk][0])) : gekozenPk.size ? `${gekozenPk.size} van ${pakketten.size} werkpakketten` : `Alle werkpakketten (${pakketten.size})`);
+
   app.innerHTML = `
-    <div class="segment mkaartbereik" role="radiogroup" aria-label="Welke werkpakketten">
-      <label><input type="radio" name="mkb" value="mij" ${bereik === 'mij' ? 'checked' : ''}><span>Aan mij toegewezen (${telPakketten(mijnRondes)})</span></label>
-      <label><input type="radio" name="mkb" value="alle" ${bereik === 'alle' ? 'checked' : ''}><span>Alle actuele (${telPakketten(alleActueel)})</span></label></div>
-    <div class="mkaartkop"><div><h1>Kaart</h1><small>${rondes.length ? `${open} open · ${lijst.length - open} klaar · ${pakketten.size} werkpakket${pakketten.size === 1 ? '' : 'ten'}` : 'Geen actieve werkpakketten'}</small>
-      <div class="mperiode" title="Welke ronde per werkpakket telt: de actuele ronde in deze periode">${periodeKiezer(g.pakketten.flatMap((p) => rondesVan(p)))}</div></div>
-      ${rondes.length ? `<button class="knop" id="mijnlocatie" type="button">${I.locatie} Mijn locatie</button>` : ''}</div>
-    ${pakketten.size > 1 ? `<div class="mpakketchips" role="group" aria-label="Werkpakket op de kaart">
-      <button type="button" class="gfchip${gekozenPk.size ? '' : ' actief'}" data-mkp="" aria-pressed="${gekozenPk.size ? 'false' : 'true'}">Alle (${pakketten.size})</button>
-      ${[...pakketten.values()].map((pk) => `<button type="button" class="gfchip${gekozenPk.has(pk.id) ? ' actief' : ''}" data-mkp="${esc(pk.id)}" aria-pressed="${gekozenPk.has(pk.id)}" title="${esc(metCode(pk))}">${gekozenPk.has(pk.id) ? I.vink : ''}${pakketLabel(pk)}</button>`).join('')}</div>
-    <p class="mkeuzehint" id="mkeuzehint"></p>` : ''}
-    <div class="mlegenda"><span>${statusStip('open')}Te doen</span><span>${statusStip('gedaan')}Gereed</span><span>${statusStip('overgeslagen')}Overgeslagen</span>
-      ${rondes.length ? `<label class="mlabelschakel tedoenschakel"><input type="checkbox" id="mtedoen" ${alleenTeDoen ? 'checked' : ''}> Alleen te doen (${open})</label>` : ''}
-      ${dv ? `<label class="mlabelschakel"><input type="checkbox" id="bdlabels" ${labelsAan ? 'checked' : ''}> Bouwdelen op de kaart</label>` : ''}${rondes.length ? opmaakKnop() : ''}</div>
-    ${rondes.length ? '<div id="veldkaart" class="veldkaart"><p class="leeg">Kaart laden…</p></div>'
-    : bereik === 'mij' && alleActueel.length
-      ? `<div class="kaart leeg"><p>Er is op dit moment geen werkpakket aan jou toegewezen.</p><p><small>Kies hierboven <strong>Alle actuele</strong> om de ${telPakketten(alleActueel)} lopende werkpakketten van het project te zien.</small></p></div>`
-      : '<div class="kaart leeg"><p>Er loopt op dit moment geen werkpakket.</p><p><small>Zodra de beheerder een ronde actief zet, zie je de objecten hier.</small></p></div>'}
+    <div class="mkaartbalk">
+      <div class="mkaarttitel"><h1>Kaart</h1><small id="mtelling"></small></div>
+      <button class="knop mfilterknop" id="mfilter" type="button" aria-haspopup="dialog">${I.filter} Filter<span class="teller" id="mfilterteller" ${aantalFilters() ? '' : 'hidden'}>${aantalFilters()}</span></button>
+      ${rondes.length ? `<button class="knop micoonknop" id="mijnlocatie" type="button" aria-label="Mijn locatie" title="Mijn locatie">${I.locatie}</button>` : ''}
+    </div>
+    <div class="mfilterchips" id="mfilterchips">
+      <button type="button" class="mfchip" data-open="bereik">${I.gebruiker} ${st.bereik === 'alle' ? 'Alle actuele' : 'Aan mij'}</button>
+      <button type="button" class="mfchip" data-open="periode">${I.kalender} ${esc(periodeLabel(st.periode))}</button>
+      ${pakketten.size > 1 ? `<span class="mfchip ${gekozenPk.size ? 'actief' : ''}" id="mpkchip"><button type="button" data-open="pakketten">${I.pakket} <span>${esc(pkChipTekst())}</span></button>${gekozenPk.size ? '<button type="button" class="mfwis" data-wis="pakketten" aria-label="Alle werkpakketten tonen">×</button>' : ''}</span>` : ''}
+    </div>
+    ${rondes.length ? `<div class="segment mtedoenseg" role="radiogroup" aria-label="Welke objecten">
+      <label><input type="radio" name="mtd" value="" ${st.teDoen ? '' : 'checked'}><span>Alles <b id="mtdalles"></b></span></label>
+      <label><input type="radio" name="mtd" value="1" ${st.teDoen ? 'checked' : ''}><span>${statusStip('open')}Alleen te doen <b id="mtdopen"></b></span></label></div>
+    <div id="veldkaart" class="veldkaart"><p class="leeg">Kaart laden…</p></div>
+    <div class="mlegenda mkaartlegenda"><span>${statusStip('open')}Te doen</span><span>${statusStip('gedaan')}Gereed</span><span>${statusStip('overgeslagen')}Overgeslagen</span>${opmaakKnop()}</div>`
+    : st.bereik === 'mij' && alleActueel.length
+      ? `<div class="kaart leeg"><p>Er is op dit moment geen werkpakket aan jou toegewezen.</p><p><button class="knop" type="button" data-open="bereik">Alle ${telPakketten(alleActueel)} actuele werkpakketten tonen</button></p></div>`
+      : `<div class="kaart leeg"><p>Er loopt ${st.periode === PL.PERIODE_STANDAARD ? 'op dit moment' : `in ${esc(periodeLabel(st.periode).toLowerCase())}`} geen werkpakket.</p><p><small>Zodra de beheerder een ronde actief zet, zie je de objecten hier. Of kies via <strong>Filter</strong> een andere periode.</small></p></div>`}
     ${rondes.length && dv ? '<section class="kaart mbdlijst" id="mbdlijst"></section>' : ''}`;
-  app.querySelectorAll('input[name=mkb]').forEach((x) => x.addEventListener('change', () => { instelling.schrijf('mKaartBereik', x.value); mobielKaart(); }));
-  koppelPeriodeKiezer(app.querySelector('.mperiode'), () => mobielKaart());
+
+  // Snelkeuze in het lege scherm: meteen naar "Alle actuele".
+  app.querySelectorAll('.kaart.leeg [data-open=bereik]').forEach((b) => b.addEventListener('click', () => { instelling.schrijf('mKaartBereik', 'alle'); mobielKaart(); }));
+  app.querySelector('#mfilter').addEventListener('click', () => filterBlad());
+  app.querySelectorAll('#mfilterchips [data-open]').forEach((b) => b.addEventListener('click', () => filterBlad(b.dataset.open)));
+
+  /** Filterscherm (onderblad): bereik, periode, werkpakketten, wat te tonen en bouwdeellabels; telling werkt live bij. */
+  function filterBlad(focus = '') {
+    const c = { bereik: st.bereik, periode: st.periode, pakketten: new Set(gekozenPk), teDoen: st.teDoen, labels: st.labels };
+    let mm = model(c.bereik, c.periode);
+    let zoek = '';
+    const d = document.createElement('dialog');
+    d.className = 'dialoog mfilterblad';
+    const tekenPakketten = () => {
+      const lijstEl = d.querySelector('#mf-pk');
+      if (!lijstEl) return;
+      const termen = zoekTermen(zoek);
+      const alle = [...mm.pakketten.values()].sort((a, b) => metCode(a).localeCompare(metCode(b), 'nl', { numeric: true }));
+      const tonen = alle.filter((pk) => termen.every((t) => metCode(pk).toLowerCase().includes(t)));
+      lijstEl.innerHTML = tonen.length ? tonen.map((pk) => `<label class="mfpk ${c.pakketten.has(pk.id) ? 'aan' : ''}"><input type="checkbox" value="${esc(pk.id)}" ${c.pakketten.has(pk.id) ? 'checked' : ''}>
+        <span><span class="mfpknaam">${wpNaam(pk)}</span><small>${pk.openIds.size ? `<b>${pk.openIds.size} te doen</b> · ` : `${I.vink} klaar · `}${pk.objecten.size} object${pk.objecten.size === 1 ? '' : 'en'}${actueleRondeTekst(pk) ? ` · ${actueleRondeTekst(pk)}` : ''}</small></span></label>`).join('')
+        : `<p class="leeg"><small>${alle.length ? 'Geen werkpakket gevonden.' : 'Geen werkpakketten in deze keuze.'}</small></p>`;
+      d.querySelector('#mf-pkkop').textContent = c.pakketten.size ? `${c.pakketten.size} gekozen` : 'alle';
+    };
+    const telling = () => {
+      for (const id of [...c.pakketten]) if (!mm.pakketten.has(id)) c.pakketten.delete(id);
+      const n = zichtbaar(mm, c.pakketten, c.teDoen).length;
+      d.querySelector('#mf-toon').textContent = n ? `Toon ${n} object${n === 1 ? '' : 'en'}` : 'Toon kaart (0 objecten)';
+      d.querySelector('#mf-tdopen').textContent = zichtbaar(mm, c.pakketten, true).length;
+      d.querySelector('#mf-tdalles').textContent = zichtbaar(mm, c.pakketten, false).length;
+    };
+    const tekenPeriode = () => {
+      d.querySelector('#mf-periode').innerHTML = periodeKiezer(g.pakketten.flatMap((p) => rondesVan(p)), c.periode);
+      const sel = d.querySelector('[data-rperiode]');
+      sel.onchange = () => {
+        c.periode = sel.value === 'eigen' ? `eigen:${vandaag().slice(0, 4)}-01-01:${vandaag().slice(0, 4)}-12-31` : sel.value;
+        mm = model(c.bereik, c.periode); tekenPeriode(); tekenPakketten(); telling();
+      };
+      const van = d.querySelector('[data-rvan]'); const tot = d.querySelector('[data-rtot]');
+      [van, tot].forEach((x) => x?.addEventListener('change', () => {
+        if (!van.value || !tot.value) return;
+        c.periode = `eigen:${van.value}:${tot.value}`; mm = model(c.bereik, c.periode); tekenPakketten(); telling();
+      }));
+    };
+    d.innerHTML = `<form method="dialog" novalidate>
+      <div class="mfkop"><h2>${I.filter} Filter kaart</h2><button class="knop" value="nee" aria-label="Sluiten">${I.kruis}</button></div>
+      <div class="mfinhoud">
+        <section data-sectie="bereik"><h3>Werkpakketten van</h3>
+          <div class="segment" role="radiogroup" aria-label="Welke werkpakketten">
+            <label><input type="radio" name="mf-bereik" value="mij" ${c.bereik === 'mij' ? 'checked' : ''}><span>Aan mij toegewezen <b>${telPakketten(mijnRondes)}</b></span></label>
+            <label><input type="radio" name="mf-bereik" value="alle" ${c.bereik === 'alle' ? 'checked' : ''}><span>Alle actuele <b>${telPakketten(alleActueel)}</b></span></label></div></section>
+        <section data-sectie="periode"><h3>Periode <small>welke ronde per werkpakket telt</small></h3><div id="mf-periode"></div></section>
+        <section data-sectie="tonen"><h3>Tonen</h3>
+          <div class="segment" role="radiogroup" aria-label="Welke objecten">
+            <label><input type="radio" name="mf-td" value="" ${c.teDoen ? '' : 'checked'}><span>Alles <b id="mf-tdalles"></b></span></label>
+            <label><input type="radio" name="mf-td" value="1" ${c.teDoen ? 'checked' : ''}><span>Alleen te doen <b id="mf-tdopen"></b></span></label></div></section>
+        <section data-sectie="pakketten"><h3>Werkpakketten <small id="mf-pkkop"></small></h3>
+          <div class="mfpkbalk"><input type="search" id="mf-zoek" placeholder="Zoek op code of naam" aria-label="Zoek werkpakket" autocomplete="off" ${telPakketten(alleActueel) > 5 ? '' : 'hidden'}>
+            <button type="button" class="knop klein" id="mf-alle">Alle werkpakketten</button></div>
+          <div id="mf-pk" class="mfpklijst"></div></section>
+        ${dv ? `<section><h3>Op de kaart</h3><label class="mfschakel"><input type="checkbox" id="mf-labels" ${c.labels ? 'checked' : ''}> Namen van bouwdelen tonen <small>(vanaf ingezoomd)</small></label></section>` : ''}
+      </div>
+      <div class="mfvoet"><button type="button" class="knop" id="mf-wis">Wis filters</button><button class="knop primair" value="ja" id="mf-toon">Toon</button></div></form>`;
+    document.body.append(d);
+    tekenPeriode(); tekenPakketten(); telling();
+    d.querySelectorAll('input[name=mf-bereik]').forEach((x) => x.addEventListener('change', () => { c.bereik = x.value; mm = model(c.bereik, c.periode); tekenPakketten(); telling(); }));
+    d.querySelectorAll('input[name=mf-td]').forEach((x) => x.addEventListener('change', () => { c.teDoen = x.value === '1'; telling(); }));
+    d.querySelector('#mf-zoek').addEventListener('input', (e) => { zoek = e.target.value; tekenPakketten(); });
+    d.querySelector('#mf-pk').addEventListener('change', (e) => {
+      const x = e.target.closest('input[type=checkbox]');
+      if (!x) return;
+      if (x.checked) c.pakketten.add(x.value); else c.pakketten.delete(x.value);
+      if (c.pakketten.size === mm.pakketten.size) c.pakketten.clear(); // alles gekozen = alle
+      tekenPakketten(); telling();
+    });
+    d.querySelector('#mf-alle').onclick = () => { c.pakketten.clear(); tekenPakketten(); telling(); };
+    d.querySelector('#mf-labels')?.addEventListener('change', (e) => { c.labels = e.target.checked; });
+    d.querySelector('#mf-wis').onclick = () => {
+      Object.assign(c, { bereik: 'mij', periode: PL.PERIODE_STANDAARD, teDoen: false });
+      c.pakketten.clear();
+      d.querySelector('input[name=mf-bereik][value=mij]').checked = true;
+      d.querySelector('input[name=mf-td][value=""]').checked = true;
+      mm = model(c.bereik, c.periode); tekenPeriode(); tekenPakketten(); telling();
+    };
+    d.showModal();
+    if (focus) d.querySelector(`[data-sectie=${focus}]`)?.scrollIntoView({ block: 'start' });
+    d.addEventListener('close', () => {
+      const ok = d.returnValue === 'ja';
+      d.remove();
+      if (!ok) return;
+      instelling.schrijf('mKaartBereik', c.bereik);
+      instelling.schrijf('rondePeriode', c.periode);
+      instelling.schrijf('mKaartTeDoen', c.teDoen ? '1' : '');
+      instelling.schrijf('mKaartLabels', c.labels ? '1' : '0');
+      instelling.schrijf('mKaartPakketten', JSON.stringify([...c.pakketten]));
+      mobielKaart();
+    }, { once: true });
+  }
+
   if (!rondes.length) return;
   const navigeer = (o) => {
     const geom = objectGeometrie(o);
@@ -5277,10 +5394,10 @@ async function mobielKaart() {
   const L = window.L;
   // Per werkpakket: kaart filteren, bouwdeelnamen als label en een lijst met de koppeling met de decompositie.
   const labelLaag = L.layerGroup().addTo(kaart.map);
-  const inBeeld = () => (gekozenPk.size ? lijst.filter(({ o }) => [...gekozenPk].some((id) => pakketten.get(id)?.objecten.has(o.id))) : lijst);
+  const inBeeld = inPk;
   const tekenLabels = () => {
     labelLaag.clearLayers();
-    if (!dv || !labelsAan || kaart.map.getZoom() < 16) return;
+    if (!dv || !st.labels || kaart.map.getZoom() < 16) return;
     const grens = kaart.map.getBounds().pad(0.2);
     for (const { o } of inBeeld()) {
       const tekst = dv.label(o);
@@ -5306,45 +5423,29 @@ async function mobielKaart() {
         <span><strong>${d ? esc(dv.label(o)) : '<span class="zacht">Geen bouwdeel gekoppeld</span>'}</strong>
         <small>${esc(o.code)}${o.naam && o.naam !== o.code ? ` – ${esc(o.naam)}` : ''}${d?.pad.length ? ` · ${esc(d.pad.map((x) => x.naam).join(' › '))}` : ''}</small></span></button></li>`).join('')}</ul></details>`;
   };
+  const werkTellingBij = () => {
+    const n = inPk().length;
+    const o = openInPk();
+    app.querySelector('#mtelling').textContent = `${o} te doen · ${n - o} klaar`;
+    app.querySelector('#mtdalles').textContent = n;
+    app.querySelector('#mtdopen').textContent = o;
+  };
   const toonPakket = (inzoomen) => {
-    kaart.toon(new Set(inBeeld().filter(({ o }) => !alleenTeDoen || statusVan(o.id) === 'open').map(({ o }) => o.id)), { inzoomen });
+    kaart.toon(new Set(inPk().filter(({ o }) => !st.teDoen || statusVan(o.id) === 'open').map(({ o }) => o.id)), { inzoomen });
     tekenLabels();
     tekenLijst();
+    werkTellingBij();
   };
   kaart.map.on('zoomend moveend', tekenLabels);
-  const tekenChips = () => {
-    app.querySelectorAll('.mpakketchips [data-mkp]').forEach((x) => {
-      const aan = x.dataset.mkp ? gekozenPk.has(x.dataset.mkp) : !gekozenPk.size;
-      x.classList.toggle('actief', aan);
-      x.setAttribute('aria-pressed', String(aan));
-      if (x.dataset.mkp) x.innerHTML = `${aan ? I.vink : ''}${pakketLabel(pakketten.get(x.dataset.mkp))}`;
-    });
-    const h = app.querySelector('#mkeuzehint');
-    if (h) { h.hidden = !gekozenPk.size; h.innerHTML = gekozenPk.size ? `${gekozenPk.size} werkpakket${gekozenPk.size === 1 ? '' : 'ten'} op de kaart · ${inBeeld().length} objecten` : ''; }
-  };
-  tekenChips();
   toonPakket(gekozenPk.size > 0);
-  app.querySelector('.mpakketchips')?.addEventListener('click', (e) => {
-    const c = e.target.closest('[data-mkp]');
-    if (!c) return;
-    const id = c.dataset.mkp;
-    if (!id) gekozenPk.clear();
-    else if (gekozenPk.has(id)) gekozenPk.delete(id);
-    else gekozenPk.add(id);
-    if (gekozenPk.size === pakketten.size) gekozenPk.clear(); // alles gekozen = Alle
-    instelling.schrijf('mKaartPakketten', JSON.stringify([...gekozenPk]));
-    tekenChips();
-    toonPakket(true);
-  });
-  app.querySelector('#mtedoen')?.addEventListener('change', (e) => {
-    alleenTeDoen = e.target.checked;
-    instelling.schrijf('mKaartTeDoen', alleenTeDoen ? '1' : '');
+  app.querySelectorAll('input[name=mtd]').forEach((x) => x.addEventListener('change', () => {
+    st.teDoen = x.value === '1';
+    instelling.schrijf('mKaartTeDoen', st.teDoen ? '1' : '');
     toonPakket(false);
-  });
-  app.querySelector('#bdlabels')?.addEventListener('change', (e) => {
-    labelsAan = e.target.checked;
-    instelling.schrijf('mKaartLabels', labelsAan ? '1' : '0');
-    tekenLabels();
+  }));
+  app.querySelector('[data-wis=pakketten]')?.addEventListener('click', () => {
+    instelling.schrijf('mKaartPakketten', '[]');
+    mobielKaart();
   });
   app.querySelector('#mbdlijst')?.addEventListener('click', (e) => {
     const z = e.target.closest('[data-mzoom]');
@@ -5374,11 +5475,6 @@ async function mobielKaart() {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Mobiel: meerdere werkpakketten tegelijk op één locatie (object)
-// ---------------------------------------------------------------------------
-/** Alle actieve rondes van mij waar dit object in zit, met de status van het object in die ronde. */
-// Kaartkeuze in het veld: 'mij' = aan mij toegewezen werkpakketten, 'alle' = alle actuele werkpakketten van het project.
 const kaartBereik = () => (instelling.lees('mKaartBereik') === 'alle' ? 'alle' : 'mij');
 const inKaartBereik = (v, ik, bereik = kaartBereik()) => (bereik === 'alle' ? true : pakketVoorMij(v, ik));
 
@@ -5386,7 +5482,7 @@ const inKaartBereik = (v, ik, bereik = kaartBereik()) => (bereik === 'alle' ? tr
  * Rondes voor de kaart en de locatiepagina: per werkpakket alleen de actuele ronde (in de gekozen periode, het dichtst bij vandaag).
  * Afgeronde rondes tellen mee, zodat werk dat dit jaar al gedaan is groen blijft; pakketten op afroep houden al hun lopende afroepen.
  */
-function kaartRondes(g, pakketten = g.pakketten) {
+function kaartRondes(g, pakketten = g.pakketten, bereik = rondePeriode()) {
   const uit = [];
   for (const p of pakketten) {
     for (const r of rondesVan(p).filter((x) => x.status === 'actief' || (x.status === 'afgerond' && !isAfroep(p)))) {
@@ -5394,7 +5490,6 @@ function kaartRondes(g, pakketten = g.pakketten) {
       uit.push({ pakket: g.views.get(sleutel), open: g.rondeVoortgang.get(sleutel).open, voortgang: g.rondeVoortgang.get(sleutel), afroep: isAfroep(p) });
     }
   }
-  const bereik = rondePeriode();
   const gewoon = PL.actueelPerPakket(uit.filter((x) => !x.afroep), vandaag(), bereik);
   return uit.filter((x) => (x.afroep ? true : gewoon.includes(x)));
 }
@@ -9615,8 +9710,7 @@ function inplanLet(aantal = 1, titel = '') {
 
 // Periodefilter voor rondes (planning en dashboard), per gebruiker onthouden. Standaard het lopende kalenderjaar.
 const rondePeriode = () => PL.periodeBereik(instelling.lees('rondePeriode') || PL.PERIODE_STANDAARD, vandaag());
-function periodeKiezer(alleRondes) {
-  const keuze = instelling.lees('rondePeriode') || PL.PERIODE_STANDAARD;
+function periodeKiezer(alleRondes, keuze = instelling.lees('rondePeriode') || PL.PERIODE_STANDAARD) {
   const nu = Number(vandaag().slice(0, 4));
   const jaren = PL.jarenVanRondes(alleRondes, vandaag()).filter((j) => j !== nu && j !== nu + 1);
   const b = PL.periodeBereik(keuze, vandaag());
