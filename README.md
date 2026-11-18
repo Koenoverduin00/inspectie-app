@@ -676,6 +676,26 @@ aantal personen; duur en manuren worden berekend, over middernacht mag) en **bij
 **Alleen tonen als …**: een veld kan afhangen van een ja/nee-, keuze- of meerkeuzeveld (bijv. *Hoeveelheid* en
 *Stortbon* alleen als *Afgevoerd?* = Ja). Verborgen velden zijn nooit verplicht en worden niet opgeslagen.
 
+## Eisbibliotheek (contracteisen als eisvragen)
+
+Onder **Instellingen → Eisen** leg je per project de eisen uit de contractstukken vast. Elke eis wordt omgeschreven
+naar een **eisvraag** die in de formulieren komt, gekoppeld aan het **eisnummer** uit het contract.
+
+- **Aanleveren als Excel of CSV** (knop *Sjabloon*) met de kolommen **Eisnummer**, **Eistekst** en **Eisvraag**.
+  Optioneel: **Antwoordtype** (ja/nee – standaard –, keuze, meerkeuze, checklist, getal, tekst, datum, foto), **Keuzes**
+  (gescheiden door `;` of `|`) en **Contractstuk** (bijv. *Bestek hfst. 3*).
+- **Inlezen met voorbeeld**: je ziet vooraf welke eisen nieuw, gewijzigd en vervallen zijn, en welke regels fouten
+  hebben (geen nummer, geen vraag, dubbel nummer).
+- **In formulieren zetten**: in **Formuliervelden** kies je *＋ Uit eisbibliotheek*. Zoek op tekst of typ één of meer
+  eisnummers (spatie ertussen) en vink aan; elke eisvraag wordt een verplicht veld met het eisnummer als label-badge
+  en de eistekst eronder. Eisen die al in het formulier staan zijn grijs. *Ontkoppelen* maakt er een gewoon veld van.
+- **Nieuwe versie inlezen** werkt de gekoppelde vragen automatisch bij; vervallen eisen krijgen een doorgestreepte
+  badge (het veld en de antwoorden blijven bestaan).
+- **Verificatie per eis**: de eisenlijst toont per eis *Geverifieerd* (alle ja/ingevuld), *Afwijking* (minstens één
+  "nee"), *Nog niet geverifieerd* (in formulier, nog geen antwoord) of *Niet in een formulier*, met aantallen en de
+  laatste datum. Filter op status en exporteer als CSV.
+- **Uitkomsten-export**: kolommen van eisvragen heten *Eisnummer – vraag* en er komt een blad **Eisverificatie** bij.
+
 ## Kleurthema
 
 De app is standaard licht, ook als de pc of telefoon op donkere modus staat. Onder *Instellingen → Voorkeuren* kun je
@@ -850,6 +870,7 @@ js/sync.js            inloggen en synchronisatie met Supabase
 js/gis.js             GIS inlezen (GeoJSON, Shapefile, GeoPackage), RD→WGS84, geometrie
 js/taken.js           taken samenstellen en sorteren op urgentie en locatie
 js/velden.js          eigen formuliervelden: zichtbaarheid, controle en weergave
+js/eisen.js           eisbibliotheek: inlezen, vergelijken, eisvragen en verificatie per eis
 js/pakketten.js       werkpakketten en rondes: voortgang, toewijzing en objectfilters
 js/pakketexcel.js     Excel-sjabloon (keuzelijsten, controles, beveiliging) en import met controle
 js/resultatenexcel.js inspectieresultaten naar Excel (resultaten, gebreken, maatregelen, foto's)

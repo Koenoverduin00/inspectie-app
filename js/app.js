@@ -16,6 +16,7 @@ import * as velden from './velden.js';
 import * as eco from './ecologie.js';
 import * as BV from './bvc.js';
 import * as FI from './fotoinfo.js';
+import * as EI from './eisen.js';
 import {
   PAKKETSTATUS, OVERSLAAN_REDENEN, overslaanId, voortgang as pakketVoortgang, voorMij as pakketVoorMijBasis, filterObjecten,
   rondesVan, rondeView, rondeVanId, pakketStatus, totaalVoortgang, STANDAARD_RONDE, PLANNINGSWIJZEN, isAfroep, AFROEP_REDENEN, onderscheid as rondeOnderscheid,
@@ -100,6 +101,7 @@ const ROUTES = [
   [/^\/projecten\/nieuw$/, 'projecten', () => projectFormulier()],
   [/^\/projecten\/([^/]+)\/bewerken$/, 'projecten', (id) => projectFormulier(id)],
   [/^\/projecten\/([^/]+)\/velden$/, 'projecten', formulierveldenPagina],
+  [/^\/eisen$/, 'eisen', eisenPagina],
   [/^\/gis\/importeren$/, 'kaart', gisImport],
   [/^\/planning$/, 'taken', takenPagina],
   [/^\/taken$/, 'taken', takenPagina],
@@ -126,13 +128,13 @@ const ROUTES = [
 ];
 
 // Het hoofdmenu is compact: onderdelen vallen onder een hoofdgroep en hebben daar een tabblad.
-const NAV_GROEP = { inspecties: 'werkpakketten', werkzaamheden: 'werkpakketten', maatregelen: 'werkpakketten', taken: 'planning', kaart: 'instellingen', personen: 'instellingen', decompositie: 'instellingen', inspectietypen: 'instellingen', bibliotheek: 'instellingen', toewijzen: 'werkpakketten' };
+const NAV_GROEP = { inspecties: 'werkpakketten', werkzaamheden: 'werkpakketten', maatregelen: 'werkpakketten', taken: 'planning', kaart: 'instellingen', personen: 'instellingen', decompositie: 'instellingen', eisen: 'instellingen', inspectietypen: 'instellingen', bibliotheek: 'instellingen', toewijzen: 'werkpakketten' };
 const TABBLADEN = {
   werkpakketten: () => [['#/werkpakketten', I.pakket + ' Werkpakketten'], ['#/inspecties', I.inspectie + ' Inspecties'], ['#/werkzaamheden', I.werk + ' Werkzaamheden'], ['#/maatregelen', I.let + ' Maatregelen'], ...(magBeheren() ? [['#/toewijzen', I.personen + ' Toewijzen']] : [])],
-  instellingen: () => (magBeheren() ? [['#/instellingen', I.instellingen + ' Algemeen'], ['#/personen', I.personen + ' Personen'], ['#/kaart', I.kaart + ' Kaart & GIS'], ['#/inspectietypen', I.inspectie + ' Inspectietypen'], ['#/bibliotheek', I.lijst + ' Bibliotheek'], ['#/decompositie', I.lagen + ' Decompositie']] : []),
+  instellingen: () => (magBeheren() ? [['#/instellingen', I.instellingen + ' Algemeen'], ['#/personen', I.personen + ' Personen'], ['#/kaart', I.kaart + ' Kaart & GIS'], ['#/inspectietypen', I.inspectie + ' Inspectietypen'], ['#/bibliotheek', I.lijst + ' Bibliotheek'], ['#/decompositie', I.lagen + ' Decompositie'], ['#/eisen', I.taak + ' Eisen']] : []),
 };
 // Alleen de overzichtspagina's krijgen tabbladen (geen formulieren of details).
-const TAB_PAGINAS = /^\/(werkpakketten|inspecties|werkzaamheden|maatregelen|toewijzen|instellingen|personen|kaart|decompositie|inspectietypen|bibliotheek)$/;
+const TAB_PAGINAS = /^\/(werkpakketten|inspecties|werkzaamheden|maatregelen|toewijzen|instellingen|personen|kaart|decompositie|inspectietypen|bibliotheek|eisen)$/;
 
 function tabbalk(pad, groep) {
   const tabs = TABBLADEN[groep]?.() ?? [];
@@ -333,6 +335,123 @@ async function leesDecompBestand(bestand) {
     const regels = [];
     ws.eachRow({ includeEmpty: true }, (row) => { regels.push(Array.isArray(row.values) ? row.values.slice(1) : []); });
     return { naam: ws.name, regels };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Eisbibliotheek: eisen uit de contractstukken als eisvragen, te gebruiken in de formulieren (per project/contract).
+// ---------------------------------------------------------------------------
+const EIS_STATUS = {
+  geverifieerd: { label: 'Geverifieerd', klasse: 'afgerond' },
+  afwijking: { label: 'Afwijking', klasse: 'verlopen' },
+  'nog niet geverifieerd': { label: 'Nog niet geverifieerd', klasse: 'binnenkort' },
+  'niet in formulier': { label: 'Niet in een formulier', klasse: '' },
+};
+const eisBadge = (eis) => (eis?.nummer ? `<span class="eisbadge${eis.vervallen ? ' vervallen' : ''}" title="${esc(`${eis.vervallen ? 'Vervallen eis – ' : ''}${eis.tekst ?? ''}${eis.bron ? ` (${eis.bron})` : ''}`)}">${I.taak} ${esc(eis.nummer)}</span>` : '');
+async function eisRegistraties() {
+  return (await Promise.all(['werkzaamheden', 'inspecties', 'taken'].map((st) => inProject(st)))).flat();
+}
+
+async function eisenPagina() {
+  if (!magBeheren()) { app.innerHTML = leegKaart('Alleen beheerders kunnen de eisbibliotheek beheren.'); return; }
+  let project = await actiefProject();
+  if (!project) { app.innerHTML = leegKaart('Kies eerst een project.'); return; }
+  const lijst = project.eisen?.lijst ?? [];
+  const ver = EI.verificatie(lijst, project.velden ?? [], await eisRegistraties());
+  const tel = (s) => ver.filter((x) => x.status === s).length;
+  let voorbeeld = null;
+  app.innerHTML = `${isMobiel() ? '' : tabbalk('/eisen', 'instellingen')}
+    <div class="paginakop"><div><h1>Eisbibliotheek</h1>
+      <p>Eisen uit de contractstukken, elk omgeschreven naar een <strong>eisvraag</strong>. In de formuliervelden importeer je de vraag op eisnummer;
+        de antwoorden tonen per eis of hij is geverifieerd.</p></div>
+      <div class="knoppen">
+        <label class="knop primair">${I.bestand} ${lijst.length ? 'Nieuwe versie inlezen' : 'Eisen inlezen'}<input type="file" id="e-bestand" accept=".xlsx,.csv,.txt" hidden></label>
+        <button class="knop" id="e-sjabloon">${I.excel} Sjabloon</button>
+        ${lijst.length ? `<button class="knop" id="e-export">${I.exporteer} Exporteren</button>` : ''}
+        <a class="knop" href="#/projecten/${esc(project.id)}/velden">${I.lijst} Formuliervelden</a></div></div>
+    <div id="e-voorbeeld"></div>
+    ${lijst.length ? `<section class="kaart">
+      <div class="tegels klein" style="margin-bottom:.75rem">
+        <span class="tegel"><strong>${lijst.length}</strong><span>eisen</span></span>
+        <span class="tegel goed"><strong>${tel('geverifieerd')}</strong><span>geverifieerd</span></span>
+        <span class="tegel ${tel('afwijking') ? 'slecht' : ''}"><strong>${tel('afwijking')}</strong><span>met afwijking</span></span>
+        <span class="tegel let"><strong>${tel('nog niet geverifieerd')}</strong><span>nog niet geverifieerd</span></span>
+        <span class="tegel"><strong>${tel('niet in formulier')}</strong><span>niet in een formulier</span></span></div>
+      <p class="decompbron"><small>${project.eisen?.bestand ? `Bron: ${esc(project.eisen.bestand)} · ` : ''}${project.eisen?.op ? `ingelezen ${datumNL(project.eisen.op.slice(0, 10))}` : ''}</small></p>
+      <div class="filters"><input type="search" id="e-zoek" placeholder="Zoek op eisnummer, tekst of vraag…" aria-label="Zoek eis">
+        <select id="e-status" aria-label="Status">${optie('', 'Alle eisen')}${Object.entries(EIS_STATUS).map(([k, v]) => optie(k, v.label)).join('')}</select></div>
+      <div class="tabelhouder"><table class="eistabel"><thead><tr><th>Eisnummer</th><th>Eistekst</th><th>Eisvraag</th><th>In formulier</th><th>Verificatie</th></tr></thead>
+        <tbody id="e-rijen"></tbody></table></div></section>` : `<section class="kaart">
+      <h2>Nog geen eisen</h2>
+      <p>Lever een Excel- of CSV-bestand aan met per regel een eis uit het contract:</p>
+      <ul><li><strong>Eisnummer</strong> – het nummer uit het contract (bijv. EIS-3.2.1), verplicht</li>
+        <li><strong>Eistekst</strong> – de tekst van de eis zoals in het contractstuk</li>
+        <li><strong>Eisvraag</strong> – de eis omgeschreven naar een vraag: dít komt in het formulier</li>
+        <li>optioneel <strong>Antwoordtype</strong> (Ja/nee, Tekst, Getal, Keuze, Meerkeuze, Checklist, Foto, Datum – standaard Ja/nee),
+          <strong>Keuzes</strong> (gescheiden door ;) en <strong>Contractstuk</strong> (bijv. Bestek hfst. 3)</li></ul>
+      <p>Download het sjabloon voor een voorbeeld. Daarna kies je bij <a href="#/projecten/${esc(project.id)}/velden">Formuliervelden</a>
+        <em>＋ Uit eisbibliotheek</em> en importeer je de vragen op eisnummer.</p></section>`}`;
+
+  const tekenRijen = () => {
+    const el = app.querySelector('#e-rijen');
+    if (!el) return;
+    const termen = zoekTermen(app.querySelector('#e-zoek').value);
+    const st = app.querySelector('#e-status').value;
+    const rijen = ver.filter((x) => (!st || x.status === st) && termen.every((t) => `${x.eis.nummer} ${x.eis.tekst} ${x.eis.vraag} ${x.eis.bron}`.toLowerCase().includes(t)));
+    el.innerHTML = rijen.length ? rijen.map((x) => `<tr>
+      <td><strong>${esc(x.eis.nummer)}</strong>${x.eis.bron ? `<br><small>${esc(x.eis.bron)}</small>` : ''}</td>
+      <td><small>${esc(x.eis.tekst)}</small></td>
+      <td>${esc(x.eis.vraag)}<br><small class="zacht">${esc(velden.VELDTYPEN[x.eis.type] ?? x.eis.type)}${x.eis.opties?.length ? `: ${esc(x.eis.opties.join(', '))}` : ''}</small></td>
+      <td>${x.velden.length ? x.velden.map((d) => `<small>${esc(velden.FORMULIEREN[d.formulier] ?? d.formulier)}${d.alleenBij?.length ? ` (${esc(d.alleenBij.map((s) => SOORT_LABEL[s] ?? s).join(', '))})` : ''}</small>`).join('<br>') : '<small class="zacht">–</small>'}</td>
+      <td><span class="label-status ${EIS_STATUS[x.status].klasse}">${EIS_STATUS[x.status].label}</span>${x.antwoorden ? `<br><small>${x.antwoorden} antwoord${x.antwoorden === 1 ? '' : 'en'}${x.ja || x.nee ? ` · ja ${x.ja} · nee ${x.nee}` : ''}${x.laatste ? ` · laatst ${datumNL(x.laatste)}` : ''}</small>` : ''}</td></tr>`).join('')
+      : '<tr><td colspan="5" class="leeg">Geen eisen gevonden.</td></tr>';
+  };
+  app.querySelector('#e-zoek')?.addEventListener('input', tekenRijen);
+  app.querySelector('#e-status')?.addEventListener('change', tekenRijen);
+  tekenRijen();
+
+  app.querySelector('#e-sjabloon').onclick = () => download('eisbibliotheek-sjabloon.csv', csv(EI.SJABLOON), 'text/csv;charset=utf-8');
+  app.querySelector('#e-export')?.addEventListener('click', () => {
+    const regels = [['Eisnummer', 'Eistekst', 'Eisvraag', 'Antwoordtype', 'Keuzes', 'Contractstuk', 'In formulier', 'Verificatie', 'Antwoorden', 'Ja', 'Nee', 'Laatst']];
+    for (const x of ver) regels.push([x.eis.nummer, x.eis.tekst, x.eis.vraag, velden.VELDTYPEN[x.eis.type] ?? x.eis.type, (x.eis.opties ?? []).join(';'), x.eis.bron,
+      x.velden.map((d) => velden.FORMULIEREN[d.formulier] ?? d.formulier).join(', '), EIS_STATUS[x.status].label, x.antwoorden, x.ja, x.nee, x.laatste]);
+    download(`eisen-${String(project.naam ?? 'project').replace(/[^\w-]+/g, '_')}.csv`, csv(regels), 'text/csv;charset=utf-8');
+  });
+  app.querySelector('#e-bestand').addEventListener('change', async (e) => {
+    const bestand = e.target.files?.[0];
+    e.target.value = '';
+    if (!bestand) return;
+    let res;
+    try {
+      const bladen = await leesDecompBestand(bestand);
+      res = bladen.map((b) => ({ ...EI.leesEisen(b.regels), blad: b.naam })).sort((a, b) => b.eisen.length - a.eisen.length)[0];
+    } catch (fout) {
+      console.error(fout);
+      return melding('Dit bestand kan niet worden gelezen. Gebruik Excel (.xlsx) of CSV.', 'fout');
+    }
+    voorbeeld = { res, bestand: bestand.name, v: EI.vergelijk(lijst, res.eisen) };
+    const el = app.querySelector('#e-voorbeeld');
+    const v = voorbeeld.v;
+    const gekoppeld = (project.velden ?? []).filter((d) => d.eis).length;
+    el.innerHTML = `<section class="kaart ${res.eisen.length ? '' : 'waarschuwingskaart'}">
+      <h2 style="margin-top:0">${I.bestand} ${esc(bestand.name)}${res.blad && res.blad !== bestand.name ? ` <small>· tabblad ${esc(res.blad)}</small>` : ''}</h2>
+      ${res.eisen.length ? `<p><strong>${res.eisen.length}</strong> eisen gevonden.${Object.keys(res.kolommen).length ? ` <small>Kolommen: ${Object.entries(res.kolommen).map(([k, h]) => `${{ nummer: 'eisnummer', tekst: 'eistekst', vraag: 'eisvraag', type: 'antwoordtype', opties: 'keuzes', bron: 'contractstuk' }[k]} = <code>${esc(h)}</code>`).join(' · ')}</small>` : ''}</p>
+        ${lijst.length ? `<ul><li><strong>${v.toegevoegd.length}</strong> nieuw</li><li><strong>${v.gewijzigd.length}</strong> gewijzigd${v.gewijzigd.length ? `: ${v.gewijzigd.slice(0, 12).map((g) => `${esc(g.eis.nummer)} <small>(${g.velden.join(', ')})</small>`).join(', ')}` : ''}</li>
+          <li class="${v.vervallen.length ? 'fouttekst' : ''}"><strong>${v.vervallen.length}</strong> vervallen${v.vervallen.length ? `: ${v.vervallen.slice(0, 12).map((x) => esc(x.nummer)).join(', ')}` : ''}</li><li><strong>${v.ongewijzigd}</strong> ongewijzigd</li></ul>
+          ${gekoppeld ? `<p><small>${I.let} Gekoppelde formuliervelden krijgen de nieuwe eisvraag en eistekst; velden van vervallen eisen blijven staan en worden gemarkeerd.</small></p>` : ''}` : ''}` : ''}
+      ${res.fouten.length ? `<details ${res.eisen.length ? '' : 'open'}><summary>${res.fouten.length} melding${res.fouten.length === 1 ? '' : 'en'}</summary><ul>${res.fouten.slice(0, 40).map((f) => `<li><small>${esc(f)}</small></li>`).join('')}</ul></details>` : ''}
+      <div class="knoppen" style="margin-top:.75rem">${res.eisen.length ? `<button class="knop primair" id="e-over">${I.vink} ${lijst.length ? 'Bijwerken' : 'Overnemen'}</button>` : ''}<button class="knop" id="e-annuleer">Annuleren</button></div></section>`;
+    el.querySelector('#e-annuleer').onclick = () => { el.innerHTML = ''; };
+    el.querySelector('#e-over')?.addEventListener('click', async () => {
+      const p = await actiefProject();
+      const bij = EI.werkVeldenBij(p.velden ?? [], res.eisen);
+      project = { ...p, eisen: { lijst: res.eisen, bestand: bestand.name, op: new Date().toISOString(), kolommen: res.kolommen }, velden: bij.defs.map(velden.normaliseer), gewijzigd: new Date().toISOString() };
+      await db.bewaar('projecten', project);
+      huidigProject = project;
+      gedaan(`${res.eisen.length} eisen ${lijst.length ? 'bijgewerkt' : 'ingelezen'}`, { extra: bij.aantal ? `${bij.aantal} gekoppelde formuliervelden bijgewerkt.` : 'Importeer de eisvragen nu in de formuliervelden.' });
+      eisenPagina();
+    });
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 }
 
@@ -8581,7 +8700,8 @@ function extraVeldenHtml(defs, extra, extraFotos) {
     const breed = ['tekst', 'checklist', 'foto', 'meerkeuze', 'locatie', 'handtekening', 'tijdsduur', 'bijlage'].includes(d.type) ? ' breed' : '';
     const hulp = d.hulptekst || (d.type === 'checklist' && d.verplicht ? 'Alle punten moeten worden afgevinkt.' : '');
     return `<div class="veld${breed}" data-extraveld="${esc(d.id)}">
-      <label for="x-${esc(d.id)}" ${d.verplicht ? 'class="vereist"' : ''}>${esc(d.label)}</label>
+      <label for="x-${esc(d.id)}" ${d.verplicht ? 'class="vereist"' : ''}>${esc(d.label)}${d.eis ? ` ${eisBadge(d.eis)}` : ''}</label>
+      ${d.eis?.tekst ? `<small class="eistekst">${esc(d.eis.tekst.length > 160 ? `${d.eis.tekst.slice(0, 157)}…` : d.eis.tekst)}</small>` : ''}
       ${extraInvoerHtml(d, extra[d.id], extraFotos[d.id])}${hulp ? `<small>${esc(hulp)}</small>` : ''}</div>`;
   }).join('')}</div>`;
 }
@@ -8880,11 +9000,12 @@ async function formulierveldenPagina(id, q) {
       <div class="veldenindeling">
         <section class="kaart">
           <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">${velden.FORMULIEREN[formulier]}</h2>
-            <button class="knop primair" id="nieuw" type="button">+ Veld toevoegen</button></div>
+            <span class="knoppen"><button class="knop" id="uit-eisen" type="button" title="Eisvragen uit de eisbibliotheek van dit project als vraag toevoegen">${I.taak} ＋ Uit eisbibliotheek</button>
+              <button class="knop primair" id="nieuw" type="button">+ Veld toevoegen</button></span></div>
           <p><small>Standaardvelden zoals datum, ${formulier === 'werk' ? (project.urenTonen === false ? 'soort en uitvoerder' : 'soort, uren en uitvoerder') : formulier === 'inspectie' ? 'soort, inspecteur en gebreken' : 'titel, prioriteit en deadline'} staan er altijd al in.</small></p>
           ${eigen.length ? `<ol class="veldlijst">${eigen.map((d, i) => `
             <li class="${bewerk?.id === d.id ? 'actief' : ''}">
-              <div><strong>${esc(d.label || '(zonder naam)')}</strong>
+              <div><strong>${esc(d.label || '(zonder naam)')}</strong>${d.eis ? ` ${eisBadge(d.eis)}` : ''}
                 <small>${velden.VELDTYPEN[d.type]}${d.type === 'getal' && d.eenheid ? ` (${esc(d.eenheid)})` : ''}${d.verplicht ? ' · verplicht' : ''}
                 ${d.alleenBij?.length ? ` · alleen bij ${d.alleenBij.map((s) => esc(SOORT_LABEL[s] ?? s)).join(', ')}` : ''}
                 ${d.toonAls?.veld ? ` · alleen als <em>${esc(lijst.find((x) => x.id === d.toonAls.veld)?.label ?? '?')}</em> = ${esc(d.toonAls.waarde)}` : ''}</small></div>
@@ -8898,6 +9019,7 @@ async function formulierveldenPagina(id, q) {
         <section class="kaart" id="editor" ${bewerk ? '' : 'hidden'}></section>
       </div>`;
 
+    app.querySelector('#uit-eisen').onclick = () => eisenKiezen();
     app.querySelector('#nieuw').onclick = () => {
       bewerk = { id: nieuwId(), formulier, label: '', type: 'tekst', verplicht: false, alleenBij: [], opties: [], eenheid: '', min: '', max: '', hulptekst: '', nieuw: true };
       teken();
@@ -8928,6 +9050,60 @@ async function formulierveldenPagina(id, q) {
     if (bewerk) tekenEditor();
   };
 
+  // Eisvragen uit de eisbibliotheek importeren (op eisnummer), als velden die aan de eis gekoppeld zijn.
+  const eisenKiezen = () => {
+    const eisen = project.eisen?.lijst ?? [];
+    if (!eisen.length) {
+      if (confirm('Er is nog geen eisbibliotheek voor dit project. Nu de eisen inlezen?')) ga('#/eisen');
+      return;
+    }
+    const alInFormulier = new Set(lijst.filter((x) => x.formulier === formulier && x.eis).map((x) => EI.sleutel(x.eis.nummer)));
+    const gekozen = new Set();
+    const d = document.createElement('dialog');
+    d.className = 'dialoog eiskiezer';
+    d.innerHTML = `<form method="dialog">
+      <h2>${I.taak} Uit eisbibliotheek · ${esc(velden.FORMULIEREN[formulier])}</h2>
+      <p><small>Kies de eisen die met dit formulier worden geverifieerd. De <strong>eisvraag</strong> wordt een verplichte vraag, gekoppeld aan het eisnummer.</small></p>
+      <input type="search" id="ek-zoek" placeholder="Zoek op eisnummer of tekst… (meerdere nummers: gescheiden door spaties)" autocomplete="off">
+      <div class="eiskiezer-lijst" id="ek-lijst"></div>
+      <div class="knoppen" style="justify-content:space-between;margin-top:.75rem"><small id="ek-teller"></small>
+        <span class="knoppen"><button class="knop" value="nee">Annuleren</button><button class="knop primair" value="ja" id="ek-ok" disabled>Toevoegen</button></span></div></form>`;
+    const tekenKeuze = () => {
+      const q = d.querySelector('#ek-zoek').value.trim();
+      const termen = zoekTermen(q);
+      // Meerdere eisnummers achter elkaar: elk nummer dat precies past telt.
+      const nummers = new Set(q.split(/[\s,;]+/).filter(Boolean).map(EI.sleutel));
+      const past = (e) => !termen.length || nummers.has(EI.sleutel(e.nummer)) || termen.every((t) => `${e.nummer} ${e.tekst} ${e.vraag} ${e.bron}`.toLowerCase().includes(t));
+      const zichtbaar = eisen.filter(past);
+      d.querySelector('#ek-lijst').innerHTML = zichtbaar.length ? zichtbaar.slice(0, 300).map((e) => {
+        const al = alInFormulier.has(EI.sleutel(e.nummer));
+        return `<label class="vink${al ? ' uit' : ''}"><input type="checkbox" value="${esc(e.nummer)}" ${al ? 'disabled checked' : gekozen.has(e.nummer) ? 'checked' : ''}>
+          <span><strong>${esc(e.nummer)}</strong> ${esc(e.vraag)} <small class="zacht">· ${esc(velden.VELDTYPEN[e.type] ?? e.type)}${al ? ' · staat al in dit formulier' : ''}</small>
+          <small>${esc(e.tekst)}${e.bron ? ` <em>(${esc(e.bron)})</em>` : ''}</small></span></label>`;
+      }).join('') + (zichtbaar.length > 300 ? `<p class="leeg">+ ${zichtbaar.length - 300} meer: verfijn de zoekterm</p>` : '') : '<p class="leeg">Geen eisen gevonden.</p>';
+      d.querySelector('#ek-teller').textContent = gekozen.size ? `${gekozen.size} eis${gekozen.size === 1 ? '' : 'en'} gekozen` : '';
+      d.querySelector('#ek-ok').disabled = !gekozen.size;
+      d.querySelector('#ek-ok').textContent = gekozen.size ? `${gekozen.size} vra${gekozen.size === 1 ? 'ag' : 'gen'} toevoegen` : 'Toevoegen';
+    };
+    d.addEventListener('input', (e) => {
+      if (e.target.id === 'ek-zoek') return tekenKeuze();
+      if (e.target.type === 'checkbox') { if (e.target.checked) gekozen.add(e.target.value); else gekozen.delete(e.target.value); tekenKeuze(); }
+    });
+    document.body.append(d);
+    tekenKeuze();
+    d.showModal();
+    d.addEventListener('close', async () => {
+      const ok = d.returnValue === 'ja';
+      d.remove();
+      if (!ok || !gekozen.size) return;
+      const nieuw = eisen.filter((e) => gekozen.has(e.nummer)).map((e) => EI.naarVeld(e, formulier, nieuwId()));
+      lijst.push(...nieuw);
+      await opslaan();
+      melding(`${nieuw.length} eisvra${nieuw.length === 1 ? 'ag' : 'gen'} toegevoegd aan ${velden.FORMULIEREN[formulier]}`);
+      teken();
+    });
+  };
+
   const tekenEditor = () => {
     const el = app.querySelector('#editor');
     const d = bewerk;
@@ -8935,6 +9111,10 @@ async function formulierveldenPagina(id, q) {
     const soorten = SOORTEN_PER_FORMULIER[formulier]();
     el.innerHTML = `
       <h2>${d.nieuw ? 'Nieuw veld' : 'Veld bewerken'}</h2>
+      ${d.eis ? `<div class="eisblok">${eisBadge(d.eis)} <span><strong>Gekoppeld aan eis ${esc(d.eis.nummer)}</strong>${d.eis.vervallen ? ' <span class="label-status verlopen">vervallen in de bibliotheek</span>' : ''}
+        <small>${esc(d.eis.tekst)}${d.eis.bron ? ` <em>(${esc(d.eis.bron)})</em>` : ''}</small>
+        <small class="zacht">De vraag komt uit de eisbibliotheek en wordt bij een nieuwe versie bijgewerkt.</small></span>
+        <button type="button" class="knop klein" id="ontkoppel">Ontkoppelen</button></div>` : ''}
       <form id="veldform" novalidate>
         <div class="velden">
           <div class="veld breed"><label for="v-label" class="vereist">Naam van het veld</label>
@@ -9010,6 +9190,10 @@ async function formulierveldenPagina(id, q) {
       el.querySelector('.voorbeeld').innerHTML = bewerk.label ? extraVeldenHtml([velden.normaliseer(bewerk)], {}, {}) : '';
     });
     el.querySelector('#annuleer').onclick = () => { bewerk = null; formulierGewijzigd = false; teken(); };
+    el.querySelector('#ontkoppel')?.addEventListener('click', () => {
+      if (!confirm(`Het veld loskoppelen van eis ${bewerk.eis.nummer}? De vraag blijft staan, maar telt niet meer mee voor de verificatie van de eis.`)) return;
+      lees(); bewerk.eis = null; tekenEditor();
+    });
     form.onsubmit = async (e) => {
       e.preventDefault();
       lees();
@@ -10229,7 +10413,7 @@ async function exporteerUitkomsten({ voorPakket = null } = {}) {
           ['Storing: opgelost om', datumTijdNL(rec.storing.opgelostOp)], ['Storing: doorlooptijd', rec.storing.gemeldOp && rec.storing.opgelostOp ? duurTekst(rec.storing.gemeldOp, rec.storing.opgelostOp) : ''],
           ['Storing: resultaat', STORING_RESULTAAT[rec.storing.resultaat]?.label ?? '']] : []),
         ...extraWeergave(rec, defs[soort] ?? []).filter(({ d: x }) => !['foto', 'bijlage'].includes(x.type))
-          .map(({ d: x, v }) => [x.label, velden.toonWaarde(x, v, datumNL)]),
+          .map(({ d: x, v }) => [x.eis ? `${x.eis.nummer} – ${x.label}` : x.label, velden.toonWaarde(x, v, datumNL)]),
       ],
       beoordeling: (rec) => beoordelingVan(rec), metUren: toonUren(), metKosten: toonKosten(),
     });
@@ -10244,7 +10428,11 @@ async function exporteerUitkomsten({ voorPakket = null } = {}) {
     if (keuze.fotos && r.fotos.length) {
       fotoData = new Map((await laadFotos([...new Set(r.fotos.map((f) => f.fotoId))])).map((f) => [f.id, f.data]));
     }
-    const wb = UX.maakWerkboek(ExcelJS, r, { titel: 'Uitkomsten werkpakketten', project: project?.naam ?? '', filter: `${filter}${fotoData ? ` · met ${fotoData.size} foto's` : ''}`, rondes, metKosten: toonKosten(), fotoData });
+    // Eisverificatie: per eis uit de eisbibliotheek hoe vaak en met welk resultaat hij in deze registraties is bevraagd.
+    const eisVer = project?.eisen?.lijst?.length ? EI.verificatie(project.eisen.lijst, project.velden ?? [], regs.filter((x) => x.soort !== 'overgeslagen').map((x) => x.r)) : [];
+    const wb = UX.maakWerkboek(ExcelJS, r, { titel: 'Uitkomsten werkpakketten', project: project?.naam ?? '', filter: `${filter}${fotoData ? ` · met ${fotoData.size} foto's` : ''}`, rondes, metKosten: toonKosten(), fotoData,
+      eisen: eisVer.map((x) => ({ waarden: [x.eis.nummer, x.eis.tekst, x.eis.vraag, x.eis.bron, [...new Set(x.velden.map((d) => velden.FORMULIEREN[d.formulier] ?? d.formulier))].join(', '),
+        x.antwoorden, x.ja, x.nee, x.overig, x.laatste ? new Date(`${x.laatste.slice(0, 10)}T00:00:00Z`) : '', EIS_STATUS[x.status].label], kleur: { geverifieerd: '#1a7f37', afwijking: '#d1452f', 'nog niet geverifieerd': '#e07b00' }[x.status] ?? '' })) });
     const naam = keuze.ids.size === 1 ? `uitkomsten-${(perId.get([...keuze.ids][0]).code || perId.get([...keuze.ids][0]).naam)}` : 'uitkomsten-werkpakketten';
     download(`${naam.replace(/[^\w-]+/g, '_')}-${vandaag()}.xlsx`, await wb.xlsx.writeBuffer(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     melding(`Excel gemaakt: ${r.rijen.length} registraties, ${r.bevindingen.length} bevindingen, ${r.vervolg.length} vervolgacties`);
@@ -10281,7 +10469,7 @@ async function exporteerResultaten({ lijst, titel, onderdeel = '', filter = '', 
     const r = RX.resultaatRijen({
       lijst,
       laagNaam: new Map(lagen.map((l) => [l.id, l.naam])),
-      extra: (i) => extraWeergave(i, defs).filter(({ d: x }) => x.type !== 'foto').map(({ d: x, v }) => [x.label, velden.toonWaarde(x, v, datumNL)]),
+      extra: (i) => extraWeergave(i, defs).filter(({ d: x }) => x.type !== 'foto').map(({ d: x, v }) => [x.eis ? `${x.eis.nummer} – ${x.label}` : x.label, velden.toonWaarde(x, v, datumNL)]),
     });
     let fotoData = null;
     if (metFotos) {

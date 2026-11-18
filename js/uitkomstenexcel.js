@@ -212,6 +212,8 @@ export function uitkomstRijen({ registraties, extra = () => [], beoordeling = ()
   };
 }
 
+export const EIS_KOLOMMEN = [['Eisnummer', 14], ['Eistekst', 50], ['Eisvraag', 40], ['Contractstuk', 18], ['Formulier', 20], ['Antwoorden', 11], ['Ja', 7], ['Nee', 7],
+  ['Overig', 8], ['Laatst', 12, 'datum'], ['Verificatie', 20]];
 export const ANTWOORD_KOLOMMEN = [['Werkpakket code', 14], ['Werkpakket', 26], ['Ronde', 18], ['Objectcode', 14], ['Object', 26], ['Datum', 12, 'datum'],
   ['Door', 20], ['Formulier', 22], ['Vraag', 34], ['Antwoord', 44]];
 export const bevindingKolommen = (metKosten = true) => [['Werkpakket code', 14], ['Werkpakket', 26], ['Ronde', 18], ['Objectcode', 14], ['Object', 26],
@@ -285,6 +287,8 @@ export function maakWerkboek(ExcelJS, r, meta) {
   const vk = meta.metKosten === false ? VERVOLG_KOLOMMEN.filter(([k]) => k !== 'Raming (€)') : VERVOLG_KOLOMMEN;
   const vr = meta.metKosten === false ? r.vervolg.map((x) => ({ ...x, waarden: x.waarden.filter((_, n) => n !== 9) })) : r.vervolg;
   blad('Vervolgacties', vk, vr, 8, 'FFE8710A');
+  // Eisverificatie: per eis uit de eisbibliotheek hoe vaak hij is bevraagd en met welk resultaat (ja/nee/overig).
+  if (meta.eisen?.length) blad('Eisverificatie', EIS_KOLOMMEN, meta.eisen, EIS_KOLOMMEN.length, 'FF1A7F37');
   // Blad met de foto's: altijd datum, tijd en locatie per foto; de afbeelding zelf alleen als foto's zijn gekozen.
   const fotoData = meta.fotoData;
   if (r.fotos?.length) {

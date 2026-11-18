@@ -1643,3 +1643,16 @@ td.actiecel .knoppen { justify-content: flex-end; flex-wrap: wrap; }
 .galerij figure:has(.fotoinfo) { aspect-ratio: auto; overflow: visible; background: none; border: 0; }
 .galerij figure:has(.fotoinfo) img { aspect-ratio: 4 / 3; height: auto; border-radius: 10px; border: 1px solid var(--rand); }
 .galerij figure:has(.fotoinfo) figcaption { position: static; background: none; color: inherit; padding: .15rem 0 0; }
+/* Eisbibliotheek */
+.eisbadge { display: inline-flex; align-items: center; gap: .2rem; font-size: .72rem; font-weight: 600; color: #0b4f6c; background: #e3f0f6; border: 1px solid #b9d7e5;
+  border-radius: 999px; padding: 0 .45rem; vertical-align: middle; white-space: nowrap; cursor: help; }
+.eisbadge .ico { width: 11px; height: 11px; }
+.eisbadge.vervallen { color: #8a4b00; background: #fff4e0; border-color: #f0cf99; text-decoration: line-through; }
+.eistekst { display: block; color: var(--tekst-zacht, #6b7785); margin: -.1rem 0 .3rem; font-style: italic; }
+.eisblok { display: flex; gap: .6rem; align-items: flex-start; background: var(--achtergrond); border: 1px solid var(--rand); border-radius: 8px; padding: .5rem .65rem; margin-bottom: .75rem; }
+.eisblok > span { flex: 1; display: flex; flex-direction: column; gap: .15rem; }
+.dialoog.eiskiezer { width: min(760px, calc(100vw - 32px)); }
+.eiskiezer-lijst { max-height: 55vh; overflow: auto; margin-top: .5rem; display: flex; flex-direction: column; gap: .35rem; }
+.eiskiezer-lijst .vink > span { display: flex; flex-direction: column; gap: .1rem; }
+.eiskiezer-lijst .vink.uit { opacity: .6; }
+.eistabel td { vertical-align: top; }

@@ -150,5 +150,7 @@ export function normaliseer(def) {
   }
   if (d.type === 'tijdsduur') Object.assign(d, { pauze: Boolean(def.pauze), ploeg: Boolean(def.ploeg) });
   if (def.toonAls?.veld && def.toonAls?.waarde) d.toonAls = { veld: def.toonAls.veld, waarde: String(def.toonAls.waarde) };
+  // Koppeling met een eis uit de contractstukken (eisbibliotheek).
+  if (def.eis?.nummer) d.eis = { nummer: String(def.eis.nummer), tekst: String(def.eis.tekst ?? ''), bron: String(def.eis.bron ?? ''), ...(def.eis.vervallen ? { vervallen: true } : {}) };
   return d;
 }
