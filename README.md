@@ -281,8 +281,10 @@ en **Mijn locatie**. Daaronder:
 - een vaste schakelaar **Alles | Alleen te doen** met aantallen, het meest gebruikte filter.
 
 **Filter** opent een onderblad met alles op één plek: werkpakketten van (aan mij / alle actuele), periode, tonen (alles / alleen te
-doen), een lijst met werkpakketten om aan te vinken (code + naam, "x te doen · y objecten", met zoekveld bij meer dan vijf) en
-bouwdeelnamen op de kaart. De knop **Toon N objecten** telt live mee; **Wis filters** zet alles terug. Annuleren verandert niets.
+doen), een **zoekbalk** (code, naam of ronde) en een lijst met werkpakketten om aan te vinken (code + naam, "x te doen · y objecten").
+Standaard staan **alle werkpakketten aangevinkt**; vink uit wat je niet wilt zien, of gebruik *Alle aan* / *Alle uit* (bij een
+zoekopdracht: alleen de gevonden). Alles aangevinkt betekent "alles tonen", ook voor werkpakketten die later actueel worden; niets
+aangevinkt kan niet. Verder: bouwdeelnamen op de kaart. De knop **Toon N objecten** telt live mee; **Wis filters** zet alles terug. Annuleren verandert niets.
 De keuzes worden per apparaat onthouden. De legenda met de knop *Opmaak* staat onder de kaart.
 
 ## Werkpakketcode overal vóór de naam

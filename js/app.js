@@ -5274,8 +5274,19 @@ async function mobielKaart() {
 
   /** Filterscherm (onderblad): bereik, periode, werkpakketten, wat te tonen en bouwdeellabels; telling werkt live bij. */
   function filterBlad(focus = '') {
-    const c = { bereik: st.bereik, periode: st.periode, pakketten: new Set(gekozenPk), teDoen: st.teDoen, labels: st.labels };
+    const c = { bereik: st.bereik, periode: st.periode, teDoen: st.teDoen, labels: st.labels };
     let mm = model(c.bereik, c.periode);
+    // Aangevinkte werkpakketten; standaard alle aangevinkt (= alles tonen).
+    c.sel = new Set(gekozenPk.size ? [...gekozenPk].filter((id) => mm.pakketten.has(id)) : mm.pakketten.keys());
+    const allesAan = () => mm.pakketten.size > 0 && c.sel.size === mm.pakketten.size;
+    /** Nieuw model (ander bereik of periode): stond alles aan, dan ook nu alles; anders de keuze behouden waar het pakket nog bestaat. */
+    const herbouw = () => {
+      const was = allesAan();
+      mm = model(c.bereik, c.periode);
+      c.sel = new Set(was ? mm.pakketten.keys() : [...c.sel].filter((id) => mm.pakketten.has(id)));
+    };
+    const filterSet = () => (allesAan() ? new Set() : c.sel);
+    const tel = (teDoen) => (c.sel.size ? zichtbaar(mm, filterSet(), teDoen).length : 0);
     let zoek = '';
     const d = document.createElement('dialog');
     d.className = 'dialoog mfilterblad';
@@ -5284,30 +5295,39 @@ async function mobielKaart() {
       if (!lijstEl) return;
       const termen = zoekTermen(zoek);
       const alle = [...mm.pakketten.values()].sort((a, b) => metCode(a).localeCompare(metCode(b), 'nl', { numeric: true }));
-      const tonen = alle.filter((pk) => termen.every((t) => metCode(pk).toLowerCase().includes(t)));
-      lijstEl.innerHTML = tonen.length ? tonen.map((pk) => `<label class="mfpk ${c.pakketten.has(pk.id) ? 'aan' : ''}"><input type="checkbox" value="${esc(pk.id)}" ${c.pakketten.has(pk.id) ? 'checked' : ''}>
+      const tonen = alle.filter((pk) => termen.every((t) => `${metCode(pk)} ${pk.rondes.map((v) => v.rondeNaam ?? '').join(' ')}`.toLowerCase().includes(t)));
+      lijstEl.innerHTML = tonen.length ? tonen.map((pk) => `<label class="mfpk ${c.sel.has(pk.id) ? 'aan' : ''}"><input type="checkbox" value="${esc(pk.id)}" ${c.sel.has(pk.id) ? 'checked' : ''}>
         <span><span class="mfpknaam">${wpNaam(pk)}</span><small>${pk.openIds.size ? `<b>${pk.openIds.size} te doen</b> · ` : `${I.vink} klaar · `}${pk.objecten.size} object${pk.objecten.size === 1 ? '' : 'en'}${actueleRondeTekst(pk) ? ` · ${actueleRondeTekst(pk)}` : ''}</small></span></label>`).join('')
         : `<p class="leeg"><small>${alle.length ? 'Geen werkpakket gevonden.' : 'Geen werkpakketten in deze keuze.'}</small></p>`;
-      d.querySelector('#mf-pkkop').textContent = c.pakketten.size ? `${c.pakketten.size} gekozen` : 'alle';
+      d.querySelector('#mf-pkkop').textContent = allesAan() ? `alle ${mm.pakketten.size} aangevinkt` : `${c.sel.size} van ${mm.pakketten.size} aangevinkt`;
+      const gevonden = tonen.map((pk) => pk.id);
+      const z = termen.length ? ' gevonden' : '';
+      d.querySelector('#mf-alle').textContent = `Alle${z} aan`;
+      d.querySelector('#mf-geen').textContent = `Alle${z} uit`;
+      d.querySelector('#mf-alle').disabled = gevonden.every((id) => c.sel.has(id));
+      d.querySelector('#mf-geen').disabled = !gevonden.some((id) => c.sel.has(id));
+      d._gevonden = gevonden;
     };
     const telling = () => {
-      for (const id of [...c.pakketten]) if (!mm.pakketten.has(id)) c.pakketten.delete(id);
-      const n = zichtbaar(mm, c.pakketten, c.teDoen).length;
-      d.querySelector('#mf-toon').textContent = n ? `Toon ${n} object${n === 1 ? '' : 'en'}` : 'Toon kaart (0 objecten)';
-      d.querySelector('#mf-tdopen').textContent = zichtbaar(mm, c.pakketten, true).length;
-      d.querySelector('#mf-tdalles').textContent = zichtbaar(mm, c.pakketten, false).length;
+      const n = tel(c.teDoen);
+      const geen = mm.pakketten.size && !c.sel.size;
+      const knop = d.querySelector('#mf-toon');
+      knop.textContent = geen ? 'Vink minstens één werkpakket aan' : n ? `Toon ${n} object${n === 1 ? '' : 'en'}` : 'Toon kaart (0 objecten)';
+      knop.disabled = Boolean(geen);
+      d.querySelector('#mf-tdopen').textContent = tel(true);
+      d.querySelector('#mf-tdalles').textContent = tel(false);
     };
     const tekenPeriode = () => {
       d.querySelector('#mf-periode').innerHTML = periodeKiezer(g.pakketten.flatMap((p) => rondesVan(p)), c.periode);
       const sel = d.querySelector('[data-rperiode]');
       sel.onchange = () => {
         c.periode = sel.value === 'eigen' ? `eigen:${vandaag().slice(0, 4)}-01-01:${vandaag().slice(0, 4)}-12-31` : sel.value;
-        mm = model(c.bereik, c.periode); tekenPeriode(); tekenPakketten(); telling();
+        herbouw(); tekenPeriode(); tekenPakketten(); telling();
       };
       const van = d.querySelector('[data-rvan]'); const tot = d.querySelector('[data-rtot]');
       [van, tot].forEach((x) => x?.addEventListener('change', () => {
         if (!van.value || !tot.value) return;
-        c.periode = `eigen:${van.value}:${tot.value}`; mm = model(c.bereik, c.periode); tekenPakketten(); telling();
+        c.periode = `eigen:${van.value}:${tot.value}`; herbouw(); tekenPakketten(); telling();
       }));
     };
     d.innerHTML = `<form method="dialog" novalidate>
@@ -5323,32 +5343,32 @@ async function mobielKaart() {
             <label><input type="radio" name="mf-td" value="" ${c.teDoen ? '' : 'checked'}><span>Alles <b id="mf-tdalles"></b></span></label>
             <label><input type="radio" name="mf-td" value="1" ${c.teDoen ? 'checked' : ''}><span>Alleen te doen <b id="mf-tdopen"></b></span></label></div></section>
         <section data-sectie="pakketten"><h3>Werkpakketten <small id="mf-pkkop"></small></h3>
-          <div class="mfpkbalk"><input type="search" id="mf-zoek" placeholder="Zoek op code of naam" aria-label="Zoek werkpakket" autocomplete="off" ${telPakketten(alleActueel) > 5 ? '' : 'hidden'}>
-            <button type="button" class="knop klein" id="mf-alle">Alle werkpakketten</button></div>
+          <input type="search" id="mf-zoek" class="mfzoek" placeholder="Zoek werkpakket op code, naam of ronde" aria-label="Zoek werkpakket" autocomplete="off" enterkeyhint="search">
+          <div class="mfpkbalk"><button type="button" class="knop klein" id="mf-alle">Alle aan</button><button type="button" class="knop klein" id="mf-geen">Alle uit</button></div>
           <div id="mf-pk" class="mfpklijst"></div></section>
         ${dv ? `<section><h3>Op de kaart</h3><label class="mfschakel"><input type="checkbox" id="mf-labels" ${c.labels ? 'checked' : ''}> Namen van bouwdelen tonen <small>(vanaf ingezoomd)</small></label></section>` : ''}
       </div>
       <div class="mfvoet"><button type="button" class="knop" id="mf-wis">Wis filters</button><button class="knop primair" value="ja" id="mf-toon">Toon</button></div></form>`;
     document.body.append(d);
     tekenPeriode(); tekenPakketten(); telling();
-    d.querySelectorAll('input[name=mf-bereik]').forEach((x) => x.addEventListener('change', () => { c.bereik = x.value; mm = model(c.bereik, c.periode); tekenPakketten(); telling(); }));
+    d.querySelectorAll('input[name=mf-bereik]').forEach((x) => x.addEventListener('change', () => { c.bereik = x.value; herbouw(); tekenPakketten(); telling(); }));
     d.querySelectorAll('input[name=mf-td]').forEach((x) => x.addEventListener('change', () => { c.teDoen = x.value === '1'; telling(); }));
     d.querySelector('#mf-zoek').addEventListener('input', (e) => { zoek = e.target.value; tekenPakketten(); });
     d.querySelector('#mf-pk').addEventListener('change', (e) => {
       const x = e.target.closest('input[type=checkbox]');
       if (!x) return;
-      if (x.checked) c.pakketten.add(x.value); else c.pakketten.delete(x.value);
-      if (c.pakketten.size === mm.pakketten.size) c.pakketten.clear(); // alles gekozen = alle
+      if (x.checked) c.sel.add(x.value); else c.sel.delete(x.value);
       tekenPakketten(); telling();
     });
-    d.querySelector('#mf-alle').onclick = () => { c.pakketten.clear(); tekenPakketten(); telling(); };
+    d.querySelector('#mf-alle').onclick = () => { (d._gevonden ?? []).forEach((id) => c.sel.add(id)); tekenPakketten(); telling(); };
+    d.querySelector('#mf-geen').onclick = () => { (d._gevonden ?? []).forEach((id) => c.sel.delete(id)); tekenPakketten(); telling(); };
     d.querySelector('#mf-labels')?.addEventListener('change', (e) => { c.labels = e.target.checked; });
     d.querySelector('#mf-wis').onclick = () => {
       Object.assign(c, { bereik: 'mij', periode: PL.PERIODE_STANDAARD, teDoen: false });
-      c.pakketten.clear();
+
       d.querySelector('input[name=mf-bereik][value=mij]').checked = true;
       d.querySelector('input[name=mf-td][value=""]').checked = true;
-      mm = model(c.bereik, c.periode); tekenPeriode(); tekenPakketten(); telling();
+      mm = model(c.bereik, c.periode); c.sel = new Set(mm.pakketten.keys()); zoek = ''; d.querySelector('#mf-zoek').value = ''; tekenPeriode(); tekenPakketten(); telling();
     };
     d.showModal();
     if (focus) d.querySelector(`[data-sectie=${focus}]`)?.scrollIntoView({ block: 'start' });
@@ -5360,7 +5380,8 @@ async function mobielKaart() {
       instelling.schrijf('rondePeriode', c.periode);
       instelling.schrijf('mKaartTeDoen', c.teDoen ? '1' : '');
       instelling.schrijf('mKaartLabels', c.labels ? '1' : '0');
-      instelling.schrijf('mKaartPakketten', JSON.stringify([...c.pakketten]));
+      // Alles aangevinkt = alles tonen (ook werkpakketten die later actueel worden).
+      instelling.schrijf('mKaartPakketten', JSON.stringify(allesAan() ? [] : [...c.sel]));
       mobielKaart();
     }, { once: true });
   }

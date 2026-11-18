@@ -1759,3 +1759,8 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
 .mfschakel { display: flex; gap: .5rem; align-items: center; font-size: .9rem; }
 .mfvoet { display: flex; gap: .5rem; padding: .65rem 1rem calc(.65rem + env(safe-area-inset-bottom)); border-top: 1px solid var(--rand); }
 .mfvoet .primair { flex: 1; }
+.mfzoek { width: 100%; margin-bottom: .45rem; font-size: 1rem; padding: .55rem .75rem; }
+.mfpkbalk { justify-content: flex-end; }
+.mfpkbalk .knop { flex: 0 0 auto; }
+.mfpkbalk .knop:disabled { opacity: .45; }
+.mfvoet .primair:disabled { opacity: .55; }
