@@ -518,11 +518,13 @@ Kosten- en urenkolommen vervallen als die in het project zijn uitgezet. Alleen a
 
 ## Ingediende inspecties zijn alleen-lezen
 
-Een inspecteur kan een inspectie aanpassen zolang het een **concept** is. Na **Afronden** is de inspectie ingediend en voor de inspecteur
-alleen-lezen: openen toont "Deze inspectie is ingediend" met een knop om hem te bekijken; Bewerken en Verwijderen staan niet meer op de
-detailpagina. Pas als de beheerder of beoordelaar de inspectie **afkeurt**, kan de inspecteur hem weer openen, aanpassen en opnieuw indienen.
-Beheerders en mensen met het recht "goedkeuren" kunnen altijd aanpassen. Dit geldt voor alle inspecties (NEN, eigen typen, boomveiligheid,
-waterkering). De regel wordt in de app gehandhaafd; de server controleert alleen projecttoegang.
+Een schouw of inspectie kan worden aangepast zolang het een **concept** is. Na **Afronden** is hij ingediend en voor **iedereen**
+alleen-lezen, ook voor beheerders en beoordelaars: openen toont "Deze inspectie is ingediend", Bewerken staat niet meer op de
+detailpagina en ook de bewerken-link werkt niet. Pas als de beheerder of beoordelaar hem **afkeurt** (met een reden), kan hij weer
+worden geopend, aangepast en opnieuw ingediend; daarna is hij weer vergrendeld. Vlak voor het opslaan controleert de app nog een keer,
+zodat een formulier dat al open stond (bijv. op een ander apparaat) een ingediende inspectie niet kan overschrijven. Beheerders kunnen
+een ingediende inspectie nog wel verwijderen en de opvolging van maatregelen (uitgevoerd/open) bijhouden. Dit geldt voor alle
+inspecties (NEN, eigen typen, schouw, boomveiligheid, waterkering). De regel wordt in de app gehandhaafd; de server controleert alleen projecttoegang.
 
 ## Mijn geschiedenis (telefoon, Ik-pagina)
 

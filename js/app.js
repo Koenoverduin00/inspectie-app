@@ -4521,6 +4521,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
       aangemaakt: bestaand?.aangemaakt ?? nu,
       gewijzigd: nu,
     };
+    if (await ingediendGeblokkeerd(inspectie.id)) return;
     await db.bewaar('inspecties', inspectie);
     if (data.inspecteur) instelling.schrijf('inspecteur', data.inspecteur);
     formulierGewijzigd = false;
@@ -6659,19 +6660,26 @@ const teBeoordelen = (r) => beoordelingVan(r) === 'ingediend' && (r.status !== '
 
 /** Mag deze gebruiker registraties goedkeuren? Beheerders altijd; projectleden alleen met het recht 'goedkeuren'. */
 /**
- * Een ingediende inspectie is voor de inspecteur alleen-lezen. Aanpassen kan bij een concept, of als de inspectie is
- * afgekeurd. Beheerders en beoordelaars (recht "goedkeuren") mogen altijd aanpassen.
+ * Een ingediende schouw of inspectie is voor iedereen alleen-lezen, ook voor beheerders en beoordelaars. Aanpassen kan
+ * bij een concept, of nadat de beheerder of beoordelaar hem heeft afgekeurd; na opslaan wordt hij opnieuw ingediend.
  */
 function magInspectieAanpassen(i) {
   if (!i) return true;
-  if (magBeheren() || magGoedkeuren()) return true;
   if (i.status !== 'afgerond') return true;
   return beoordelingVan(i) === 'afgekeurd';
 }
 const magInspectieVerwijderen = (i) => magBeheren() || magGoedkeuren() || i?.status !== 'afgerond';
 /** Link naar een inspectie: het formulier als je mag aanpassen, anders de (alleen-lezen) detailpagina. */
 const inspectieHref = (i, mobiel = true) => (magInspectieAanpassen(i) ? (mobiel ? `#/m/inspectie/${i.id}` : `#/inspecties/${i.id}/bewerken`) : `#/inspecties/${i.id}`);
-const alleenLezenLabel = (i) => (magInspectieAanpassen(i) ? '' : `<span class="label-status alleenlezen" title="Ingediende inspecties kun je alleen aanpassen als ze zijn afgekeurd">${I.slot} Alleen-lezen</span>`);
+const alleenLezenLabel = (i) => (magInspectieAanpassen(i) ? '' : `<span class="label-status alleenlezen" title="Ingediend: alleen aan te passen nadat de beheerder hem heeft afgekeurd">${I.slot} Alleen-lezen${magGoedkeuren() ? ' · afkeuren om aan te passen' : ''}</span>`);
+
+/** Vlak voor het opslaan: is de inspectie intussen (bijv. op een ander apparaat) ingediend, dan niet overschrijven. */
+async function ingediendGeblokkeerd(id) {
+  const actueel = id ? await db.haal('inspecties', id) : null;
+  if (!actueel || magInspectieAanpassen(actueel)) return false;
+  melding('Deze inspectie is al ingediend en kan niet meer worden aangepast. Alleen na afkeuren door de beheerder.', 'fout');
+  return true;
+}
 
 function inspectieVergrendeld(i, mobiel) {
   const titel = i.bvc ? 'Boomveiligheidscontrole' : i.stowa ? 'Inspectie waterkering' : i.soort;
@@ -6682,8 +6690,9 @@ function inspectieVergrendeld(i, mobiel) {
     <section class="kaart vergrendeld">
       <div class="vergrendeld-icoon">${I.slot}</div>
       <h2>Deze inspectie is ingediend</h2>
-      <p>Een ingediende inspectie kun je niet meer aanpassen. Alleen als de beheerder of beoordelaar hem <strong>afkeurt</strong>, kun je hem weer
-        openen en aanpassen. Zie je een fout? Laat het de beheerder weten.</p>
+      <p>Een ingediende schouw of inspectie kan niemand meer aanpassen. Alleen als de beheerder of beoordelaar hem <strong>afkeurt</strong>, kan hij weer
+        worden geopend en aangepast${magGoedkeuren() ? '' : '. Zie je een fout? Laat het de beheerder weten'}.</p>
+      ${magGoedkeuren() ? `<p><small>${I.let} Jij mag beoordelen: open de inspectie en kies <strong>Afkeuren</strong> met een reden. Daarna kan de inspecteur (of jij) hem aanpassen en opnieuw indienen.</small></p>` : ''}
       <dl class="gegevens">
         <dt>Datum</dt><dd>${datumNL(i.datum)}</dd>
         <dt>Status</dt><dd>${beoordelingLabel(i)}</dd>
@@ -11512,6 +11521,7 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
     const pid = bestaand?.projectId ?? projectId();
     await bewaarFotoLijsten([staat.fotos, ...W.map((w) => w.fotos)], origineel, { inspectieId, projectId: pid, datum: nu });
     const waarnemingen = W.map(({ fotos, groepKeuze, elementKeuze, wijzigen, ...w }) => ST.alsGebrek({ ...w, fotoIds: fotos.map((f) => f.id) }));
+    if (await ingediendGeblokkeerd(inspectieId)) return;
     await db.bewaar('inspecties', {
       ...(bestaand ?? {}), id: inspectieId, beoordeling: beoordelingBijOpslaan(bestaand, status === 'afgerond'), projectId: pid, objectId: object.id,
       werkpakketId: staat.werkpakketId, rondeId: staat.werkpakketId ? staat.rondeId : '',
@@ -11960,6 +11970,7 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
       frequentieJaren: jaren,
       volgendeControle: b.niet ? '' : volgendeInspectie(datum, jaren),
     };
+    if (await ingediendGeblokkeerd(inspectieId)) return;
     await db.bewaar('inspecties', {
       ...(bestaand ?? {}), id: inspectieId, beoordeling: beoordelingBijOpslaan(bestaand, status === 'afgerond'), projectId: pid, objectId: object.id, werkpakketId: staat.werkpakketId, rondeId: staat.werkpakketId ? staat.rondeId : '',
       soort: BV.BVC_SOORT, datum, inspecteur, status, weer: '', samenvatting: b.opmerking, fotoIds: staat.fotos.map((f) => f.id),
