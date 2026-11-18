@@ -1656,3 +1656,25 @@ td.actiecel .knoppen { justify-content: flex-end; flex-wrap: wrap; }
 .eiskiezer-lijst .vink > span { display: flex; flex-direction: column; gap: .1rem; }
 .eiskiezer-lijst .vink.uit { opacity: .6; }
 .eistabel td { vertical-align: top; }
+
+/* Verificatiedossier (eisbibliotheek) */
+.dossierbalk { flex-wrap: wrap; align-items: flex-end; gap: .75rem; }
+.dossierbalk .filters { align-items: center; gap: .5rem; flex-wrap: wrap; margin: 0; }
+.dossierbalk .filters label { display: inline-flex; align-items: center; gap: .4rem; }
+.dossierbalk .filters input[type=date] { width: auto; }
+.dossier h2 { margin-top: 1.5rem; border-bottom: 1px solid #dde3e8; padding-bottom: .25rem; }
+.dossier .tegels { margin-bottom: .75rem; }
+.dossiertabel td { vertical-align: top; }
+.dossier-eis { margin: 1rem 0 1.25rem; break-inside: avoid-page; }
+.dossier-eis h3 { display: flex; align-items: center; gap: .5rem; margin-bottom: .25rem; }
+.dossier-eis .gegevens { margin-bottom: .5rem; }
+.dossierfotos { display: flex; gap: .35rem; flex-wrap: wrap; min-width: 120px; }
+.dossierfotos figure { margin: 0; width: 120px; }
+.dossierfotos img { width: 120px; height: 90px; object-fit: cover; border-radius: 4px; cursor: zoom-in; }
+.dossierfotos figcaption { font-size: .65rem; color: #555; line-height: 1.2; }
+.dossier-handtekening { margin-top: 2.5rem; break-inside: avoid; }
+@media print {
+  .dossier h2 { break-after: avoid; }
+  .dossier .label-status, .dossier .tegel { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .dossier a { color: inherit; text-decoration: none; }
+}

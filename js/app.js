@@ -24,6 +24,7 @@ import {
 import * as PX from './pakketexcel.js';
 import * as RX from './resultatenexcel.js';
 import * as UX from './uitkomstenexcel.js';
+import * as ED from './eisdossier.js';
 import * as IMP from './gisimport.js';
 import * as ST from './stowa.js';
 import * as DG from './digigids.js';
@@ -102,6 +103,7 @@ const ROUTES = [
   [/^\/projecten\/([^/]+)\/bewerken$/, 'projecten', (id) => projectFormulier(id)],
   [/^\/projecten\/([^/]+)\/velden$/, 'projecten', formulierveldenPagina],
   [/^\/eisen$/, 'eisen', eisenPagina],
+  [/^\/eisen\/dossier$/, 'eisen', (_, q) => eisDossier(q)],
   [/^\/gis\/importeren$/, 'kaart', gisImport],
   [/^\/planning$/, 'taken', takenPagina],
   [/^\/taken$/, 'taken', takenPagina],
@@ -349,7 +351,7 @@ const EIS_STATUS = {
 };
 const eisBadge = (eis) => (eis?.nummer ? `<span class="eisbadge${eis.vervallen ? ' vervallen' : ''}" title="${esc(`${eis.vervallen ? 'Vervallen eis – ' : ''}${eis.tekst ?? ''}${eis.bron ? ` (${eis.bron})` : ''}`)}">${I.taak} ${esc(eis.nummer)}</span>` : '');
 async function eisRegistraties() {
-  return (await Promise.all(['werkzaamheden', 'inspecties', 'taken'].map((st) => inProject(st)))).flat();
+  return (await Promise.all(['werkzaamheden', 'inspecties', 'taken'].map(async (st) => (await inProject(st)).map((r) => ({ ...r, _bron: st }))))).flat();
 }
 
 async function eisenPagina() {
@@ -367,7 +369,8 @@ async function eisenPagina() {
       <div class="knoppen">
         <label class="knop primair">${I.bestand} ${lijst.length ? 'Nieuwe versie inlezen' : 'Eisen inlezen'}<input type="file" id="e-bestand" accept=".xlsx,.csv,.txt" hidden></label>
         <button class="knop" id="e-sjabloon">${I.excel} Sjabloon</button>
-        ${lijst.length ? `<button class="knop" id="e-export">${I.exporteer} Exporteren</button>` : ''}
+        ${lijst.length ? `<a class="knop" id="e-dossier" href="#/eisen/dossier?jaar=${vandaag().slice(0, 4)}">${I.bestand} Verificatiedossier</a>
+          <button class="knop" id="e-export">${I.exporteer} Exporteren</button>` : ''}
         <a class="knop" href="#/projecten/${esc(project.id)}/velden">${I.lijst} Formuliervelden</a></div></div>
     <div id="e-voorbeeld"></div>
     ${lijst.length ? `<section class="kaart">
@@ -452,6 +455,140 @@ async function eisenPagina() {
       eisenPagina();
     });
     el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+}
+
+/** Verificatiedossier: per kalenderjaar of eigen periode een rapport (afdrukken als PDF) en Excel van alle eisen met het bewijs. */
+async function eisDossier(q) {
+  const project = await actiefProject();
+  if (!project) { app.innerHTML = leegKaart('Kies eerst een project.'); return; }
+  const lijst = project.eisen?.lijst ?? [];
+  if (!lijst.length) { app.innerHTML = leegKaart('Er zijn nog geen eisen ingelezen.', '<a class="knop" href="#/eisen">Naar de eisbibliotheek</a>'); return; }
+  const isIso = (x) => /^\d{4}-\d{2}-\d{2}$/.test(x ?? '');
+  const alle = await eisRegistraties();
+  const jarenLijst = EI.jaren(alle, vandaag().slice(0, 4));
+  let van; let tot; let periode; let jaar = '';
+  if (isIso(q?.get('van')) || isIso(q?.get('tot'))) {
+    van = isIso(q.get('van')) ? q.get('van') : ''; tot = isIso(q.get('tot')) ? q.get('tot') : '';
+    if (van && tot && van > tot) [van, tot] = [tot, van];
+    periode = van && tot ? `${datumNL(van)} t/m ${datumNL(tot)}` : van ? `vanaf ${datumNL(van)}` : `tot en met ${datumNL(tot)}`;
+  } else if (q?.get('jaar') === 'alles') {
+    van = ''; tot = ''; periode = 'Alle registraties'; jaar = 'alles';
+  } else {
+    jaar = /^\d{4}$/.test(q?.get('jaar') ?? '') ? q.get('jaar') : vandaag().slice(0, 4);
+    van = `${jaar}-01-01`; tot = `${jaar}-12-31`; periode = `Kalenderjaar ${jaar}`;
+  }
+  const metFotos = q?.get('fotos') === '1';
+  const d = EI.dossier({ eisen: lijst, defs: project.velden ?? [], registraties: alle, van, tot });
+  const objecten = new Map((await inProject('objecten')).map((o) => [o.id, o]));
+  const pakketten = new Map((await inProject('werkpakketten')).map((p) => [p.id, p]));
+  const organisatie = instelling.lees('organisatie');
+  const door = ikEmail() || instelling.lees('inspecteur') || '';
+  const BRON = { werkzaamheden: 'Werkzaamheid', inspecties: 'Inspectie', taken: 'Taak' };
+  const href = (r) => (r._bron === 'inspecties' ? `#/inspecties/${esc(r.id)}` : r._bron === 'taken' ? `#/taken/${esc(r.id)}/bewerken` : `#/werkzaamheden/${esc(r.id)}`);
+  const info = (r) => {
+    const o = objecten.get(r.objectId);
+    const p = pakketten.get(r.werkpakketId);
+    const ronde = p && r.rondeId ? rondesVan(p).find((x) => x.id === r.rondeId) : null;
+    return { objectcode: o?.code ?? '', object: o?.naam ?? '', pakket: p ? [p.code, p.naam].filter(Boolean).join(' ') : '', ronde: ronde ? `R${ronde.nummer} ${ronde.naam ?? ''}`.trim() : '',
+      formulier: [BRON[r._bron], r.soort].filter(Boolean).join(' · '), door: r.uitvoerder || r.inspecteur || r.beoordeling?.ingediendDoor || '',
+      toelichting: r.omschrijving || r.samenvatting || r.opmerking || '' };
+  };
+  const tekst = (veld, waarde) => velden.toonWaarde(veld, waarde, datumNL);
+  const fmt = { info, tekst, formulier: (v) => velden.FORMULIEREN[v.formulier] ?? v.formulier };
+  const uitkomstChip = (u) => (u === 'ja' ? '<span class="label-status afgerond">Ja</span>' : u === 'nee' ? '<span class="label-status verlopen">Nee</span>' : '<span class="label-status">Ingevuld</span>');
+  const statusChip = (st) => `<span class="label-status ${EIS_STATUS[st].klasse}">${EIS_STATUS[st].label}</span>`;
+  // Foto's als bewijs: per registratie de eerste foto's (alleen als gekozen; maakt het rapport groter).
+  const fotoPerReg = new Map();
+  if (metFotos) {
+    const regs = [...new Set(d.ver.flatMap((x) => x.items.map((i) => i.r)))];
+    await Promise.all(regs.map(async (r) => {
+      const ids = UX.fotosVan(r).map((f) => f.fotoId).slice(0, 3);
+      if (ids.length) fotoPerReg.set(r.id, await laadFotos(ids));
+    }));
+  }
+  const bewijsTabel = (items, metEis = false) => `<div class="tabelhouder"><table class="dossiertabel">
+    <thead><tr>${metEis ? '<th>Eis</th>' : ''}<th>Datum</th><th>Object</th><th>Werkpakket / ronde</th><th>Door</th><th>Antwoord</th>${metFotos ? '<th>Foto</th>' : ''}</tr></thead>
+    <tbody>${items.map((x) => { const i = info(x.r); const f = fotoPerReg.get(x.r.id) ?? []; return `<tr>
+      ${metEis ? `<td><strong>${esc(x.eis.nummer)}</strong></td>` : ''}<td><a href="${href(x.r)}">${datumNL(x.r.datum)}</a></td>
+      <td>${esc(i.objectcode)}${i.object ? `<br><small>${esc(i.object)}</small>` : ''}</td>
+      <td><small>${esc(i.pakket || '–')}${i.ronde ? `<br>${esc(i.ronde)}` : ''}</small></td><td><small>${esc(i.door || '–')}</small></td>
+      <td>${x.uitkomst === 'overig' ? `<strong>${esc(tekst(x.veld, x.waarde))}</strong>` : uitkomstChip(x.uitkomst)}${i.toelichting && x.uitkomst === 'nee' ? `<br><small>${esc(i.toelichting)}</small>` : ''}</td>
+      ${metFotos ? `<td class="dossierfotos">${f.map((ft) => `<figure><img src="${esc(ft.data)}" alt="Foto" loading="lazy" data-lichtbak><figcaption>${fotoOnderschrift(ft.info)}</figcaption></figure>`).join('') || '<small class="zacht">–</small>'}</td>` : ''}</tr>`; }).join('')}</tbody></table></div>`;
+  const beantwoord = d.ver.filter((x) => x.items.length);
+  const open = d.ver.filter((x) => !x.items.length);
+  const pct = Math.round(d.afdekking * 100);
+  const jaarOpties = jarenLijst.map((j) => optie(String(j), String(j), jaar)).join('');
+
+  app.innerHTML = `
+    <div class="paginakop geen-print dossierbalk">
+      <div><p><a href="#/eisen">← Eisbibliotheek</a></p><h1>Verificatiedossier</h1></div>
+      <form class="filters" id="ed-periode">
+        <label>Periode <select id="ed-jaar">${jaarOpties}${optie('eigen', 'Eigen periode…', jaar ? '' : 'eigen')}${optie('alles', 'Alle jaren', jaar)}</select></label>
+        <span id="ed-eigen" ${jaar ? 'hidden' : ''}><input type="date" id="ed-van" value="${esc(van)}" aria-label="Van"> t/m <input type="date" id="ed-tot" value="${esc(tot)}" aria-label="Tot en met">
+          <button class="knop" type="submit">Toon</button></span>
+        <label class="vink"><input type="checkbox" id="ed-fotos" ${metFotos ? 'checked' : ''}> Met foto's</label>
+      </form>
+      <div class="knoppen"><button class="knop primair" onclick="window.print()">${I.bestand} Afdrukken / opslaan als PDF</button>
+        <button class="knop" id="ed-excel">${I.excel} Excel</button></div>
+    </div>
+    <article class="rapport dossier">
+      <div class="rapport-kop">
+        <div>${organisatie ? `<small>${esc(organisatie)}</small>` : ''}
+          <h1 style="margin:.25rem 0">Verificatiedossier contracteisen</h1>
+          <div>${esc(project.naam)}${project.opdrachtgever ? ` · opdrachtgever ${esc(project.opdrachtgever)}` : ''}</div></div>
+        <div style="text-align:right"><small>Periode</small><br><strong>${esc(periode)}</strong><br><small>Opgesteld ${datumNL(vandaag())}${door ? ` · ${esc(door)}` : ''}</small></div>
+      </div>
+      <h2>1. Samenvatting</h2>
+      <div class="tegels klein">
+        <span class="tegel"><strong>${d.tel.totaal}</strong><span>eisen</span></span>
+        <span class="tegel goed"><strong>${d.tel.geverifieerd}</strong><span>geverifieerd</span></span>
+        <span class="tegel ${d.tel.afwijking ? 'slecht' : ''}"><strong>${d.tel.afwijking}</strong><span>met afwijking</span></span>
+        <span class="tegel let"><strong>${d.tel['nog niet geverifieerd']}</strong><span>nog niet geverifieerd</span></span>
+        <span class="tegel"><strong>${d.tel['niet in formulier']}</strong><span>niet in een formulier</span></span></div>
+      <p>In de periode <strong>${esc(periode.toLowerCase())}</strong> zijn <strong>${d.antwoorden}</strong> antwoorden op eisvragen gegeven in
+        <strong>${d.registraties}</strong> registratie${d.registraties === 1 ? "" : "s"}. Van de ${d.inFormulier} eisen die in een formulier zijn opgenomen, is <strong>${pct}%</strong> in deze periode bevraagd${d.tel.afwijking ? `; bij <strong>${d.tel.afwijking}</strong> eis${d.tel.afwijking === 1 ? '' : 'en'} is minstens één keer een afwijking vastgesteld` : ''}.
+        ${project.eisen?.bestand ? `<br><small>Eisenbestand: ${esc(project.eisen.bestand)}${project.eisen.op ? `, ingelezen ${datumNL(project.eisen.op.slice(0, 10))}` : ''}.</small>` : ''}</p>
+      <h2>2. Overzicht per eis</h2>
+      <div class="tabelhouder"><table class="dossiertabel">
+        <thead><tr><th>Eisnummer</th><th>Eisvraag</th><th>Antwoorden</th><th>Laatst</th><th>Verificatie</th></tr></thead>
+        <tbody>${d.ver.map((x) => `<tr><td><strong>${esc(x.eis.nummer)}</strong>${x.eis.bron ? `<br><small>${esc(x.eis.bron)}</small>` : ''}</td><td>${esc(x.eis.vraag)}</td>
+          <td>${x.antwoorden ? `${x.antwoorden}${x.ja || x.nee ? ` <small>(ja ${x.ja} · nee ${x.nee})</small>` : ''}` : '–'}</td><td>${x.laatste ? datumNL(x.laatste) : '–'}</td><td>${statusChip(x.status)}</td></tr>`).join('')}</tbody></table></div>
+      <h2>3. Afwijkingen</h2>
+      ${d.afwijkingen.length ? `<p>Antwoorden waarbij de eis niet werd gehaald. Klik op de datum voor de registratie.</p>${bewijsTabel(d.afwijkingen, true)}` : '<p>Geen afwijkingen vastgesteld in deze periode.</p>'}
+      <h2>4. Verantwoording per eis</h2>
+      ${beantwoord.length ? beantwoord.map((x) => `<section class="dossier-eis">
+        <h3>${esc(x.eis.nummer)} ${statusChip(x.status)}</h3>
+        <dl class="gegevens"><dt>Eis</dt><dd>${esc(x.eis.tekst || '–')}${x.eis.bron ? ` <small>(${esc(x.eis.bron)})</small>` : ''}</dd>
+          <dt>Eisvraag</dt><dd>${esc(x.eis.vraag)}</dd><dt>Verificatie</dt><dd>${x.antwoorden} antwoord${x.antwoorden === 1 ? '' : 'en'}${x.ja || x.nee ? ` · ja ${x.ja} · nee ${x.nee}` : ''} · ${datumNL(x.items[0].r.datum)} t/m ${datumNL(x.laatste)}</dd></dl>
+        ${bewijsTabel(x.items)}</section>`).join('') : '<p>In deze periode zijn geen eisvragen beantwoord.</p>'}
+      <h2>5. Niet geverifieerd in deze periode</h2>
+      ${open.length ? `<div class="tabelhouder"><table class="dossiertabel"><thead><tr><th>Eisnummer</th><th>Eistekst</th><th>Status</th></tr></thead>
+        <tbody>${open.map((x) => `<tr><td><strong>${esc(x.eis.nummer)}</strong>${x.eis.bron ? `<br><small>${esc(x.eis.bron)}</small>` : ''}</td><td><small>${esc(x.eis.tekst)}</small></td><td>${statusChip(x.status)}</td></tr>`).join('')}</tbody></table></div>`
+    : '<p>Alle eisen zijn in deze periode bevraagd.</p>'}
+      <div class="raster-2 dossier-handtekening">
+        <div>Opgesteld door:<br><br><br>_____________________________<br>${esc(door)}</div>
+        <div>Gezien door opdrachtgever:<br><br><br>_____________________________<br>${esc(project.opdrachtgever || '')}</div></div>
+    </article>`;
+
+  const naar = (params) => { location.hash = `#/eisen/dossier?${new URLSearchParams({ ...params, ...(app.querySelector('#ed-fotos').checked ? { fotos: '1' } : {}) })}`; };
+  app.querySelector('#ed-jaar').addEventListener('change', (e) => {
+    if (e.target.value === 'eigen') { app.querySelector('#ed-eigen').hidden = false; app.querySelector('#ed-van').focus(); return; }
+    naar({ jaar: e.target.value });
+  });
+  app.querySelector('#ed-periode').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const v = app.querySelector('#ed-van').value; const t = app.querySelector('#ed-tot').value;
+    if (!v && !t) return melding('Kies een begin- of einddatum.', 'fout');
+    naar({ ...(v ? { van: v } : {}), ...(t ? { tot: t } : {}) });
+  });
+  app.querySelector('#ed-fotos').addEventListener('change', () => naar(jaar ? { jaar } : { ...(van ? { van } : {}), ...(tot ? { tot } : {}) }));
+  app.querySelector('#ed-excel').addEventListener('click', async () => {
+    const ExcelJS = await PX.laadExcelJS();
+    const wb = ED.maakDossierWerkboek(ExcelJS, d, { project: project.naam ?? '', opdrachtgever: project.opdrachtgever, periode, bron: project.eisen?.bestand, door }, fmt);
+    const buf = await wb.xlsx.writeBuffer();
+    const deel = jaar && jaar !== 'alles' ? jaar : jaar === 'alles' ? 'alle-jaren' : `${van || 'begin'}_${tot || 'nu'}`;
+    download(`verificatiedossier-${String(project.naam ?? 'project').replace(/[^\w-]+/g, '_')}-${deel}.xlsx`, buf, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   });
 }
 

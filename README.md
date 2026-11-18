@@ -695,6 +695,11 @@ naar een **eisvraag** die in de formulieren komt, gekoppeld aan het **eisnummer*
   "nee"), *Nog niet geverifieerd* (in formulier, nog geen antwoord) of *Niet in een formulier*, met aantallen en de
   laatste datum. Filter op status en exporteer als CSV.
 - **Uitkomsten-export**: kolommen van eisvragen heten *Eisnummer – vraag* en er komt een blad **Eisverificatie** bij.
+- **Verificatiedossier** (knop op de pagina Eisen): een rapport over een **kalenderjaar**, een **eigen periode** of alle jaren,
+  met samenvatting (aantallen per status, afdekking), overzicht per eis, afwijkingen, verantwoording per eis (elk antwoord met
+  datum, object, werkpakket/ronde en uitvoerder, klikbaar naar de registratie), de eisen die niet zijn geverifieerd en een
+  ondertekeningsblok. Optioneel met foto's als bewijs. *Afdrukken / opslaan als PDF* geeft het dossier; *Excel* geeft
+  dezelfde inhoud in de bladen Samenvatting, Eisen, Bewijs en Afwijkingen.
 
 ## Kleurthema
 
@@ -870,7 +875,8 @@ js/sync.js            inloggen en synchronisatie met Supabase
 js/gis.js             GIS inlezen (GeoJSON, Shapefile, GeoPackage), RD→WGS84, geometrie
 js/taken.js           taken samenstellen en sorteren op urgentie en locatie
 js/velden.js          eigen formuliervelden: zichtbaarheid, controle en weergave
-js/eisen.js           eisbibliotheek: inlezen, vergelijken, eisvragen en verificatie per eis
+js/eisen.js           eisbibliotheek: inlezen, vergelijken, eisvragen en verificatie per eis (ook per periode)
+js/eisdossier.js      verificatiedossier als Excel (samenvatting, eisen, bewijs, afwijkingen)
 js/pakketten.js       werkpakketten en rondes: voortgang, toewijzing en objectfilters
 js/pakketexcel.js     Excel-sjabloon (keuzelijsten, controles, beveiliging) en import met controle
 js/resultatenexcel.js inspectieresultaten naar Excel (resultaten, gebreken, maatregelen, foto's)

@@ -126,17 +126,21 @@ export function verificatie(eisen, defs, registraties) {
   return (eisen ?? []).map((eis) => {
     const vs = (defs ?? []).filter((d) => d.eis && sleutel(d.eis.nummer) === sleutel(eis.nummer));
     let antwoorden = 0; let ja = 0; let nee = 0; let overig = 0; let laatste = '';
+    const items = [];
     for (const r of registraties ?? []) {
       for (const d of vs) {
         const v = r.extra?.[d.id];
         if (v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length)) continue;
         antwoorden += 1;
-        if (v === true) ja += 1; else if (v === false) nee += 1; else overig += 1;
+        const uitkomst = v === true ? 'ja' : v === false ? 'nee' : 'overig';
+        if (uitkomst === 'ja') ja += 1; else if (uitkomst === 'nee') nee += 1; else overig += 1;
         if (String(r.datum ?? '') > laatste) laatste = String(r.datum ?? '');
+        items.push({ r, veld: d, waarde: v, uitkomst });
       }
     }
+    items.sort((a, b) => String(a.r.datum ?? '').localeCompare(String(b.r.datum ?? '')));
     const status = !vs.length ? 'niet in formulier' : !antwoorden ? 'nog niet geverifieerd' : nee ? 'afwijking' : 'geverifieerd';
-    return { eis, velden: vs, antwoorden, ja, nee, overig, laatste, status };
+    return { eis, velden: vs, antwoorden, ja, nee, overig, laatste, status, items };
   });
 }
 
@@ -147,3 +151,39 @@ export const SJABLOON = [
   ['EIS-4.1.2', 'Zwerfvuil wordt verwijderd; de mate van vervuiling wordt vastgelegd.', 'Wat is de beeldkwaliteit zwerfvuil?', 'Keuze', 'A+;A;B;C;D', 'Beeldkwaliteitsbestek'],
   ['EIS-5.3.1', 'Gebreken aan verhardingen worden gemeld met foto.', 'Foto van het gebrek', 'Foto', '', 'PvE 5.3'],
 ];
+
+/** Registraties met een datum binnen [van, tot] (ISO, grenzen inbegrepen; leeg = open). */
+export function inPeriode(registraties, van, tot) {
+  return (registraties ?? []).filter((r) => {
+    const d = String(r?.datum ?? '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
+    return (!van || d >= van) && (!tot || d <= tot);
+  });
+}
+
+/** Kalenderjaren waarin registraties zijn gedaan (nieuwste eerst), aangevuld met het huidige jaar. */
+export function jaren(registraties, huidig) {
+  const set = new Set([Number(huidig)].filter(Boolean));
+  for (const r of registraties ?? []) { const j = Number(String(r?.datum ?? '').slice(0, 4)); if (j > 1900) set.add(j); }
+  return [...set].sort((a, b) => b - a);
+}
+
+/**
+ * Verificatiedossier over een periode: per eis de antwoorden uit die periode, plus een samenvatting.
+ * Afdekkingsgraad = deel van de eisen die in een formulier staan dat in de periode minstens één keer is beantwoord.
+ */
+export function dossier({ eisen, defs, registraties, van, tot }) {
+  const regs = inPeriode(registraties, van, tot);
+  const ver = verificatie(eisen, defs, regs);
+  const tel = { totaal: ver.length, geverifieerd: 0, afwijking: 0, 'nog niet geverifieerd': 0, 'niet in formulier': 0 };
+  for (const x of ver) tel[x.status] += 1;
+  const inFormulier = tel.totaal - tel['niet in formulier'];
+  const bevraagd = tel.geverifieerd + tel.afwijking;
+  const gebruikt = new Set(ver.flatMap((x) => x.items.map((i) => i.r)));
+  return {
+    van, tot, ver, tel, inFormulier, registraties: gebruikt.size,
+    antwoorden: ver.reduce((t, x) => t + x.antwoorden, 0),
+    afdekking: inFormulier ? bevraagd / inFormulier : 0,
+    afwijkingen: ver.flatMap((x) => x.items.filter((i) => i.uitkomst === 'nee').map((i) => ({ ...i, eis: x.eis }))),
+  };
+}
