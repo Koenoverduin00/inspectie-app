@@ -284,7 +284,15 @@ en **Mijn locatie**. Daaronder:
 doen), een **zoekbalk** (code, naam of ronde) en een lijst met werkpakketten om aan te vinken (code + naam, "x te doen · y objecten").
 Standaard staan **alle werkpakketten aangevinkt**; vink uit wat je niet wilt zien, of gebruik *Alle aan* / *Alle uit* (bij een
 zoekopdracht: alleen de gevonden). Alles aangevinkt betekent "alles tonen", ook voor werkpakketten die later actueel worden; niets
-aangevinkt kan niet. Verder: bouwdeelnamen op de kaart. De knop **Toon N objecten** telt live mee; **Wis filters** zet alles terug. Annuleren verandert niets.
+aangevinkt kan niet. Verder: bouwdeelnamen op de kaart.
+
+**Soort werk**: met chips filter je op de soort van het werkpakket, de werksoort (bijv. *Groenonderhoud*, *Klein onderhoud*) of
+de inspectiesoort (bijv. *Schouw*), met het aantal werkpakketten erbij. Meerdere soorten tegelijk kan; *Alle soorten* zet het
+filter uit. De werkpakketlijst toont dan alleen pakketten van die soort ("2 van andere soort"). Op de kaart verschijnt een chip
+met de gekozen soort en een × om hem weer weg te halen.
+
+**Bouwdeelnamen op de kaart** zijn maximaal zo breed als de kaart, lopen bij lange namen door op een tweede regel en schuiven
+op als het object aan de rand ligt, zodat ze altijd helemaal in beeld staan. De knop **Toon N objecten** telt live mee; **Wis filters** zet alles terug. Annuleren verandert niets.
 De keuzes worden per apparaat onthouden. De legenda met de knop *Opmaak* staat onder de kaart.
 
 ## Werkpakketcode overal vóór de naam
