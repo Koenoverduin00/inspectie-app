@@ -1771,3 +1771,14 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
 .mfschakel input[type=checkbox] { flex: 0 0 auto; width: 1.15rem !important; height: 1.15rem !important; min-height: 0 !important; margin: .1rem 0 0; padding: 0; }
 .mfschakel > span { flex: 1 1 auto; min-width: 0; display: grid; gap: .1rem; font-size: .9rem; overflow-wrap: anywhere; }
 .mfschakel small { color: var(--tekst-zacht); font-size: .78rem; }
+
+/* Filterscherm: nooit breder dan het scherm en niet zijwaarts te schuiven (ook op iPhone/Safari) */
+.dialoog.mfilterblad { width: 100vw; max-width: min(560px, 100vw); box-sizing: border-box; left: 0; right: 0; overflow: hidden; inset-inline: 0; }
+.mfilterblad form, .mfinhoud { width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: hidden; }
+.mfinhoud > section, .mfpklijst, .mfpk, .mfpk > span, .mfsoorten, .mfpkbalk, .mfschakel, .mfinhoud .segment, .mfinhoud .periodekiezer { min-width: 0; max-width: 100%; box-sizing: border-box; }
+.mfinhoud input[type=checkbox], .mfinhoud input[type=radio] { width: auto; flex: 0 0 auto; }
+.mfpk { width: 100%; }
+.mfpk input[type=checkbox] { width: 1.15rem !important; height: 1.15rem !important; min-height: 0 !important; padding: 0; }
+.mfpknaam, .mfpk small { overflow-wrap: anywhere; word-break: break-word; }
+.mfinhoud .periodekiezer select, .mfinhoud .periodekiezer input { min-width: 0; max-width: 100%; }
+.mfinhoud .segment span { white-space: normal; text-align: center; }
