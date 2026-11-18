@@ -285,6 +285,11 @@ Op alle kaarten met voortgang (mobiele kaart, werkpakketkaart, dashboardkaart me
 - **gereed**: dun en doorzichtig groen, kleine punten; **overgeslagen**: grijs en gestippeld.
 - **Alleen te doen** (schakelaar bij de legenda op de telefoon, onthouden per apparaat) verbergt alles wat klaar is.
   Op de pc kies je op de werkpakketpagina het filter *Open*.
+- **Opmaak zelf instellen**: via de knop **Opmaak** bij elke kaartlegenda (en *Opmaak te doen / gedaan* op Kaart & GIS)
+  stel je per status in: kleur, randkleur (of zelfde als kleur), lijndikte, vulling, zichtbaarheid van de lijn,
+  puntgrootte en lijnstijl (doorgetrokken, gestreept, gestippeld), met een live voorbeeld. Een beheerder slaat het op
+  **voor iedereen in het project** (wordt gesynchroniseerd); iedereen kan ook een eigen opmaak **alleen op dit apparaat**
+  kiezen. *Standaard herstellen* zet alles terug. De voortgangsbalken en legenda's volgen dezelfde kleuren.
 
 ## Objecten zoeken en de kaart in werkpakketten en inspecties
 
@@ -892,6 +897,7 @@ js/taken.js           taken samenstellen en sorteren op urgentie en locatie
 js/velden.js          eigen formuliervelden: zichtbaarheid, controle en weergave
 js/eisen.js           eisbibliotheek: inlezen, vergelijken, eisvragen en verificatie per eis (ook per periode)
 js/eisdossier.js      verificatiedossier als Excel (samenvatting, eisen, bewijs, afwijkingen)
+js/kaartopmaak.js     opmaak van te doen / gedaan / overgeslagen op de kaarten (standaard ← project ← apparaat)
 js/pakketten.js       werkpakketten en rondes: voortgang, toewijzing en objectfilters
 js/pakketexcel.js     Excel-sjabloon (keuzelijsten, controles, beveiliging) en import met controle
 js/resultatenexcel.js inspectieresultaten naar Excel (resultaten, gebreken, maatregelen, foto's)

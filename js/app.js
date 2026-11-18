@@ -25,6 +25,7 @@ import * as PX from './pakketexcel.js';
 import * as RX from './resultatenexcel.js';
 import * as UX from './uitkomstenexcel.js';
 import * as ED from './eisdossier.js';
+import * as KO from './kaartopmaak.js';
 import * as IMP from './gisimport.js';
 import * as ST from './stowa.js';
 import * as DG from './digigids.js';
@@ -2549,7 +2550,7 @@ async function dashboard() {
       if (w === 'voortgang') items = [['Te doen', PAKKET_KLEUR.open], ['Gedaan', PAKKET_KLEUR.gedaan], ['Overgeslagen', PAKKET_KLEUR.overgeslagen]];
       else if (w === 'pakket') items = (st.pakketten.size ? gekozenP() : g.pakketten.filter((p) => kleurNr.has(p.id))).map((p) => [metCode(p), kleurNr.get(p.id)]);
       else items = [...[1, 2, 3, 4, 5, 6].map((c) => [`${c} · ${CONDITIES[c].label}`, CONDITIES[c].kleur]), ['Niet geïnspecteerd', '#1f6feb']];
-      el.innerHTML = `${items.map(([l, k]) => `<span style="--k:${esc(k)}">${esc(l)}</span>`).join('')}<small>${n} object${n === 1 ? '' : 'en'}${zonder ? `, ${zonder} zonder locatie` : ''}</small>`;
+      el.innerHTML = `${items.map(([l, k]) => `<span style="--k:${esc(k)}">${esc(l)}</span>`).join('')}<small>${n} object${n === 1 ? '' : 'en'}${zonder ? `, ${zonder} zonder locatie` : ''}</small>${w === 'voortgang' ? opmaakKnop() : ''}`;
     };
     const popup = (o) => {
       const s = status.get(o.id);
@@ -5236,9 +5237,9 @@ async function mobielKaart() {
       <button type="button" class="gfchip${gekozenPk.size ? '' : ' actief'}" data-mkp="" aria-pressed="${gekozenPk.size ? 'false' : 'true'}">Alle (${pakketten.size})</button>
       ${[...pakketten.values()].map((pk) => `<button type="button" class="gfchip${gekozenPk.has(pk.id) ? ' actief' : ''}" data-mkp="${esc(pk.id)}" aria-pressed="${gekozenPk.has(pk.id)}" title="${esc(metCode(pk))}">${gekozenPk.has(pk.id) ? I.vink : ''}${pakketLabel(pk)}</button>`).join('')}</div>
     <p class="mkeuzehint" id="mkeuzehint"></p>` : ''}
-    <div class="mlegenda"><span><i class="tedoen" style="background:${PAKKET_KLEUR.open}"></i>Te doen</span><span><i class="klaar" style="background:${PAKKET_KLEUR.gedaan}"></i>Gereed</span><span><i class="klaar" style="background:${PAKKET_KLEUR.overgeslagen}"></i>Overgeslagen</span>
+    <div class="mlegenda"><span>${statusStip('open')}Te doen</span><span>${statusStip('gedaan')}Gereed</span><span>${statusStip('overgeslagen')}Overgeslagen</span>
       ${rondes.length ? `<label class="mlabelschakel tedoenschakel"><input type="checkbox" id="mtedoen" ${alleenTeDoen ? 'checked' : ''}> Alleen te doen (${open})</label>` : ''}
-      ${dv ? `<label class="mlabelschakel"><input type="checkbox" id="bdlabels" ${labelsAan ? 'checked' : ''}> Bouwdelen op de kaart</label>` : ''}</div>
+      ${dv ? `<label class="mlabelschakel"><input type="checkbox" id="bdlabels" ${labelsAan ? 'checked' : ''}> Bouwdelen op de kaart</label>` : ''}${rondes.length ? opmaakKnop() : ''}</div>
     ${rondes.length ? '<div id="veldkaart" class="veldkaart"><p class="leeg">Kaart laden…</p></div>'
     : bereik === 'mij' && alleActueel.length
       ? `<div class="kaart leeg"><p>Er is op dit moment geen werkpakket aan jou toegewezen.</p><p><small>Kies hierboven <strong>Alle actuele</strong> om de ${telPakketten(alleActueel)} lopende werkpakketten van het project te zien.</small></p></div>`
@@ -7191,6 +7192,7 @@ async function werkProjectkopBij() {
   if (!chip) return;
   const p = await actiefProject();
   huidigProject = p;
+  pasKaartOpmaakToe(p);
   werkRechtenKlassenBij();
   werkInboxBadgeBij();
   chip.textContent = p ? p.naam : 'Kies een project';
@@ -7911,7 +7913,8 @@ async function kaart() {
   app.innerHTML = `
     <div class="paginakop">
       <div><h1>Kaart &amp; GIS</h1><p>Areaal: ${matenTekst(totaal, opKaart.length)}${opKaart.length < objecten.length ? ` (${objecten.length - opKaart.length} objecten zonder geometrie)` : ''}.</p></div>
-      ${magBeheren() ? `<a class="knop ${lagen.length ? '' : 'primair'}" href="#/gis/importeren">${I.kaart} GIS inladen</a>` : ''}
+      <div class="knoppen"><button type="button" class="knop" data-kaartopmaak title="Opmaak van te doen, gedaan en overgeslagen op alle kaarten">${I.instellingen} Opmaak te doen / gedaan</button>
+      ${magBeheren() ? `<a class="knop ${lagen.length ? '' : 'primair'}" href="#/gis/importeren">${I.kaart} GIS inladen</a>` : ''}</div>
     </div>
     <div class="kaartindeling">
       <div id="kaart" class="kaart"><p class="leeg">Kaart laden…</p></div>
@@ -8573,7 +8576,7 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
       </div>
       </div>
       ${metKaart ? `<div class="rd-kaart"><div class="rd-kaartvlak" id="rd-kaart"><p class="leeg">Kaart laden…</p></div>
-        <div class="mlegenda"><span><i class="tedoen" style="background:${PAKKET_KLEUR.open}"></i>Te doen (${vg ? vg.totaal - klaar : rondeObjecten.length})</span><span><i style="background:${PAKKET_KLEUR.gedaan}"></i>Gedaan (${vg?.gedaan.size ?? 0})</span>${vg?.overgeslagen.size ? `<span><i style="background:${PAKKET_KLEUR.overgeslagen}"></i>Overgeslagen (${vg.overgeslagen.size})</span>` : ''}</div></div>` : ''}
+        <div class="mlegenda"><span>${statusStip('open')}Te doen (${vg ? vg.totaal - klaar : rondeObjecten.length})</span><span>${statusStip('gedaan')}Gedaan (${vg?.gedaan.size ?? 0})</span>${vg?.overgeslagen.size ? `<span>${statusStip('overgeslagen')}Overgeslagen (${vg.overgeslagen.size})</span>` : ''}${opmaakKnop()}</div></div>` : ''}
       <div class="knoppen rd-voet" style="margin-top:1rem;justify-content:space-between">
         <a class="knop" href="${pakketPagina(v, false)}">Werkpakket openen</a>
         <span class="knoppen">${bewerkbaar && r.start ? '<button class="knop gevaar" value="wis">Uit planning halen</button>' : ''}
@@ -9380,22 +9383,133 @@ async function formulierveldenPagina(id, q) {
 // Werkpakketten
 // ---------------------------------------------------------------------------
 const PAKKET_KLEUR = { open: '#e07b00', gedaan: '#1a7f37', overgeslagen: '#8a96a3' };
+// Vaste kleuren voor kaarten die geen voortgang tonen (werkpakket samenstellen, afroep).
+const IN_PAKKET_KLEUR = '#1a7f37';
+const NIET_GEKOZEN_KLEUR = '#8a96a3';
 /**
- * Kaartstijl per status: wat nog te doen is valt op (fel oranje, dikke donkere rand, groter, bovenop),
- * wat klaar is treedt terug (dun, doorzichtig, kleiner; overgeslagen gestippeld).
+ * Opmaak van te doen / gedaan / overgeslagen op alle kaarten: standaard ← project (beheerder) ← dit apparaat.
+ * Standaard valt te doen op (fel oranje, dikke donkere rand, groter, bovenop) en treedt klaar terug.
  */
-const TE_DOEN_RAND = '#7a3300';
-function statusStijl(st, punt, kleur = PAKKET_KLEUR[st] ?? '#8a96a3') {
-  if (st === 'open') return punt ? { radius: 10, color: TE_DOEN_RAND, weight: 3, opacity: 1, fillColor: kleur, fillOpacity: 1, dashArray: null }
-    : { color: TE_DOEN_RAND, weight: 4, opacity: 1, fillColor: kleur, fillOpacity: 0.65, dashArray: null };
-  const over = st === 'overgeslagen';
-  return punt ? { radius: 5, color: '#fff', weight: 1, opacity: 0.8, fillColor: kleur, fillOpacity: 0.55, dashArray: null }
-    : { color: kleur, weight: over ? 1.5 : 1.5, opacity: 0.6, fillColor: kleur, fillOpacity: 0.12, dashArray: over ? '4 4' : null };
+let KAART_OPMAAK = KO.samenvoegen();
+const apparaatOpmaak = () => { try { return JSON.parse(instelling.lees('kaartOpmaak', '') || 'null'); } catch { return null; } };
+function pasKaartOpmaakToe(project = huidigProject) {
+  KAART_OPMAAK = KO.samenvoegen(project?.kaartOpmaak, apparaatOpmaak());
+  for (const [st] of KO.STATUSSEN) PAKKET_KLEUR[st] = KAART_OPMAAK[st].kleur;
 }
+function statusStijl(st, punt, kleur) {
+  const op = KAART_OPMAAK[st] ?? KAART_OPMAAK.overgeslagen;
+  return KO.leaflet(op, punt, kleur ?? op.kleur);
+}
+/** Legendastipje in de opmaak van de status. */
+const statusStip = (st) => `<i class="opmaakstip" style="${KO.legendaCss(KAART_OPMAAK[st])}"></i>`;
+const opmaakKnop = () => `<button type="button" class="opmaakknop" data-kaartopmaak title="Opmaak van te doen, gedaan en overgeslagen aanpassen">${I.instellingen} Opmaak</button>`;
+
 /** Te-doen-objecten bovenop leggen (anders kunnen ze onder een gedaan vlak verdwijnen). */
 function teDoenBovenop(lagen, statusVan) {
   lagen.forEach((l) => { if (statusVan(l) === 'open' && l.bringToFront) try { l.bringToFront(); } catch { /* nog niet op de kaart */ } });
 }
+
+// ---------------------------------------------------------------------------
+// Opmaak van te doen / gedaan / overgeslagen op de kaarten (dialoog, vanaf elke kaartlegenda)
+// ---------------------------------------------------------------------------
+function opmaakVoorbeeld(op) {
+  const v = KO.leaflet(op, false);
+  const pt = KO.leaflet(op, true);
+  return `<svg viewBox="0 0 120 54" width="120" height="54" aria-hidden="true">
+    <rect x="0" y="0" width="120" height="54" fill="#dfe3e6"/>
+    <polygon points="8,44 22,10 56,14 50,46" fill="${v.fillColor}" fill-opacity="${v.fillOpacity}" stroke="${v.color}" stroke-opacity="${v.opacity}" stroke-width="${v.weight}" ${v.dashArray ? `stroke-dasharray="${v.dashArray}"` : ''} stroke-linejoin="round"/>
+    <polyline points="64,44 78,22 92,36" fill="none" stroke="${v.fillColor}" stroke-width="${Math.max(2, v.weight)}" stroke-opacity="${Math.max(v.opacity, 0.5)}" ${v.dashArray ? `stroke-dasharray="${v.dashArray}"` : ''}/>
+    <circle cx="106" cy="27" r="${pt.radius}" fill="${pt.fillColor}" fill-opacity="${pt.fillOpacity}" stroke="${pt.color}" stroke-width="${pt.weight}" stroke-opacity="${pt.opacity}"/></svg>`;
+}
+
+async function kaartOpmaakDialoog() {
+  const project = await actiefProject();
+  const beheer = magBeheren() && project;
+  const eigen = apparaatOpmaak();
+  let bereik = eigen && Object.keys(eigen).length ? 'apparaat' : beheer ? 'project' : 'apparaat';
+  const basisVoor = (b) => (b === 'project' ? KO.samenvoegen(project?.kaartOpmaak) : KO.samenvoegen(project?.kaartOpmaak, eigen));
+  let werk = basisVoor(bereik);
+  const d = document.createElement('dialog');
+  d.className = 'dialoog opmaakdialoog';
+  const rij = (st, label) => {
+    const o = werk[st];
+    return `<fieldset class="opmaakrij" data-st="${st}"><legend>${esc(label)}</legend>
+      <div class="opmaakvoorbeeld" data-vb>${opmaakVoorbeeld(o)}</div>
+      <div class="opmaakvelden">
+        <label>Kleur <input type="color" data-k="kleur" value="${esc(o.kleur)}"></label>
+        <label>Rand <span class="opmaakrand"><input type="color" data-k="rand" value="${esc(o.rand || o.kleur)}" ${o.rand ? '' : 'disabled'}>
+          <label class="vink"><input type="checkbox" data-randzelf ${o.rand ? '' : 'checked'}> zelfde als kleur</label></span></label>
+        <label>Lijndikte <input type="range" data-k="dikte" min="0" max="10" step="0.5" value="${o.dikte}"><output>${o.dikte}</output></label>
+        <label>Vulling <input type="range" data-k="vulling" min="0" max="1" step="0.05" value="${o.vulling}"><output>${Math.round(o.vulling * 100)}%</output></label>
+        <label>Zichtbaarheid lijn <input type="range" data-k="dekking" min="0.1" max="1" step="0.05" value="${o.dekking}"><output>${Math.round(o.dekking * 100)}%</output></label>
+        <label>Puntgrootte <input type="range" data-k="punt" min="3" max="18" step="1" value="${o.punt}"><output>${o.punt}</output></label>
+        <label>Lijn <select data-k="lijn">${Object.entries(KO.LIJNEN).map(([k, l]) => optie(k, l, o.lijn)).join('')}</select></label>
+      </div></fieldset>`;
+  };
+  const teken = () => {
+    d.innerHTML = `<form method="dialog" novalidate>
+      <h2>${I.kaart} Opmaak op de kaarten</h2>
+      <p><small>Hoe objecten die nog <strong>te doen</strong>, <strong>gedaan</strong> of <strong>overgeslagen</strong> zijn op alle kaarten worden getekend: mobiele kaart, werkpakketten, dashboard en planning.</small></p>
+      <div class="segment" role="radiogroup" aria-label="Voor wie">
+        ${beheer ? `<label><input type="radio" name="ko-bereik" value="project" ${bereik === 'project' ? 'checked' : ''}><span>Voor iedereen in dit project</span></label>` : ''}
+        <label><input type="radio" name="ko-bereik" value="apparaat" ${bereik === 'apparaat' ? 'checked' : ''}><span>Alleen op dit apparaat</span></label></div>
+      ${KO.STATUSSEN.map(([st, l]) => rij(st, l)).join('')}
+      <div class="formvoet"><button class="knop" type="button" id="ko-standaard">Standaard herstellen</button>
+        <span class="knoppen"><button class="knop" value="nee">Annuleren</button><button class="knop primair" value="ja">Opslaan</button></span></div></form>`;
+    d.querySelectorAll('input[name=ko-bereik]').forEach((x) => x.addEventListener('change', () => { bereik = x.value; werk = basisVoor(bereik); teken(); }));
+    d.querySelector('#ko-standaard').onclick = () => { werk = KO.samenvoegen(bereik === 'apparaat' ? project?.kaartOpmaak : null); teken(); };
+    d.querySelectorAll('.opmaakrij').forEach((fs) => {
+      const st = fs.dataset.st;
+      const bij = () => { werk[st] = KO.normaliseer(st, werk[st]); fs.querySelector('[data-vb]').innerHTML = opmaakVoorbeeld(werk[st]); };
+      fs.querySelectorAll('[data-k]').forEach((inp) => inp.addEventListener('input', () => {
+        const k = inp.dataset.k;
+        werk[st][k] = inp.type === 'range' ? Number(inp.value) : inp.value;
+        const out = inp.parentElement.querySelector('output');
+        if (out) out.textContent = ['vulling', 'dekking'].includes(k) ? `${Math.round(Number(inp.value) * 100)}%` : inp.value;
+        bij();
+      }));
+      fs.querySelector('[data-randzelf]').addEventListener('change', (e) => {
+        const rand = fs.querySelector('[data-k=rand]');
+        rand.disabled = e.target.checked;
+        werk[st].rand = e.target.checked ? '' : rand.value;
+        bij();
+      });
+    });
+  };
+  teken();
+  document.body.append(d);
+  d.showModal();
+  const keuze = await new Promise((ok) => d.addEventListener('close', () => ok(d.returnValue), { once: true }));
+  d.remove();
+  if (keuze !== 'ja') return false;
+  if (bereik === 'project') {
+    const p = await actiefProject();
+    const nieuw = { ...p, kaartOpmaak: KO.verschil(werk), gewijzigd: new Date().toISOString() };
+    await db.bewaar('projecten', nieuw);
+    huidigProject = nieuw;
+    instelling.schrijf('kaartOpmaak', '');
+  } else {
+    // Op dit apparaat: alleen bewaren wat afwijkt van de projectopmaak.
+    const basis = KO.samenvoegen(project?.kaartOpmaak);
+    const afwijking = {};
+    for (const [st] of KO.STATUSSEN) {
+      const dlt = Object.fromEntries(Object.entries(KO.normaliseer(st, werk[st])).filter(([k, v]) => v !== basis[st][k]));
+      if (Object.keys(dlt).length) afwijking[st] = dlt;
+    }
+    instelling.schrijf('kaartOpmaak', Object.keys(afwijking).length ? JSON.stringify(afwijking) : '');
+  }
+  pasKaartOpmaakToe(huidigProject);
+  gedaan('Opmaak opgeslagen', { extra: bereik === 'project' ? 'Geldt voor iedereen in dit project.' : 'Geldt op dit apparaat.' });
+  return true;
+}
+document.addEventListener('click', async (e) => {
+  const knop = e.target.closest('[data-kaartopmaak]');
+  if (!knop) return;
+  e.preventDefault();
+  const open = knop.closest('dialog[open]');
+  if (open) open.close();
+  if (await kaartOpmaakDialoog()) router();
+});
 
 async function pakketGegevens() {
   const [pakketten, objecten, werkzaamheden, inspecties, overgeslagen] = await Promise.all([
@@ -9876,7 +9990,7 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
         <div class="samenstel-kaartbalk">
           <button type="button" class="knop klein" id="gebied-erin" title="Sleep op de kaart een rechthoek om alle objecten erin toe te voegen">${I.gebied} Gebied toevoegen</button>
           <button type="button" class="knop klein" id="gebied-eruit" title="Sleep op de kaart een rechthoek om die objecten uit het pakket te halen">${I.gebied} Gebied eruit</button>
-          <span class="legenda"><span><i style="background:${PAKKET_KLEUR.gedaan}"></i>In pakket</span><span><i style="background:${PAKKET_KLEUR.overgeslagen}"></i>Niet in pakket</span></span>
+          <span class="legenda"><span><i style="background:${IN_PAKKET_KLEUR}"></i>In pakket</span><span><i style="background:${NIET_GEKOZEN_KLEUR}"></i>Niet in pakket</span></span>
           <small id="kaart-hint">Klik op een object om het toe te voegen of eruit te halen.</small>
         </div>
         <div id="samenstelkaart" class="samenstelkaart"><p class="leeg">Kaart laden…</p></div>
@@ -10146,7 +10260,7 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
   };
   const kaartKlaar = tekenObjectenKaart($('#samenstelkaart'), {
     objecten,
-    kleurVan: (o) => (gekozen.has(o.id) ? PAKKET_KLEUR.gedaan : PAKKET_KLEUR.overgeslagen),
+    kleurVan: (o) => (gekozen.has(o.id) ? IN_PAKKET_KLEUR : NIET_GEKOZEN_KLEUR),
     opKlik: (o) => {
       if (gekozen.has(o.id)) gekozen.delete(o.id); else gekozen.add(o.id);
       formulierGewijzigd = true;
@@ -10319,7 +10433,7 @@ async function afroepFormulier(id, q = new URLSearchParams()) {
   form.addEventListener('input', () => { formulierGewijzigd = true; });
   const kaartKlaar = tekenObjectenKaart($('#afroepkaart'), {
     objecten,
-    kleurVan: (o) => (gekozen.has(o.id) ? '#7c3aed' : PAKKET_KLEUR.overgeslagen),
+    kleurVan: (o) => (gekozen.has(o.id) ? '#7c3aed' : NIET_GEKOZEN_KLEUR),
     opKlik: (o) => { if (gekozen.has(o.id)) gekozen.delete(o.id); else gekozen.add(o.id); toon(); },
   });
   const toon = () => {
@@ -10437,9 +10551,10 @@ async function pakketDetail(id, q = new URLSearchParams()) {
     <div class="kaartindeling">
       <div id="pakketkaart" class="kaart"><p class="leeg">Kaart laden…</p></div>
       <aside class="kaart lagenpaneel"><h2>Legenda</h2><div class="legenda">
-        <span><i class="tedoen" style="background:${PAKKET_KLEUR.open}"></i>Nog te doen (${v.open.length})</span>
-        <span><i class="klaar" style="background:${PAKKET_KLEUR.gedaan}"></i>Gedaan (${v.gedaan.size})</span>
-        <span><i class="klaar" style="background:${PAKKET_KLEUR.overgeslagen}"></i>Overgeslagen (${v.overgeslagen.size})</span></div>
+        <span>${statusStip('open')}Nog te doen (${v.open.length})</span>
+        <span>${statusStip('gedaan')}Gedaan (${v.gedaan.size})</span>
+        <span>${statusStip('overgeslagen')}Overgeslagen (${v.overgeslagen.size})</span></div>
+        <p>${opmaakKnop()}</p>
         <p><small>Te doen ligt bovenop met een dikke rand; kies hieronder <em>Open</em> om alleen die te zien.</small></p></aside>
     </div>
     <div class="filters objectzoek">
@@ -10877,8 +10992,8 @@ async function mobielPakket(id, q = new URLSearchParams()) {
       <button class="knop" id="locatie" type="button">${I.vernieuw} Locatie</button></div>` : '<div class="kaart mhier">' + I.gereed + ' Alle objecten zijn gedaan.</div>'}
     ${p.vrijgaveVereist && open.length ? `<a class="knop mgroot" href="#/m/vrijgave/nieuw?pakket=${esc(p.id)}">${I.blad} Flora & fauna vrijgave voor dit pakket</a>` : ''}
     ${p.soort === 'inspectie' && p.inspectiesoort === BV.BVC_SOORT && p.status === 'actief' ? '<button class="knop mgroot" id="nieuweboom" type="button">＋ Nieuwe boom op mijn locatie</button>' : ''}
-    <div class="mlegenda"><span><i class="tedoen" style="background:${PAKKET_KLEUR.open}"></i>Te doen (${open.length})</span><span><i class="klaar" style="background:${PAKKET_KLEUR.gedaan}"></i>Gedaan (${v.gedaan.size})</span>${v.overgeslagen.size ? `<span><i class="klaar" style="background:${PAKKET_KLEUR.overgeslagen}"></i>Overgeslagen (${v.overgeslagen.size})</span>` : ''}
-      ${open.length && open.length < objecten.length ? `<label class="mlabelschakel tedoenschakel"><input type="checkbox" id="mtedoen" ${instelling.lees('mKaartTeDoen', '') === '1' ? 'checked' : ''}> Alleen te doen</label>` : ''}</div>
+    <div class="mlegenda"><span>${statusStip('open')}Te doen (${open.length})</span><span>${statusStip('gedaan')}Gedaan (${v.gedaan.size})</span>${v.overgeslagen.size ? `<span>${statusStip('overgeslagen')}Overgeslagen (${v.overgeslagen.size})</span>` : ''}
+      ${open.length && open.length < objecten.length ? `<label class="mlabelschakel tedoenschakel"><input type="checkbox" id="mtedoen" ${instelling.lees('mKaartTeDoen', '') === '1' ? 'checked' : ''}> Alleen te doen</label>` : ''}${opmaakKnop()}</div>
     <div id="pakketkaart" class="mkaart"><p class="leeg">Kaart laden…</p></div>
     <h2 class="mlijstkop">Nog te doen (${open.length})</h2>
     ${open.length > 5 ? '<div class="mzoek"><input type="search" id="m-zoek" placeholder="Zoek op code of naam" autocomplete="off" aria-label="Objecten zoeken"></div>' : ''}
