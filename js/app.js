@@ -19,7 +19,7 @@ import * as FI from './fotoinfo.js';
 import * as EI from './eisen.js';
 import {
   PAKKETSTATUS, OVERSLAAN_REDENEN, overslaanId, voortgang as pakketVoortgang, voorMij as pakketVoorMijBasis, filterObjecten,
-  rondesVan, rondeView, rondeVanId, pakketStatus, totaalVoortgang, STANDAARD_RONDE, PLANNINGSWIJZEN, isAfroep, AFROEP_REDENEN, onderscheid as rondeOnderscheid,
+  rondesVan, rondeView, rondeVanId, pakketStatus, metCode, totaalVoortgang, STANDAARD_RONDE, PLANNINGSWIJZEN, isAfroep, AFROEP_REDENEN, onderscheid as rondeOnderscheid,
 } from './pakketten.js';
 import * as PX from './pakketexcel.js';
 import * as RX from './resultatenexcel.js';
@@ -1930,6 +1930,13 @@ function statusLabel(status) {
   return `<span class="label-status ${esc(status)}">${status === 'afgerond' ? 'Afgerond' : 'Concept'}</span>`;
 }
 
+/** Werkpakketnaam met de code ervoor (HTML): code in een eigen opmaak, dan de naam. */
+function wpNaam(p) {
+  const c = String(p?.code ?? '').trim();
+  const tekst = metCode(p);
+  return c && tekst.startsWith(c) && tekst !== c ? `<span class="wpcode">${esc(c)}</span> ${esc(tekst.slice(c.length).trim())}` : esc(tekst);
+}
+
 function objectNaam(object) {
   return object ? `${esc(object.code)} – ${esc(object.naam)}` : '<em>Verwijderd object</em>';
 }
@@ -2177,7 +2184,7 @@ async function dashboard() {
     const { s, v, vg } = x;
     const st = DB.SIGNAAL[s.signaal];
     return `<a class="stuurrij" href="${pakketPagina(v, false)}">
-      <div class="stuurkop"><strong>${esc(v.naam)}</strong><span class="label-status ${st.klasse}">${esc(s.signaal)}</span></div>
+      <div class="stuurkop"><strong>${wpNaam(v)}</strong><span class="label-status ${st.klasse}">${esc(s.signaal)}</span></div>
       <div class="stuurbalk" title="${s.werkelijk}% gedaan${s.verwacht !== null ? `, ${s.verwacht}% verwacht volgens planning` : ''}">
         <i style="width:${s.werkelijk}%"></i>${s.verwacht !== null ? `<b style="left:${s.verwacht}%"></b>` : ''}</div>
       <small>${pakketSoortTekst(v)} · ${s.werkelijk}% gedaan${s.verwacht !== null ? ` (verwacht ${s.verwacht}%)` : ''} · ${vg.totaal - vg.open.length}/${vg.totaal} objecten${
@@ -2187,7 +2194,7 @@ async function dashboard() {
     <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">${titel}</h2><a href="#/planning">Planning →</a></div>
     ${lijst.length ? `<div class="stuurlijst">${lijst.map(stuurRij).join('')}</div>` : `<p class="leeg">${leeg}</p>`}
     ${binnenkort.length ? `<h3 class="tussenkop">Start binnen 14 dagen</h3><ul class="startlijst">${binnenkort.map((x) => `
-      <li><a href="${pakketPagina(x.v, false)}"><span>${datumNL(x.r.start)}</span><strong>${esc(x.v.naam)}</strong><small>${pakketSoortTekst(x.v)} · ${x.vg.totaal} objecten</small></a></li>`).join('')}</ul>` : ''}
+      <li><a href="${pakketPagina(x.v, false)}"><span>${datumNL(x.r.start)}</span><strong>${wpNaam(x.v)}</strong><small>${pakketSoortTekst(x.v)} · ${x.vg.totaal} objecten</small></a></li>`).join('')}</ul>` : ''}
   </section>`;
 
   const recentInsp = `<section class="kaart">
@@ -2251,11 +2258,11 @@ async function dashboard() {
       html: () => `<section class="kaart">${kop2('Voortgang per werkpakket', '#/werkpakketten', 'Alle werkpakketten')}
         ${lopendePakketten.length ? `<div class="pakketten compact">${lopendePakketten.map((p) => {
     const sig = ergste(p);
-    return `<a class="pakket" href="#/werkpakketten/${esc(p.id)}"><div class="pakketkop"><strong>${esc(p.naam)}</strong>${sig
+    return `<a class="pakket" href="#/werkpakketten/${esc(p.id)}"><div class="pakketkop"><strong>${wpNaam(p)}</strong>${sig
       ? `<span class="label-status ${DB.SIGNAAL[sig].klasse}">${esc(sig)}</span>` : pakketStatusLabel(p.status)}</div>
           <small>${pakketRondesTekst(p, periodeDash)}</small>${voortgangBalk(g.voortgangen.get(p.id))}</a>`;
   }).join('')}</div>` : '<p class="leeg">Geen lopende werkpakketten.</p>'}
-        ${afgerondRecent.length ? `<p class="tussenkop">${I.vink} Afgerond in de laatste 60 dagen: ${afgerondRecent.map((x) => esc(x.v.naam)).join(', ')}</p>` : ''}</section>`,
+        ${afgerondRecent.length ? `<p class="tussenkop">${I.vink} Afgerond in de laatste 60 dagen: ${afgerondRecent.map((x) => wpNaam(x.v)).join(', ')}</p>` : ''}</section>`,
     },
     maatregelen: {
       titel: 'Open maatregelen', uitleg: 'Open maatregelen uit inspecties per urgentie' + (toonKosten() ? ', met raming.' : '.'), breed: false,
@@ -2334,8 +2341,8 @@ async function dashboard() {
           <div class="dashkaart-balk" data-dashkaartbalk>
             <div class="dashkaart-pakketten" role="group" aria-label="Werkpakketten op de kaart">
               <button type="button" class="gfchip${gekozen.size ? '' : ' actief'}" data-kp="">Alle objecten</button>
-              ${keuzes.map((p, n) => `<button type="button" class="gfchip${gekozen.has(p.id) ? ' actief' : ''}" data-kp="${esc(p.id)}" title="${esc(p.code || '')} ${esc(p.naam)}">
-                <i class="kpstip" style="background:${PAKKET_PALET[n % PAKKET_PALET.length]}"></i>${esc(p.naam)}</button>`).join('')}
+              ${keuzes.map((p, n) => `<button type="button" class="gfchip${gekozen.has(p.id) ? ' actief' : ''}" data-kp="${esc(p.id)}" title="${esc(metCode(p))}">
+                <i class="kpstip" style="background:${PAKKET_PALET[n % PAKKET_PALET.length]}"></i>${wpNaam(p)}</button>`).join('')}
               ${keuzes.length ? '' : '<small>Geen lopende werkpakketten.</small>'}</div>
             <div class="dashkaart-keuzes">
               <label class="dashkaart-kleur">Registraties <select data-kr>
@@ -2493,7 +2500,7 @@ async function dashboard() {
       } else if (soort === 'over') {
         for (const o of g.overgeslagen) {
           if (!inPeriode(o.op) || !inPak(o.pakketId)) continue;
-          voeg(o.objectId, { datum: o.op, titel: `Overgeslagen (${g.pakketten.find((p) => p.id === o.pakketId)?.naam ?? 'werkpakket'})`, label: o.reden ?? '', kleur: '#8a96a3', href: `#/werkpakketten/${o.pakketId}`, door: o.door });
+          voeg(o.objectId, { datum: o.op, titel: `Overgeslagen (${metCode(g.pakketten.find((p) => p.id === o.pakketId)) || 'werkpakket'})`, label: o.reden ?? '', kleur: '#8a96a3', href: `#/werkpakketten/${o.pakketId}`, door: o.door });
         }
       }
       for (const l of m.values()) l.sort((a, b) => (a.rang ?? 0) - (b.rang ?? 0) || String(b.datum).localeCompare(String(a.datum)));
@@ -2540,7 +2547,7 @@ async function dashboard() {
         return;
       }
       if (w === 'voortgang') items = [['Te doen', PAKKET_KLEUR.open], ['Gedaan', PAKKET_KLEUR.gedaan], ['Overgeslagen', PAKKET_KLEUR.overgeslagen]];
-      else if (w === 'pakket') items = (st.pakketten.size ? gekozenP() : g.pakketten.filter((p) => kleurNr.has(p.id))).map((p) => [p.naam, kleurNr.get(p.id)]);
+      else if (w === 'pakket') items = (st.pakketten.size ? gekozenP() : g.pakketten.filter((p) => kleurNr.has(p.id))).map((p) => [metCode(p), kleurNr.get(p.id)]);
       else items = [...[1, 2, 3, 4, 5, 6].map((c) => [`${c} · ${CONDITIES[c].label}`, CONDITIES[c].kleur]), ['Niet geïnspecteerd', '#1f6feb']];
       el.innerHTML = `${items.map(([l, k]) => `<span style="--k:${esc(k)}">${esc(l)}</span>`).join('')}<small>${n} object${n === 1 ? '' : 'en'}${zonder ? `, ${zonder} zonder locatie` : ''}</small>`;
     };
@@ -2550,14 +2557,15 @@ async function dashboard() {
         const rv = rondeVgs(p);
         const so = DB.objectStatusInPakketten(o.id, rv.map((x) => x.vg));
         const ronde = rv.length === 1 && rondesVan(p).length > 1 ? ` <small>(${esc(rv[0].r.naam)}${periodeTekst(rv[0].v) ? `, ${periodeTekst(rv[0].v)}` : ''})</small>` : '';
-        return `<li><i class="kpstip" style="background:${PAKKET_KLEUR[so] ?? '#8a96a3'}"></i>${esc(p.naam)}${ronde}: ${so === 'open' ? 'te doen' : so ?? (rv.length ? '–' : 'geen ronde in deze periode')}</li>`;
+        return `<li><i class="kpstip" style="background:${PAKKET_KLEUR[so] ?? '#8a96a3'}"></i>${wpNaam(p)}${ronde}: ${so === 'open' ? 'te doen' : so ?? (rv.length ? '–' : 'geen ronde in deze periode')}</li>`;
       });
       const rl = st.reg ? (regs.get(o.id) ?? []) : [];
       const regHtml = rl.length ? `<ul class="kppopup">${rl.slice(0, 4).map((x) => `<li><i class="kpstip" style="background:${esc(x.kleur)}"></i>
         <a href="${x.href}">${datumNL(x.datum)} · ${esc(x.titel)}</a> ${x.labelHtml ?? (x.label ? `<small>${esc(x.label)}</small>` : '')}</li>`).join('')}</ul>${rl.length > 4 ? `<small>+ ${rl.length - 4} meer</small><br>` : ''}` : '';
       return `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br>${st.reg ? regHtml : `${oordeelLabel(s)}${regels.length ? `<ul class="kppopup">${regels.join('')}</ul>` : ''}`}<a href="#/objecten/${esc(o.id)}">Object openen</a>`;
     };
-    const kaartP = tekenObjectenKaart(kaartEl, { objecten: objecten.filter((o) => objectGeometrie(o)), kleurVan, popup });
+    const kaartP = tekenObjectenKaart(kaartEl, { objecten: objecten.filter((o) => objectGeometrie(o)), kleurVan, popup,
+      statusVan: (o) => (!st.reg && kleurWijze() === 'voortgang' ? statusVan(o) ?? null : null) });
     const werkBij = async ({ inzoomen = false } = {}) => {
       const k = await kaartP;
       if (!k) return;
@@ -2960,7 +2968,7 @@ async function objectenNaarPakket(ids) {
     <div class="kieslijst">${pakketten.map((p, n) => {
     const al = ids.filter((id) => (p.objecten ?? []).includes(id)).length;
     return `<label class="vink"><input type="radio" name="pakket" value="${esc(p.id)}" ${n ? '' : 'checked'}>
-      <span>${esc(p.naam)} ${pakketStatusLabel(pakketStatus(p))}<small>${p.code ? `${esc(p.code)} · ` : ''}${(p.objecten ?? []).length} objecten${al ? ` · ${al} van de selectie zit er al in` : ''}</small></span></label>`;
+      <span>${wpNaam(p)} ${pakketStatusLabel(pakketStatus(p))}<small>${(p.objecten ?? []).length} objecten${al ? ` · ${al} van de selectie zit er al in` : ''}</small></span></label>`;
   }).join('')}</div>
     <div class="formvoet"><button class="knop" type="button" data-weg>Annuleren</button><button class="knop primair" type="submit">${I.pakket} Toevoegen</button></div></form>`;
   document.body.append(d);
@@ -2978,7 +2986,7 @@ async function objectenNaarPakket(ids) {
   const erbij = ids.filter((id) => !bestaand.has(id));
   if (!erbij.length) { melding('Alle gekozen objecten zitten al in dit werkpakket.'); return false; }
   await db.bewaar('werkpakketten', { ...p, objecten: [...(p.objecten ?? []), ...erbij], gewijzigd: new Date().toISOString() });
-  gedaan(`${erbij.length} object${erbij.length === 1 ? '' : 'en'} toegevoegd`, { extra: `aan ${p.naam}${erbij.length < ids.length ? ` (${ids.length - erbij.length} zaten er al in)` : ''}` });
+  gedaan(`${erbij.length} object${erbij.length === 1 ? '' : 'en'} toegevoegd`, { extra: `aan ${metCode(p)}${erbij.length < ids.length ? ` (${ids.length - erbij.length} zaten er al in)` : ''}` });
   return true;
 }
 const SELECTIE_NIEUW_PAKKET = 'inspectie-app:selectieNieuwPakket';
@@ -3247,7 +3255,7 @@ async function objectLogboek(objectId) {
     const p = pakketten.find((x) => x.id === pid);
     if (!p) return '';
     const r = rondesVan(p).find((x) => x.id === rid);
-    return `${p.naam}${r && p.rondes?.length ? ` · ${r.afroep ? 'A' : 'R'}${r.nummer} ${r.naam}` : ''}`;
+    return `${metCode(p)}${r && p.rondes?.length ? ` · ${r.afroep ? 'A' : 'R'}${r.nummer} ${r.naam}` : ''}`;
   };
   const uit = [];
   for (const w of werk.filter((x) => x.objectId === objectId)) {
@@ -3288,7 +3296,7 @@ async function objectLogboek(objectId) {
       if (!rondeView(p, r).objecten.includes(objectId)) continue;
       uit.push({
         soort: 'afroep', datum: String(r.afroep.op ?? r.start ?? '').slice(0, 10), titel: `Afgeroepen: ${r.naam}`, wie: r.afroep.door, href: `#/werkpakketten/${p.id}?ronde=${r.id}`,
-        tekst: r.afroep.toelichting, pakket: `${p.naam} · A${r.nummer}`,
+        tekst: r.afroep.toelichting, pakket: `${metCode(p)} · A${r.nummer}`,
         labels: `${r.afroep.spoed ? '<span class="afroeplabel spoedlabel">Spoed</span> ' : ''}${pakketStatusLabel(r.status)}`, extra: `${r.afroep.reden}${r.eind ? ` · gereed vóór ${datumNL(r.eind)}` : ''}`,
         export: ['Afroep', `${r.naam} (${r.afroep.reden})`, PAKKETSTATUS[r.status] ?? r.status],
       });
@@ -3376,7 +3384,7 @@ async function objectDetail(id) {
         <a class="knop" href="#/werkzaamheden/nieuw?object=${esc(id)}">+ Werkzaamheid</a>
         <a class="knop primair" href="#/inspecties/nieuw?object=${esc(id)}">+ Nieuwe inspectie</a>
         ${magBeheren() ? (await inProject('werkpakketten')).filter((p) => isAfroep(p) && !p.gesloten && (p.objecten ?? []).includes(id))
-    .map((p) => `<a class="knop" href="#/werkpakketten/${esc(p.id)}/afroep?object=${encodeURIComponent(id)}" title="Werk afroepen voor dit object">${I.wacht} Afroep: ${esc(p.naam)}</a>`).join('') : ''}
+    .map((p) => `<a class="knop" href="#/werkpakketten/${esc(p.id)}/afroep?object=${encodeURIComponent(id)}" title="Werk afroepen voor dit object">${I.wacht} Afroep: ${esc(metCode(p))}</a>`).join('') : ''}
       </div>
     </div>
     <div class="raster-2">
@@ -3912,7 +3920,7 @@ async function inspectiepakketKiezer(objectId, { mobiel = false, taakId = null, 
   app.innerHTML = `${kop}
     ${lijst.length ? `<ul class="mlijst pakketlijst ${mobiel ? '' : 'kaart'}">${lijst.map(({ pakket: v, voortgang }) => `
       <li><a href="${href(v)}"><span class="micoon klein">${v.inspectiesoort === BV.BVC_SOORT ? I.boom : v.inspectiesoort === ST.STOWA_SOORT ? I.water : I.inspectie}</span>
-        <span><strong>${esc(v.naam)}</strong><small>${v.code ? `${esc(v.code)} · ` : ''}${esc(v.inspectiesoort || 'Inspectie')}${periodeTekst(v) ? ` · ${periodeTekst(v)}` : ''}</small>
+        <span><strong>${wpNaam(v)}</strong><small>${esc(v.inspectiesoort || 'Inspectie')}${periodeTekst(v) ? ` · ${periodeTekst(v)}` : ''}</small>
         ${voortgangBalk(voortgang)}</span></a></li>`).join('')}</ul>`
     : `<div class="kaart leeg"><p>${leeg}</p>
       <p><small>${magBeheren()
@@ -3971,7 +3979,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     return;
   }
   if (!bestaand && pakket && staat.objectId && !pakket.objecten.includes(staat.objectId)) {
-    app.innerHTML = leegKaart(`Dit object hoort niet bij ${esc(pakket.naam)}.`, `<a class="knop" href="${mobiel ? '#/m/inspectie' : '#/inspecties/nieuw'}?object=${esc(staat.objectId)}">Passend werkpakket kiezen</a>`);
+    app.innerHTML = leegKaart(`Dit object hoort niet bij ${wpNaam(pakket)}.`, `<a class="knop" href="${mobiel ? '#/m/inspectie' : '#/inspecties/nieuw'}?object=${esc(staat.objectId)}">Passend werkpakket kiezen</a>`);
     return;
   }
   if (pakket && !bestaand) {
@@ -4034,7 +4042,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
       <h1>${object ? `${esc(object.code)} – ${esc(object.naam)}` : 'Kies een object'}</h1></div></div>
     <form id="form" novalidate class="mform">
       ${taak ? `<div class="kaart mhier">${I.taak} <strong>Taak:</strong> ${esc(taak.titel)}${taak.omschrijving ? `<br><small>${esc(taak.omschrijving)}</small>` : ''}</div>` : ''}
-      ${pakket ? `<div class="kaart mhier">${I.pakket} <strong>Werkpakket:</strong> ${esc(pakket.naam)}<br><small>Telt mee als gedaan na <strong>Afronden</strong>.</small></div>` : ''}
+      ${pakket ? `<div class="kaart mhier">${I.pakket} <strong>Werkpakket:</strong> ${wpNaam(pakket)}<br><small>Telt mee als gedaan na <strong>Afronden</strong>.</small></div>` : ''}
       ${!pakket && !bestaand ? '<div class="kaart waarschuwingskaart">' + I.let + ' <strong>Inspectie na incident of calamiteit</strong><br><small>Zonder werkpakket. Gebruik dit alleen voor een onverwachte situatie; reguliere inspecties gaan via een werkpakket.</small></div>' : ''}
       <section class="kaart">
         <div class="velden">${objectVeld}${veldSoort}${veldDatum}${veldSamenvatting}${veldFotos}</div>
@@ -4057,7 +4065,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
       <div id="totaal"></div></div>
     <form id="form" novalidate>
       ${taak ? `<div class="kaart mhier">${I.taak} <strong>Taak:</strong> ${esc(taak.titel)}</div>` : ''}
-      ${pakket ? `<div class="kaart mhier">${I.pakket} <strong>Werkpakket:</strong> ${esc(pakket.naam)} <small>· telt mee als gedaan na <strong>Afronden</strong></small></div>` : ''}
+      ${pakket ? `<div class="kaart mhier">${I.pakket} <strong>Werkpakket:</strong> ${wpNaam(pakket)} <small>· telt mee als gedaan na <strong>Afronden</strong></small></div>` : ''}
       ${!pakket && !bestaand ? '<div class="kaart waarschuwingskaart">' + I.let + ' <strong>Inspectie na incident of calamiteit</strong><br><small>Zonder werkpakket. Gebruik dit alleen voor een onverwachte situatie; reguliere inspecties gaan via een werkpakket.</small></div>' : ''}
       <section class="kaart">
         <h2>Algemeen</h2>
@@ -4576,7 +4584,7 @@ async function inspectieDetail(id) {
           ${i.weer ? `<dt>Weer</dt><dd>${esc(i.weer)}</dd>` : ''}
           <dt>${kopTekst}</dt><dd>${gebreken.length}</dd>
           ${o?.inspectieInterval ? `<dt>Volgende inspectie</dt><dd>${datumNL(volgendeInspectie(i.datum, o.inspectieInterval))}</dd>` : ''}
-          ${pakket ? `<dt>Werkpakket</dt><dd><a href="${pakketPagina(pakket, false)}">${I.pakket} ${esc(pakket.naam)}</a></dd>` : ''}
+          ${pakket ? `<dt>Werkpakket</dt><dd><a href="${pakketPagina(pakket, false)}">${I.pakket} ${wpNaam(pakket)}</a></dd>` : ''}
         </dl>
       </section>
       ${locatieBlok(o)}
@@ -5202,7 +5210,7 @@ async function mobielKaart() {
     const naam = v.rondeNaam && v.rondeNaam !== pk.naam ? v.rondeNaam : (rondesVan(g.pakketten.find((x) => x.id === pk.id) ?? {}).length > 1 ? `R${v.nummer ?? 1}` : '');
     return [naam, periodeTekst(v)].filter(Boolean).map(esc).join(', ');
   };
-  const pakketLabel = (pk) => `${naamTel.get(pk.naam) > 1 && pk.code ? `<b>${esc(pk.code)}</b> ` : ''}${esc(pk.naam)}`;
+  const pakketLabel = (pk) => wpNaam(pk);
   /** Werkpakketten op een object met de samengevatte status (open zodra één ronde daar nog open is). */
   const pakkettenOp = (oid) => {
     const m = new Map();
@@ -5216,6 +5224,7 @@ async function mobielKaart() {
   // Meerdere werkpakketten tegelijk: een set gekozen pakketten; leeg = alle.
   const gekozenPk = new Set((() => { try { return JSON.parse(instelling.lees('mKaartPakketten') || '[]'); } catch { return []; } })().filter((id) => pakketten.has(id)));
   let labelsAan = instelling.lees('mKaartLabels', '1') === '1';
+  let alleenTeDoen = instelling.lees('mKaartTeDoen', '') === '1';
   app.innerHTML = `
     <div class="segment mkaartbereik" role="radiogroup" aria-label="Welke werkpakketten">
       <label><input type="radio" name="mkb" value="mij" ${bereik === 'mij' ? 'checked' : ''}><span>Aan mij toegewezen (${telPakketten(mijnRondes)})</span></label>
@@ -5225,9 +5234,10 @@ async function mobielKaart() {
       ${rondes.length ? `<button class="knop" id="mijnlocatie" type="button">${I.locatie} Mijn locatie</button>` : ''}</div>
     ${pakketten.size > 1 ? `<div class="mpakketchips" role="group" aria-label="Werkpakket op de kaart">
       <button type="button" class="gfchip${gekozenPk.size ? '' : ' actief'}" data-mkp="" aria-pressed="${gekozenPk.size ? 'false' : 'true'}">Alle (${pakketten.size})</button>
-      ${[...pakketten.values()].map((pk) => `<button type="button" class="gfchip${gekozenPk.has(pk.id) ? ' actief' : ''}" data-mkp="${esc(pk.id)}" aria-pressed="${gekozenPk.has(pk.id)}" title="${esc(pk.naam)}">${gekozenPk.has(pk.id) ? I.vink : ''}${pakketLabel(pk)}</button>`).join('')}</div>
+      ${[...pakketten.values()].map((pk) => `<button type="button" class="gfchip${gekozenPk.has(pk.id) ? ' actief' : ''}" data-mkp="${esc(pk.id)}" aria-pressed="${gekozenPk.has(pk.id)}" title="${esc(metCode(pk))}">${gekozenPk.has(pk.id) ? I.vink : ''}${pakketLabel(pk)}</button>`).join('')}</div>
     <p class="mkeuzehint" id="mkeuzehint"></p>` : ''}
-    <div class="mlegenda"><span><i style="background:${PAKKET_KLEUR.open}"></i>Niet gereed</span><span><i style="background:${PAKKET_KLEUR.gedaan}"></i>Gereed</span><span><i style="background:${PAKKET_KLEUR.overgeslagen}"></i>Overgeslagen</span>
+    <div class="mlegenda"><span><i class="tedoen" style="background:${PAKKET_KLEUR.open}"></i>Te doen</span><span><i class="klaar" style="background:${PAKKET_KLEUR.gedaan}"></i>Gereed</span><span><i class="klaar" style="background:${PAKKET_KLEUR.overgeslagen}"></i>Overgeslagen</span>
+      ${rondes.length ? `<label class="mlabelschakel tedoenschakel"><input type="checkbox" id="mtedoen" ${alleenTeDoen ? 'checked' : ''}> Alleen te doen (${open})</label>` : ''}
       ${dv ? `<label class="mlabelschakel"><input type="checkbox" id="bdlabels" ${labelsAan ? 'checked' : ''}> Bouwdelen op de kaart</label>` : ''}</div>
     ${rondes.length ? '<div id="veldkaart" class="veldkaart"><p class="leeg">Kaart laden…</p></div>'
     : bereik === 'mij' && alleActueel.length
@@ -5245,6 +5255,7 @@ async function mobielKaart() {
   const kaart = await tekenObjectenKaart(app.querySelector('#veldkaart'), {
     objecten: lijst.map((x) => x.o),
     kleurVan: (o) => PAKKET_KLEUR[statusVan(o.id)],
+    statusVan: (o) => statusVan(o.id),
     popup: (o) => {
       const pp = pakkettenOp(o.id);
       const uitTeVoeren = pp.filter((x) => x.st === 'open');
@@ -5253,9 +5264,9 @@ async function mobielKaart() {
       return `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br><small>${esc(o.type || '')}</small>${dv?.html(o) ?? ''}
         ${uitTeVoeren.length ? `<div class="veldmelding">${I.let} <strong>Uit te voeren: ${uitTeVoeren.length} werkpakket${uitTeVoeren.length === 1 ? '' : 'ten'}</strong></div>
         <ul class="veldrondes">${uitTeVoeren.map(({ pk }) => `<li><a href="${locatiePagina(o.id)}"><span class="stip open"></span>
-          <span><span class="rondenaam">${esc(pk.naam)}</span><small class="rondekenmerken">${[pk.code ? `<strong>${esc(pk.code)}</strong>` : '', actueleRondeTekst(pk), nietVanMij(pk) ? 'niet aan jou toegewezen' : ''].filter(Boolean).join(' · ')}</small></span></a></li>`).join('')}</ul>`
+          <span><span class="rondenaam">${wpNaam(pk)}</span><small class="rondekenmerken">${[actueleRondeTekst(pk), nietVanMij(pk) ? 'niet aan jou toegewezen' : ''].filter(Boolean).join(' · ')}</small></span></a></li>`).join('')}</ul>`
     : `<div class="veldklaar">${I.gereed} Op dit object is niets meer uit te voeren.</div>`}
-        ${klaar.length ? `<p class="veldafgemeld"><small>${klaar.map(({ pk, st }) => `<span class="stip ${st}"></span> ${esc(pk.code || pk.naam)}${actueleRondeTekst(pk) ? ` (${actueleRondeTekst(pk)})` : ''} ${st === 'gedaan' ? 'gereed' : 'overgeslagen'}`).join(' · ')}</small></p>` : ''}
+        ${klaar.length ? `<p class="veldafgemeld"><small>${klaar.map(({ pk, st }) => `<span class="stip ${st}"></span> ${wpNaam(pk)}${actueleRondeTekst(pk) ? ` (${actueleRondeTekst(pk)})` : ''} ${st === 'gedaan' ? 'gereed' : 'overgeslagen'}`).join(' · ')}</small></p>` : ''}
         <div class="popupknoppen"><a class="knop klein primair" href="${locatiePagina(o.id)}">${uitTeVoeren.length ? `${I.start} Afmelden op deze locatie` : 'Bekijken'}</a>
         <a class="knop klein" href="${navigeer(o)}" target="_blank" rel="noopener">${I.navigeer} Navigeer</a></div>`;
     },
@@ -5286,7 +5297,7 @@ async function mobielKaart() {
     const items = inBeeld().map(({ o }) => ({ o, d: dv.van(o) }))
       .sort((a, b) => (a.d ? 0 : 1) - (b.d ? 0 : 1) || dv.label(a.o).localeCompare(dv.label(b.o), 'nl') || String(a.o.code).localeCompare(String(b.o.code), 'nl', { numeric: true }));
     const zonder = items.filter((x) => !x.d).length;
-    el.innerHTML = `<details ${gekozenPk.size ? 'open' : ''}><summary><strong>${I.lijst} Bouwdelen${v ? ` in ${esc(v.naam)}` : ''}</strong>
+    el.innerHTML = `<details ${gekozenPk.size ? 'open' : ''}><summary><strong>${I.lijst} Bouwdelen${v ? ` in ${wpNaam(v)}` : ''}</strong>
         <small>${items.length - zonder} van ${items.length} objecten gekoppeld${dv.versie ? ` · decompositie v${dv.versie}` : ''}</small></summary>
       <ul class="mbd">${items.map(({ o, d }) => `<li><button type="button" data-mzoom="${esc(o.id)}">
         <span class="stip ${statusVan(o.id)}"></span>
@@ -5294,7 +5305,7 @@ async function mobielKaart() {
         <small>${esc(o.code)}${o.naam && o.naam !== o.code ? ` – ${esc(o.naam)}` : ''}${d?.pad.length ? ` · ${esc(d.pad.map((x) => x.naam).join(' › '))}` : ''}</small></span></button></li>`).join('')}</ul></details>`;
   };
   const toonPakket = (inzoomen) => {
-    kaart.toon(new Set(inBeeld().map(({ o }) => o.id)), { inzoomen });
+    kaart.toon(new Set(inBeeld().filter(({ o }) => !alleenTeDoen || statusVan(o.id) === 'open').map(({ o }) => o.id)), { inzoomen });
     tekenLabels();
     tekenLijst();
   };
@@ -5322,6 +5333,11 @@ async function mobielKaart() {
     instelling.schrijf('mKaartPakketten', JSON.stringify([...gekozenPk]));
     tekenChips();
     toonPakket(true);
+  });
+  app.querySelector('#mtedoen')?.addEventListener('change', (e) => {
+    alleenTeDoen = e.target.checked;
+    instelling.schrijf('mKaartTeDoen', alleenTeDoen ? '1' : '');
+    toonPakket(false);
   });
   app.querySelector('#bdlabels')?.addEventListener('change', (e) => {
     labelsAan = e.target.checked;
@@ -5446,7 +5462,7 @@ async function mobielLocatie(objectId) {
     return `<li class="locregel ${x.st}${isActueel ? ' actueel' : ''}" data-ronde="${esc(sleutel)}">
       ${isActueel ? `<span class="actueellabel">${I.kalender} ${afstand === 0 ? 'Loopt nu' : 'Dichtst bij vandaag'}</span>` : ''}
       <div class="locregel-kop"><span class="micoon klein">${x.v.soort === 'inspectie' ? (x.v.inspectiesoort === BV.BVC_SOORT ? I.boom : x.v.inspectiesoort === ST.STOWA_SOORT ? I.water : I.inspectie) : I.werk}</span>
-        <span><strong>${esc(x.v.naam)}</strong><small>${pakketSoortTekst(x.v)}</small>${rondeKenmerkenHtml(x.v, ondLoc.get(`${x.v.id}:${x.v.rondeId}`))}</span></div>
+        <span><strong>${wpNaam(x.v)}</strong><small>${pakketSoortTekst(x.v)}</small>${rondeKenmerkenHtml(x.v, ondLoc.get(`${x.v.id}:${x.v.rondeId}`))}</span></div>
       ${x.st === 'open' ? `<div class="locregel-knoppen">
           ${snel.get(sleutel) ? `<button class="knop primair" type="button" data-gereed="${esc(sleutel)}">${I.vink} Gereed</button>` : ''}
           <a class="knop ${snel.get(sleutel) ? '' : 'primair'}" href="${pakketHref(x.v, objectId, true)}">${x.v.soort === 'inspectie' ? `${I.start} Inspecteren` : `${I.concept} Formulier`}</a>
@@ -5485,8 +5501,8 @@ async function mobielLocatie(objectId) {
     if (knop.dataset.gereed) {
       knop.disabled = true;
       await snelGereed(x.v, o);
-      gedaan('Gereed gemeld', { object: o, extra: x.v.naam, beoordeling: true });
-      onthoudOpslag(`Afgevinkt: ${x.v.naam}`, objectId);
+      gedaan('Gereed gemeld', { object: o, extra: metCode(x.v), beoordeling: true });
+      onthoudOpslag(`Afgevinkt: ${metCode(x.v)}`, objectId);
       router();
     } else if (knop.dataset.overslaan) {
       if (await slaObjectOver(x.v, o)) router();
@@ -6071,7 +6087,7 @@ async function werkpakketKiezer(objectId, { mobiel = false, taakId = null, maatr
     ${storingOptie}
     ${lijst.length ? `<ul class="mlijst pakketlijst ${mobiel ? '' : 'kaart'}">${lijst.map(({ pakket: v, voortgang }) => `
       <li><a href="${href(v)}"><span class="micoon klein">${I.pakket}</span>
-        <span><strong>${esc(v.naam)}</strong><small>${v.code ? `${esc(v.code)} · ` : ''}${pakketSoortTekst(v)}${periodeTekst(v) ? ` · ${periodeTekst(v)}` : ''}</small>
+        <span><strong>${wpNaam(v)}</strong><small>${pakketSoortTekst(v)}${periodeTekst(v) ? ` · ${periodeTekst(v)}` : ''}</small>
         ${voortgangBalk(voortgang)}</span></a></li>`).join('')}</ul>`
     : `<div class="kaart leeg"><p>${leeg}</p>
       <p><small>Een werkzaamheid registreer je binnen een actieve ronde van een werkpakket. ${magBeheren()
@@ -6117,7 +6133,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     return;
   }
   if (!bestaand && pakket && w.objectId && !pakket.objecten.includes(w.objectId)) {
-    app.innerHTML = leegKaart(`Dit object hoort niet bij ${esc(pakket.naam)}.`, `<a class="knop" href="${mobiel ? '#/m/werk' : '#/werkzaamheden/nieuw'}?object=${esc(w.objectId)}">Passend werkpakket kiezen</a>`);
+    app.innerHTML = leegKaart(`Dit object hoort niet bij ${wpNaam(pakket)}.`, `<a class="knop" href="${mobiel ? '#/m/werk' : '#/werkzaamheden/nieuw'}?object=${esc(w.objectId)}">Passend werkpakket kiezen</a>`);
     return;
   }
   // Binnen een werkpakket kies je alleen uit de objecten van de ronde.
@@ -6140,7 +6156,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
       <br><small>Start de werkzaamheden pas na een veldcheck door de ecologisch deskundige.</small>
       <a href="${mobiel ? '#/m/vrijgave/nieuw' : '#/vrijgaven/nieuw'}?object=${encodeURIComponent(oid)}">Vrijgave aanvragen →</a></div>`;
   };
-  const pakketBanner = pakket ? `<div class="kaart mhier">${I.pakket} <strong>Werkpakket:</strong> ${esc(pakket.naam)}${pakket.omschrijving ? `<br><small>${esc(pakket.omschrijving)}</small>` : ''}</div>` : '';
+  const pakketBanner = pakket ? `<div class="kaart mhier">${I.pakket} <strong>Werkpakket:</strong> ${wpNaam(pakket)}${pakket.omschrijving ? `<br><small>${esc(pakket.omschrijving)}</small>` : ''}</div>` : '';
   const maatregelInfo = maatregel ? (() => {
     const [iid, gid] = maatregel.split(':');
     return inspecties.find((i) => i.id === iid)?.gebreken?.find((g) => g.id === gid);
@@ -6544,17 +6560,17 @@ async function toewijzenPagina() {
       ${personen.length && pakketten.length ? `<div class="tabelhouder"><table class="toewijs-tabel">
         <thead><tr><th>Persoon</th>${pakketten.map((p) => {
     const r = actieveRonde(p);
-    return `<th><a href="#/werkpakketten/${esc(p.id)}">${esc(p.naam)}</a><small>${r ? `${r.afroep ? 'A' : 'R'}${r.nummer} actief${r.eind ? ` t/m ${datumNL(r.eind)}` : ''}` : isAfroep(p) ? 'op afroep' : 'gepland'}</small>
+    return `<th><a href="#/werkpakketten/${esc(p.id)}">${wpNaam(p)}</a><small>${r ? `${r.afroep ? 'A' : 'R'}${r.nummer} actief${r.eind ? ` t/m ${datumNL(r.eind)}` : ''}` : isAfroep(p) ? 'op afroep' : 'gepland'}</small>
             ${kolomStatus(p)}<div class="kolomknoppen"><button class="knop klein" type="button" data-alle="${esc(p.id)}" title="Iedereen in het project ziet dit pakket">Alle</button>
             <button class="knop klein" type="button" data-geen="${esc(p.id)}" title="Niemand ziet dit pakket">Geen</button></div></th>`;
   }).join('')}</tr></thead>
         <tbody>${personen.map((e) => {
     const lijst = zietLijst(e);
     return `<tr><td><strong>${esc(naamVan(e))}</strong>${info[e]?.naam ? `<br><small>${esc(e)}</small>` : ''}
-          <span class="ziet ${lijst.length ? '' : 'niets'}">${lijst.length ? `Ziet: ${lijst.map((p) => esc(p.naam)).join(', ')}` : 'Ziet geen enkel werkpakket'}</span>
+          <span class="ziet ${lijst.length ? '' : 'niets'}">${lijst.length ? `Ziet: ${lijst.map((p) => wpNaam(p)).join(', ')}` : 'Ziet geen enkel werkpakket'}</span>
           <button class="knop klein" type="button" data-persoon-geen="${esc(e)}" style="margin-top:.35rem">Niets tonen</button></td>
-          ${pakketten.map((p) => `<td><label class="toewijs-cel ${toegewezen(p).length ? '' : 'via-iedereen'}" title="${esc(naamVan(e))} – ${esc(p.naam)}">
-            <input type="checkbox" data-p="${esc(p.id)}" data-e="${esc(e)}" ${ziet(p, e) ? 'checked' : ''} aria-label="${esc(naamVan(e))} ziet ${esc(p.naam)}">${I.vink}</label></td>`).join('')}</tr>`;
+          ${pakketten.map((p) => `<td><label class="toewijs-cel ${toegewezen(p).length ? '' : 'via-iedereen'}" title="${esc(naamVan(e))} – ${esc(metCode(p))}">
+            <input type="checkbox" data-p="${esc(p.id)}" data-e="${esc(e)}" ${ziet(p, e) ? 'checked' : ''} aria-label="${esc(naamVan(e))} ziet ${esc(metCode(p))}">${I.vink}</label></td>`).join('')}</tr>`;
   }).join('')}</tbody></table></div>`
     : `<p class="leeg">${personen.length ? 'Er zijn geen lopende werkpakketten.' : 'Er zijn nog geen personen in dit project. <a href="#/personen">Nodig iemand uit</a>.'}</p>`}
     </section>
@@ -6806,7 +6822,7 @@ async function inboxPagina(_, q = new URLSearchParams()) {
     const p = g.pakketten.find((x) => x.id === r.werkpakketId);
     if (!p) return r.soort === CALAMITEIT ? 'Incident / calamiteit' : '–';
     const ronde = rondesVan(p).find((x) => x.id === r.rondeId);
-    return `${p.naam}${ronde && p.rondes?.length ? ` · ${ronde.afroep ? 'A' : 'R'}${ronde.nummer}` : ''}`;
+    return `${metCode(p)}${ronde && p.rondes?.length ? ` · ${ronde.afroep ? 'A' : 'R'}${ronde.nummer}` : ''}`;
   };
   const omschrijving = ({ r, soort }) => (soort === 'werk' ? (r.soort || 'Werkzaamheid') : r.bvc ? 'Boomveiligheidscontrole' : r.stowa ? 'Inspectie waterkering' : (r.soort || 'Inspectie'));
   const wie = ({ r, soort }) => (soort === 'werk' ? r.uitvoerder : r.inspecteur) || r.beoordeling?.ingediendDoor || '–';
@@ -6910,7 +6926,7 @@ async function mijnRegistraties() {
   const [werk, insp, vrij, over, objecten, pakketten] = await Promise.all([inProject('werkzaamheden'), inProject('inspecties'),
     inProject('vrijgaven'), inProject('overgeslagen'), inProject('objecten'), inProject('werkpakketten')]);
   const objectMap = new Map(objecten.map((o) => [o.id, o]));
-  const pakketNaam = new Map(pakketten.map((p) => [p.id, p.naam]));
+  const pakketNaam = new Map(pakketten.map((p) => [p.id, metCode(p)]));
   const tijd = (r) => r.beoordeling?.ingediendOp || r.gewijzigd || r.datum || '';
   return [
     ...werk.filter(van).map((r) => ({ r, icoon: I.werk, titel: r.soort || 'Werkzaamheid', href: `#/m/werk/${r.id}`, status: beoordelingVan(r), tijd: tijd(r) })),
@@ -8047,7 +8063,7 @@ async function tekenGisKaart(el, { groepen, kleur, groepVan }) {
  * @param {{ objecten: object[], kleurVan: (o) => string, popup?: (o) => string, opKlik?: (o) => void }} opties
  * @returns {Promise<null | { map, toon(ids:Set), herkleur(), zoomNaar(id), gebied(cb), aantal: number }>}
  */
-async function tekenObjectenKaart(el, { objecten, kleurVan, popup = null, opKlik = null, opOpen = null }) {
+async function tekenObjectenKaart(el, { objecten, kleurVan, statusVan = null, popup = null, opKlik = null, opOpen = null }) {
   let L;
   try {
     L = await laadLeaflet();
@@ -8065,9 +8081,14 @@ async function tekenObjectenKaart(el, { objecten, kleurVan, popup = null, opKlik
   const kanAanwijzen = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
   const stijl = (o, punt) => {
     const k = kleurVan(o);
-    return punt ? { color: '#fff', weight: 2, fillColor: k, fillOpacity: 1 } : { color: k, weight: 2.5, fillColor: k, fillOpacity: 0.4 };
+    const st = statusVan?.(o);
+    if (st) return statusStijl(st, punt, k);
+    return punt ? { radius: 8, color: '#fff', weight: 2, opacity: 1, fillColor: k, fillOpacity: 1, dashArray: null } : { color: k, weight: 2.5, opacity: 1, fillColor: k, fillOpacity: 0.4, dashArray: null };
   };
-  for (const o of objecten) {
+  const bovenop = () => { if (statusVan) lagen.forEach((l) => { if (statusVan(l.object) === 'open' && groep.hasLayer(l)) l.bringToFront(); }); };
+  // Te doen als laatste tekenen, zodat het bovenop ligt.
+  const volgorde = statusVan ? [...objecten].sort((a, b) => (statusVan(a) === 'open') - (statusVan(b) === 'open')) : objecten;
+  for (const o of volgorde) {
     const geom = objectGeometrie(o);
     if (!geom) continue;
     const punt = geom.type.includes('Point');
@@ -8106,10 +8127,12 @@ async function tekenObjectenKaart(el, { objecten, kleurVan, popup = null, opKlik
         if (zichtbaar.has(id)) { if (!groep.hasLayer(laag)) groep.addLayer(laag); } else if (groep.hasLayer(laag)) groep.removeLayer(laag);
       });
       if (inzoomen && zichtbaar.size) passend(groep.getBounds());
+      bovenop();
       return zichtbaar.size;
     },
     herkleur() {
       lagen.forEach((laag) => laag.setStyle(stijl(laag.object, laag.punt)));
+      bovenop();
     },
     zoomNaar(id) {
       const laag = lagen.get(id);
@@ -8261,7 +8284,7 @@ function bevestigPlanwijziging({ ronde, pakket, modus, vg, oud, nieuw }) {
     d.className = 'dialoog planbevestiging';
     d.innerHTML = `<form method="dialog">
       <h2>${I.kalender} Planning wijzigen?</h2>
-      <p>Weet je zeker dat je <strong>${letter}${ronde.nummer} ${esc(ronde.naam)}</strong> van <em>${esc(pakket.naam)}</em> wilt ${actie}?</p>
+      <p>Weet je zeker dat je <strong>${letter}${ronde.nummer} ${esc(ronde.naam)}</strong> van <em>${wpNaam(pakket)}</em> wilt ${actie}?</p>
       <table class="planvergelijk"><tbody>
         ${oud ? `<tr><th>Was</th><td>${tekst(oud)}</td><td>${dagen(oud)} dagen</td></tr>` : '<tr><th>Was</th><td colspan="2">Nog niet ingepland</td></tr>'}
         <tr class="nieuw"><th>Wordt</th><td>${tekst(nieuw)}</td><td>${dagen(nieuw)} dagen</td></tr>
@@ -8336,7 +8359,7 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
         <h2 style="margin:0">${I.wacht} Op afroep</h2><small>Niet vooruit te plannen: werk wordt afgeroepen wanneer het nodig is. Lopende afroepen staan hierboven als balk.</small></div>
       <div class="tabelhouder"><table><tbody>${afroepPakketten.map((p) => {
     const lopend = rondesVan(p).filter((r) => r.status === 'actief');
-    return `<tr><td><a href="#/werkpakketten/${esc(p.id)}"><strong>${esc(p.code ? `${p.code} · ` : '')}${esc(p.naam)}</strong></a>
+    return `<tr><td><a href="#/werkpakketten/${esc(p.id)}"><strong>${wpNaam(p)}</strong></a>
           <br><small>${p.afroepSoort === 'inspectie' ? esc(p.afroepInspectiesoort || 'Inspectie') : esc(p.afroepWerksoort || 'Werkzaamheid')} · ${(p.objecten ?? []).length} objecten${p.reactietijd !== '' && p.reactietijd != null ? ` · reactietijd ${p.reactietijd} dg` : ''}</small></td>
           <td>${lopend.length ? `${lopend.length} lopende afroep${lopend.length === 1 ? '' : 'en'}${lopend.some((r) => PL.teLaat(r, vandaag())) ? ' · <b style="color:var(--gevaar)">te laat</b>' : ''}` : '<span class="zacht">Niets afgeroepen</span>'}</td>
           <td style="text-align:right">${beheer ? `<a class="knop klein primair" href="#/werkpakketten/${esc(p.id)}/afroep">＋ Afroep</a>` : ''}</td></tr>`;
@@ -8400,7 +8423,7 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
     const som = per.length ? PL.balk({ start: PL.isoVan(Math.min(...per.map((q) => q.start))), eind: PL.isoVan(Math.max(...per.map((q) => q.eind))) }, b) : null;
     return `<div class="bord-pakket ${focusPakket === p.id ? 'focus' : ''}" id="bord-${esc(p.id)}">
             <div class="bord-rij pakketrij">
-              <div class="bord-label"><div class="bord-pakketnaam">${nietIngepland(p).length ? `${inplanLet(nietIngepland(p).length, `${nietIngepland(p).length === 1 ? '1 ronde is' : `${nietIngepland(p).length} rondes zijn`} nog niet ingepland`)} ` : ''}<a href="#/werkpakketten/${esc(p.id)}"><strong>${esc(p.code ? `${p.code} · ` : '')}${esc(p.naam)}</strong></a></div>
+              <div class="bord-label"><div class="bord-pakketnaam">${nietIngepland(p).length ? `${inplanLet(nietIngepland(p).length, `${nietIngepland(p).length === 1 ? '1 ronde is' : `${nietIngepland(p).length} rondes zijn`} nog niet ingepland`)} ` : ''}<a href="#/werkpakketten/${esc(p.id)}"><strong>${wpNaam(p)}</strong></a></div>
                 <small>${(p.objecten ?? []).length} objecten · ${totaal.percentage}% gedaan${p.toegewezen?.length ? ` · ${I.gebruiker} ${p.toegewezen.length}` : ''}</small></div>
               <div class="bord-spoor" style="width:${breedte}px">${som ? `<div class="bord-somlijn" style="left:${som.left}px;width:${som.width}px"></div>` : ''}</div>
             </div>
@@ -8550,7 +8573,7 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
       </div>
       </div>
       ${metKaart ? `<div class="rd-kaart"><div class="rd-kaartvlak" id="rd-kaart"><p class="leeg">Kaart laden…</p></div>
-        <div class="mlegenda"><span><i style="background:${PAKKET_KLEUR.open}"></i>Te doen (${vg ? vg.totaal - klaar : rondeObjecten.length})</span><span><i style="background:${PAKKET_KLEUR.gedaan}"></i>Gedaan (${vg?.gedaan.size ?? 0})</span>${vg?.overgeslagen.size ? `<span><i style="background:${PAKKET_KLEUR.overgeslagen}"></i>Overgeslagen (${vg.overgeslagen.size})</span>` : ''}</div></div>` : ''}
+        <div class="mlegenda"><span><i class="tedoen" style="background:${PAKKET_KLEUR.open}"></i>Te doen (${vg ? vg.totaal - klaar : rondeObjecten.length})</span><span><i style="background:${PAKKET_KLEUR.gedaan}"></i>Gedaan (${vg?.gedaan.size ?? 0})</span>${vg?.overgeslagen.size ? `<span><i style="background:${PAKKET_KLEUR.overgeslagen}"></i>Overgeslagen (${vg.overgeslagen.size})</span>` : ''}</div></div>` : ''}
       <div class="knoppen rd-voet" style="margin-top:1rem;justify-content:space-between">
         <a class="knop" href="${pakketPagina(v, false)}">Werkpakket openen</a>
         <span class="knoppen">${bewerkbaar && r.start ? '<button class="knop gevaar" value="wis">Uit planning halen</button>' : ''}
@@ -8564,6 +8587,7 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
       tekenObjectenKaart(d.querySelector('#rd-kaart'), {
         objecten: rondeObjecten,
         kleurVan: (o) => PAKKET_KLEUR[stVan(o.id)],
+        statusVan: (o) => stVan(o.id),
         popup: (o) => `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br><small>${{ open: 'Te doen', gedaan: 'Gedaan', overgeslagen: 'Overgeslagen' }[stVan(o.id)]}</small>`,
       }).then((k) => { if (k) { k.toon(new Set(rondeObjecten.map((o) => o.id)), { inzoomen: true }); setTimeout(() => k.map.invalidateSize(), 60); } }).catch(() => {});
     }
@@ -9356,6 +9380,22 @@ async function formulierveldenPagina(id, q) {
 // Werkpakketten
 // ---------------------------------------------------------------------------
 const PAKKET_KLEUR = { open: '#e07b00', gedaan: '#1a7f37', overgeslagen: '#8a96a3' };
+/**
+ * Kaartstijl per status: wat nog te doen is valt op (fel oranje, dikke donkere rand, groter, bovenop),
+ * wat klaar is treedt terug (dun, doorzichtig, kleiner; overgeslagen gestippeld).
+ */
+const TE_DOEN_RAND = '#7a3300';
+function statusStijl(st, punt, kleur = PAKKET_KLEUR[st] ?? '#8a96a3') {
+  if (st === 'open') return punt ? { radius: 10, color: TE_DOEN_RAND, weight: 3, opacity: 1, fillColor: kleur, fillOpacity: 1, dashArray: null }
+    : { color: TE_DOEN_RAND, weight: 4, opacity: 1, fillColor: kleur, fillOpacity: 0.65, dashArray: null };
+  const over = st === 'overgeslagen';
+  return punt ? { radius: 5, color: '#fff', weight: 1, opacity: 0.8, fillColor: kleur, fillOpacity: 0.55, dashArray: null }
+    : { color: kleur, weight: over ? 1.5 : 1.5, opacity: 0.6, fillColor: kleur, fillOpacity: 0.12, dashArray: over ? '4 4' : null };
+}
+/** Te-doen-objecten bovenop leggen (anders kunnen ze onder een gedaan vlak verdwijnen). */
+function teDoenBovenop(lagen, statusVan) {
+  lagen.forEach((l) => { if (statusVan(l) === 'open' && l.bringToFront) try { l.bringToFront(); } catch { /* nog niet op de kaart */ } });
+}
 
 async function pakketGegevens() {
   const [pakketten, objecten, werkzaamheden, inspecties, overgeslagen] = await Promise.all([
@@ -9534,11 +9574,8 @@ async function tekenPakketKaart(el, { pakket, objecten, statusVan, positie = nul
     return `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br>${knoppen}${mobiel ? '' : `<br><a href="#/objecten/${esc(o.id)}">Object openen</a>`}`;
   };
   const laag = L.geoJSON(fc, {
-    style: (f) => {
-      const k = PAKKET_KLEUR[statusVan(f.properties.id)];
-      return { color: k, weight: 3, fillColor: k, fillOpacity: 0.35 };
-    },
-    pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 9, color: '#fff', weight: 2, fillColor: PAKKET_KLEUR[statusVan(f.properties.id)], fillOpacity: 1 }),
+    style: (f) => statusStijl(statusVan(f.properties.id), f.geometry.type.includes('Point')),
+    pointToLayer: (f, ll) => L.circleMarker(ll, statusStijl(statusVan(f.properties.id), true)),
     onEachFeature: (f, l) => l.bindPopup(() => popup(objectMap.get(f.properties.id))),
   });
   // Eerst het kaartbeeld bepalen, dan pas de vlakken toevoegen (anders kan Leaflet niet clippen).
@@ -9557,6 +9594,8 @@ async function tekenPakketKaart(el, { pakket, objecten, statusVan, positie = nul
   zetPositie(positie);
   const perId = new Map();
   laag.eachLayer((l) => perId.set(l.feature.properties.id, l));
+  const bovenop = () => perId.forEach((l, id) => { if (statusVan(id) === 'open' && laag.hasLayer(l)) l.bringToFront(); });
+  bovenop();
   return {
     map,
     zetPositie,
@@ -9564,6 +9603,7 @@ async function tekenPakketKaart(el, { pakket, objecten, statusVan, positie = nul
       perId.forEach((l, id) => {
         if (ids.has(id)) { if (!laag.hasLayer(l)) laag.addLayer(l); } else if (laag.hasLayer(l)) laag.removeLayer(l);
       });
+      bovenop();
     },
     zoomNaar(id) {
       const l = perId.get(id);
@@ -9691,8 +9731,8 @@ async function werkpakkettenLijst() {
       <small id="pf-aantal"></small></div>` : ''}
     ${pakketten.length ? `<div class="pakketten" id="pakketlijst">${pakketten.map((p) => `
       <a class="kaart pakket" href="#/werkpakketten/${esc(p.id)}" data-zoek="${esc(`${p.code ?? ''} ${p.naam ?? ''}`.toLowerCase())}" data-status="${esc(p.status ?? '')}" data-mij="${pakketVoorMij(p, ik) ? '1' : ''}">
-        <div class="pakketkop"><strong>${esc(p.naam)}${nietIngepland(p).length ? ` ${inplanLet(nietIngepland(p).length, `${nietIngepland(p).length === 1 ? '1 ronde is' : `${nietIngepland(p).length} rondes zijn`} nog niet ingepland`)}` : ''}</strong>${pakketStatusLabel(p.status)}</div>
-        <small>${p.code ? `${esc(p.code)} · ` : ''}${pakketRondesTekst(p)}</small>
+        <div class="pakketkop"><strong>${wpNaam(p)}${nietIngepland(p).length ? ` ${inplanLet(nietIngepland(p).length, `${nietIngepland(p).length === 1 ? '1 ronde is' : `${nietIngepland(p).length} rondes zijn`} nog niet ingepland`)}` : ''}</strong>${pakketStatusLabel(p.status)}</div>
+        <small>${pakketRondesTekst(p)}</small>
         ${voortgangBalk(voortgangen.get(p.id))}
         ${p.toegewezen?.length ? `<small>${I.gebruiker} ${p.toegewezen.map(esc).join(', ')}</small>` : ''}
       </a>`).join('')}</div>`
@@ -10207,8 +10247,8 @@ function afroepLabel(r) {
 function afroepPakketLeeg(pr) {
   app.innerHTML = `
     <div class="paginakop">
-      <div><p><a href="#/werkpakketten">← Werkpakketten</a></p><h1>${esc(pr.naam)}</h1>
-        <p>${pr.code ? `${esc(pr.code)} · ` : ''}${(pr.objecten ?? []).length} objecten · <span class="afroeplabel">${I.wacht} Op afroep</span></p></div>
+      <div><p><a href="#/werkpakketten">← Werkpakketten</a></p><h1>${wpNaam(pr)}</h1>
+        <p>${(pr.objecten ?? []).length} objecten · <span class="afroeplabel">${I.wacht} Op afroep</span></p></div>
       <div class="knoppen">${magBeheren() ? `<a class="knop" href="#/werkpakketten/${esc(pr.id)}/bewerken">Bewerken</a>
         <a class="knop" href="#/werkpakketten/nieuw?kopie=${esc(pr.id)}">${I.kopie} Kopiëren</a>` : ''}</div>
     </div>
@@ -10239,7 +10279,7 @@ async function afroepFormulier(id, q = new URLSearchParams()) {
   const soort = p.afroepSoort ?? 'werk';
 
   app.innerHTML = `
-    <div class="paginakop"><div><p><a href="#/werkpakketten/${esc(id)}">← ${esc(p.naam)}</a></p><h1>Afroep maken</h1>
+    <div class="paginakop"><div><p><a href="#/werkpakketten/${esc(id)}">← ${wpNaam(p)}</a></p><h1>Afroep maken</h1>
       <p>Werk dat niet vooruit te plannen is: leg vast waarom, waar en wanneer het klaar moet zijn. De uitvoerders zien de afroep direct.</p></div></div>
     <form id="form" novalidate>
       <section class="kaart">
@@ -10359,8 +10399,8 @@ async function pakketDetail(id, q = new URLSearchParams()) {
   const vrijgavenProject = p.vrijgaveVereist ? await inProject('vrijgaven') : [];
   app.innerHTML = `
     <div class="paginakop">
-      <div><p><a href="#/werkpakketten">← Werkpakketten</a></p><h1>${esc(pr.naam)}</h1>
-        <p>${pr.code ? `${esc(pr.code)} · ` : ''}${(pr.objecten ?? []).length} objecten · ${pakketStatusLabel(pr.status)}${pr.decompVersie ? ` · <span title="Samengesteld met de definitieve NEN 2767-decompositie">decompositie v${esc(pr.decompVersie)}</span>` : ''}${afroep ? ` <span class="afroeplabel">${I.wacht} Op afroep</span>` : ''}</p></div>
+      <div><p><a href="#/werkpakketten">← Werkpakketten</a></p><h1>${wpNaam(pr)}</h1>
+        <p>${(pr.objecten ?? []).length} objecten · ${pakketStatusLabel(pr.status)}${pr.decompVersie ? ` · <span title="Samengesteld met de definitieve NEN 2767-decompositie">decompositie v${esc(pr.decompVersie)}</span>` : ''}${afroep ? ` <span class="afroeplabel">${I.wacht} Op afroep</span>` : ''}</p></div>
       <div class="knoppen">
         ${magBeheren() ? `<a class="knop" href="#/werkpakketten/${esc(id)}/bewerken">Bewerken</a>
           ${afroep ? `<a class="knop primair" href="#/werkpakketten/${esc(id)}/afroep">＋ Afroep</a>` : `<a class="knop" href="#/planning?pakket=${esc(id)}">${I.kalender} Inplannen</a>
@@ -10397,9 +10437,10 @@ async function pakketDetail(id, q = new URLSearchParams()) {
     <div class="kaartindeling">
       <div id="pakketkaart" class="kaart"><p class="leeg">Kaart laden…</p></div>
       <aside class="kaart lagenpaneel"><h2>Legenda</h2><div class="legenda">
-        <span><i style="background:${PAKKET_KLEUR.open}"></i>Nog te doen (${v.open.length})</span>
-        <span><i style="background:${PAKKET_KLEUR.gedaan}"></i>Gedaan (${v.gedaan.size})</span>
-        <span><i style="background:${PAKKET_KLEUR.overgeslagen}"></i>Overgeslagen (${v.overgeslagen.size})</span></div></aside>
+        <span><i class="tedoen" style="background:${PAKKET_KLEUR.open}"></i>Nog te doen (${v.open.length})</span>
+        <span><i class="klaar" style="background:${PAKKET_KLEUR.gedaan}"></i>Gedaan (${v.gedaan.size})</span>
+        <span><i class="klaar" style="background:${PAKKET_KLEUR.overgeslagen}"></i>Overgeslagen (${v.overgeslagen.size})</span></div>
+        <p><small>Te doen ligt bovenop met een dikke rand; kies hieronder <em>Open</em> om alleen die te zien.</small></p></aside>
     </div>
     <div class="filters objectzoek">
       <input type="search" id="o-zoek" placeholder="Zoek object op code, naam, type of kenmerk…" aria-label="Objecten zoeken">
@@ -10445,7 +10486,7 @@ async function pakketDetail(id, q = new URLSearchParams()) {
     };
   });
   app.querySelector('#verwijder')?.addEventListener('click', async () => {
-    if (!confirm(`Werkpakket "${pr.naam}" met alle rondes verwijderen? Registraties blijven bewaard.`)) return;
+    if (!confirm(`Werkpakket "${metCode(pr)}" met alle rondes verwijderen? Registraties blijven bewaard.`)) return;
     await db.verwijderVeel('overgeslagen', g.overgeslagen.filter((o) => o.pakketId === pr.id).map((o) => o.id));
     await db.verwijder('werkpakketten', pr.id);
     ga('#/werkpakketten');
@@ -10454,7 +10495,7 @@ async function pakketDetail(id, q = new URLSearchParams()) {
   app.querySelector('#uitkomsten-xls')?.addEventListener('click', () => exporteerUitkomsten({ voorPakket: pr.id }));
   app.querySelector('#resultaten-xls')?.addEventListener('click', () => exporteerResultaten({
     lijst: rondeResultaten(p, g), titel: `${pr.code ? `${pr.code} · ` : ''}${pr.naam} – R${ronde.nummer} ${ronde.naam}`,
-    onderdeel: `Werkpakket ${pr.code || pr.naam}, ronde R${ronde.nummer} (${pakketSoortTekst(p).replace(/<[^>]+>/g, '')})`,
+    onderdeel: `Werkpakket ${metCode(pr)}, ronde R${ronde.nummer} (${pakketSoortTekst(p).replace(/<[^>]+>/g, '')})`,
     bestandsnaam: `resultaten-${pr.code || pr.naam}-R${ronde.nummer}`,
   }));
   app.querySelector('#export').onclick = () => {
@@ -10492,7 +10533,7 @@ async function exporteerUitkomsten({ voorPakket = null } = {}) {
     <div class="kieslijst">${pakketten.map((p) => {
     const n = aantalVan(p);
     return `<label class="vink${n ? '' : ' uit'}"><input type="checkbox" name="pakket" value="${esc(p.id)}" ${voorPakket ? (p.id === voorPakket ? 'checked' : '') : n ? 'checked' : ''}>
-      <span>${esc(p.naam)} ${pakketStatusLabel(p.status)}<small>${p.code ? `${esc(p.code)} · ` : ''}${n} registratie${n === 1 ? '' : 's'}</small></span></label>`;
+      <span>${wpNaam(p)} ${pakketStatusLabel(p.status)}<small>${n} registratie${n === 1 ? '' : 's'}</small></span></label>`;
   }).join('')}</div>
     <div class="velden">
       <div class="veld"><label for="u-van">Periode van</label><input type="date" id="u-van"></div>
@@ -10769,7 +10810,7 @@ function mobielPakketRegel(p, v) {
   const sub = isRonde ? `${pakketSoortTekst(p)}${p.eind ? ` · uiterlijk ${datumNL(p.eind)}` : ''}` : pakketRondesTekst(p);
   return `<li><a href="${href}">
     <span class="micoon klein">${p.afroep || isAfroep(p) ? I.wacht : I.pakket}</span>
-    <span><strong>${esc(p.naam)}</strong>${p.afroep ? afroepLabel(p) : ''}<small>${sub}${p.status === 'gepland' ? ' · gepland' : p.status === 'paraat' ? ' · op afroep, nu niets afgeroepen' : ''}</small>
+    <span><strong>${wpNaam(p)}</strong>${p.afroep ? afroepLabel(p) : ''}<small>${sub}${p.status === 'gepland' ? ' · gepland' : p.status === 'paraat' ? ' · op afroep, nu niets afgeroepen' : ''}</small>
     ${voortgangBalk(v)}</span></a></li>`;
 }
 
@@ -10782,7 +10823,7 @@ async function mobielPakket(id, q = new URLSearchParams()) {
   }
   const lopend = rondesVan(pr).filter((r) => r.status !== 'afgerond');
   if (isAfroep(pr) && !lopend.length) {
-    app.innerHTML = `<div class="mkop"><a href="#/m/pakketten" class="mterug" aria-label="Terug">←</a><div><small>Werkpakket op afroep</small><h1>${esc(pr.naam)}</h1></div></div>
+    app.innerHTML = `<div class="mkop"><a href="#/m/pakketten" class="mterug" aria-label="Terug">←</a><div><small>Werkpakket op afroep</small><h1>${wpNaam(pr)}</h1></div></div>
       <div class="kaart mhier">${I.wacht} Er is op dit moment geen werk afgeroepen. Zodra de beheerder een afroep maakt, staat hij hier.</div>`;
     return;
   }
@@ -10791,7 +10832,7 @@ async function mobielPakket(id, q = new URLSearchParams()) {
     // Meerdere actieve rondes (of zelf gekozen): eerst kiezen welke ronde je gaat doen.
     app.innerHTML = `
       <div class="mkop"><a href="#/m/pakketten" class="mterug" aria-label="Terug">←</a>
-        <div><small>Werkpakket${pr.code ? ` · ${esc(pr.code)}` : ''}</small><h1>${esc(pr.naam)}</h1></div></div>
+        <div><small>Werkpakket</small><h1>${wpNaam(pr)}</h1></div></div>
       ${voortgangBalk(g.voortgangen.get(id), { groot: true })}
       <h2 class="mlijstkop">Kies een ronde</h2>
       <ul class="mlijst pakketlijst">${lopend.map((r) => {
@@ -10825,7 +10866,7 @@ async function mobielPakket(id, q = new URLSearchParams()) {
 
   app.innerHTML = `${bevestiging}
     <div class="mkop"><a href="#/m/pakketten" class="mterug" aria-label="Terug">←</a>
-      <div style="flex:1;min-width:0"><small>${pakketSoortTekst(p)}${lopend.length > 1 ? ` · <a href="#/m/pakket/${esc(id)}?kies=1">andere ronde</a>` : ''}</small><h1>${esc(p.naam)}</h1></div></div>
+      <div style="flex:1;min-width:0"><small>${pakketSoortTekst(p)}${lopend.length > 1 ? ` · <a href="#/m/pakket/${esc(id)}?kies=1">andere ronde</a>` : ''}</small><h1>${wpNaam(p)}</h1></div></div>
     ${p.afroep ? `<div class="kaart afroepkaart mafroep">${afroepLabel(p)}<strong>${esc(p.afroep.reden)}</strong>
       <small>Gereed vóór ${datumNL(p.eind)}${PL.teLaat(p, vandaag()) ? ' · <b style="color:var(--gevaar)">te laat</b>' : ''}</small>
       ${p.afroep.toelichting ? `<p style="white-space:pre-wrap;margin:.4rem 0 0">${esc(p.afroep.toelichting)}</p>` : ''}</div>` : ''}
@@ -10836,6 +10877,8 @@ async function mobielPakket(id, q = new URLSearchParams()) {
       <button class="knop" id="locatie" type="button">${I.vernieuw} Locatie</button></div>` : '<div class="kaart mhier">' + I.gereed + ' Alle objecten zijn gedaan.</div>'}
     ${p.vrijgaveVereist && open.length ? `<a class="knop mgroot" href="#/m/vrijgave/nieuw?pakket=${esc(p.id)}">${I.blad} Flora & fauna vrijgave voor dit pakket</a>` : ''}
     ${p.soort === 'inspectie' && p.inspectiesoort === BV.BVC_SOORT && p.status === 'actief' ? '<button class="knop mgroot" id="nieuweboom" type="button">＋ Nieuwe boom op mijn locatie</button>' : ''}
+    <div class="mlegenda"><span><i class="tedoen" style="background:${PAKKET_KLEUR.open}"></i>Te doen (${open.length})</span><span><i class="klaar" style="background:${PAKKET_KLEUR.gedaan}"></i>Gedaan (${v.gedaan.size})</span>${v.overgeslagen.size ? `<span><i class="klaar" style="background:${PAKKET_KLEUR.overgeslagen}"></i>Overgeslagen (${v.overgeslagen.size})</span>` : ''}
+      ${open.length && open.length < objecten.length ? `<label class="mlabelschakel tedoenschakel"><input type="checkbox" id="mtedoen" ${instelling.lees('mKaartTeDoen', '') === '1' ? 'checked' : ''}> Alleen te doen</label>` : ''}</div>
     <div id="pakketkaart" class="mkaart"><p class="leeg">Kaart laden…</p></div>
     <h2 class="mlijstkop">Nog te doen (${open.length})</h2>
     ${open.length > 5 ? '<div class="mzoek"><input type="search" id="m-zoek" placeholder="Zoek op code of naam" autocomplete="off" aria-label="Objecten zoeken"></div>' : ''}
@@ -10879,12 +10922,17 @@ async function mobielPakket(id, q = new URLSearchParams()) {
     navigator.permissions.query({ name: 'geolocation' }).then((s) => { if (s.state === 'granted') metLocatie(true); }).catch(() => {});
   }
   app.querySelector('#locatie')?.addEventListener('click', () => metLocatie(false));
-  app.querySelector('#m-zoek')?.addEventListener('input', async () => {
-    const lijst = tekenLijst();
-    const zoek = zoekTermen(app.querySelector('#m-zoek').value);
-    const ids = new Set(zoek.length ? lijst.map((x) => x.o.id) : objecten.map((o) => o.id));
+  const kaartBijwerken = async () => {
+    const zoekEl = app.querySelector('#m-zoek');
+    const zoek = zoekEl ? zoekTermen(zoekEl.value) : [];
+    const lijst = zoek.length ? tekenLijst() : null;
+    const teDoen = app.querySelector('#mtedoen')?.checked;
+    const ids = new Set((lijst ? lijst.map((x) => x.o) : objecten).filter((o) => !teDoen || statusVan(o.id) === 'open').map((o) => o.id));
     (await kaart)?.toon(ids);
-  });
+  };
+  if (app.querySelector('#mtedoen')?.checked) kaartBijwerken();
+  app.querySelector('#mtedoen')?.addEventListener('change', (e) => { instelling.schrijf('mKaartTeDoen', e.target.checked ? '1' : ''); kaartBijwerken(); });
+  app.querySelector('#m-zoek')?.addEventListener('input', () => { tekenLijst(); kaartBijwerken(); });
   app.querySelector('#nieuweboom')?.addEventListener('click', () => nieuweBoomHier(p));
   app.querySelector('[data-volgende]')?.addEventListener('click', () => app.querySelector('#volgende')?.click());
   app.querySelector('#volgende')?.addEventListener('click', () => {
@@ -11071,7 +11119,7 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
   app.innerHTML = `${kop}
     <form id="form" novalidate class="${mobiel ? 'mform' : ''}">
       ${taak ? `<div class="kaart mhier">${I.taak} <strong>Taak:</strong> ${esc(taak.titel)}</div>` : ''}
-      ${pakket ? `<div class="kaart mhier">${I.pakket} <strong>Werkpakket:</strong> ${esc(pakket.naam)}</div>` : ''}
+      ${pakket ? `<div class="kaart mhier">${I.pakket} <strong>Werkpakket:</strong> ${wpNaam(pakket)}</div>` : ''}
       <section class="kaart">
         <h2>Inspectie</h2>
         <div class="velden">
@@ -11425,7 +11473,7 @@ async function stowaInhoud(i, o) {
           <dt>Inspecteur</dt><dd>${esc(i.inspecteur || '–')}</dd>
           ${i.weer ? `<dt>Weer</dt><dd>${esc(i.weer)}</dd>` : ''}
           <dt>Waarnemingen</dt><dd>${W.length}${tel.length ? ` · ${tel.map(([k, n]) => `${n}× ${ST.URGENTIE[k].label.toLowerCase()}`).join(', ')}` : ''}</dd>
-          ${pakket ? `<dt>Werkpakket</dt><dd><a href="${pakketPagina(pakket, false)}">${I.pakket} ${esc(pakket.naam)}</a></dd>` : ''}
+          ${pakket ? `<dt>Werkpakket</dt><dd><a href="${pakketPagina(pakket, false)}">${I.pakket} ${wpNaam(pakket)}</a></dd>` : ''}
         </dl>
       </section>
       ${locatieBlok(o)}
@@ -11582,7 +11630,7 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
   app.innerHTML = `${kop}
     <form id="form" novalidate class="${mobiel ? 'mform' : ''}">
       ${taak ? `<div class="kaart mhier">${I.taak} <strong>Taak:</strong> ${esc(taak.titel)}</div>` : ''}
-      ${pakket ? `<div class="kaart mhier">${I.pakket} <strong>Werkpakket:</strong> ${esc(pakket.naam)}</div>` : ''}
+      ${pakket ? `<div class="kaart mhier">${I.pakket} <strong>Werkpakket:</strong> ${wpNaam(pakket)}</div>` : ''}
       <section class="kaart">
         <h2>Controle</h2>
         <div class="velden">
@@ -12029,7 +12077,7 @@ async function vrijgaveFormulier(id, q = new URLSearchParams(), { mobiel = false
     : `<div class="paginakop"><div><p><a href="${terug}">← Terug</a></p><h1>Flora- en fauna-vrijgave (veldcheck)</h1>
       <p>Controle direct voorafgaand aan de werkzaamheden op de actuele situatie van beschermde soorten en broedgevallen, volgens de Gedragscode Soortenbescherming Rijkswaterstaat 2025–2029.</p></div></div>`}
     <form id="form" novalidate class="${mobiel ? 'mform' : ''}">
-      ${pakket ? `<div class="kaart mhier">${I.pakket} <strong>Werkpakket:</strong> ${esc(pakket.naam)}</div>` : ''}
+      ${pakket ? `<div class="kaart mhier">${I.pakket} <strong>Werkpakket:</strong> ${wpNaam(pakket)}</div>` : ''}
       <section class="kaart">
         <h2>Gebied en werkzaamheden</h2>
         <div id="objecten"></div>

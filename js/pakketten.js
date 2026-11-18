@@ -174,3 +174,12 @@ export function onderscheid(views) {
     dubbel: telAlles.get(alles(v)) > 1,
   }]));
 }
+
+/** Naam van een werkpakket (of ronde-weergave) met de code ervoor: "WP-001 Groenonderhoud". Tekst, niet ge-escaped. */
+export function metCode(p) {
+  const c = String(p?.code ?? '').trim();
+  const n = String(p?.naam ?? '').trim();
+  if (!c) return n;
+  if (!n) return c;
+  return n.toLowerCase().startsWith(c.toLowerCase()) ? n : `${c} ${n}`;
+}

@@ -1678,3 +1678,9 @@ td.actiecel .knoppen { justify-content: flex-end; flex-wrap: wrap; }
   .dossier .label-status, .dossier .tegel { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .dossier a { color: inherit; text-decoration: none; }
 }
+
+/* Kaart: te doen valt op, klaar treedt terug */
+.legenda i.tedoen, .mlegenda i.tedoen { box-shadow: 0 0 0 2.5px #7a3300; }
+.legenda i.klaar, .mlegenda i.klaar { opacity: .5; }
+.mlegenda .tedoenschakel { font-weight: 600; color: var(--tekst); }
+.wpcode { font-weight: 700; }

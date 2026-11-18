@@ -44,3 +44,11 @@ test('dossier: status en bewijs per periode', () => {
   assert.equal(regel[10], 'Nee');
   assert.equal(regel.length, ED.BEWIJS_KOLOMMEN.length);
 });
+
+test('werkpakketnaam met code ervoor', async () => {
+  const { metCode } = await import('../js/pakketten.js');
+  assert.equal(metCode({ code: 'WP-1', naam: 'Maaien' }), 'WP-1 Maaien');
+  assert.equal(metCode({ code: 'WP-1', naam: 'WP-1 Maaien' }), 'WP-1 Maaien');
+  assert.equal(metCode({ code: '', naam: 'Maaien' }), 'Maaien');
+  assert.equal(metCode({ code: 'WP-1', naam: '' }), 'WP-1');
+});

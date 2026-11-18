@@ -271,6 +271,21 @@ Bovenaan schakel je tussen twee weergaven; de keuze wordt per apparaat onthouden
 periode (streepje in de balk). Meer dan 10 procentpunt achter = *achter*, meer dan 25 = *flinke achterstand*, na de einddatum
 niet klaar = *te laat*. Ook staat erbij hoeveel objecten per dag nog nodig zijn. Rondes die binnen 14 dagen starten staan eronder.
 
+## Werkpakketcode overal vóór de naam
+
+Een werkpakket (onderhoudstaak) staat in alle schermen als **code + naam**, bijv. **WP-DEMO-001** Groenonderhoud Park Zuid:
+lijsten, dashboard, planning, kaarten (chips, legenda, popups), formulieren, detailpagina's, toewijzen, inbox, logboek,
+meldingen en exports. Staat de code al vooraan in de naam, dan wordt hij niet dubbel getoond.
+
+## Te doen valt op de kaart op
+
+Op alle kaarten met voortgang (mobiele kaart, werkpakketkaart, dashboardkaart met kleur *voortgang*, rondekaart in de planning):
+
+- **te doen**: fel oranje met een dikke donkerbruine rand, grotere punten, altijd bovenop;
+- **gereed**: dun en doorzichtig groen, kleine punten; **overgeslagen**: grijs en gestippeld.
+- **Alleen te doen** (schakelaar bij de legenda op de telefoon, onthouden per apparaat) verbergt alles wat klaar is.
+  Op de pc kies je op de werkpakketpagina het filter *Open*.
+
 ## Objecten zoeken en de kaart in werkpakketten en inspecties
 
 - **Zoeken** werkt op code, naam, type, locatie én GIS-kenmerken, met meerdere woorden tegelijk (bijv. `gazon noord`).
