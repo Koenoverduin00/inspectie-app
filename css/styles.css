@@ -1633,3 +1633,13 @@ td.actiecel .knoppen { justify-content: flex-end; flex-wrap: wrap; }
 .bord-pakketnaam { display: flex; align-items: center; gap: .3rem; min-width: 0; }
 .bord-pakketnaam a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bord-pakketnaam .inplanlet { flex: none; }
+/* Foto's: datum, tijd en locatie onder de foto */
+.foto:has(.fotoinfo) { height: auto; width: 140px; overflow: visible; background: none; border: 0; }
+.foto:has(.fotoinfo) img { height: 110px; border-radius: 8px; border: 1px solid var(--rand); }
+.fotoinfo { display: block; font-size: .68rem; line-height: 1.3; color: var(--tekst-zacht, #6b7785); margin-top: .2rem; overflow-wrap: anywhere; }
+.fotoinfo .ico { width: 11px; height: 11px; vertical-align: -1px; }
+.galerij-raster figcaption .fotoinfo { margin-top: .15rem; }
+.galerij-raster figcaption b { display: block; }
+.galerij figure:has(.fotoinfo) { aspect-ratio: auto; overflow: visible; background: none; border: 0; }
+.galerij figure:has(.fotoinfo) img { aspect-ratio: 4 / 3; height: auto; border-radius: 10px; border: 1px solid var(--rand); }
+.galerij figure:has(.fotoinfo) figcaption { position: static; background: none; color: inherit; padding: .15rem 0 0; }

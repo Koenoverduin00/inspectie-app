@@ -8,6 +8,7 @@ import * as ST from './stowa.js';
 import * as DG from './digigids.js';
 import * as D from './decompositie.js';
 import * as TY from './inspectietypen.js';
+import * as FI from './fotoinfo.js';
 
 const STATUS_TEKST = { afgerond: 'Gedaan', concept: 'Concept (niet afgerond)', overgeslagen: 'Overgeslagen', open: 'Open' };
 
@@ -135,7 +136,7 @@ export function resultaatRijen({ lijst, laagNaam = new Map(), extra = () => [] }
     resultaten.push({ waarden: rij, kleur: oo.kleur });
 
     if (!i) continue;
-    for (const fid of i.fotoIds ?? []) fotos.push({ objectcode: o.code, onderwerp: 'Algemeen', fotoId: fid });
+    for (const fid of i.fotoIds ?? []) fotos.push({ objectcode: o.code, onderwerp: 'Algemeen', fotoId: fid, info: i.fotoInfo?.[fid] ?? null });
     if (s) {
       waarnemingen.forEach((w, n) => {
         const wz = ST.wijzer(w.wijzer);
@@ -151,12 +152,12 @@ export function resultaatRijen({ lijst, laagNaam = new Map(), extra = () => [] }
         if (w.maatregel || w.urgentie) {
           maatregelen.push({ waarden: [o.code, o.naam, datum(i.datum), w.maatregel || `${w.bouwdeel} – ${w.gebrek}`, ST.URGENTIE[w.urgentieKleur]?.label ?? '', null, '', w.maatregelStatus === 'uitgevoerd' ? 'Uitgevoerd' : 'Open'], kleur: ST.URGENTIE[w.urgentieKleur]?.kleur ?? '' });
         }
-        for (const fid of w.fotoIds ?? []) fotos.push({ objectcode: o.code, onderwerp: `Waarneming ${n + 1}: ${wz?.naam ?? w.omschrijving ?? ''}`, fotoId: fid });
+        for (const fid of w.fotoIds ?? []) fotos.push({ objectcode: o.code, onderwerp: `Waarneming ${n + 1}: ${wz?.naam ?? w.omschrijving ?? ''}`, fotoId: fid, info: i.fotoInfo?.[fid] ?? null });
       });
     } else if (b) {
       (b.gebreken ?? []).forEach((g, n) => {
         gebreken.push({ waarden: [o.code, o.naam, datum(i.datum), n + 1, g.plaats ?? '', g.omschrijving ?? '', g.type || BV.gebrekType(g.omschrijving), g.gevolg ?? '', '', '', '', '', g.toelichting ?? '', '', '', (g.fotoIds ?? []).length || '', ...puntCoord(g)], kleur: '' });
-        for (const fid of g.fotoIds ?? []) fotos.push({ objectcode: o.code, onderwerp: `Gebrek ${n + 1}: ${g.omschrijving ?? ''}`, fotoId: fid });
+        for (const fid of g.fotoIds ?? []) fotos.push({ objectcode: o.code, onderwerp: `Gebrek ${n + 1}: ${g.omschrijving ?? ''}`, fotoId: fid, info: i.fotoInfo?.[fid] ?? null });
       });
       for (const m of bvcMaatregelen) {
         maatregelen.push({ waarden: [o.code, o.naam, datum(i.datum), m.bvcMaatregel ?? '', BV.URGENTIE[m.termijn]?.label ?? '', datum(m.uitvoerenVoor), '', m.maatregelStatus === 'uitgevoerd' ? 'Uitgevoerd' : 'Open'], kleur: m.termijn === 'acuut' ? '#d1452f' : '' });
@@ -180,7 +181,7 @@ export function resultaatRijen({ lijst, laagNaam = new Map(), extra = () => [] }
           if (g.maatregel || g.urgentie) {
             maatregelen.push({ waarden: [o.code, o.naam, datum(i.datum), g.maatregel || `${g.bouwdeel} – ${g.gebrek}`, URGENTIES.find((u) => u.id === g.urgentie)?.label ?? '', null, getal(g.kostenraming), g.maatregelStatus === 'uitgevoerd' ? 'Uitgevoerd' : 'Open'], kleur: g.urgentie === 'direct' ? '#d1452f' : '' });
           }
-          for (const fid of g.fotoIds ?? []) fotos.push({ objectcode: o.code, onderwerp: `Bevinding ${n + 1}: ${g.bouwdeel ?? ''}${g.gebrek ? ` – ${g.gebrek}` : ''}`, fotoId: fid });
+          for (const fid of g.fotoIds ?? []) fotos.push({ objectcode: o.code, onderwerp: `Bevinding ${n + 1}: ${g.bouwdeel ?? ''}${g.gebrek ? ` – ${g.gebrek}` : ''}`, fotoId: fid, info: i.fotoInfo?.[fid] ?? null });
         });
         continue;
       }
@@ -195,7 +196,7 @@ export function resultaatRijen({ lijst, laagNaam = new Map(), extra = () => [] }
         if (g.maatregel || g.urgentie) {
           maatregelen.push({ waarden: [o.code, o.naam, datum(i.datum), g.maatregel || `${g.bouwdeel} – ${g.gebrek}`, URGENTIES.find((u) => u.id === g.urgentie)?.label ?? '', null, getal(g.kostenraming), g.maatregelStatus === 'uitgevoerd' ? 'Uitgevoerd' : 'Open'], kleur: g.urgentie === 'direct' ? '#d1452f' : '' });
         }
-        for (const fid of g.fotoIds ?? []) fotos.push({ objectcode: o.code, onderwerp: `Gebrek ${n + 1}: ${g.bouwdeel ?? ''} – ${g.gebrek ?? ''}`, fotoId: fid });
+        for (const fid of g.fotoIds ?? []) fotos.push({ objectcode: o.code, onderwerp: `Gebrek ${n + 1}: ${g.bouwdeel ?? ''} – ${g.gebrek ?? ''}`, fotoId: fid, info: i.fotoInfo?.[fid] ?? null });
       });
     }
   }
@@ -286,24 +287,25 @@ export function maakWerkboek(ExcelJS, r, meta) {
   if (r.gebreken.length) blad('Gebreken', GEBREK_KOLOMMEN, r.gebreken, 12);
   if (r.maatregelen.length) blad('Maatregelen', MAATREGEL_KOLOMMEN, r.maatregelen, 5);
 
+  // Blad met de foto's: altijd datum, tijd en locatie per foto; de afbeelding zelf alleen als foto's zijn gekozen.
   const fotoData = meta.fotoData;
-  if (fotoData?.size) {
+  if (r.fotos?.length) {
     const ws = wb.addWorksheet("Foto's", { views: [{ state: 'frozen', ySplit: 1 }] });
-    ws.columns = [{ header: 'Objectcode', width: 14 }, { header: 'Onderwerp', width: 40 }, { header: 'Foto', width: 42 }];
+    const kol = [['Objectcode', 14], ['Onderwerp', 36], ...FI.EXPORT_KOLOMMEN, ...(fotoData?.size ? [['Foto', 42]] : [])];
+    ws.columns = kol.map(([k, w]) => ({ header: k, width: w }));
     ws.getRow(1).eachCell((c) => { c.style = kop; });
+    ws.getColumn(3).numFmt = 'dd-mm-yyyy hh:mm';
     let rij = 2;
     for (const f of r.fotos) {
-      const data = fotoData.get(f.fotoId);
-      if (!data) continue;
-      const m = String(data).match(/^data:image\/(png|jpe?g|gif);base64,/i);
-      if (!m) continue;
-      ws.getCell(rij, 1).value = f.objectcode;
-      ws.getCell(rij, 2).value = f.onderwerp;
-      ws.getCell(rij, 1).alignment = { vertical: 'top' };
-      ws.getCell(rij, 2).alignment = { vertical: 'top', wrapText: true };
-      ws.getRow(rij).height = 170;
-      const id = wb.addImage({ base64: data, extension: m[1].toLowerCase() === 'jpg' ? 'jpeg' : m[1].toLowerCase() });
-      ws.addImage(id, { tl: { col: 2.05, row: rij - 1 + 0.05 }, ext: { width: 290, height: 218 } });
+      const waarden = [f.objectcode, f.onderwerp, ...FI.exportWaarden(f.info, BV.wgs84NaarRd)];
+      waarden.forEach((v, n) => { const c = ws.getCell(rij, n + 1); c.value = v; c.alignment = { vertical: 'top', wrapText: true }; });
+      const data = fotoData?.get(f.fotoId);
+      const m = data ? String(data).match(/^data:image\/(png|jpe?g|gif);base64,/i) : null;
+      if (m) {
+        ws.getRow(rij).height = 170;
+        const id = wb.addImage({ base64: data, extension: m[1].toLowerCase() === 'jpg' ? 'jpeg' : m[1].toLowerCase() });
+        ws.addImage(id, { tl: { col: waarden.length + 0.05, row: rij - 1 + 0.05 }, ext: { width: 290, height: 218 } });
+      }
       rij++;
     }
   }

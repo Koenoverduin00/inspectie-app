@@ -287,6 +287,14 @@ niet klaar = *te laat*. Ook staat erbij hoeveel objecten per dag nog nodig zijn.
 
 ## Foto's en opslag (snelheid)
 
+- **Datum, tijd en locatie bij elke foto**: onder elke foto staat wanneer en waar hij is genomen, met coördinaten (WGS84, 6 decimalen)
+  en op de detailpagina ook RD. De app haalt dit eerst uit de **EXIF-gegevens van de foto** (opnamemoment en GPS van de camera); ontbreken
+  die, dan geldt het **moment van uploaden** en de **GPS-positie van het toestel** (met nauwkeurigheid). De herkomst staat erbij
+  (*GPS foto* / *GPS toestel ±8 m*, *(upload)*). De gegevens worden bij de foto én in de registratie bewaard (veld `fotoInfo`), zodat ze
+  op elk apparaat en na synchroniseren beschikbaar zijn.
+- **In de export**: *Uitkomsten naar Excel* en *Resultaten ronde* krijgen altijd een blad **Foto's** met per foto: object, registratie,
+  onderwerp, datum en tijd, breedte- en lengtegraad, X/Y (RD), herkomst van tijd en locatie. Met *Foto's opnemen* staat de foto er ook in.
+
 Onder **Instellingen → Foto's en opslag** (op de telefoon onder Account):
 
 - **Fotoformaat per project** (beheerder, alleen in te stellen op de pc, geldt voor iedereen): *Compact* 1280 px (~150 kB), *Standaard* 1600 px (~250 kB, standaard)

@@ -15,6 +15,7 @@ import * as gis from './gis.js';
 import * as velden from './velden.js';
 import * as eco from './ecologie.js';
 import * as BV from './bvc.js';
+import * as FI from './fotoinfo.js';
 import {
   PAKKETSTATUS, OVERSLAAN_REDENEN, overslaanId, voortgang as pakketVoortgang, voorMij as pakketVoorMijBasis, filterObjecten,
   rondesVan, rondeView, rondeVanId, pakketStatus, totaalVoortgang, STANDAARD_RONDE, PLANNINGSWIJZEN, isAfroep, AFROEP_REDENEN, onderscheid as rondeOnderscheid,
@@ -1686,7 +1687,7 @@ async function fotosHtml(ids, { verwijderbaar = false } = {}) {
   const fotos = await laadFotos(ids);
   return `<div class="fotos">${fotos.map((f) => `
     <div class="foto"><img src="${esc(f.data)}" alt="Inspectiefoto" loading="lazy" data-lichtbak>
-    ${verwijderbaar ? `<button type="button" data-foto-weg="${esc(f.id)}" aria-label="Foto verwijderen">×</button>` : ''}</div>`).join('')}</div>`;
+    ${verwijderbaar ? `<button type="button" data-foto-weg="${esc(f.id)}" aria-label="Foto verwijderen">×</button>` : ''}${fotoOnderschrift(f.info ?? FOTO_INFO.get(f.id), { kort: true })}</div>`).join('')}</div>`;
 }
 
 /** Fotogalerij voor detail- en rapportpagina's: grotere tegels met nummer, klik = vergroten. */
@@ -1696,7 +1697,7 @@ async function fotoGalerij(ids, { titel = '' } = {}) {
   if (!fotos.length) return '';
   return `<div class="galerij">${titel ? `<div class="galerij-titel">${esc(titel)} <span>${fotos.length}</span></div>` : ''}
     <div class="galerij-raster">${fotos.map((f, n) => `<figure><img src="${esc(f.data)}" alt="${esc(titel || 'Foto')} ${n + 1}" loading="lazy" data-lichtbak>
-      <figcaption>${n + 1}</figcaption></figure>`).join('')}</div></div>`;
+      <figcaption><b>${n + 1}</b>${fotoOnderschrift(f.info)}</figcaption></figure>`).join('')}</div></div>`;
 }
 
 /** Kaartje met de ligging van één object, met de rest van de laag lichtgrijs als context. */
@@ -3548,13 +3549,76 @@ function fotoIdsVanRecord(r) {
 async function laadFotos(ids) {
   // Ontbreekt een foto op dit apparaat, dan wordt hij (als dat kan) meteen van de server gehaald.
   const pid = projectId();
-  return (await Promise.all((ids ?? []).map(async (id) => {
+  const lijst = (await Promise.all((ids ?? []).map(async (id) => {
     const f = await db.haal('fotos', id);
-    if (f) return { id: f.id, data: f.data };
+    if (f) { if (f.info) FOTO_INFO.set(f.id, f.info); return { id: f.id, data: f.data }; }
     const data = await sync.haalFoto(id, pid);
     return data ? { id, data } : null;
   }))).filter(Boolean);
+  // Datum, tijd en locatie: van de foto zelf, of uit de registratie (die wordt wel gesynchroniseerd).
+  if (lijst.some((f) => !FOTO_INFO.has(f.id))) await vulFotoInfoUitRegistraties();
+  return lijst.map((f) => ({ ...f, info: FOTO_INFO.get(f.id) ?? null }));
 }
+
+// ---------------------------------------------------------------------------
+// Foto-info: datum, tijd en locatie van elke foto (EXIF van de foto, anders uploadmoment en GPS van het toestel).
+// Bewaard bij de foto én in de registratie (fotoInfo), zodat het op elk apparaat en in elke export beschikbaar is.
+// ---------------------------------------------------------------------------
+const FOTO_INFO = new Map();
+const REGISTRATIE_STORES = ['inspecties', 'werkzaamheden', 'vrijgaven', 'taken'];
+let fotoInfoGeladen = 0;
+async function vulFotoInfoUitRegistraties() {
+  if (Date.now() - fotoInfoGeladen < 5000) return;
+  fotoInfoGeladen = Date.now();
+  for (const st of REGISTRATIE_STORES) {
+    for (const r of await db.alle(st)) for (const [id, info] of Object.entries(r.fotoInfo ?? {})) if (!FOTO_INFO.has(id)) FOTO_INFO.set(id, info);
+  }
+}
+let toestelPositieBelofte = null;
+let toestelPositieTijd = 0;
+/** GPS-positie van het toestel voor nieuwe foto's (max. 1 minuut oud; na 6 s zonder antwoord: geen locatie). */
+function toestelPositie() {
+  if (toestelPositieBelofte && Date.now() - toestelPositieTijd < 60000) return toestelPositieBelofte;
+  toestelPositieTijd = Date.now();
+  toestelPositieBelofte = new Promise((ok) => {
+    if (!navigator.geolocation) return ok(null);
+    const klaar = setTimeout(() => ok(laatstePositie ? { lng: laatstePositie[0], lat: laatstePositie[1] } : null), 6000);
+    navigator.geolocation.getCurrentPosition((pos) => {
+      clearTimeout(klaar);
+      laatstePositie = [pos.coords.longitude, pos.coords.latitude];
+      ok({ lat: pos.coords.latitude, lng: pos.coords.longitude, nauwkeurigheid: pos.coords.accuracy });
+    }, () => { clearTimeout(klaar); ok(laatstePositie ? { lng: laatstePositie[0], lat: laatstePositie[1] } : null); }, { enableHighAccuracy: true, maximumAge: 60000, timeout: 6000 });
+  });
+  return toestelPositieBelofte;
+}
+/** Nieuwe foto uit een bestand: verkleind beeld plus datum, tijd en locatie. */
+async function nieuweFoto(bestand) {
+  let exif = null;
+  try { exif = FI.leesExif(await bestand.arrayBuffer()); } catch { /* geen EXIF */ }
+  const [data, positie] = await Promise.all([maakFoto(bestand), exif?.lat != null ? null : toestelPositie()]);
+  const info = FI.combineer(exif, positie);
+  const id = nieuwId();
+  FOTO_INFO.set(id, info);
+  return { id, data, info };
+}
+/** Onderschrift onder een foto: datum en tijd, coördinaten en RD. */
+function fotoOnderschrift(info, { kort = false } = {}) {
+  if (!info) return '';
+  const coord = FI.coordTekst(info);
+  const rd = coord ? BV.wgs84NaarRd(Number(info.lng), Number(info.lat)) : null;
+  return `<small class="fotoinfo">${I.kalender} ${esc(FI.tijdTekst(info.op))}${info.bronTijd === 'upload' && !kort ? ' <span class="zacht">(upload)</span>' : ''}
+    ${coord ? `<br>${I.locatie} ${esc(coord)}${kort ? '' : `<br><span class="zacht">RD ${Math.round(rd[0])}, ${Math.round(rd[1])}${info.bronLocatie === 'toestel' ? ` · GPS toestel${info.nauwkeurigheid ? ` ±${info.nauwkeurigheid} m` : ''}` : ' · GPS foto'}</span>`}` : `<br><span class="zacht">geen locatie</span>`}</small>`;
+}
+// Vlak vóór het opslaan: foto's krijgen hun info; registraties krijgen fotoInfo voor al hun foto's.
+db.voorOpslaan((store, item) => {
+  if (store === 'fotos') { const info = item.info ?? FOTO_INFO.get(item.id); return info ? { ...item, info } : item; }
+  if (!REGISTRATIE_STORES.includes(store)) return item;
+  const ids = [...fotoIdsVanRecord(item), ...(item.fotoIds ?? [])];
+  if (!ids.length) return item;
+  const fotoInfo = {};
+  for (const id of new Set(ids)) { const info = FOTO_INFO.get(id) ?? item.fotoInfo?.[id]; if (info) fotoInfo[id] = info; }
+  return Object.keys(fotoInfo).length ? { ...item, fotoInfo } : item;
+});
 
 // ---------------------------------------------------------------------------
 // Inspecties horen bij een werkpakket; alleen een inspectie na incident of calamiteit mag los.
@@ -3793,7 +3857,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
   const fotoBlok = (fotos, sleutel) => `
     <div class="fotos">
       ${fotos.map((f, n) => `<div class="foto"><img src="${esc(f.data)}" alt="Foto ${n + 1}" data-lichtbak>
-        <button type="button" data-foto-weg="${esc(sleutel)}:${n}" aria-label="Foto verwijderen">×</button></div>`).join('')}
+        <button type="button" data-foto-weg="${esc(sleutel)}:${n}" aria-label="Foto verwijderen">×</button>${fotoOnderschrift(f.info ?? FOTO_INFO.get(f.id), { kort: true })}</div>`).join('')}
       <label class="knop fotoknop">${I.camera} Foto${mobiel ? '' : ' toevoegen'}
         <input type="file" accept="image/*" capture="environment" multiple data-foto-bij="${esc(sleutel)}"></label>
     </div>`;
@@ -4056,7 +4120,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     const bestanden = [...e.target.files];
     melding(`${bestanden.length} foto('s) verwerken…`);
     try {
-      for (const bestand of bestanden) fotoLijst(sleutel).push({ id: nieuwId(), data: await maakFoto(bestand) });
+      for (const bestand of bestanden) fotoLijst(sleutel).push(await nieuweFoto(bestand));
       formulierGewijzigd = true;
     } catch (fout) {
       melding(fout.message, 'fout');
@@ -5897,7 +5961,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
   const toonFotos = () => {
     app.querySelector('#fotos').innerHTML = `<div class="fotos">
       ${fotos.map((f, n) => `<div class="foto"><img src="${esc(f.data)}" alt="Foto ${n + 1}" data-lichtbak>
-        <button type="button" data-foto-weg="${n}" aria-label="Foto verwijderen">×</button></div>`).join('')}
+        <button type="button" data-foto-weg="${n}" aria-label="Foto verwijderen">×</button>${fotoOnderschrift(f.info ?? FOTO_INFO.get(f.id), { kort: true })}</div>`).join('')}
       <label class="knop fotoknop">${I.camera} Foto<input type="file" accept="image/*" capture="environment" multiple id="foto-input"></label></div>`;
   };
 
@@ -5940,7 +6004,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     if (e.target.id !== 'foto-input' || !e.target.files?.length) return;
     melding(`${e.target.files.length} foto('s) verwerken…`);
     try {
-      for (const bestand of [...e.target.files]) fotos.push({ id: nieuwId(), data: await maakFoto(bestand) });
+      for (const bestand of [...e.target.files]) fotos.push(await nieuweFoto(bestand));
       formulierGewijzigd = true;
     } catch (fout) {
       melding(fout.message, 'fout');
@@ -8468,7 +8532,7 @@ function extraInvoerHtml(d, waarde, fotos = []) {
         <label class="vink"><input type="checkbox" ${attr} value="${esc(o)}" ${(waarde ?? []).includes(o) ? 'checked' : ''}><span>${esc(o)}</span></label>`).join('')}</div>`;
     case 'foto':
       return `<div class="fotos">${fotos.map((f, n) => `<div class="foto"><img src="${esc(f.data)}" alt="Foto ${n + 1}" data-lichtbak>
-        <button type="button" data-extra-foto-weg="${esc(d.id)}:${n}" aria-label="Foto verwijderen">×</button></div>`).join('')}
+        <button type="button" data-extra-foto-weg="${esc(d.id)}:${n}" aria-label="Foto verwijderen">×</button>${fotoOnderschrift(f.info ?? FOTO_INFO.get(f.id), { kort: true })}</div>`).join('')}
         <label class="knop fotoknop">${I.camera} Foto<input type="file" accept="image/*" capture="environment" multiple data-extra-foto="${esc(d.id)}"></label></div>`;
     case 'meerkeuze':
       return `<div class="keuzechips meerkeuze">${(d.opties ?? []).map((o) => `
@@ -8624,7 +8688,7 @@ async function extraBlok(blok, defsNu, record) {
     const id = e.target.dataset?.extraFoto;
     if (!id || !e.target.files?.length) return;
     try {
-      for (const f of [...e.target.files]) (extraFotos[id] ??= []).push({ id: nieuwId(), data: await maakFoto(f) });
+      for (const f of [...e.target.files]) (extraFotos[id] ??= []).push(await nieuweFoto(f));
       formulierGewijzigd = true;
     } catch (fout) { melding(fout.message, 'fout'); }
     teken();
@@ -10545,7 +10609,7 @@ const segment = (naam, waarde, opties, attr = '') => `<div class="segment" role=
 
 function fotoRij(fotos, sleutel) {
   return `<div class="fotos">${fotos.map((f, n) => `<div class="foto"><img src="${esc(f.data)}" alt="Foto ${n + 1}" data-lichtbak>
-    <button type="button" data-foto-weg="${esc(sleutel)}:${n}" aria-label="Foto verwijderen">×</button></div>`).join('')}
+    <button type="button" data-foto-weg="${esc(sleutel)}:${n}" aria-label="Foto verwijderen">×</button>${fotoOnderschrift(f.info ?? FOTO_INFO.get(f.id), { kort: true })}</div>`).join('')}
     <label class="knop fotoknop">${I.camera} Foto<input type="file" accept="image/*" capture="environment" multiple data-foto-bij="${esc(sleutel)}"></label></div>`;
 }
 
@@ -10869,7 +10933,7 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
     const k = e.target.dataset.fotoBij;
     if (!k || !e.target.files?.length) return;
     try {
-      for (const f of [...e.target.files]) fotoLijst(k).push({ id: nieuwId(), data: await maakFoto(f) });
+      for (const f of [...e.target.files]) fotoLijst(k).push(await nieuweFoto(f));
     } catch (fout) { melding(fout.message, 'fout'); }
     if (k === 'alg') tekenAlg(); else tekenW();
   });
@@ -11351,7 +11415,7 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
     const k = e.target.dataset.fotoBij;
     if (!k || !e.target.files?.length) return;
     try {
-      for (const f of [...e.target.files]) fotoLijst(k).push({ id: nieuwId(), data: await maakFoto(f) });
+      for (const f of [...e.target.files]) fotoLijst(k).push(await nieuweFoto(f));
     } catch (fout) { melding(fout.message, 'fout'); }
     if (k === 'alg') tekenAlgemeen(); else tekenGebreken();
   });
@@ -11773,7 +11837,7 @@ async function vrijgaveFormulier(id, q = new URLSearchParams(), { mobiel = false
     const k = e.target.dataset.fotoBij;
     if (!k || !e.target.files?.length) return;
     try {
-      for (const f of [...e.target.files]) fotoLijst(k).push({ id: nieuwId(), data: await maakFoto(f) });
+      for (const f of [...e.target.files]) fotoLijst(k).push(await nieuweFoto(f));
     } catch (fout) { melding(fout.message, 'fout'); }
     if (k === 'alg') tekenAlgemeen(); else tekenWaarnemingen();
   });

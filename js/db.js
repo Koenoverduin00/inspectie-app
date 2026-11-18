@@ -62,8 +62,13 @@ export async function bewaar(store, item) {
   await bewaarVeel(store, [item]);
 }
 
-export async function bewaarVeel(store, items) {
-  if (!items.length) return;
+// Bewerkingen vlak vóór het opslaan (bijv. de datum en locatie van foto's in de registratie zetten).
+const voorOpslaanFns = [];
+export function voorOpslaan(fn) { voorOpslaanFns.push(fn); }
+
+export async function bewaarVeel(store, itemsIn) {
+  if (!itemsIn.length) return;
+  const items = voorOpslaanFns.length ? itemsIn.map((i) => voorOpslaanFns.reduce((x, fn) => fn(store, x) ?? x, i)) : itemsIn;
   await tx([store, WACHTRIJ], 'readwrite', (t) => {
     const s = t.objectStore(store);
     for (const item of items) {
