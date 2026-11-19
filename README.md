@@ -304,9 +304,12 @@ maar het vak is pas klaar als de laatste ploeg dat meldt. Dit geldt alleen voor 
   *Nee, gedeeltelijk*. Bij *Nee* vul je in **welk deel** is gedaan (snelkeuzes: vanaf het land, vanaf het water, linker-/rechterzijde,
   eerste helft, of eigen tekst). Is er op het vak al een deel gedaan, dan staat dat bovenaan ("Al gedeeltelijk gedaan: 19 nov ·
   Ploeg A: vanaf het land") en is er **geen voorkeuze**: de tweede ploeg kiest bewust. Anders staat *Ja* voorgekozen.
-- **Op de locatiepagina** (afmelden op locatie) staat naast *Gereed* een knop **Deels gedaan**: een klein venster vraagt welk deel en
-  welke ploeg, zonder het hele formulier. Een vak met een deelregistratie toont "Gedeeltelijk gedaan" met wie, wanneer en welk deel,
-  en de knop heet dan **Volledig klaar**.
+- **Op de locatiepagina** (afmelden op locatie) staat naast *Gereed* een knop **Deels gedaan**. Die opent het **volledige
+  formulier**, met *Nee, gedeeltelijk* al gekozen: ook bij een deel worden alle vragen beantwoord en is **minstens één foto**
+  verplicht. Bovenaan staat een gele balk **Gedeeltelijke afmelding** ("je meldt alleen jouw deel af; het vak blijft te doen"),
+  het veld *Status* verdwijnt, de knop heet **Deel afmelden** en de bevestiging zegt "Gedeeltelijk afgemeld – alleen dit deel: …".
+  Een vak met een deelregistratie toont op de locatiepagina "Gedeeltelijk gedaan" met wie, wanneer en welk deel, en de knop
+  heet dan **Volledig klaar**.
 - **Status**: een gedeeltelijk gedaan vak telt als **nog te doen** (ook bij *Alleen te doen*, in de voortgang en de percentages) en
   krijgt op alle kaarten een eigen opmaak **Gedeeltelijk** (geel, gestreepte rand; aan te passen via *Opmaak*). Pas na een registratie
   met *Ja, volledig klaar* wordt het vak **gereed** (groen). Elke registratie wordt afzonderlijk ingediend en beoordeeld.

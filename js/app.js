@@ -56,7 +56,7 @@ const instelling = {
 const ROUTES = [
   [/^\/$/, 'dashboard', () => (isMobiel() ? mobielStart() : dashboard())],
   [/^\/m\/werk$/, 'm-werk', () => werkpakketKiezer(null, { mobiel: true })],
-  [/^\/m\/werk\/nieuw$/, 'm-werk', (_, q) => werkFormulier(null, q.get('object'), { mobiel: true, taakId: q.get('taak'), maatregel: q.get('maatregel'), pakketId: q.get('pakket'), rondeId: q.get('ronde') })],
+  [/^\/m\/werk\/nieuw$/, 'm-werk', (_, q) => werkFormulier(null, q.get('object'), { mobiel: true, taakId: q.get('taak'), maatregel: q.get('maatregel'), pakketId: q.get('pakket'), rondeId: q.get('ronde'), deel: q.get('deel') === '1' })],
   [/^\/m\/werk\/([^/]+)$/, 'm-werk', (id) => werkFormulier(id, null, { mobiel: true })],
   [/^\/m\/storing$/, 'm-werk', (_, q) => werkFormulier(null, q.get('object'), { mobiel: true, storing: true, maatregel: q.get('maatregel') })],
   [/^\/m\/inspectie$/, 'm-inspectie', () => inspectiepakketKiezer(null, { mobiel: true })],
@@ -81,7 +81,7 @@ const ROUTES = [
   [/^\/werkzaamheden$/, 'werkzaamheden', werkzaamhedenLijst],
   [/^\/storing$/, 'werkzaamheden', (_, q) => werkFormulier(null, q.get('object'), { storing: true, maatregel: q.get('maatregel') })],
   [/^\/storingen$/, 'werkpakketten', storingenPagina],
-  [/^\/werkzaamheden\/nieuw$/, 'werkzaamheden', (_, q) => werkFormulier(null, q.get('object'), { taakId: q.get('taak'), maatregel: q.get('maatregel'), pakketId: q.get('pakket'), rondeId: q.get('ronde') })],
+  [/^\/werkzaamheden\/nieuw$/, 'werkzaamheden', (_, q) => werkFormulier(null, q.get('object'), { taakId: q.get('taak'), maatregel: q.get('maatregel'), pakketId: q.get('pakket'), rondeId: q.get('ronde'), deel: q.get('deel') === '1' })],
   [/^\/werkzaamheden\/([^/]+)\/bewerken$/, 'werkzaamheden', (id) => werkFormulier(id)],
   [/^\/werkzaamheden\/([^/]+)$/, 'werkzaamheden', async (id) => { await werkDetail(id); toonBeoordelingBlok('werkzaamheden', await db.haal('werkzaamheden', id)); }],
   [/^\/objecten$/, 'objecten', objectenLijst],
@@ -5604,37 +5604,8 @@ async function magSnelAfvinken(v, objectId) {
 /** Werk in delen: veelgebruikte omschrijvingen van het gedane deel. */
 const DEEL_VOORBEELDEN = ['Vanaf het land', 'Vanaf het water', 'Linkerzijde', 'Rechterzijde', 'Eerste helft'];
 
-/** Klein venster bij "Deels gedaan": welk deel, en door welke ploeg. Geeft { deel, uitvoerder } of null. */
-function deelsDialoog(v, object, eerder = []) {
-  return new Promise((resolve) => {
-    const d = document.createElement('dialog');
-    d.className = 'dialoog deelsdialoog';
-    d.innerHTML = `<form method="dialog" novalidate>
-      <h2>${I.werk} Gedeeltelijk gedaan</h2>
-      <p><small>${esc(object.code)} – ${esc(object.naam)} · ${wpNaam(v)}</small></p>
-      <p>Het vak is <strong>nog niet volledig klaar</strong>; het blijft op de kaart als te doen staan tot iemand <em>Volledig klaar</em> meldt.</p>
-      ${eerder.length ? `<div class="kaart mhier"><small>${eerder.map((r) => `${datumNL(r.datum)}${r.uitvoerder ? ` · ${esc(r.uitvoerder)}` : ''}${r.deel ? `: ${esc(r.deel)}` : ''}`).join('<br>')}</small></div>` : ''}
-      <div class="veld"><label for="dl-deel" class="vereist">Welk deel is gedaan?</label>
-        <input id="dl-deel" maxlength="200" placeholder="bijv. vanaf het land" autocomplete="off">
-        <div class="deelchips">${DEEL_VOORBEELDEN.map((x) => `<button type="button" class="gfchip" data-deel="${esc(x)}">${esc(x)}</button>`).join('')}</div></div>
-      <div class="veld"><label for="dl-door">Ploeg / uitvoerder</label><input id="dl-door" maxlength="100" value="${esc(instelling.lees('inspecteur'))}"></div>
-      <div class="formvoet"><button class="knop" value="nee">Annuleren</button><button class="knop primair" value="ja">${I.vink} Deels afmelden</button></div></form>`;
-    document.body.append(d);
-    const deel = d.querySelector('#dl-deel');
-    d.querySelector('.deelchips').addEventListener('click', (e) => { const b = e.target.closest('[data-deel]'); if (b) { deel.value = b.dataset.deel; deel.focus(); } });
-    d.querySelector('button[value=ja]').addEventListener('click', (e) => { if (!deel.value.trim()) { e.preventDefault(); deel.focus(); melding('Vul in welk deel is gedaan.', 'fout'); } });
-    d.addEventListener('close', () => {
-      const ok = d.returnValue === 'ja';
-      const uit = ok ? { deel: deel.value.trim(), uitvoerder: d.querySelector('#dl-door').value.trim() } : null;
-      d.remove();
-      resolve(uit);
-    }, { once: true });
-    d.showModal();
-  });
-}
-
 /** Werkzaamheid zonder formulier: volledig gereed, of gedeeltelijk ({ gereed: false, deel }). */
-async function snelGereed(v, object, { gereed = true, deel = '', uitvoerder } = {}) {
+async function snelGereed(v, object, { gereed = true, deel = '', uitvoerder } = {}) { // gereed: false alleen vanuit tests/import; deels afmelden gaat via het formulier
   const nu = new Date().toISOString();
   if (uitvoerder) instelling.schrijf('inspecteur', uitvoerder);
   await db.bewaar('werkzaamheden', {
@@ -5682,7 +5653,8 @@ async function mobielLocatie(objectId) {
           <small class="zacht">Nog niet volledig klaar: blijft te doen tot iemand <strong>Volledig klaar</strong> meldt.</small></div>` : ''}
       ${isTeDoen(x.st) ? `<div class="locregel-knoppen">
           ${snel.get(sleutel) ? `<button class="knop primair" type="button" data-gereed="${esc(sleutel)}">${I.vink} ${x.st === 'deels' ? 'Volledig klaar' : 'Gereed'}</button>
-          <button class="knop" type="button" data-deels="${esc(sleutel)}" title="Een deel is gedaan; het vak is nog niet helemaal klaar (bijv. een andere ploeg doet de rest)">${I.werk} Deels gedaan</button>` : ''}
+` : ''}
+          ${x.v.soort === 'werk' ? `<a class="knop" href="${pakketHref(x.v, objectId, true)}&deel=1" title="Een deel is gedaan; het vak is nog niet helemaal klaar (bijv. een andere ploeg doet de rest). Je vult het formulier in met foto's.">${I.werk} Deels gedaan</a>` : ''}
           <a class="knop ${snel.get(sleutel) ? '' : 'primair'}" href="${pakketHref(x.v, objectId, true)}">${x.v.soort === 'inspectie' ? `${I.start} Inspecteren` : `${I.concept} Formulier`}</a>
           <button class="knop" type="button" data-overslaan="${esc(sleutel)}">${I.overslaan} Overslaan</button></div>`
     : x.st === 'gedaan' ? `<div class="locregel-status"><span class="label-status afgerond">${I.vink} Gedaan</span> <a href="${regHref(x)}">${datumNL(r.datum)}${r.uitvoerder || r.inspecteur ? ` · ${esc(r.uitvoerder || r.inspecteur)}` : ''}</a></div>`
@@ -5712,18 +5684,11 @@ async function mobielLocatie(objectId) {
       try { sessionStorage.setItem(VAN_LOCATIE, objectId); } catch { /* geen opslag */ }
       return;
     }
-    const knop = e.target.closest('[data-gereed], [data-deels], [data-overslaan], [data-terug]');
+    const knop = e.target.closest('[data-gereed], [data-overslaan], [data-terug]');
     if (!knop) return;
-    const x = ronde(knop.dataset.gereed ?? knop.dataset.deels ?? knop.dataset.overslaan ?? knop.dataset.terug);
+    const x = ronde(knop.dataset.gereed ?? knop.dataset.overslaan ?? knop.dataset.terug);
     if (!x) return;
-    if (knop.dataset.deels) {
-      const keuze = await deelsDialoog(x.v, o, x.vg.deels?.get(objectId) ?? []);
-      if (!keuze) return;
-      await snelGereed(x.v, o, { gereed: false, ...keuze });
-      gedaan('Gedeeltelijk afgemeld', { object: o, extra: `${metCode(x.v)} – ${keuze.deel}. Blijft te doen tot iemand volledig klaar meldt.`, beoordeling: true });
-      onthoudOpslag(`Deels: ${metCode(x.v)} (${keuze.deel})`, objectId);
-      router();
-    } else if (knop.dataset.gereed) {
+    if (knop.dataset.gereed) {
       knop.disabled = true;
       await snelGereed(x.v, o);
       gedaan('Gereed gemeld', { object: o, extra: metCode(x.v), beoordeling: true });
@@ -6323,7 +6288,7 @@ async function werkpakketKiezer(objectId, { mobiel = false, taakId = null, maatr
         <a class="knop" href="#/planning">Naar de planning</a></div>` : ''}</div>`}`;
 }
 
-async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maatregel = null, pakketId = null, rondeId = null, storing = false } = {}) {
+async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maatregel = null, pakketId = null, rondeId = null, storing = false, deel = false } = {}) {
   if (!id && storing && !mag('storing')) return geenRecht('storing');
   if (!id && !storing && !mag('werk')) return geenRecht('werk');
   if (!id && !pakketId && !storing) return werkpakketKiezer(objectId, { mobiel, taakId, maatregel });
@@ -6380,7 +6345,8 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
       <br><small>Is het vak met jouw werk erbij nu helemaal klaar? Kies dan <strong>Ja, volledig klaar</strong>.</small></div>` : '';
   };
   // Bij een nieuwe registratie: standaard "ja", behalve als er al een deel gedaan is (dan bewust kiezen).
-  const volledigStart = bestaand ? (isDeels(bestaand) ? 'nee' : 'ja') : (w.objectId && eerdereDelen(w.objectId).length ? '' : 'ja');
+  // Via "Deels gedaan" geopend: meteen op gedeeltelijk.
+  const volledigStart = bestaand ? (isDeels(bestaand) ? 'nee' : 'ja') : deel ? 'nee' : (w.objectId && eerdereDelen(w.objectId).length ? '' : 'ja');
   const vrijgavenProject = await inProject('vrijgaven');
   const vrijgaveBanner = (oid) => {
     if (!oid) return '';
@@ -6394,7 +6360,10 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
       <br><small>Start de werkzaamheden pas na een veldcheck door de ecologisch deskundige.</small>
       <a href="${mobiel ? '#/m/vrijgave/nieuw' : '#/vrijgaven/nieuw'}?object=${encodeURIComponent(oid)}">Vrijgave aanvragen →</a></div>`;
   };
-  const pakketBanner = pakket ? `<div class="kaart mhier">${I.pakket} <strong>Werkpakket:</strong> ${wpNaam(pakket)}${pakket.omschrijving ? `<br><small>${esc(pakket.omschrijving)}</small>` : ''}</div>` : '';
+  const pakketBanner = (pakket ? `<div class="kaart mhier">${I.pakket} <strong>Werkpakket:</strong> ${wpNaam(pakket)}${pakket.omschrijving ? `<br><small>${esc(pakket.omschrijving)}</small>` : ''}</div>` : '')
+    + (metDelen ? `<div class="kaart deelsbanner" id="deelsbanner" ${volledigStart === 'nee' ? '' : 'hidden'}>${I.werk} <div><strong>Gedeeltelijke afmelding</strong>
+      <small>Je meldt alleen <strong>jouw deel</strong> van dit vak af. Vul het formulier volledig in en maak foto's van wat je hebt gedaan.
+      Het vak blijft op de kaart als <em>te doen</em> staan tot een ploeg <strong>Ja, volledig klaar</strong> meldt.</small></div></div>` : '');
   const maatregelInfo = maatregel ? (() => {
     const [iid, gid] = maatregel.split(':');
     return inspecties.find((i) => i.id === iid)?.gebreken?.find((g) => g.id === gid);
@@ -6429,7 +6398,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     <div class="veld"><label for="f-uitvoerder">Uitvoerder</label><input id="f-uitvoerder" name="uitvoerder" maxlength="100" value="${esc(w.uitvoerder)}"></div>
     ${isStoring ? `<div class="veld${mobiel ? ' breed' : ''}"><label for="f-opgelost">Opgelost / gestopt om</label><input id="f-opgelost" name="opgelostOp" type="datetime-local" value="${esc(st.opgelostOp ?? '')}"></div>
     <div class="veld breed"><label class="vereist">Resultaat</label>${segment('resultaat', st.resultaat ?? 'opgelost', Object.entries(STORING_RESULTAAT).map(([k, x]) => [k, x.label]))}</div>`
-    : `<div class="veld"><label for="f-status">Status</label>
+    : `<div class="veld" id="status-veld" ${metDelen && volledigStart === 'nee' ? 'hidden' : ''}><label for="f-status">Status</label>
       <select id="f-status" name="status">${Object.entries(WERKSTATUS).map(([k, v]) => optie(k, v, w.status)).join('')}</select></div>`}
     ${metDelen ? `<div class="veld breed volledigveld"><label class="vereist">Is het vak volledig klaar?</label>
       ${segment('volledig', volledigStart, [['ja', 'Ja, volledig klaar'], ['nee', 'Nee, gedeeltelijk']])}
@@ -6506,7 +6475,14 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
   form.addEventListener('input', (e) => {
     formulierGewijzigd = true;
     if (e.target.name === 'status') app.querySelector('#vervolg-veld').hidden = e.target.value !== 'vervolg';
-    if (e.target.name === 'volledig') app.querySelector('#deel-veld').hidden = e.target.value !== 'nee';
+    if (e.target.name === 'volledig') {
+      const nee = e.target.value === 'nee';
+      app.querySelector('#deel-veld').hidden = !nee;
+      app.querySelector('#deelsbanner').hidden = !nee;
+      const sv = app.querySelector('#status-veld');
+      if (sv) sv.hidden = nee;
+      app.querySelectorAll('button[type=submit][data-opslaan], form button[type=submit]').forEach((b) => { if (!b.dataset.tekst) b.dataset.tekst = b.innerHTML; b.innerHTML = nee ? `${I.werk} Deel afmelden` : b.dataset.tekst; });
+    }
     if (e.target.name === 'resultaat') app.querySelector('#vervolg-veld').hidden = e.target.value === 'opgelost';
     if (e.target.name === 'objectId') {
       const de = app.querySelector('#deels-eerder');
@@ -6539,6 +6515,9 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     toonFotos();
   });
 
+  // Geopend via "Deels gedaan": banner en knoptekst meteen goed zetten.
+  const neeKeuze = form.querySelector('input[name=volledig][value=nee]');
+  if (neeKeuze?.checked) ['input', 'change'].forEach((t) => neeKeuze.dispatchEvent(new Event(t, { bubbles: true })));
   form.querySelector('.deelchips')?.addEventListener('click', (e) => {
     const b = e.target.closest('[data-deel]');
     if (!b) return;
@@ -6562,6 +6541,11 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     if (metDelen && data.volledig === 'nee' && !String(data.deel ?? '').trim()) {
       app.querySelector('#f-deel').focus();
       return melding('Vul in welk deel is gedaan.', 'fout');
+    }
+    // Bij een gedeeltelijke afmelding horen foto's van het gedane deel.
+    if (metDelen && data.volledig === 'nee' && !fotos.length) {
+      app.querySelector('#fotos')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return melding("Maak minstens één foto van het deel dat je hebt gedaan.", 'fout');
     }
     const fouten = extraB.fouten();
     if (fouten.length) {
@@ -6611,9 +6595,11 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     });
     if (data.uitvoerder) instelling.schrijf('inspecteur', data.uitvoerder);
     formulierGewijzigd = false;
-    gedaan(isStoring ? (data.resultaat === 'opgelost' ? 'Storing / gebrek opgelost' : 'Storing / gebrek vastgelegd') : bestaand ? 'Werkzaamheid bijgewerkt' : 'Werkzaamheid vastgelegd',
-      { object: objecten.find((o) => o.id === data.objectId), beoordeling: true, extra: isStoring && data.resultaat !== 'opgelost' ? STORING_RESULTAAT[data.resultaat].label : '' });
-    if (mobiel) onthoudOpslag('Werkzaamheid opgeslagen', data.objectId);
+    const alsDeel = metDelen && data.volledig === 'nee';
+    gedaan(isStoring ? (data.resultaat === 'opgelost' ? 'Storing / gebrek opgelost' : 'Storing / gebrek vastgelegd') : alsDeel ? 'Gedeeltelijk afgemeld' : bestaand ? 'Werkzaamheid bijgewerkt' : 'Werkzaamheid vastgelegd',
+      { object: objecten.find((o) => o.id === data.objectId), beoordeling: true,
+        extra: isStoring && data.resultaat !== 'opgelost' ? STORING_RESULTAAT[data.resultaat].label : alsDeel ? `Alleen dit deel: ${String(data.deel).trim()}. Het vak blijft te doen tot een ploeg volledig klaar meldt.` : '' });
+    if (mobiel) onthoudOpslag(alsDeel ? `Deels: ${String(data.deel).trim()}` : 'Werkzaamheid opgeslagen', data.objectId);
     await rondTaakAf(taakId, werkId);
     ga(pakketTerug ?? (mobiel ? '#/' : `#/werkzaamheden/${werkId}`));
   };

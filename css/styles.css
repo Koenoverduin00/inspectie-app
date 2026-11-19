@@ -1792,3 +1792,6 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
 .deelchips .gfchip { font-size: .8rem; padding: .2rem .55rem; }
 .volledigveld .segment { margin: .25rem 0 .3rem; }
 .deelseerder { margin-top: .5rem; }
+.deelsbanner { display: flex; gap: .65rem; align-items: flex-start; background: #fff7d1; border: 1px solid #e6c34a; border-left: 5px solid #f2c200; color: #4d3a00; }
+.deelsbanner > div { display: grid; gap: .2rem; }
+.deelsbanner small { color: #5c4700; }
