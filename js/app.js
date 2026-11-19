@@ -5892,7 +5892,7 @@ const isGeinstalleerd = () => window.matchMedia('(display-mode: standalone)').ma
 const isIos = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
 function installKaart() {
-  if (isGeinstalleerd()) return '';
+  if (isGeinstalleerd() || window.Capacitor?.isNativePlatform?.()) return '';
   const later = Number(instelling.lees('installLater', '0'));
   if (later && Date.now() - later < 14 * 86400000) return '';
   const deel = '<svg viewBox="0 0 24 24" width="18" height="18" aria-label="Deel-knop" style="vertical-align:-3px"><path fill="none" stroke="currentColor" stroke-width="2" d="M12 3v12M7 8l5-5 5 5M5 12v8h14v-8"/></svg>';
@@ -13480,7 +13480,10 @@ window.addEventListener('online', offlineMelding);
 window.addEventListener('offline', offlineMelding);
 offlineMelding();
 
-if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+// In de mobiele app (Play Store / App Store) zitten alle bestanden al in de app: geen service worker nodig.
+const isNativeApp = () => Boolean(window.Capacitor?.isNativePlatform?.());
+if (isNativeApp()) document.documentElement.classList.add('native-app');
+if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !isNativeApp()) {
   navigator.serviceWorker.register('sw.js').catch((fout) => console.warn('Service worker niet geregistreerd', fout));
 }
 

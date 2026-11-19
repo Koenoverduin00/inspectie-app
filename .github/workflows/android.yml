@@ -1,0 +1,67 @@
+name: Android-app bouwen
+
+# Bouwt bij elke push een installeerbare Android-app (APK) om zelf te testen.
+# Staan de ondertekensleutels als secrets in GitHub, dan ook een ondertekende bundel (AAB) voor de Play Store.
+on:
+  push:
+    branches: [main, claude/inspectie-registratie-app-tg76yl]
+    paths: ['index.html', 'css/**', 'js/**', 'icons/**', 'vendor/**', 'manifest.webmanifest', 'android/**', 'capacitor.config.json', 'package.json', 'package-lock.json', 'scripts/bouw-web.mjs', '.github/workflows/android.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Afhankelijkheden
+        run: npm ci
+      - name: Tests
+        run: npm test
+      - name: Web-app in de Android-app zetten
+        run: npm run bouw:web && npx cap sync android
+      - name: Versienummer
+        run: |
+          echo "VERSIE_CODE=$((100 + GITHUB_RUN_NUMBER))" >> $GITHUB_ENV
+          echo "VERSIE_NAAM=1.0.$GITHUB_RUN_NUMBER" >> $GITHUB_ENV
+      - name: Test-app bouwen (APK)
+        working-directory: android
+        run: ./gradlew assembleDebug -PversieCode=$VERSIE_CODE -PversieNaam=$VERSIE_NAAM --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: inspectie-app-test-${{ env.VERSIE_NAAM }}
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+      - name: Ondertekensleutel klaarzetten
+        id: sleutel
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        if: env.KEYSTORE != ''
+        run: |
+          echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          echo "pad=$RUNNER_TEMP/upload.jks" >> $GITHUB_OUTPUT
+      - name: Play Store-bundel bouwen (AAB)
+        if: steps.sleutel.outputs.pad != ''
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PAD: ${{ steps.sleutel.outputs.pad }}
+          ANDROID_KEYSTORE_WACHTWOORD: ${{ secrets.ANDROID_KEYSTORE_WACHTWOORD }}
+          ANDROID_SLEUTEL_ALIAS: ${{ secrets.ANDROID_SLEUTEL_ALIAS }}
+          ANDROID_SLEUTEL_WACHTWOORD: ${{ secrets.ANDROID_SLEUTEL_WACHTWOORD }}
+        run: ./gradlew bundleRelease -PversieCode=$VERSIE_CODE -PversieNaam=$VERSIE_NAAM --no-daemon
+      - uses: actions/upload-artifact@v4
+        if: steps.sleutel.outputs.pad != ''
+        with:
+          name: inspectie-app-playstore-${{ env.VERSIE_NAAM }}
+          path: android/app/build/outputs/bundle/release/app-release.aab
+          retention-days: 90

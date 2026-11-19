@@ -1,0 +1,32 @@
+name: iOS-app controleren
+
+# Controleert of de iOS-app bouwt (zonder ondertekening, voor de simulator).
+# Uploaden naar TestFlight volgt zodra er een Apple Developer-account en certificaten zijn.
+on:
+  push:
+    branches: [main, claude/inspectie-registratie-app-tg76yl]
+    paths: ['ios/**', 'capacitor.config.json', 'package.json', 'package-lock.json', '.github/workflows/ios.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Afhankelijkheden
+        run: npm ci
+      - name: Web-app in de iOS-app zetten
+        run: npm run bouw:web && npx cap sync ios
+      - name: Bouwen voor de simulator (zonder ondertekening)
+        run: |
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build | tail -40
+          test "${PIPESTATUS[0]}" -eq 0

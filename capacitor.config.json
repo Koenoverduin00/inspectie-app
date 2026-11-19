@@ -1,0 +1,11 @@
+{
+  "appId": "nl.inspectieregistratie.app",
+  "appName": "Inspectie & Registratie",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  },
+  "ios": {
+    "contentInset": "never"
+  }
+}

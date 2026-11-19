@@ -841,6 +841,22 @@ Op elke kaart staat rechtsboven één knop (lagen-icoon). Die opent een klein pa
 (PDOK) en **Kaart** (OpenStreetMap) – en daaronder een schuif **Sterkte** (10–100%) voor de achtergrond. Het paneel sluit bij een
 klik of beweging op de kaart. Keuze en sterkte worden per apparaat onthouden en gelden voor alle kaarten.
 
+## Mobiele app (Android en iOS)
+
+Naast de website is er een echte app voor telefoons, gemaakt met [Capacitor](https://capacitorjs.com): dezelfde code, verpakt als
+Android- en iOS-app, met de camera en GPS van de telefoon. Bedoeld voor eigen gebruik en klanten (besloten verspreiding).
+
+- **Android**: bij elke push bouwt GitHub Actions (*Android-app bouwen*) een test-app (**APK**) die je als artefact downloadt en
+  rechtstreeks op een Android-telefoon installeert. Met een ondertekensleutel in de GitHub-secrets (`ANDROID_KEYSTORE_BASE64`,
+  `ANDROID_KEYSTORE_WACHTWOORD`, `ANDROID_SLEUTEL_ALIAS`, `ANDROID_SLEUTEL_WACHTWOORD`) bouwt hij ook een **AAB** voor de Play Store
+  (gesloten test met een lijst e-mailadressen). Het versienummer loopt automatisch op.
+- **iOS**: de workflow *iOS-app controleren* bouwt de app voor de simulator (zonder ondertekening). Uploaden naar **TestFlight**
+  volgt zodra er een Apple Developer-account is.
+- **Lokaal**: `npm run app:sync` zet de web-app in `www/` en kopieert hem naar `android/` en `ios/`; daarna openen met Android Studio
+  (`npx cap open android`) of Xcode op een Mac (`npx cap open ios`).
+- App-id: `nl.inspectieregistratie.app` (in `capacitor.config.json`; vóór de eerste upload naar een store nog te wijzigen, daarna niet).
+- In de app is geen service worker nodig (alle bestanden zitten erin) en verschijnt geen "installeer de app"-kaart.
+
 ## Kleurthema
 
 De app is standaard licht, ook als de pc of telefoon op donkere modus staat. Onder *Instellingen → Voorkeuren* kun je
