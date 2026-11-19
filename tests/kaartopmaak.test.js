@@ -20,3 +20,21 @@ test('kaartopmaak: samenvoegen, opschonen en leaflet-stijl', () => {
   assert.deepEqual(KO.verschil({ gedaan: { kleur: '#0000ff' } }), { gedaan: { kleur: '#0000ff' } });
   assert.match(KO.legendaCss(KO.STANDAARD.open), /box-shadow/);
 });
+
+test('werk in delen: gedeeltelijk afgemeld blijft te doen tot iemand volledig klaar meldt', async () => {
+  const P = await import('../js/pakketten.js');
+  const pakket = { id: 'p', soort: 'werk', objecten: ['a', 'b', 'c'], rondeId: '' };
+  const w = [
+    { werkpakketId: 'p', objectId: 'a', datum: '2026-11-01', gereed: false, deel: 'vanaf het land' },
+    { werkpakketId: 'p', objectId: 'b', datum: '2026-11-01', gereed: false },
+    { werkpakketId: 'p', objectId: 'b', datum: '2026-11-02', gereed: true },
+    { werkpakketId: 'p', objectId: 'c', datum: '2026-11-03' }, // oude registratie zonder vraag = volledig
+  ];
+  const vg = P.voortgang(pakket, { werkzaamheden: w });
+  assert.deepEqual(['a', 'b', 'c'].map((id) => P.objectStatus(vg, id)), ['deels', 'gedaan', 'gedaan']);
+  assert.deepEqual(vg.open, ['a']);
+  assert.equal(vg.percentage, 67);
+  assert.equal(vg.deels.get('a')[0].deel, 'vanaf het land');
+  assert.ok(P.teDoen('deels') && P.teDoen('open') && !P.teDoen('gedaan'));
+  assert.equal(KO.samenvoegen().deels.lijn, 'gestreept');
+});

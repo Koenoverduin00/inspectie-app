@@ -119,10 +119,13 @@ export function objectStatusInPakketten(objectId, voortgangen) {
   let in_ = false;
   let over = false;
   let gedaan = false;
+  let deels = false;
   for (const vg of voortgangen) {
-    if (vg.open.includes(objectId)) return 'open';
+    if (vg.open.includes(objectId) && !vg.deels?.has(objectId)) return 'open';
+    if (vg.deels?.has(objectId)) { deels = true; continue; }
     if (vg.overgeslagen.has(objectId)) { in_ = true; over = true; } else if (vg.gedaan.has(objectId)) { in_ = true; gedaan = true; }
   }
+  if (deels) return 'deels';
   if (!in_) return null;
   return over ? 'overgeslagen' : gedaan ? 'gedaan' : null;
 }

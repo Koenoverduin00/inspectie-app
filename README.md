@@ -295,6 +295,26 @@ met de gekozen soort en een × om hem weer weg te halen.
 op als het object aan de rand ligt, zodat ze altijd helemaal in beeld staan. De knop **Toon N objecten** telt live mee; **Wis filters** zet alles terug. Annuleren verandert niets.
 De keuzes worden per apparaat onthouden. De legenda met de knop *Opmaak* staat onder de kaart.
 
+## Werk in delen: meerdere ploegen op hetzelfde vak
+
+Soms werken twee ploegen aan hetzelfde vak, bijv. de ene **vanaf het land** en de andere **vanaf het water**. Allebei registreren ze,
+maar het vak is pas klaar als de laatste ploeg dat meldt. Dit geldt alleen voor werkpakketten met werkzaamheden, niet voor inspecties.
+
+- **In het werkformulier** (binnen een werkpakket) staat de vraag **Is het vak volledig klaar?** – *Ja, volledig klaar* of
+  *Nee, gedeeltelijk*. Bij *Nee* vul je in **welk deel** is gedaan (snelkeuzes: vanaf het land, vanaf het water, linker-/rechterzijde,
+  eerste helft, of eigen tekst). Is er op het vak al een deel gedaan, dan staat dat bovenaan ("Al gedeeltelijk gedaan: 19 nov ·
+  Ploeg A: vanaf het land") en is er **geen voorkeuze**: de tweede ploeg kiest bewust. Anders staat *Ja* voorgekozen.
+- **Op de locatiepagina** (afmelden op locatie) staat naast *Gereed* een knop **Deels gedaan**: een klein venster vraagt welk deel en
+  welke ploeg, zonder het hele formulier. Een vak met een deelregistratie toont "Gedeeltelijk gedaan" met wie, wanneer en welk deel,
+  en de knop heet dan **Volledig klaar**.
+- **Status**: een gedeeltelijk gedaan vak telt als **nog te doen** (ook bij *Alleen te doen*, in de voortgang en de percentages) en
+  krijgt op alle kaarten een eigen opmaak **Gedeeltelijk** (geel, gestreepte rand; aan te passen via *Opmaak*). Pas na een registratie
+  met *Ja, volledig klaar* wordt het vak **gereed** (groen). Elke registratie wordt afzonderlijk ingediend en beoordeeld.
+- **Overzichten en exports**: de werkpakketpagina toont "Gedeeltelijk" met de delen en een knop *Afmaken*; de detailpagina van de
+  werkzaamheid en de exports (uitkomsten, CSV) tonen de status *Gedeeltelijk (vanaf het land)*.
+
+Oudere registraties zonder deze vraag gelden als volledig klaar.
+
 ## Werkpakketcode overal vóór de naam
 
 Een werkpakket (onderhoudstaak) staat in alle schermen als **code + naam**, bijv. **WP-DEMO-001** Groenonderhoud Park Zuid:

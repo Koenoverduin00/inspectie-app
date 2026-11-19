@@ -169,10 +169,11 @@ export function afstandTotVandaag(r, vandaagIso) {
 export function dichtstbijEerst(lijst, vandaagIso) {
   const v = dagNr(vandaagIso);
   const later = (x) => { const p = periode(x.v); return p && p.start > v ? 1 : 0; };
-  const open = lijst.filter((x) => x.st === 'open').sort((a, b) => afstandTotVandaag(a.v, vandaagIso) - afstandTotVandaag(b.v, vandaagIso)
+  const nogTeDoen = (x) => x.st === 'open' || x.st === 'deels';
+  const open = lijst.filter(nogTeDoen).sort((a, b) => afstandTotVandaag(a.v, vandaagIso) - afstandTotVandaag(b.v, vandaagIso)
     || later(b) - later(a)
     || String(a.v.code ?? '').localeCompare(String(b.v.code ?? ''), 'nl', { numeric: true }));
-  return [...open, ...lijst.filter((x) => x.st !== 'open')];
+  return [...open, ...lijst.filter((x) => !nogTeDoen(x))];
 }
 
 /**

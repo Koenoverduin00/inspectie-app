@@ -94,25 +94,47 @@ export function voortgang(pakket, { werkzaamheden = [], inspecties = [], overges
   const ids = (pakket.objecten ?? []).filter((id) => !bestaand || bestaand.has(id));
   const inPakket = new Set(ids);
   const gedaan = new Map();
+  // Werk in delen (bijv. één ploeg vanaf het land, een andere vanaf het water): een werkzaamheid met gereed === false
+  // is een gedeeltelijke afmelding. Het object is pas gedaan na een registratie die "volledig klaar" zegt.
+  const deels = new Map();
   const registraties = pakket.soort === 'inspectie'
     ? inspecties.filter((i) => i.status === 'afgerond')
     : werkzaamheden;
   for (const r of registraties) {
     if (r.werkpakketId !== pakket.id || !zelfdeRonde(r.rondeId, pakket.rondeId) || !inPakket.has(r.objectId)) continue;
+    if (pakket.soort !== 'inspectie' && isDeels(r)) {
+      deels.set(r.objectId, [...(deels.get(r.objectId) ?? []), r].sort((a, b) => String(a.datum).localeCompare(String(b.datum))));
+      continue;
+    }
     const eerder = gedaan.get(r.objectId);
     if (!eerder || String(r.datum) > String(eerder.datum)) gedaan.set(r.objectId, r);
   }
+  for (const id of gedaan.keys()) deels.delete(id);
   const over = new Map();
   for (const o of overgeslagen) {
     if (o.pakketId === pakket.id && zelfdeRonde(o.rondeId, pakket.rondeId) && inPakket.has(o.objectId) && !gedaan.has(o.objectId)) over.set(o.objectId, o);
   }
+  for (const id of over.keys()) deels.delete(id);
   const open = ids.filter((id) => !gedaan.has(id) && !over.has(id));
   const totaal = ids.length;
   return {
-    totaal, gedaan, overgeslagen: over, open,
+    totaal, gedaan, overgeslagen: over, open, deels,
     percentage: totaal ? Math.round(((gedaan.size + over.size) / totaal) * 100) : 0,
   };
 }
+
+/** Gedeeltelijke afmelding van werk: het object is nog niet volledig klaar. */
+export const isDeels = (r) => r?.gereed === false;
+
+/** Status van een object in een ronde: gedaan, overgeslagen, deels (gedeeltelijk gedaan, nog te doen) of open. */
+export function objectStatus(vg, objectId) {
+  if (vg?.gedaan?.has(objectId)) return 'gedaan';
+  if (vg?.overgeslagen?.has(objectId)) return 'overgeslagen';
+  if (vg?.deels?.has(objectId)) return 'deels';
+  return 'open';
+}
+/** Nog werk te doen: open of gedeeltelijk. */
+export const teDoen = (st) => st === 'open' || st === 'deels';
 
 /** Totaal over alle rondes (voor de voortgangsbalk van een pakket). */
 export function totaalVoortgang(lijst) {
@@ -120,7 +142,7 @@ export function totaalVoortgang(lijst) {
   const totaal = som((v) => v.totaal);
   const gedaan = som((v) => v.gedaan.size);
   const over = som((v) => v.overgeslagen.size);
-  return { totaal, gedaan: { size: gedaan }, overgeslagen: { size: over }, open: lijst.flatMap((v) => v.open), percentage: totaal ? Math.round(((gedaan + over) / totaal) * 100) : 0 };
+  return { totaal, gedaan: { size: gedaan }, overgeslagen: { size: over }, deels: { size: som((v) => v.deels?.size ?? 0) }, open: lijst.flatMap((v) => v.open), percentage: totaal ? Math.round(((gedaan + over) / totaal) * 100) : 0 };
 }
 
 /** Is dit pakket voor deze gebruiker? (leeg = iedereen) */

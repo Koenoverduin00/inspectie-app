@@ -998,7 +998,7 @@ body.inlogscherm .statusregel { display: none !important; }
 .veldrondes { list-style: none; margin: 0 0 .5rem; padding: 0; font-size: .85rem; }
 .veldrondes li { display: flex; align-items: center; gap: .4rem; padding: .1rem 0; }
 .stip { width: 10px; height: 10px; border-radius: 50%; flex: none; background: #e07b00; }
-.stip.gedaan { background: #1a7f37; } .stip.overgeslagen { background: #8a96a3; }
+.stip.gedaan { background: #1a7f37; } .stip.overgeslagen { background: #8a96a3; } .stip.open { background: #e07b00; }
 .locmelding { display: flex; gap: .75rem; align-items: flex-start; background: color-mix(in srgb, #e07b00 10%, var(--vlak)); border-color: color-mix(in srgb, #e07b00 45%, transparent); }
 .locmelding > .ico { color: #b45309; width: 1.5rem; height: 1.5rem; margin-top: .1rem; }
 .locmelding small { display: block; color: var(--tekst-zacht); margin-top: .2rem; }
@@ -1782,3 +1782,13 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
 .mfpknaam, .mfpk small { overflow-wrap: anywhere; word-break: break-word; }
 .mfinhoud .periodekiezer select, .mfinhoud .periodekiezer input { min-width: 0; max-width: 100%; }
 .mfinhoud .segment span { white-space: normal; text-align: center; }
+
+/* Werk in delen (meerdere ploegen per vak) */
+.label-status.deels { background: #fff4c2; color: #7a5600; }
+.stip.deels { background: #f2c200; box-shadow: 0 0 0 1.5px #7a3300 inset; }
+.locregel-deels { margin-top: .5rem; display: grid; gap: .2rem; font-size: .88rem; }
+.locregel.deels { border-left: 4px solid #f2c200; }
+.deelchips { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .4rem; }
+.deelchips .gfchip { font-size: .8rem; padding: .2rem .55rem; }
+.volledigveld .segment { margin: .25rem 0 .3rem; }
+.deelseerder { margin-top: .5rem; }

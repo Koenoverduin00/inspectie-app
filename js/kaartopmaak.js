@@ -1,12 +1,13 @@
 // Opmaak van de status (te doen, gedaan, overgeslagen) op alle kaarten. Instelbaar per project (beheerder)
 // en per apparaat. Puur: geen DOM, geen Leaflet.
 
-export const STATUSSEN = [['open', 'Te doen'], ['gedaan', 'Gedaan'], ['overgeslagen', 'Overgeslagen']];
+export const STATUSSEN = [['open', 'Te doen'], ['deels', 'Gedeeltelijk gedaan'], ['gedaan', 'Gedaan'], ['overgeslagen', 'Overgeslagen']];
 export const LIJNEN = { doorgetrokken: 'Doorgetrokken', gestreept: 'Gestreept', gestippeld: 'Gestippeld' };
 const STREEP = { doorgetrokken: null, gestreept: '8 5', gestippeld: '2 4' };
 
 export const STANDAARD = {
   open: { kleur: '#e07b00', rand: '#7a3300', dikte: 4, vulling: 0.65, dekking: 1, punt: 10, lijn: 'doorgetrokken' },
+  deels: { kleur: '#f2c200', rand: '#7a3300', dikte: 3, vulling: 0.55, dekking: 1, punt: 9, lijn: 'gestreept' },
   gedaan: { kleur: '#1a7f37', rand: '', dikte: 1.5, vulling: 0.12, dekking: 0.6, punt: 5, lijn: 'doorgetrokken' },
   overgeslagen: { kleur: '#8a96a3', rand: '', dikte: 1.5, vulling: 0.12, dekking: 0.6, punt: 5, lijn: 'gestreept' },
 };

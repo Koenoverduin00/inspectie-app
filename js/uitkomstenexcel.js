@@ -20,6 +20,8 @@ const plusDagen = (iso, dagen) => {
 };
 const BEOORDELING_TEKST = { ingediend: 'Ingediend', goedgekeurd: 'Goedgekeurd', afgekeurd: 'Afgekeurd' };
 const STATUS_WERK = { gereed: 'Gereed', vervolg: 'Vervolg nodig' };
+/** Status van een werkzaamheid; bij werk in delen "Gedeeltelijk (welk deel)". */
+const werkStatus = (r) => (r?.gereed === false ? `Gedeeltelijk${r.deel ? ` (${r.deel})` : ''}` : STATUS_WERK[r?.status] ?? 'Gereed');
 
 /** Leesbare naam van een inspectiesoort/methodiek. */
 function inspectieSoortTekst(i) {
@@ -140,11 +142,11 @@ export function uitkomstRijen({ registraties, extra = () => [], beoordeling = ()
     if (x.soort === 'werk') {
       rijen.push({
         waarden: [...basis(x), 'Werkzaamheid', r.soort ?? '', o.code ?? '', o.naam ?? '', o.type ?? '', datum(r.datum), r.uitvoerder ?? '',
-          STATUS_WERK[r.status] ?? 'Gereed', BEOORDELING_TEKST[beoordeling(r)] ?? '', '', '', '', r.omschrijving ?? '', r.materiaal ?? '', r.vervolg ?? '',
+          werkStatus(r), BEOORDELING_TEKST[beoordeling(r)] ?? '', '', '', '', r.omschrijving ?? '', r.materiaal ?? '', r.vervolg ?? '',
           ...(metUren ? [getal(r.uren)] : []), '', ...extraLabels.map((l) => ex.get(l) ?? ''), ...checkPunten.map(() => ''), c.x, c.y, c.lat, c.lng],
         kleur: '',
       });
-      ant('Werksoort', r.soort); ant('Omschrijving', r.omschrijving); ant('Materiaal', r.materiaal); ant('Status', STATUS_WERK[r.status] ?? 'Gereed');
+      ant('Werksoort', r.soort); ant('Omschrijving', r.omschrijving); ant('Materiaal', r.materiaal); ant('Status', werkStatus(r));
       ant('Vervolg', r.vervolg);
       if (metUren) ant('Uren', r.uren);
       for (const [l, v] of ex) ant(l, v);
