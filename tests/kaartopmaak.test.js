@@ -38,3 +38,25 @@ test('werk in delen: gedeeltelijk afgemeld blijft te doen tot iemand volledig kl
   assert.ok(P.teDoen('deels') && P.teDoen('open') && !P.teDoen('gedaan'));
   assert.equal(KO.samenvoegen().deels.lijn, 'gestreept');
 });
+
+test('bestekposten: hoeveelheden optellen en voortgang op hoeveelheid', async () => {
+  const P = await import('../js/pakketten.js');
+  const pakket = { id: 'p', soort: 'werk', objecten: ['a', 'b', 'c', 'd'], rondeId: '', voortgangOp: 'hoeveelheid', posten: [{ id: 'z', omschrijving: 'Zetsteen herstel', hoeveelheid: 300, eenheid: 'm2' }] };
+  const w = [
+    { werkpakketId: 'p', objectId: 'a', datum: '2026-11-01', hoeveelheden: { z: 120 } },
+    { werkpakketId: 'p', objectId: 'b', datum: '2026-11-02', gereed: false, hoeveelheden: { z: '60' } },
+  ];
+  let vg = P.voortgang(pakket, { werkzaamheden: w });
+  assert.equal(vg.modus, 'hoeveelheid');
+  assert.deepEqual([vg.hoeveelheden[0].gedaan, vg.hoeveelheden[0].rest, vg.hoeveelheden[0].pct, vg.percentage], [180, 120, 60, 60]);
+  assert.deepEqual(vg.open, ['b', 'c', 'd']);
+  assert.equal(P.hoeveelheidTekst(vg.hoeveelheden[0]), '180 / 300 m²');
+  w.push({ werkpakketId: 'p', objectId: 'c', datum: '2026-11-03', hoeveelheden: { z: 130 } });
+  vg = P.voortgang(pakket, { werkzaamheden: w });
+  assert.equal(vg.percentage, 100);
+  assert.deepEqual(vg.open, ['b']); // gedeeltelijk blijft te doen
+  assert.deepEqual(['a', 'b', 'c', 'd'].map((id) => P.objectStatus(vg, id)), ['gedaan', 'deels', 'gedaan', 'nietnodig']);
+  // zonder voortgang op hoeveelheid telt het objecten, maar de hoeveelheden worden wel bijgehouden
+  const vg2 = P.voortgang({ ...pakket, voortgangOp: 'objecten' }, { werkzaamheden: w });
+  assert.deepEqual([vg2.modus, vg2.percentage, vg2.hoeveelheden[0].gedaan], ['objecten', 50, 310]);
+});

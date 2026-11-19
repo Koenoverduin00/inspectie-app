@@ -97,11 +97,15 @@ export function voortgang(pakket, { werkzaamheden = [], inspecties = [], overges
   // Werk in delen (bijv. één ploeg vanaf het land, een andere vanaf het water): een werkzaamheid met gereed === false
   // is een gedeeltelijke afmelding. Het object is pas gedaan na een registratie die "volledig klaar" zegt.
   const deels = new Map();
+  // Bestekposten (bijv. 300 m² zetsteen herstel): uitgevoerde hoeveelheden per post, ook uit gedeeltelijke afmeldingen.
+  const posten = postenVan(pakket);
+  const opgeteld = new Map(posten.map((x) => [x.id, 0]));
   const registraties = pakket.soort === 'inspectie'
     ? inspecties.filter((i) => i.status === 'afgerond')
     : werkzaamheden;
   for (const r of registraties) {
     if (r.werkpakketId !== pakket.id || !zelfdeRonde(r.rondeId, pakket.rondeId) || !inPakket.has(r.objectId)) continue;
+    for (const [pid, n] of Object.entries(r.hoeveelheden ?? {})) if (opgeteld.has(pid) && Number(n) > 0) opgeteld.set(pid, opgeteld.get(pid) + Number(n));
     if (pakket.soort !== 'inspectie' && isDeels(r)) {
       deels.set(r.objectId, [...(deels.get(r.objectId) ?? []), r].sort((a, b) => String(a.datum).localeCompare(String(b.datum))));
       continue;
@@ -115,13 +119,32 @@ export function voortgang(pakket, { werkzaamheden = [], inspecties = [], overges
     if (o.pakketId === pakket.id && zelfdeRonde(o.rondeId, pakket.rondeId) && inPakket.has(o.objectId) && !gedaan.has(o.objectId)) over.set(o.objectId, o);
   }
   for (const id of over.keys()) deels.delete(id);
-  const open = ids.filter((id) => !gedaan.has(id) && !over.has(id));
+  const hoeveelheden = posten.map((post) => {
+    const klaar = Math.round(opgeteld.get(post.id) * 100) / 100;
+    return { post, gedaan: klaar, rest: Math.max(0, Math.round((post.hoeveelheid - klaar) * 100) / 100), pct: post.hoeveelheid ? Math.min(100, Math.round((klaar / post.hoeveelheid) * 100)) : 0 };
+  });
+  // Voortgang op hoeveelheid: niet elk gekoppeld object hoeft aan de beurt; klaar zodra de hoeveelheden zijn bereikt.
+  const opHoeveelheid = pakket.soort !== 'inspectie' && pakket.voortgangOp === 'hoeveelheid' && hoeveelheden.length > 0;
+  const bereikt = opHoeveelheid && hoeveelheden.every((h) => h.gedaan >= h.post.hoeveelheid);
+  const rest = ids.filter((id) => !gedaan.has(id) && !over.has(id));
+  const open = bereikt ? rest.filter((id) => deels.has(id)) : rest;
+  const nietNodig = new Set(bereikt ? rest.filter((id) => !deels.has(id)) : []);
   const totaal = ids.length;
-  return {
-    totaal, gedaan, overgeslagen: over, open, deels,
-    percentage: totaal ? Math.round(((gedaan.size + over.size) / totaal) * 100) : 0,
-  };
+  const percentage = opHoeveelheid
+    ? Math.round(hoeveelheden.reduce((t, h) => t + h.pct, 0) / hoeveelheden.length)
+    : totaal ? Math.round(((gedaan.size + over.size) / totaal) * 100) : 0;
+  return { totaal, gedaan, overgeslagen: over, open, deels, nietNodig, hoeveelheden, modus: opHoeveelheid ? 'hoeveelheid' : 'objecten', percentage };
 }
+
+export const EENHEDEN = [['m2', 'm²'], ['m1', 'm¹ (strekkende meter)'], ['m3', 'm³'], ['ton', 'ton'], ['kg', 'kg'], ['st', 'stuks'], ['uur', 'uur']];
+export const EENHEID_KORT = { m2: 'm²', m1: 'm¹', m3: 'm³', ton: 'ton', kg: 'kg', st: 'st.', uur: 'uur' };
+/** Bestekposten van een werkpakket: omschrijving, voorgeschreven hoeveelheid en eenheid (per ronde). */
+export function postenVan(p) {
+  return (p?.posten ?? []).filter((x) => x && x.id && Number(x.hoeveelheid) > 0)
+    .map((x) => ({ id: String(x.id), omschrijving: String(x.omschrijving ?? '').trim() || 'Hoeveelheid', hoeveelheid: Number(x.hoeveelheid), eenheid: EENHEID_KORT[x.eenheid] ? x.eenheid : 'm2' }));
+}
+/** "180 / 300 m²" */
+export const hoeveelheidTekst = (h) => `${String(h.gedaan).replace('.', ',')} / ${String(h.post.hoeveelheid).replace('.', ',')} ${EENHEID_KORT[h.post.eenheid]}`;
 
 /** Gedeeltelijke afmelding van werk: het object is nog niet volledig klaar. */
 export const isDeels = (r) => r?.gereed === false;
@@ -131,6 +154,7 @@ export function objectStatus(vg, objectId) {
   if (vg?.gedaan?.has(objectId)) return 'gedaan';
   if (vg?.overgeslagen?.has(objectId)) return 'overgeslagen';
   if (vg?.deels?.has(objectId)) return 'deels';
+  if (vg?.nietNodig?.has(objectId)) return 'nietnodig';
   return 'open';
 }
 /** Nog werk te doen: open of gedeeltelijk. */
@@ -142,7 +166,9 @@ export function totaalVoortgang(lijst) {
   const totaal = som((v) => v.totaal);
   const gedaan = som((v) => v.gedaan.size);
   const over = som((v) => v.overgeslagen.size);
-  return { totaal, gedaan: { size: gedaan }, overgeslagen: { size: over }, deels: { size: som((v) => v.deels?.size ?? 0) }, open: lijst.flatMap((v) => v.open), percentage: totaal ? Math.round(((gedaan + over) / totaal) * 100) : 0 };
+  const opHoeveelheid = lijst.some((v) => v.modus === 'hoeveelheid');
+  const percentage = opHoeveelheid ? (lijst.length ? Math.round(som((v) => v.percentage) / lijst.length) : 0) : totaal ? Math.round(((gedaan + over) / totaal) * 100) : 0;
+  return { totaal, gedaan: { size: gedaan }, overgeslagen: { size: over }, deels: { size: som((v) => v.deels?.size ?? 0) }, open: lijst.flatMap((v) => v.open), percentage };
 }
 
 /** Is dit pakket voor deze gebruiker? (leeg = iedereen) */

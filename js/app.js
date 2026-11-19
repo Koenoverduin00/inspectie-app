@@ -19,7 +19,7 @@ import * as FI from './fotoinfo.js';
 import * as EI from './eisen.js';
 import {
   PAKKETSTATUS, OVERSLAAN_REDENEN, overslaanId, voortgang as pakketVoortgang, voorMij as pakketVoorMijBasis, filterObjecten,
-  rondesVan, rondeView, rondeVanId, pakketStatus, metCode, objectStatus as rondeStatusVan, teDoen as isTeDoen, isDeels, totaalVoortgang, STANDAARD_RONDE, PLANNINGSWIJZEN, isAfroep, AFROEP_REDENEN, onderscheid as rondeOnderscheid,
+  rondesVan, rondeView, rondeVanId, pakketStatus, metCode, objectStatus as rondeStatusVan, teDoen as isTeDoen, isDeels, EENHEDEN, EENHEID_KORT, postenVan, hoeveelheidTekst, totaalVoortgang, STANDAARD_RONDE, PLANNINGSWIJZEN, isAfroep, AFROEP_REDENEN, onderscheid as rondeOnderscheid,
 } from './pakketten.js';
 import * as PX from './pakketexcel.js';
 import * as RX from './resultatenexcel.js';
@@ -5343,7 +5343,7 @@ async function mobielKaart() {
     const mp = new Map();
     for (const { v, st: s } of perObject.get(oid)?.rondes ?? []) {
       const x = mp.get(v.id) ?? { pk: pakketten.get(v.id), st: s };
-      const rang = { open: 3, deels: 2, gedaan: 1, overgeslagen: 0 };
+      const rang = { open: 3, deels: 2, gedaan: 1, overgeslagen: 0, nietnodig: 0 };
       if (rang[s] > rang[x.st]) x.st = s;
       mp.set(v.id, x);
     }
@@ -5542,7 +5542,7 @@ async function mobielKaart() {
         <ul class="veldrondes">${uitTeVoeren.map(({ pk, st: so }) => `<li><a href="${locatiePagina(o.id)}"><span class="stip ${so}"></span>
           <span><span class="rondenaam">${wpNaam(pk)}</span><small class="rondekenmerken">${[so === 'deels' ? '<b>gedeeltelijk gedaan</b>' : '', actueleRondeTekst(pk), nietVanMij(pk) ? 'niet aan jou toegewezen' : ''].filter(Boolean).join(' · ')}</small></span></a></li>`).join('')}</ul>`
     : `<div class="veldklaar">${I.gereed} Op dit object is niets meer uit te voeren.</div>`}
-        ${klaar.length ? `<p class="veldafgemeld"><small>${klaar.map(({ pk, st }) => `<span class="stip ${st}"></span> ${wpNaam(pk)}${actueleRondeTekst(pk) ? ` (${actueleRondeTekst(pk)})` : ''} ${st === 'gedaan' ? 'gereed' : 'overgeslagen'}`).join(' · ')}</small></p>` : ''}
+        ${klaar.length ? `<p class="veldafgemeld"><small>${klaar.map(({ pk, st }) => `<span class="stip ${st}"></span> ${wpNaam(pk)}${actueleRondeTekst(pk) ? ` (${actueleRondeTekst(pk)})` : ''} ${st === 'gedaan' ? 'gereed' : st === 'nietnodig' ? 'niet nodig' : 'overgeslagen'}`).join(' · ')}</small></p>` : ''}
         <div class="popupknoppen"><a class="knop klein primair" href="${locatiePagina(o.id)}">${uitTeVoeren.length ? `${I.start} Afmelden op deze locatie` : 'Bekijken'}</a>
         <a class="knop klein" href="${navigeer(o)}" target="_blank" rel="noopener">${I.navigeer} Navigeer</a></div>`;
     },
@@ -5686,6 +5686,7 @@ const VAN_LOCATIE = 'inspectie-app:vanLocatie';
 /** Snel afvinken van werk: een werkzaamheid 'gereed' zonder formulier (alleen als er geen verplichte extra velden zijn). */
 async function magSnelAfvinken(v, objectId) {
   if (v.soort !== 'werk') return false;
+  if (postenVan(v).length) return false; // eerst de hoeveelheid invullen in het formulier
   const p = await actiefProject();
   const verplicht = velden.zichtbareVelden(p?.velden ?? [], 'werk', v.werksoort || '').some((d) => d.verplicht);
   if (verplicht) return false;
@@ -6452,6 +6453,15 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
   }
   if (pakket && !bestaand && pakket.werksoort) w.soort = pakket.werksoort;
   const pakketTerug = pakket ? pakketPagina(pakket, mobiel) : null;
+  // Bestekposten: per post de uitgevoerde hoeveelheid; ernaast wat er in deze ronde al is gedaan.
+  const postenW = pakket && !isStoring ? postenVan(pakket) : [];
+  const hvStand = new Map();
+  if (postenW.length) {
+    for (const x of await inProject('werkzaamheden')) {
+      if (x.werkpakketId !== pakket.id || (x.rondeId || STANDAARD_RONDE) !== (pakket.rondeId || STANDAARD_RONDE) || x.id === bestaand?.id) continue;
+      for (const [pid, n] of Object.entries(x.hoeveelheden ?? {})) hvStand.set(pid, (hvStand.get(pid) ?? 0) + (Number(n) || 0));
+    }
+  }
   // Werk in delen: eerdere gedeeltelijke afmeldingen van dit object in deze ronde (andere ploegen).
   // Werk in delen alleen als het werkpakket dat toestaat (of als deze registratie al een gedeeltelijke afmelding is).
   const metDelen = Boolean(pakket) && !isStoring && (Boolean(pakket.deelsAfmelden) || isDeels(bestaand));
@@ -6533,6 +6543,12 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
       <div class="inzetvoet"><button type="button" class="knop klein" id="inzet-erbij">＋ Regel toevoegen</button><span id="inzet-totaal"></span></div></div>`
     : `<div class="veld" id="status-veld" ${metDelen && volledigStart === 'nee' ? 'hidden' : ''}><label for="f-status">Status</label>
       <select id="f-status" name="status">${Object.entries(WERKSTATUS).map(([k, v]) => optie(k, v, w.status)).join('')}</select></div>`}
+    ${postenW.length ? `<div class="veld breed hoeveelheidveld"><label class="vereist">Uitgevoerde hoeveelheid</label>
+      ${postenW.map((x) => { const al = Math.round((hvStand.get(x.id) ?? 0) * 100) / 100; const nl = (v) => String(v).replace('.', ','); return `<div class="hvregel">
+        <label for="hv-${esc(x.id)}">${esc(x.omschrijving)}</label>
+        <span class="hvinvoer"><input id="hv-${esc(x.id)}" name="hv-${esc(x.id)}" type="number" min="0" step="any" inputmode="decimal" value="${esc(bestaand?.hoeveelheden?.[x.id] ?? '')}" placeholder="0"><span>${esc(EENHEID_KORT[x.eenheid])}</span></span>
+        <small class="zacht">In deze ronde al ${nl(al)} van ${nl(x.hoeveelheid)} ${esc(EENHEID_KORT[x.eenheid])}${al >= x.hoeveelheid ? ' – <b>hoeveelheid bereikt</b>' : ` · nog ${nl(Math.round((x.hoeveelheid - al) * 100) / 100)}`}</small></div>`; }).join('')}
+      <small class="zacht">Vul in hoeveel je hier hebt gedaan; 0 als het hier niet van toepassing was.</small></div>` : ''}
     ${metDelen ? `<div class="veld breed volledigveld"><label class="vereist">Is het vak volledig klaar?</label>
       ${segment('volledig', volledigStart, [['ja', 'Ja, volledig klaar'], ['nee', 'Nee, gedeeltelijk']])}
       <small class="zacht">Kies <strong>Nee</strong> als een andere ploeg nog een deel doet (bijv. vanaf het water). Het vak blijft dan op de kaart als te doen staan.</small>
@@ -6713,6 +6729,11 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
       if (iz.length) { form.querySelector('.inzetveld')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return melding(iz[0], 'fout'); }
     }
     if (isStoring) data.status = data.resultaat === 'opgelost' ? 'gereed' : 'vervolg';
+    if (postenW.length) {
+      const leeg = postenW.find((x) => String(data[`hv-${x.id}`] ?? '').trim() === '');
+      if (leeg) { app.querySelector(`#hv-${CSS.escape(leeg.id)}`)?.focus(); return melding(`Vul de uitgevoerde hoeveelheid in voor "${leeg.omschrijving}" (0 als het niet van toepassing was).`, 'fout'); }
+      if (postenW.some((x) => Number(String(data[`hv-${x.id}`]).replace(',', '.')) < 0)) return melding('Een hoeveelheid kan niet negatief zijn.', 'fout');
+    }
     if (metDelen && !data.volledig) {
       app.querySelector('.volledigveld').scrollIntoView({ behavior: 'smooth', block: 'center' });
       return melding('Geef aan of het vak volledig klaar is.', 'fout');
@@ -6757,6 +6778,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
       status: data.status || 'gereed',
       vervolg: data.status === 'vervolg' ? data.vervolg : '',
       ...(metDelen ? { gereed: data.volledig !== 'nee', deel: data.volledig === 'nee' ? String(data.deel ?? '').trim() : '' } : {}),
+      ...(postenW.length ? { hoeveelheden: Object.fromEntries(postenW.map((x) => [x.id, Number(String(data[`hv-${x.id}`]).replace(',', '.')) || 0])) } : {}),
       materiaal: data.materiaal,
       werkpakketId: w.werkpakketId ?? '', rondeId: w.werkpakketId ? (w.rondeId ?? '') : '',
       ...(isStoring ? { storing: { type: data.stype, melding: String(data.melding ?? '').trim(), gemeldOp: data.gemeldOp ?? '', opgelostOp: data.opgelostOp ?? '', resultaat: data.resultaat || 'opgelost', referentie: String(data.referentie ?? '').trim(), inzet: IZ.normaliseer(inzet),
@@ -10246,12 +10268,25 @@ async function laadPakketView(pakketId, rondeId) {
 }
 
 function voortgangBalk(v, { groot = false } = {}) {
+  // Voortgang op hoeveelheid: de bestekposten zijn de maat; objecten zijn alleen de plekken waar het kan.
+  if (v.modus === 'hoeveelheid') return `<div class="voortgang${groot ? ' groot' : ''} hvmodus">${hoeveelheidBalken(v)}
+    <small class="zacht">Gewerkt op ${v.gedaan.size + (v.deels?.size ?? 0)} van ${v.totaal} plekken${v.nietNodig?.size ? ` · ${v.nietNodig.size} niet meer nodig` : ''}</small></div>`;
   const pct = (n) => (v.totaal ? (n / v.totaal) * 100 : 0);
   return `<div class="voortgang${groot ? ' groot' : ''}">
     <div class="balkje" role="progressbar" aria-valuemin="0" aria-valuemax="${v.totaal}" aria-valuenow="${v.gedaan.size}"
       aria-label="${v.gedaan.size} van ${v.totaal} gedaan">
       <i style="width:${pct(v.gedaan.size)}%;background:${PAKKET_KLEUR.gedaan}"></i><i style="width:${pct(v.overgeslagen.size)}%;background:${PAKKET_KLEUR.overgeslagen}"></i></div>
-    <span><strong>${v.gedaan.size}/${v.totaal}</strong> gedaan${v.overgeslagen.size ? ` · ${v.overgeslagen.size} overgeslagen` : ''}</span></div>`;
+    <span><strong>${v.gedaan.size}/${v.totaal}</strong> gedaan${v.overgeslagen.size ? ` · ${v.overgeslagen.size} overgeslagen` : ''}</span></div>${hoeveelheidBalken(v)}`;
+}
+
+/** Voortgang per bestekpost ("180 / 300 m²"); bij voortgang op hoeveelheid is dit de maat voor de ronde. */
+function hoeveelheidBalken(v) {
+  if (!v?.hoeveelheden?.length) return '';
+  return `<div class="hvbalken${v.modus === 'hoeveelheid' ? ' leidend' : ''}">${v.hoeveelheden.map((h) => `<div class="hvbalk">
+    <span class="hvnaam">${esc(h.post.omschrijving)}</span>
+    <div class="balkje" role="progressbar" aria-valuemin="0" aria-valuemax="${h.post.hoeveelheid}" aria-valuenow="${h.gedaan}" aria-label="${esc(h.post.omschrijving)}: ${esc(hoeveelheidTekst(h))}"><i style="width:${h.pct}%;background:${PAKKET_KLEUR.gedaan}"></i></div>
+    <span><strong>${esc(hoeveelheidTekst(h))}</strong> (${h.pct}%)${h.gedaan > h.post.hoeveelheid ? ' <b class="fouttekst">meer dan voorgeschreven</b>' : ''}</span></div>`).join('')}
+</div>`;
 }
 
 function pakketStatusLabel(status) {
@@ -10815,6 +10850,15 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
             <textarea id="f-omschrijving" name="omschrijving" maxlength="2000">${esc(p.omschrijving)}</textarea></div>
         </div>
       </section>
+      <section class="kaart hoeveelhedenkaart">
+        <h2>Hoeveelheden (bestekposten)</h2>
+        <p><small>Voorgeschreven hoeveelheden per ronde, bijv. <em>Zetsteen herstel – 300 m²</em>. In het werkformulier wordt dan per post gevraagd hoeveel er is gedaan, en je ziet hoever je bent.</small></p>
+        <div class="tabelhouder"><table class="posttabel"><thead><tr><th>Omschrijving</th><th>Hoeveelheid</th><th>Eenheid</th><th></th></tr></thead><tbody id="posten"></tbody></table></div>
+        <button type="button" class="knop klein" id="post-erbij">＋ Bestekpost</button>
+        <div class="veld breed" id="voortgangop" style="margin-top:.75rem"><label>Voortgang meten op</label>
+          ${segment('voortgangOp', p.voortgangOp === 'hoeveelheid' ? 'hoeveelheid' : 'objecten', [['objecten', 'Objecten – elk gekoppeld object moet af'], ['hoeveelheid', 'Hoeveelheid – alleen waar nodig, tot de hoeveelheid is bereikt']])}
+          <small>Kies <strong>Hoeveelheid</strong> als het werk niet op alle gekoppelde objecten gebeurt (bijv. 300 m² zetsteen herstel op specifieke plekken langs de oevers). De gekoppelde objecten zijn dan de plekken waar het <em>kan</em>; is de hoeveelheid bereikt, dan zijn de rest "niet nodig".</small></div>
+      </section>
       <section class="kaart planningswijze">
         <h2>Planningswijze</h2>
         <div class="pw-keuze">${Object.entries(PLANNINGSWIJZEN).map(([k, w]) => `<label class="pw-optie"><input type="radio" name="planning" value="${k}" ${k === planning ? 'checked' : ''}>
@@ -11189,6 +11233,37 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
   form.addEventListener('input', () => { formulierGewijzigd = true; });
   toon();
 
+  // Bestekposten (hoeveelheden per ronde)
+  const posten = (p.posten ?? []).map((x) => ({ ...x }));
+  const tekenPosten = () => {
+    const tb = app.querySelector('#posten');
+    tb.innerHTML = posten.length ? posten.map((x, n) => `<tr data-n="${n}">
+      <td><input data-pf="omschrijving" value="${esc(x.omschrijving ?? '')}" maxlength="120" placeholder="bijv. Zetsteen herstel" aria-label="Omschrijving"></td>
+      <td><input data-pf="hoeveelheid" type="number" min="0" step="any" inputmode="decimal" value="${esc(x.hoeveelheid ?? '')}" aria-label="Hoeveelheid"></td>
+      <td><select data-pf="eenheid" aria-label="Eenheid">${EENHEDEN.map(([k, l]) => optie(k, l, x.eenheid || 'm2')).join('')}</select></td>
+      <td><button type="button" class="knop klein" data-pf-weg="${n}" aria-label="Post verwijderen">${I.kruis}</button></td></tr>`).join('')
+      : '<tr><td colspan="4" class="leeg"><small>Geen bestekposten: de voortgang telt objecten.</small></td></tr>';
+    app.querySelector('#voortgangop').hidden = !posten.length;
+  };
+  tekenPosten();
+  app.querySelector('#posten').addEventListener('input', (e) => {
+    const x = e.target.closest('[data-pf]');
+    if (!x) return;
+    posten[Number(x.closest('tr').dataset.n)][x.dataset.pf] = x.value;
+    formulierGewijzigd = true;
+  });
+  app.querySelector('#posten').addEventListener('click', (e) => {
+    const w = e.target.closest('[data-pf-weg]');
+    if (!w) return;
+    posten.splice(Number(w.dataset.pfWeg), 1);
+    formulierGewijzigd = true;
+    tekenPosten();
+  });
+  app.querySelector('#post-erbij').onclick = () => {
+    posten.push({ id: nieuwId(), omschrijving: '', hoeveelheid: '', eenheid: 'm2' });
+    tekenPosten();
+    app.querySelector('#posten tr:last-child [data-pf=omschrijving]')?.focus();
+  };
   form.onsubmit = async (e) => {
     e.preventDefault();
     const d = formulierData(form);
@@ -11219,6 +11294,8 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
       toegewezen: [...form.querySelectorAll('input[name=toegewezen]:checked')].map((c) => c.value),
       vrijgaveVereist: form.elements.vrijgaveVereist.checked,
       deelsAfmelden: form.elements.deelsAfmelden.checked,
+      posten: posten.filter((x) => Number(String(x.hoeveelheid).replace(',', '.')) > 0).map((x) => ({ id: x.id, omschrijving: String(x.omschrijving ?? '').trim(), hoeveelheid: Number(String(x.hoeveelheid).replace(',', '.')), eenheid: x.eenheid || 'm2' })),
+      voortgangOp: form.elements.voortgangOp.value === 'hoeveelheid' ? 'hoeveelheid' : 'objecten',
       // Welke definitieve decompositieversie gold bij het samenstellen.
       decompVersie: decBoom ? decBoom.versie : (bron?.decompVersie ?? null),
       // Boomveiligheidscontrole: uit welke kolom de basisgegevens komen en wie de eigenaar (EIG) is; eenmalig per werkpakket.
@@ -11438,6 +11515,7 @@ async function pakketDetail(id, q = new URLSearchParams()) {
       <aside class="kaart lagenpaneel"><h2>Legenda</h2><div class="legenda">
         <span>${statusStip('open')}Nog te doen (${v.open.length - (v.deels?.size ?? 0)})</span>
         ${v.deels?.size ? `<span>${statusStip('deels')}Gedeeltelijk gedaan (${v.deels.size})</span>` : ''}
+        ${v.nietNodig?.size ? `<span>${statusStip('overgeslagen')}Niet nodig – hoeveelheid bereikt (${v.nietNodig.size})</span>` : ''}
         <span>${statusStip('gedaan')}Gedaan (${v.gedaan.size})</span>
         <span>${statusStip('overgeslagen')}Overgeslagen (${v.overgeslagen.size})</span></div>
         <p>${opmaakKnop()}</p>
@@ -11456,7 +11534,7 @@ async function pakketDetail(id, q = new URLSearchParams()) {
     const ov = v.overgeslagen.get(o.id);
     return `<tr data-id="${esc(o.id)}" data-status="${st}">
           <td><a href="#/objecten/${esc(o.id)}"><strong>${esc(o.code)}</strong></a>${objectGeometrie(o) ? ` <button type="button" class="kaartpin" data-opkaart="${esc(o.id)}" title="Toon op de kaart" aria-label="${esc(o.code)} op de kaart tonen">${I.locatie}</button>` : ''}</td><td>${esc(o.naam)}${p.vrijgaveVereist ? `<br>${vrijgaveLabel(eco.vrijgaveVoorObject(vrijgavenProject, o.id, vandaag()))}` : ''}</td>
-          <td><span class="label-status ${st === 'gedaan' ? 'afgerond' : st === 'open' ? 'binnenkort' : st === 'deels' ? 'deels' : ''}">${{ open: 'Open', deels: 'Gedeeltelijk', gedaan: 'Gedaan', overgeslagen: 'Overgeslagen' }[st]}</span>${st === 'deels' ? `<br><small>${(v.deels.get(o.id) ?? []).map((x) => `${datumNL(x.datum)}${x.deel ? `: ${esc(x.deel)}` : ''}`).join('<br>')}</small>` : ''}</td>
+          <td><span class="label-status ${st === 'gedaan' ? 'afgerond' : st === 'open' ? 'binnenkort' : st === 'deels' ? 'deels' : ''}">${{ open: 'Open', deels: 'Gedeeltelijk', gedaan: 'Gedaan', overgeslagen: 'Overgeslagen', nietnodig: 'Niet nodig' }[st]}</span>${st === 'deels' ? `<br><small>${(v.deels.get(o.id) ?? []).map((x) => `${datumNL(x.datum)}${x.deel ? `: ${esc(x.deel)}` : ''}`).join('<br>')}</small>` : ''}</td>
           <td>${r ? `<a href="${regHref(r)}">${datumNL(r.datum)}</a> · ${esc(r.uitvoerder || r.inspecteur || '')}` : ov ? `${datumNL(ov.op)} · ${esc(ov.door)}` : '–'}</td>
           <td class="verberg-mobiel">${ov ? `${esc(ov.reden)}${ov.toelichting ? `: ${esc(ov.toelichting)}` : ''}` : r ? esc(r.omschrijving || r.samenvatting || '') : ''}</td>
           <td>${isTeDoen(st) ? `<a class="knop klein" href="${pakketHref(p, o.id, false)}">${st === 'deels' ? 'Afmaken' : 'Uitvoeren'}</a>`
@@ -11588,6 +11666,7 @@ async function exporteerUitkomsten({ voorPakket = null } = {}) {
     const r = UX.uitkomstRijen({
       registraties: regs,
       extra: (rec, soort) => [
+        ...(rec.hoeveelheden ? postenVan(perId.get(rec.werkpakketId)).map((x) => [`${x.omschrijving} (${EENHEID_KORT[x.eenheid]})`, rec.hoeveelheden[x.id] ?? '']) : []),
         ...(rec.storing ? [['Storing: referentie', rec.storing.referentie ?? ''], ['Storing: soort', rec.storing.type ?? ''], ['Storing: wat was er', rec.storing.melding ?? ''], ['Storing: gemeld om', datumTijdNL(rec.storing.gemeldOp)],
           ['Storing: opgelost om', datumTijdNL(rec.storing.opgelostOp)], ['Storing: doorlooptijd', rec.storing.gemeldOp && rec.storing.opgelostOp ? duurTekst(rec.storing.gemeldOp, rec.storing.opgelostOp) : ''],
           ['Storing: resultaat', STORING_RESULTAAT[rec.storing.resultaat]?.label ?? ''],

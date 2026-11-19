@@ -295,6 +295,16 @@ met de gekozen soort en een × om hem weer weg te halen.
 op als het object aan de rand ligt, zodat ze altijd helemaal in beeld staan. De knop **Toon N objecten** telt live mee; **Wis filters** zet alles terug. Annuleren verandert niets.
 De keuzes worden per apparaat onthouden. De legenda met de knop *Opmaak* staat onder de kaart.
 
+## Hoeveelheden per werkpakket (bestekposten)
+
+Naast een frequentie kan een werkpakket voorgeschreven hoeveelheden hebben, bijvoorbeeld *300 m² zetsteen herstel*.
+
+- **Inrichten** (Werkpakketten → pakket bewerken → *Hoeveelheden*): voeg bestekposten toe met omschrijving, hoeveelheid en eenheid (m², m¹, m³, ton, kg, stuks, uur). De hoeveelheid geldt **per ronde**.
+- **Voortgang meten op**: *Objecten* (elk gekoppeld object moet aan de beurt, zoals voorheen) of *Hoeveelheid*. Bij *Hoeveelheid* zijn de gekoppelde objecten de plekken waar het werk **kan** gebeuren; niet elk object hoeft aan de beurt. Is de hoeveelheid bereikt, dan staan de overige objecten op *Niet nodig* (grijs op de kaart) en telt de voortgang op de hoeveelheid.
+- **Formulier**: bij elke registratie vraagt het werkformulier per post *Uitgevoerde hoeveelheid* (verplicht; 0 als het daar niet van toepassing was), met erbij hoeveel er in deze ronde al gedaan is en hoeveel er nog openstaat. Gedeeltelijke registraties tellen mee. Snel afvinken (*Gereed*) kan niet bij pakketten met posten, omdat de hoeveelheid ingevuld moet worden.
+- **Pakketpagina**: per post een balk, bijvoorbeeld *120 / 300 m² (40%)*, met een waarschuwing als er meer is gedaan dan voorgeschreven.
+- **Export uitkomsten**: per post een extra kolom, bijvoorbeeld *Zetsteen herstel (m²)*.
+
 ## Werk in delen: meerdere ploegen op hetzelfde vak
 
 Soms werken twee ploegen aan hetzelfde vak, bijv. de ene **vanaf het land** en de andere **vanaf het water**. Allebei registreren ze,
