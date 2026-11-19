@@ -500,6 +500,9 @@ Een storing of gebrek moet je altijd kunnen oplossen, ook ’s nachts en zonder 
 - Recht **Storingen oplossen** (standaard aan) per persoon in te stellen bij Toewijzen. Werkt offline; versturen gebeurt zodra er verbinding is.
 
 
+**Referentie** (optioneel): een vrij veld voor bijv. het meldingsnummer of ticket van de opdrachtgever. Het staat op de
+detailpagina, in de storingenlijst (achter het type, en doorzoekbaar) en in de uitkomsten-export (*Storing: referentie*).
+
 **Bestede uren** (verplicht): in het formulier *Storing of gebrek oplossen* staat een tabel waarin je per regel invult wat er is
 ingezet – **Werknemer**, **Auto / bus**, **Vrachtwagen**, **Boot**, **Kraan / hoogwerker**, **Aggregaat / pomp** of **Overig
 materieel** – met *wie / welke* (naam, kenteken, bootnummer), **aantal** en **uren**. Met *＋ Regel toevoegen* voeg je regels toe;

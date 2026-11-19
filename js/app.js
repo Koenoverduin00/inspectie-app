@@ -6211,6 +6211,7 @@ async function werkDetail(id) {
       </div>
     </div>
     ${w.storing ? `<section class="kaart storingbanner"><h2 style="margin-top:0">${I.let} ${esc(w.storing.type || 'Storing')} – ${esc(STORING_RESULTAAT[w.storing.resultaat]?.label ?? '')}</h2>
+      ${w.storing.referentie ? `<p style="margin:.1rem 0 .35rem"><strong>Referentie:</strong> ${esc(w.storing.referentie)}</p>` : ''}
       <p style="white-space:pre-wrap;margin:.25rem 0">${esc(w.storing.melding || '–')}</p>
       <small>${w.storing.gemeldOp ? `Gemeld ${datumTijdNL(w.storing.gemeldOp)}` : ''}${w.storing.opgelostOp ? ` · opgelost ${datumTijdNL(w.storing.opgelostOp)}` : ''}${w.storing.gemeldOp && w.storing.opgelostOp && duurTekst(w.storing.gemeldOp, w.storing.opgelostOp) ? ` · doorlooptijd ${duurTekst(w.storing.gemeldOp, w.storing.opgelostOp)}` : ''}
         · zonder werkpakket (storingen en gebreken)</small>
@@ -6440,6 +6441,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     <div class="veld${mobiel ? ' breed' : ''}"><label for="f-stype" class="vereist">Wat is het?</label>
       <select id="f-stype" name="stype">${STORING_TYPEN.map((x) => optie(x, x, st.type)).join('')}</select></div>
     <div class="veld${mobiel ? ' breed' : ''}"><label for="f-gemeld">Gemeld / ontdekt om</label><input id="f-gemeld" name="gemeldOp" type="datetime-local" value="${esc(st.gemeldOp ?? '')}"></div>
+    <div class="veld${mobiel ? ' breed' : ''}"><label for="f-referentie">Referentie</label><input id="f-referentie" name="referentie" maxlength="80" autocomplete="off" value="${esc(st.referentie ?? '')}" placeholder="bijv. meldingsnummer of ticket van de opdrachtgever"></div>
     <div class="veld breed"><label for="f-melding" class="vereist">Wat was er aan de hand?</label>
       <textarea id="f-melding" name="melding" maxlength="2000" style="min-height:70px" placeholder="bijv. slagboom gaat niet open, lantaarnpaal brandt niet, boom over het fietspad">${esc(st.melding ?? '')}</textarea></div>` : '';
   const velden = `
@@ -6688,7 +6690,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
       ...(metDelen ? { gereed: data.volledig !== 'nee', deel: data.volledig === 'nee' ? String(data.deel ?? '').trim() : '' } : {}),
       materiaal: data.materiaal,
       werkpakketId: w.werkpakketId ?? '', rondeId: w.werkpakketId ? (w.rondeId ?? '') : '',
-      ...(isStoring ? { storing: { type: data.stype, melding: String(data.melding ?? '').trim(), gemeldOp: data.gemeldOp ?? '', opgelostOp: data.opgelostOp ?? '', resultaat: data.resultaat || 'opgelost', inzet: IZ.normaliseer(inzet) } } : {}),
+      ...(isStoring ? { storing: { type: data.stype, melding: String(data.melding ?? '').trim(), gemeldOp: data.gemeldOp ?? '', opgelostOp: data.opgelostOp ?? '', resultaat: data.resultaat || 'opgelost', referentie: String(data.referentie ?? '').trim(), inzet: IZ.normaliseer(inzet) } } : {}),
       // Bij een storing: de uren zijn de manuren uit de tabel (voor overzichten en exports).
       ...(isStoring ? { uren: IZ.totalen(inzet).manuren || '' } : {}),
       maatregelen: [...gekozen].map((k) => {
@@ -10234,7 +10236,7 @@ async function storingenPagina() {
       <p>Altijd open, zonder werkpakket: wat er buiten (ook buiten werktijd) direct is opgelost. Elke registratie gaat ter beoordeling naar de inbox.</p></div>
       <div class="knoppen">${mag('storing') ? `<a class="knop primair" href="#/storing">${I.let} Storing of gebrek oplossen</a>` : ''}</div></div>
     <div class="filters">
-      <input type="search" id="s-zoek" placeholder="Zoek op object, melding, uitvoerder…" aria-label="Zoeken">
+      <input type="search" id="s-zoek" placeholder="Zoek op object, melding, referentie, uitvoerder…" aria-label="Zoeken">
       <select id="s-type" aria-label="Soort"><option value="">Alle soorten</option>${STORING_TYPEN.map((t) => optie(t, t)).join('')}</select>
       <select id="s-res" aria-label="Resultaat"><option value="">Alle resultaten</option>${Object.entries(STORING_RESULTAAT).map(([k, x]) => optie(k, x.label)).join('')}</select>
     </div>
@@ -10245,10 +10247,10 @@ async function storingenPagina() {
   const toon = () => {
     const [zoek, type, res] = f.map((x) => x.value);
     const rijen = lijst.filter((w) => (!type || w.storing.type === type) && (!res || w.storing.resultaat === res)
-      && (!zoek || `${objectMap.get(w.objectId)?.code} ${objectMap.get(w.objectId)?.naam} ${w.storing.melding} ${w.omschrijving} ${w.uitvoerder}`.toLowerCase().includes(zoek.toLowerCase())));
+      && (!zoek || `${objectMap.get(w.objectId)?.code} ${objectMap.get(w.objectId)?.naam} ${w.storing.melding} ${w.storing.referentie ?? ''} ${w.omschrijving} ${w.uitvoerder}`.toLowerCase().includes(zoek.toLowerCase())));
     app.querySelector('#s-rijen').innerHTML = rijen.length ? rijen.map((w) => `<tr class="klikbaar" data-href="#/werkzaamheden/${esc(w.id)}">
       <td class="nowrap">${datumTijdNL(w.storing.opgelostOp) || datumNL(w.datum)}${w.storing.gemeldOp && w.storing.opgelostOp ? `<small class="subregel">na ${duurTekst(w.storing.gemeldOp, w.storing.opgelostOp)}</small>` : ''}</td>
-      <td>${objectNaam(objectMap.get(w.objectId))}<small class="subregel">${esc(w.storing.type || '')}</small></td>
+      <td>${objectNaam(objectMap.get(w.objectId))}<small class="subregel">${esc(w.storing.type || '')}${w.storing.referentie ? ` · ref. ${esc(w.storing.referentie)}` : ''}</small></td>
       <td>${esc(String(w.storing.melding || '').slice(0, 120))}</td><td class="verberg-mobiel">${esc(String(w.omschrijving || '').slice(0, 120))}</td>
       <td><span class="label-status" style="background:${STORING_RESULTAAT[w.storing.resultaat]?.kleur};color:#fff">${esc(STORING_RESULTAAT[w.storing.resultaat]?.label ?? '')}</span> ${beoordelingLabel(w)}</td>
       <td class="verberg-mobiel nowrap">${w.storing.inzet?.length ? `${String(IZ.totalen(w.storing.inzet).totaal).replace('.', ',')} u` : '–'}</td>
@@ -11145,7 +11147,7 @@ async function exporteerUitkomsten({ voorPakket = null } = {}) {
     const r = UX.uitkomstRijen({
       registraties: regs,
       extra: (rec, soort) => [
-        ...(rec.storing ? [['Storing: soort', rec.storing.type ?? ''], ['Storing: wat was er', rec.storing.melding ?? ''], ['Storing: gemeld om', datumTijdNL(rec.storing.gemeldOp)],
+        ...(rec.storing ? [['Storing: referentie', rec.storing.referentie ?? ''], ['Storing: soort', rec.storing.type ?? ''], ['Storing: wat was er', rec.storing.melding ?? ''], ['Storing: gemeld om', datumTijdNL(rec.storing.gemeldOp)],
           ['Storing: opgelost om', datumTijdNL(rec.storing.opgelostOp)], ['Storing: doorlooptijd', rec.storing.gemeldOp && rec.storing.opgelostOp ? duurTekst(rec.storing.gemeldOp, rec.storing.opgelostOp) : ''],
           ['Storing: resultaat', STORING_RESULTAAT[rec.storing.resultaat]?.label ?? ''],
           ['Storing: bestede uren', IZ.tekst(rec.storing.inzet)], ['Storing: manuren', IZ.totalen(rec.storing.inzet).manuren || ''], ['Storing: materieeluren', IZ.totalen(rec.storing.inzet).materieeluren || '']] : []),
