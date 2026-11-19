@@ -54,7 +54,7 @@ const instelling = {
 // Router
 // ---------------------------------------------------------------------------
 const ROUTES = [
-  [/^\/$/, 'dashboard', () => (isMobiel() ? mobielStart() : dashboard())],
+  [/^\/$/, 'dashboard', () => (isMobiel() && !isOpdrachtgever() ? mobielStart() : dashboard())],
   [/^\/m\/werk$/, 'm-werk', () => werkpakketKiezer(null, { mobiel: true })],
   [/^\/m\/werk\/nieuw$/, 'm-werk', (_, q) => werkFormulier(null, q.get('object'), { mobiel: true, taakId: q.get('taak'), maatregel: q.get('maatregel'), pakketId: q.get('pakket'), rondeId: q.get('ronde'), deel: q.get('deel') === '1' })],
   [/^\/m\/werk\/([^/]+)$/, 'm-werk', (id) => werkFormulier(id, null, { mobiel: true })],
@@ -206,6 +206,12 @@ async function toonRoute() {
     // Eerst een project kiezen; alleen projecten, instellingen en account werken zonder project.
     if (!/^\/(projecten|instellingen|m\/account)(\/|$)/.test(pad) && !(await actiefProject())) {
       await projectenPagina();
+      return;
+    }
+    // Opdrachtgever: alleen het dashboard (plus account en projectkeuze).
+    if (isOpdrachtgever() && !OG_PAGINAS.test(pad)) {
+      location.replace('#/');
+      melding('Als opdrachtgever heb je toegang tot het dashboard. Details bekijk je samen met de opdrachtnemer.');
       return;
     }
     // Opdrachtgever: een nog niet geaccepteerde registratie niet openen (ook niet via een directe link).
@@ -2106,14 +2112,43 @@ function gebrekSamenvatting(gebreken, i = null) {
 const DASH_ROLLEN = { opdrachtnemer: 'Opdrachtnemer', opdrachtgever: 'Opdrachtgever' };
 
 let dashBewerken = false;
+
+/** Toon de uitleg voor de opdrachtgever (tot hij op "Begrepen" tikt; via de knop Uitleg komt hij terug). */
+const ogUitlegZien = (project) => instelling.lees(`ogUitlegWeg:${project.id}`, '') !== '1';
+function ogUitleg(project, blokken) {
+  const naam = project.ledenInfo?.[ikEmail()]?.naam;
+  return `<section class="kaart oguitleg" id="oguitleg">
+    <div class="oguitleg-kop"><div><small>${I.lijst} Uitleg voor de opdrachtgever</small>
+      <h2>${naam ? `Welkom, ${esc(naam.split(' ')[0])}` : 'Welkom'} – zo werkt jouw dashboard</h2></div>
+      <button type="button" class="knop" data-dash="uitlegweg">${I.vink} Begrepen</button></div>
+    <div class="oguitleg-raster">
+      <div><h3>${I.vink} Wat je ziet</h3>
+        <p>De stand van het contract <strong>${esc(project.naam)}</strong>: de voortgang per werkpakket en ronde, wat er is uitgevoerd en wat er bij inspecties is gevonden.</p>
+        <p><strong>Je ziet alleen werk dat de opdrachtnemer heeft geaccepteerd.</strong> Wat nog wordt beoordeeld of is afgekeurd, verschijnt hier pas na goedkeuring. De percentages en de kaart tellen dus alleen geaccepteerd werk.</p></div>
+      <div><h3>${I.kalender} Periode</h3>
+        <p>Kies bovenaan de periode: <em>dit jaar</em>, <em>volgend jaar</em>, een ander kalenderjaar of een eigen periode. Rondes buiten die periode tellen dan niet mee.</p>
+        <h3>${I.kaart} Kaart</h3>
+        <p>In het kaartblok kies je zelf welke werkpakketten je ziet en waarop de kleur is gebaseerd (bijv. <em>te doen / gedaan</em>). Met de knop rechtsboven op de kaart wissel je de achtergrond.</p></div>
+      <div><h3>${I.instellingen} Zelf indelen</h3>
+        <ol><li>Tik op <strong>Dashboard aanpassen</strong>.</li>
+          <li>Voeg blokken toe met <strong>＋</strong>, haal ze weg met <strong>×</strong>.</li>
+          <li>Sleep blokken of gebruik <strong>↑ ↓</strong> voor de volgorde; maak ze <strong>breed</strong> of <strong>smal</strong>.</li>
+          <li>Tik op <strong>Klaar</strong>. Je indeling geldt alleen voor jou; <em>Standaard herstellen</em> zet alles terug.</li></ol></div>
+    </div>
+    <details class="oguitleg-blokken"><summary>Welke blokken kun je kiezen?</summary>
+      <dl>${blokken.map((b) => `<dt>${esc(b.titel)}</dt><dd>${esc(b.uitleg ?? '')}</dd>`).join('')}</dl></details>
+    <p class="oguitleg-voet"><small>Als opdrachtgever heb je alleen toegang tot dit dashboard; details van registraties bespreek je met de opdrachtnemer. Deze uitleg krijg je terug via de knop <strong>Uitleg</strong> bovenaan.</small></p>
+  </section>`;
+}
 const DASH_KAART_KLEUR = { voortgang: 'Voortgang (te doen / gedaan)', pakket: 'Werkpakket', oordeel: 'Laatste oordeel' };
 const DASH_KAART_PERIODE = { 7: 'Laatste 7 dagen', 30: 'Laatste 30 dagen', 90: 'Laatste 90 dagen', 365: 'Laatste jaar', alles: 'Alles' };
 const PAKKET_PALET = ['#1f6feb', '#e8710a', '#7d5ba6', '#1a7f37', '#c2185b', '#00838f', '#b8860b', '#5d4037'];
 async function dashboard() {
   const { objecten, inspecties, werkzaamheden, objectMap, status } = await laadAlles();
   const project = await actiefProject();
-  const rol = DASH_ROLLEN[instelling.lees('dashboardRol')] ? instelling.lees('dashboardRol') : 'opdrachtnemer';
-  const schakelaar = `<div class="segment rolkeuze" role="radiogroup" aria-label="Weergave dashboard">${Object.entries(DASH_ROLLEN).map(([k, l]) => `
+  const og = isOpdrachtgever();
+  const rol = og ? 'opdrachtgever' : DASH_ROLLEN[instelling.lees('dashboardRol')] ? instelling.lees('dashboardRol') : 'opdrachtnemer';
+  const schakelaar = og ? '' : `<div class="segment rolkeuze" role="radiogroup" aria-label="Weergave dashboard">${Object.entries(DASH_ROLLEN).map(([k, l]) => `
     <label><input type="radio" name="dashrol" value="${k}" ${k === rol ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>`;
   const kop = `<div><h1>${esc(project.naam)}</h1><p>${project.opdrachtgever ? `${esc(project.opdrachtgever)} · ` : ''}${rol === 'opdrachtgever'
     ? 'Sturen op het contract: voortgang, achterstanden en bevindingen.'
@@ -2417,12 +2452,13 @@ async function dashboard() {
         ${schakelaar}
         ${periodeKiezer(g.pakketten.flatMap((p) => rondesVan(p)))}
         <button type="button" class="knop" data-dash="${bewerken ? 'klaar' : 'bewerk'}" title="Kies zelf welke blokken je ziet">${I.instellingen} ${bewerken ? 'Klaar met aanpassen' : 'Dashboard aanpassen'}</button>
-        ${rol === 'opdrachtgever'
-    ? '<a class="knop" href="#/planning">' + I.kalender + ' Planning</a><a class="knop primair" href="#/werkpakketten">' + I.pakket + ' Werkpakketten</a>'
-    : '<a class="knop" href="#/inspecties/nieuw">+ Inspectie</a><a class="knop primair" href="#/werkzaamheden/nieuw">+ Werkzaamheid</a>'}
+        ${og ? `<button type="button" class="knop" data-dash="uitleg">${I.lijst} Uitleg</button>`
+    : rol === 'opdrachtgever'
+      ? '<a class="knop" href="#/planning">' + I.kalender + ' Planning</a><a class="knop primair" href="#/werkpakketten">' + I.pakket + ' Werkpakketten</a>'
+      : '<a class="knop" href="#/inspecties/nieuw">+ Inspectie</a><a class="knop primair" href="#/werkzaamheden/nieuw">+ Werkzaamheid</a>'}
       </div>
     </div>
-    ${await inrichtingBanner()}
+    ${og ? (ogUitlegZien(project) ? ogUitleg(project, beschikbaar.map((id) => BLOKKEN[id])) : '') : await inrichtingBanner()}
     ${inhoud}</div>`;
   koppelPeriodeKiezer(app.querySelector('.dashpagina .paginakop'), () => dashboard());
   app.querySelectorAll('input[name=dashrol]').forEach((r) => r.addEventListener('change', () => {
@@ -2437,6 +2473,8 @@ async function dashboard() {
     const actie = k.dataset.dash;
     pagina.removeEventListener('click', dashKlik);
     if (actie === 'bewerk') { dashBewerken = true; return dashboard(); }
+    if (actie === 'uitleg') { instelling.schrijf(`ogUitlegWeg:${project.id}`, ''); return dashboard(); }
+    if (actie === 'uitlegweg') { instelling.schrijf(`ogUitlegWeg:${project.id}`, '1'); return dashboard(); }
     if (actie === 'klaar') { dashBewerken = false; return dashboard(); }
     if (actie === 'op' || actie === 'neer') return bewaar(DB.verplaats(cfg, id, { stap: actie === 'op' ? -1 : 1 }));
     if (actie === 'breed') return bewaar(cfg.map((b) => (b.id === id ? { ...b, breed: !b.breed } : b)));
@@ -6694,6 +6732,8 @@ const toegangActief = () => Boolean(ikEmail()) && !magBeheren();
  */
 const isOpdrachtgever = (p = huidigProject) => toegangActief() && p?.ledenInfo?.[ikEmail()]?.rol === 'opdrachtgever';
 const REG_STORES = new Set(['werkzaamheden', 'inspecties']);
+/** Pagina's die een opdrachtgever mag openen: het dashboard, zijn account en de projectkeuze. */
+const OG_PAGINAS = /^\/(m\/account|projecten)?$/;
 /** Mag deze gebruiker deze registratie zien? Opdrachtgever: alleen geaccepteerd (en eigen registraties). */
 function regZichtbaar(store, r, p = huidigProject) {
   if (!r || !REG_STORES.has(store) || !isOpdrachtgever(p)) return true;
@@ -6730,6 +6770,10 @@ function geenRecht(recht, terug = '#/') {
 
 /** Body-klassen zodat knoppen zonder recht overal verdwijnen. */
 function werkRechtenKlassenBij() {
+  const og = isOpdrachtgever();
+  document.body.classList.toggle('rol-opdrachtgever', og);
+  const sync = document.getElementById('syncstatus');
+  if (sync) sync.setAttribute('href', og ? '#/m/account' : '#/instellingen');
   const r = mijnRechten();
   for (const k of Object.keys(RECHTEN)) document.body.classList.toggle(`geen-${k}`, r[k] === false);
 }
@@ -13112,7 +13156,7 @@ document.addEventListener('click', (e) => {
     return;
   }
   const rij = e.target.closest('tr[data-href]');
-  if (rij && !e.target.closest('a, button, input, label, select')) location.hash = rij.dataset.href;
+  if (rij && !isOpdrachtgever() && !e.target.closest('a, button, input, label, select')) location.hash = rij.dataset.href;
 });
 
 document.addEventListener('keydown', (e) => {

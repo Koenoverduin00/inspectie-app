@@ -581,6 +581,13 @@ Werkzaamheden en inspecties worden pas zichtbaar voor de **opdrachtgever** als i
   lijsten, kaarten, logboek, voortgang en percentages, rapporten en exports. Concepten, ingediende en afgekeurde registraties blijven
   onzichtbaar; een directe link toont "nog niet geaccepteerd door de opdrachtnemer". Registraties van vóór de goedkeuringsstap
   gelden als goedgekeurd. Eigen registraties ziet iemand altijd.
+- **Alleen het dashboard**: een opdrachtgever heeft toegang tot het dashboard (op pc én telefoon), zijn account en de projectkeuze.
+  Het menu toont alleen *Dashboard*; andere pagina's (ook via een directe link) sturen terug naar het dashboard. Koppelingen in de
+  blokken ("Alle werkpakketten →", rijen, "Object openen" op de kaart) zijn voor hem uitgeschakeld. De weergave staat vast op
+  *Opdrachtgever* (geen schakelaar), en met **Dashboard aanpassen** stelt hij zelf in welke blokken hij ziet (alleen voor hemzelf).
+- **Uitleg bij het inloggen**: bovenaan het dashboard staat een uitlegkaart *Welkom – zo werkt jouw dashboard*: wat je ziet (alleen
+  geaccepteerd werk), de periodekeuze, de kaart, zelf indelen in vier stappen en een uitklaplijst met alle blokken. Met *Begrepen*
+  verdwijnt hij (per apparaat onthouden); de knop **Uitleg** bovenaan haalt hem terug.
 - **Accepteren** gebeurt door de opdrachtnemer: een opdrachtgever kan niet goedkeuren (het recht *Goedkeuren* staat voor hem uit
   en de Inbox verschijnt niet).
 - **Server**: voer eenmalig `supabase/007_opdrachtgever.sql` uit (Supabase → SQL Editor → Run). Dan stuurt de server niet-geaccepteerde

@@ -1814,3 +1814,27 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
 .kaartkeuze-sterkte input { min-height: 0; padding: 0; border: 0; width: 100%; accent-color: #0b4f6c; }
 .kaartkeuze-sterkte output { min-width: 2.6em; text-align: right; font-variant-numeric: tabular-nums; }
 .chipje.og { background: #fff4c2; color: #7a5600; }
+
+/* Opdrachtgever: alleen het dashboard */
+.rol-opdrachtgever .nav a[data-nav]:not([data-nav=dashboard]) { display: none !important; }
+.rol-opdrachtgever .onderbalk a[href="#/m/kaart"] { display: none !important; }
+.rol-opdrachtgever .dashpagina .dashblok a[href^="#/"]:not(.knop), .rol-opdrachtgever .leaflet-popup a[href^="#/"] { pointer-events: none; color: inherit; text-decoration: none; }
+.rol-opdrachtgever .leaflet-popup a.knop[href^="#/"], .rol-opdrachtgever .dashpagina .dashblok a.knop[href^="#/"] { display: none; }
+.rol-opdrachtgever .dashpagina tr.klikbaar { cursor: default; }
+.rol-opdrachtgever .dashpagina tr.klikbaar:hover { background: none; }
+.oguitleg { border-left: 5px solid var(--primair, #0b4f6c); background: color-mix(in srgb, var(--primair, #0b4f6c) 5%, var(--vlak)); }
+.oguitleg-kop { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; }
+.oguitleg-kop small { color: var(--tekst-zacht); display: flex; align-items: center; gap: .3rem; }
+.oguitleg-kop h2 { margin: .2rem 0 .5rem; }
+.oguitleg-raster { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .5rem 1.5rem; }
+.oguitleg-raster h3 { font-size: .95rem; margin: .5rem 0 .3rem; display: flex; align-items: center; gap: .35rem; }
+.oguitleg-raster p, .oguitleg-raster ol { margin: 0 0 .5rem; font-size: .9rem; line-height: 1.45; }
+.oguitleg-raster ol { padding-left: 1.2rem; }
+.oguitleg-blokken { margin-top: .5rem; }
+.oguitleg-blokken summary { cursor: pointer; font-weight: 600; }
+.oguitleg-blokken dl { display: grid; grid-template-columns: max-content 1fr; gap: .25rem 1rem; margin: .5rem 0 0; font-size: .88rem; }
+.oguitleg-blokken dt { font-weight: 600; }
+.oguitleg-blokken dd { margin: 0; color: var(--tekst-zacht); }
+.oguitleg-voet { margin: .5rem 0 0; }
+@media (max-width: 600px) { .oguitleg-blokken dl { grid-template-columns: 1fr; } .oguitleg-blokken dd { margin-bottom: .35rem; } }
+.rol-opdrachtgever .dashpagina .dashblok .paginakop > a[href^="#/"] { display: none; }
