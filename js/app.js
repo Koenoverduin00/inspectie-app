@@ -5654,7 +5654,7 @@ async function mobielLocatie(objectId) {
       ${isTeDoen(x.st) ? `<div class="locregel-knoppen">
           ${snel.get(sleutel) ? `<button class="knop primair" type="button" data-gereed="${esc(sleutel)}">${I.vink} ${x.st === 'deels' ? 'Volledig klaar' : 'Gereed'}</button>
 ` : ''}
-          ${x.v.soort === 'werk' ? `<a class="knop" href="${pakketHref(x.v, objectId, true)}&deel=1" title="Een deel is gedaan; het vak is nog niet helemaal klaar (bijv. een andere ploeg doet de rest). Je vult het formulier in met foto's.">${I.werk} Deels gedaan</a>` : ''}
+          ${x.v.soort === 'werk' && x.v.deelsAfmelden ? `<a class="knop" href="${pakketHref(x.v, objectId, true)}&deel=1" title="Een deel is gedaan; het vak is nog niet helemaal klaar (bijv. een andere ploeg doet de rest). Je vult het formulier in met foto's.">${I.werk} Deels gedaan</a>` : ''}
           <a class="knop ${snel.get(sleutel) ? '' : 'primair'}" href="${pakketHref(x.v, objectId, true)}">${x.v.soort === 'inspectie' ? `${I.start} Inspecteren` : `${I.concept} Formulier`}</a>
           <button class="knop" type="button" data-overslaan="${esc(sleutel)}">${I.overslaan} Overslaan</button></div>`
     : x.st === 'gedaan' ? `<div class="locregel-status"><span class="label-status afgerond">${I.vink} Gedaan</span> <a href="${regHref(x)}">${datumNL(r.datum)}${r.uitvoerder || r.inspecteur ? ` · ${esc(r.uitvoerder || r.inspecteur)}` : ''}</a></div>`
@@ -6335,7 +6335,8 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
   if (pakket && !bestaand && pakket.werksoort) w.soort = pakket.werksoort;
   const pakketTerug = pakket ? pakketPagina(pakket, mobiel) : null;
   // Werk in delen: eerdere gedeeltelijke afmeldingen van dit object in deze ronde (andere ploegen).
-  const metDelen = Boolean(pakket) && !isStoring;
+  // Werk in delen alleen als het werkpakket dat toestaat (of als deze registratie al een gedeeltelijke afmelding is).
+  const metDelen = Boolean(pakket) && !isStoring && (Boolean(pakket.deelsAfmelden) || isDeels(bestaand));
   const werkInRonde = metDelen ? (await inProject('werkzaamheden')).filter((x) => x.werkpakketId === pakket.id && (x.rondeId || STANDAARD_RONDE) === (pakket.rondeId || STANDAARD_RONDE) && x.id !== bestaand?.id) : [];
   const eerdereDelen = (oid) => werkInRonde.filter((x) => x.objectId === oid && isDeels(x)).sort((a, b) => String(a.datum).localeCompare(String(b.datum)));
   const deelsHtml = (oid) => {
@@ -7970,16 +7971,19 @@ async function verwijderLaag(laag) {
 const ACHTERGRONDEN = {
   luchtfoto: {
     naam: 'Luchtfoto',
+    kort: 'Luchtfoto',
     url: 'https://service.pdok.nl/hwh/luchtfotorgb/wmts/v1_0/Actueel_orthoHR/EPSG:3857/{z}/{x}/{y}.jpeg',
     opties: { maxZoom: 22, maxNativeZoom: 21, attribution: 'Luchtfoto &copy; <a href="https://www.pdok.nl" target="_blank" rel="noopener">PDOK</a> / Beeldmateriaal Nederland' },
   },
   grijs: {
     naam: 'Grijze kaart (PDOK)',
+    kort: 'Grijs',
     url: 'https://service.pdok.nl/brt/achtergrondkaart/wmts/v2_0/grijs/EPSG:3857/{z}/{x}/{y}.png',
     opties: { maxZoom: 22, maxNativeZoom: 19, attribution: 'Kaart &copy; <a href="https://www.pdok.nl" target="_blank" rel="noopener">PDOK</a> / Kadaster BRT' },
   },
   kaart: {
     naam: 'Kaart (OpenStreetMap)',
+    kort: 'Kaart',
     url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     opties: { maxZoom: 22, maxNativeZoom: 19, attribution: '&copy; OpenStreetMap-bijdragers' },
   },
@@ -7992,34 +7996,45 @@ function voegAchtergrondToe(L, map) {
   if (!(helderheid >= 10 && helderheid <= 100)) helderheid = 50;
   zetHelderheid(helderheid);
 
-  const lagen = {};
-  for (const [id, a] of Object.entries(ACHTERGRONDEN)) {
-    lagen[a.naam] = L.tileLayer(a.url, { ...a.opties, className: 'achtergrondlaag' });
-    lagen[a.naam].sleutel = id;
-  }
-  lagen[ACHTERGRONDEN[keuze].naam].addTo(map);
-  L.control.layers(lagen, null, { position: 'topright' }).addTo(map);
-  map.on('baselayerchange', (e) => instelling.schrijf('achtergrond', e.layer.sleutel));
-
-  // Schuif voor de helderheid van de achtergrond (per apparaat onthouden).
-  const Helderheid = L.Control.extend({
-    options: { position: 'bottomleft' },
+  // Eén compacte knop rechtsboven: achtergrond kiezen en de sterkte ervan instellen (per apparaat onthouden).
+  const lagen = Object.fromEntries(Object.entries(ACHTERGRONDEN).map(([id, a]) => [id, L.tileLayer(a.url, { ...a.opties, className: 'achtergrondlaag' })]));
+  let huidig = keuze;
+  lagen[huidig].addTo(map);
+  const KaartKeuze = L.Control.extend({
+    options: { position: 'topright' },
     onAdd() {
-      const div = L.DomUtil.create('div', 'leaflet-bar helderheid');
-      div.innerHTML = `<label title="Sterkte luchtfoto (lager = lichter)">${I.satelliet}<input type="range" min="10" max="100" step="10" value="${helderheid}"
-        aria-label="Sterkte luchtfoto"><span>${helderheid}%</span></label>`;
+      const div = L.DomUtil.create('div', 'kaartkeuze');
+      div.innerHTML = `<button type="button" class="kaartkeuze-knop" aria-expanded="false" aria-label="Achtergrondkaart kiezen" title="Achtergrondkaart">${I.lagen}</button>
+        <div class="kaartkeuze-paneel" hidden role="dialog" aria-label="Achtergrondkaart">
+          <div class="kaartkeuze-opties" role="radiogroup" aria-label="Achtergrond">${Object.entries(ACHTERGRONDEN).map(([id, a]) => `<button type="button" role="radio" data-ak="${id}" aria-checked="${id === huidig}" class="${id === huidig ? 'actief' : ''}"><i class="kk-voorbeeld kk-${id}"></i><span>${esc(a.kort ?? a.naam)}</span></button>`).join('')}</div>
+          <label class="kaartkeuze-sterkte"><span>Sterkte</span><input type="range" min="10" max="100" step="10" value="${helderheid}" aria-label="Sterkte achtergrond"><output>${helderheid}%</output></label>
+        </div>`;
       L.DomEvent.disableClickPropagation(div);
       L.DomEvent.disableScrollPropagation(div);
-      const invoer = div.querySelector('input');
+      const knop = div.querySelector('.kaartkeuze-knop');
+      const paneel = div.querySelector('.kaartkeuze-paneel');
+      const zet = (open) => { paneel.hidden = !open; knop.setAttribute('aria-expanded', String(open)); div.classList.toggle('open', open); };
+      knop.addEventListener('click', () => zet(paneel.hidden));
+      map.on('click movestart', () => zet(false));
+      div.querySelector('.kaartkeuze-opties').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-ak]');
+        if (!b || b.dataset.ak === huidig) return;
+        map.removeLayer(lagen[huidig]);
+        huidig = b.dataset.ak;
+        lagen[huidig].addTo(map);
+        instelling.schrijf('achtergrond', huidig);
+        div.querySelectorAll('[data-ak]').forEach((x) => { const aan = x.dataset.ak === huidig; x.classList.toggle('actief', aan); x.setAttribute('aria-checked', String(aan)); });
+      });
+      const invoer = div.querySelector('input[type=range]');
       invoer.addEventListener('input', () => {
         zetHelderheid(Number(invoer.value));
-        div.querySelector('span').textContent = `${invoer.value}%`;
+        div.querySelector('output').textContent = `${invoer.value}%`;
         instelling.schrijf('helderheid', invoer.value);
       });
       return div;
     },
   });
-  new Helderheid().addTo(map);
+  new KaartKeuze().addTo(map);
 
   // Knop: zoom naar alle objecten op deze kaart (wat op dat moment zichtbaar is). Objecten (met .object) gaan voor;
   // zonder objecten telt elke getekende laag (bijv. een gekozen punt), maar niet de eigen locatie.
@@ -10183,6 +10198,9 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
             <small>Niets aangevinkt = iedereen in het project.</small>` : '<small>Voeg projectleden toe bij het project om uitvoerders te kunnen kiezen. Nu: iedereen in het project.</small>'}</div>
           <div class="veld breed"><label class="vink"><input type="checkbox" name="vrijgaveVereist" ${p.vrijgaveVereist ? 'checked' : ''}>
             <span><strong>Flora- en fauna-vrijgave vereist</strong><small>Uitvoerders zien per object of er een geldige ecologische vrijgave is.</small></span></label></div>
+          <div class="veld breed"><label class="vink"><input type="checkbox" name="deelsAfmelden" ${p.deelsAfmelden ? 'checked' : ''}>
+            <span><strong>Gedeeltelijk afmelden per object toestaan</strong><small>Voor werk met meerdere ploegen op hetzelfde vak (bijv. vanaf het land en vanaf het water).
+              Uitvoerders krijgen dan de knop <em>Deels gedaan</em> en de vraag <em>Is het vak volledig klaar?</em>; een vak is pas gereed na "volledig klaar". Alleen voor werkzaamheden.</small></span></label></div>
           <div class="veld breed"><label for="f-omschrijving">Instructie voor de uitvoerder</label>
             <textarea id="f-omschrijving" name="omschrijving" maxlength="2000">${esc(p.omschrijving)}</textarea></div>
         </div>
@@ -10590,6 +10608,7 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
       afroepInspectiesoort: form.elements.afroepInspectiesoort.value, reactietijd: form.elements.reactietijd.value === '' ? '' : Number(form.elements.reactietijd.value),
       toegewezen: [...form.querySelectorAll('input[name=toegewezen]:checked')].map((c) => c.value),
       vrijgaveVereist: form.elements.vrijgaveVereist.checked,
+      deelsAfmelden: form.elements.deelsAfmelden.checked,
       // Welke definitieve decompositieversie gold bij het samenstellen.
       decompVersie: decBoom ? decBoom.versie : (bron?.decompVersie ?? null),
       // Boomveiligheidscontrole: uit welke kolom de basisgegevens komen en wie de eigenaar (EIG) is; eenmalig per werkpakket.
@@ -10770,7 +10789,7 @@ async function pakketDetail(id, q = new URLSearchParams()) {
   app.innerHTML = `
     <div class="paginakop">
       <div><p><a href="#/werkpakketten">← Werkpakketten</a></p><h1>${wpNaam(pr)}</h1>
-        <p>${(pr.objecten ?? []).length} objecten · ${pakketStatusLabel(pr.status)}${pr.decompVersie ? ` · <span title="Samengesteld met de definitieve NEN 2767-decompositie">decompositie v${esc(pr.decompVersie)}</span>` : ''}${afroep ? ` <span class="afroeplabel">${I.wacht} Op afroep</span>` : ''}</p></div>
+        <p>${(pr.objecten ?? []).length} objecten · ${pakketStatusLabel(pr.status)}${pr.deelsAfmelden ? ` · <span class="label-status deels" title="Uitvoerders kunnen per object gedeeltelijk afmelden (meerdere ploegen)">${I.werk} Deels afmelden aan</span>` : ''}${pr.decompVersie ? ` · <span title="Samengesteld met de definitieve NEN 2767-decompositie">decompositie v${esc(pr.decompVersie)}</span>` : ''}${afroep ? ` <span class="afroeplabel">${I.wacht} Op afroep</span>` : ''}</p></div>
       <div class="knoppen">
         ${magBeheren() ? `<a class="knop" href="#/werkpakketten/${esc(id)}/bewerken">Bewerken</a>
           ${afroep ? `<a class="knop primair" href="#/werkpakketten/${esc(id)}/afroep">＋ Afroep</a>` : `<a class="knop" href="#/planning?pakket=${esc(id)}">${I.kalender} Inplannen</a>

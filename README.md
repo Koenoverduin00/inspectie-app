@@ -300,6 +300,11 @@ De keuzes worden per apparaat onthouden. De legenda met de knop *Opmaak* staat o
 Soms werken twee ploegen aan hetzelfde vak, bijv. de ene **vanaf het land** en de andere **vanaf het water**. Allebei registreren ze,
 maar het vak is pas klaar als de laatste ploeg dat meldt. Dit geldt alleen voor werkpakketten met werkzaamheden, niet voor inspecties.
 
+**Per werkpakket aan te zetten**: in het werkpakketformulier staat **Gedeeltelijk afmelden per object toestaan** (standaard uit).
+Staat het uit, dan is er geen knop *Deels gedaan* en geen vraag *Is het vak volledig klaar?*: één registratie maakt het vak gereed.
+Op de werkpakketpagina staat bij een pakket met deze instelling het label *Deels afmelden aan*. Al vastgelegde deelregistraties
+blijven gelden als de instelling later wordt uitgezet.
+
 - **In het werkformulier** (binnen een werkpakket) staat de vraag **Is het vak volledig klaar?** – *Ja, volledig klaar* of
   *Nee, gedeeltelijk*. Bij *Nee* vul je in **welk deel** is gedaan (snelkeuzes: vanaf het land, vanaf het water, linker-/rechterzijde,
   eerste helft, of eigen tekst). Is er op het vak al een deel gedaan, dan staat dat bovenaan ("Al gedeeltelijk gedaan: 19 nov ·
@@ -769,6 +774,12 @@ naar een **eisvraag** die in de formulieren komt, gekoppeld aan het **eisnummer*
   datum, object, werkpakket/ronde en uitvoerder, klikbaar naar de registratie), de eisen die niet zijn geverifieerd en een
   ondertekeningsblok. Optioneel met foto's als bewijs. *Afdrukken / opslaan als PDF* geeft het dossier; *Excel* geeft
   dezelfde inhoud in de bladen Samenvatting, Eisen, Bewijs en Afwijkingen.
+
+## Achtergrondkaart kiezen
+
+Op elke kaart staat rechtsboven één knop (lagen-icoon). Die opent een klein paneel met drie voorbeeldtegels – **Luchtfoto**, **Grijs**
+(PDOK) en **Kaart** (OpenStreetMap) – en daaronder een schuif **Sterkte** (10–100%) voor de achtergrond. Het paneel sluit bij een
+klik of beweging op de kaart. Keuze en sterkte worden per apparaat onthouden en gelden voor alle kaarten.
 
 ## Kleurthema
 
