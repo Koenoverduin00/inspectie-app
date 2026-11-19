@@ -1877,3 +1877,5 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
 .zaakbanner { border-left-color: var(--primair, #0b4f6c) !important; }
 .mregister .mregel-link > span:first-child { flex: 1 1 auto; }
 .mregister .mregel-link > .knop { flex: 0 0 auto; width: auto; white-space: nowrap; }
+.registertabel .regref { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mregref { font-weight: 700; font-variant-numeric: tabular-nums; margin-right: .15rem; align-self: center; }

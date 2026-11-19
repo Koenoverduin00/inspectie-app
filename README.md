@@ -499,7 +499,7 @@ Het register (**Werkpakketten → Storingen en gebreken**, of `#/storingen`) wer
   ploeg doet het **vervolg** vanuit dezelfde zaak), *Opgelost* of *Vervallen* (bijv. dubbel gemeld; weer te heropenen). Alle
   registraties van een zaak staan eronder, met datum, uitvoerder, resultaat, beoordeling en de opgetelde bestede uren.
 - **Filters**: standaard *open en in behandeling*; verder op status, soort, herkomst (kantoor of buiten) en zoeken op object,
-  melding, referentie of persoon.
+  referentie, object, melding of persoon. De **referentie** staat vooraan, als eerste kolom (op de telefoon vooraan in de regel).
 - **Server**: voer eenmalig `supabase/008_meldingen.sql` uit (alleen een nieuwe tabel; er wordt niets gewijzigd of verwijderd).
   Zolang dat niet is gebeurd, werkt alles lokaal en toont het register een melding; de rest van de synchronisatie gaat gewoon door.
 

@@ -10279,9 +10279,9 @@ async function storingenPagina(_, __, { mobiel = false } = {}) {
       ${voorMij.length ? `<ul class="mlijst mregister">${voorMij.map((z) => {
     const o = objectMap.get(z.objectId);
     return `<li><a href="${oplosHref(z)}" class="mregel-link"><span>
-          <span class="mregkop">${statusChip(z)}${urgChip(z)}</span>
+          <span class="mregkop">${z.referentie ? `<span class="mregref">${esc(z.referentie)}</span>` : ''}${statusChip(z)}${urgChip(z)}</span>
           <strong>${o ? `${esc(o.code)} – ${esc(o.naam)}` : 'Onbekend object'}</strong>
-          <small>${esc(z.type || 'Storing')}${z.referentie ? ` · ref. ${esc(z.referentie)}` : ''}${z.gemeldOp ? ` · ${datumTijdNL(z.gemeldOp)}` : ''}</small>
+          <small>${esc(z.type || 'Storing')}${z.gemeldOp ? ` · ${datumTijdNL(z.gemeldOp)}` : ''}</small>
           <small class="mregtekst">${esc(String(z.omschrijving || '').slice(0, 140))}</small>
           ${z.laatste ? `<small class="zacht">Laatst: ${datumTijdNL(z.laatsteOp)} – ${esc(STORING_RESULTAAT[z.laatste.storing?.resultaat]?.label ?? '')}${z.laatste.vervolg ? `: ${esc(z.laatste.vervolg)}` : ''}</small>` : ''}
           ${z.toegewezenAan ? `<small class="zacht">${I.gebruiker} ${esc(naamVan(z.toegewezenAan))}</small>` : ''}</span>
@@ -10302,13 +10302,13 @@ async function storingenPagina(_, __, { mobiel = false } = {}) {
       <span class="tegel"><strong>${tel.bezig}</strong><span>in behandeling</span></span>
       <span class="tegel goed"><strong>${tel.opgelost}</strong><span>opgelost</span></span></div>
     <div class="filters">
-      <input type="search" id="s-zoek" placeholder="Zoek op object, melding, referentie, persoon…" aria-label="Zoeken">
+      <input type="search" id="s-zoek" placeholder="Zoek op referentie, object, melding, persoon…" aria-label="Zoeken">
       <select id="s-status" aria-label="Status">${optie('actief', 'Open en in behandeling', filterStatus)}${optie('', 'Alle', filterStatus)}${Object.entries(SR.STATUS).map(([k, x]) => optie(k, x.label, filterStatus)).join('')}</select>
       <select id="s-type" aria-label="Soort"><option value="">Alle soorten</option>${STORING_TYPEN.map((t) => optie(t, t)).join('')}</select>
       <select id="s-bron" aria-label="Herkomst">${optie('', 'Kantoor en buiten')}${optie('kantoor', 'Klaargezet door kantoor')}${optie('veld', 'Buiten gemeld')}</select>
     </div>
     <div class="kaart" style="padding:0"><div class="tabelhouder"><table class="registertabel">
-      <thead><tr><th>Status</th><th>Object</th><th>Melding</th><th class="verberg-mobiel">Gemeld</th><th>Acties</th><th class="verberg-mobiel">Uren</th><th></th></tr></thead>
+      <thead><tr><th>Referentie</th><th>Status</th><th>Object</th><th>Melding</th><th class="verberg-mobiel">Gemeld</th><th>Acties</th><th class="verberg-mobiel">Uren</th><th></th></tr></thead>
       <tbody id="s-rijen"></tbody></table></div></div>`;
   const f = ['s-zoek', 's-status', 's-type', 's-bron'].map((x) => app.querySelector(`#${x}`));
   const toon = () => {
@@ -10321,8 +10321,9 @@ async function storingenPagina(_, __, { mobiel = false } = {}) {
       const o = objectMap.get(z.objectId);
       const actief = z.status === 'open' || z.status === 'bezig';
       return `<tr class="reg-${z.status}">
+      <td class="regref">${z.referentie ? `<strong>${esc(z.referentie)}</strong>` : '<span class="zacht">–</span>'}</td>
       <td>${statusChip(z)}${urgChip(z)}</td>
-      <td>${objectNaam(o)}<small class="subregel">${esc(z.type || '')}${z.referentie ? ` · ref. ${esc(z.referentie)}` : ''}</small></td>
+      <td>${objectNaam(o)}<small class="subregel">${esc(z.type || '')}</small></td>
       <td>${esc(String(z.omschrijving || '').slice(0, 140))}${z.melding?.opmerking ? `<small class="subregel">${I.taak} ${esc(z.melding.opmerking)}</small>` : ''}${z.toegewezenAan ? `<small class="subregel">${I.gebruiker} ${esc(naamVan(z.toegewezenAan))}</small>` : ''}</td>
       <td class="verberg-mobiel nowrap">${z.gemeldOp ? datumTijdNL(z.gemeldOp) : '–'}<small class="subregel">${bronTekst(z)}</small></td>
       <td>${z.acties.length ? z.acties.map((a) => `<a href="${regHref(a)}" class="regactie"><span class="stip" style="background:${STORING_RESULTAAT[a.storing?.resultaat]?.kleur ?? '#8a96a3'}"></span>${datumTijdNL(a.storing?.opgelostOp) || datumNL(a.datum)}${a.uitvoerder ? ` · ${esc(a.uitvoerder)}` : ''} – ${esc(STORING_RESULTAAT[a.storing?.resultaat]?.label ?? '')} ${beoordelingLabel(a)}</a>`).join('') : '<small class="zacht">Nog niets gedaan</small>'}
@@ -10333,7 +10334,7 @@ async function storingenPagina(_, __, { mobiel = false } = {}) {
         ${z.melding && z.status === 'open' ? `<button type="button" class="knop klein" data-vervallen="${esc(z.id)}" title="Bijv. dubbel gemeld of niet meer nodig">Vervallen</button>` : ''}
         ${z.status === 'vervallen' ? `<button type="button" class="knop klein" data-heropen="${esc(z.id)}">Heropenen</button>` : ''}</td></tr>`;
     }).join('')
-      : `<tr><td colspan="7" class="leeg">${alle.length ? 'Niets gevonden met deze filters.' : 'Nog geen storingen of gebreken. Zet er een klaar of los er buiten een op.'}</td></tr>`;
+      : `<tr><td colspan="8" class="leeg">${alle.length ? 'Niets gevonden met deze filters.' : 'Nog geen storingen of gebreken. Zet er een klaar of los er buiten een op.'}</td></tr>`;
   };
   f.forEach((x) => x.addEventListener('input', () => { instelling.schrijf('regStatus', f[1].value); toon(); }));
   app.querySelector('#s-rijen').addEventListener('click', async (e) => {
