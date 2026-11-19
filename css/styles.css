@@ -1813,3 +1813,4 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
 .kaartkeuze-sterkte { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: .4rem; font-size: .75rem; color: #444; padding: 0 .15rem; }
 .kaartkeuze-sterkte input { min-height: 0; padding: 0; border: 0; width: 100%; accent-color: #0b4f6c; }
 .kaartkeuze-sterkte output { min-width: 2.6em; text-align: right; font-variant-numeric: tabular-nums; }
+.chipje.og { background: #fff4c2; color: #7a5600; }

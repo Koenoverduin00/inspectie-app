@@ -573,8 +573,10 @@ Kosten- en urenkolommen vervallen als die in het project zijn uitgezet. Alleen a
 Werkzaamheden en inspecties worden pas zichtbaar voor de **opdrachtgever** als iemand van de **opdrachtnemer** ze heeft
 **goedgekeurd** (geaccepteerd).
 
-- **Wie is opdrachtgever?** In **Werkpakketten → Toewijzen**, tabel *Wat mag iemand doen*, kies je per persoon bij **Organisatie**
-  *Opdrachtnemer* of *Opdrachtgever*. Beheerders gelden altijd als opdrachtnemer.
+- **Wie is opdrachtgever?** Kies het al bij het **uitnodigen** (Instellingen → Personen → *Organisatie*: Opdrachtnemer of
+  Opdrachtgever; geldt voor de aangevinkte projecten). In de personenlijst staat een kolom **Organisatie** om het later te wijzigen
+  (voor alle projecten van die persoon; projecten waar iemand opdrachtgever is, zijn geel gemarkeerd). Per project kan het ook in
+  **Werkpakketten → Toewijzen**, tabel *Wat mag iemand doen*. Beheerders gelden altijd als opdrachtnemer.
 - **Wat ziet een opdrachtgever?** Alleen goedgekeurde werkzaamheden en afgeronde, goedgekeurde inspecties – overal: dashboard,
   lijsten, kaarten, logboek, voortgang en percentages, rapporten en exports. Concepten, ingediende en afgekeurde registraties blijven
   onzichtbaar; een directe link toont "nog niet geaccepteerd door de opdrachtnemer". Registraties van vóór de goedkeuringsstap

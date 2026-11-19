@@ -6747,8 +6747,9 @@ function personenUitProjecten(projecten) {
     for (const email of p.leden ?? []) {
       const e = String(email).toLowerCase();
       const info = p.ledenInfo?.[e] ?? {};
-      const x = m.get(e) ?? { email: e, naam: '', projecten: [], uitgenodigdOp: '', uitgenodigdDoor: '' };
+      const x = m.get(e) ?? { email: e, naam: '', projecten: [], uitgenodigdOp: '', uitgenodigdDoor: '', rollen: new Set() };
       x.projecten.push(p);
+      x.rollen.add(info.rol === 'opdrachtgever' ? 'opdrachtgever' : 'opdrachtnemer');
       if (info.naam && !x.naam) x.naam = info.naam;
       if (info.uitgenodigdOp && info.uitgenodigdOp > x.uitgenodigdOp) Object.assign(x, { uitgenodigdOp: info.uitgenodigdOp, uitgenodigdDoor: info.uitgenodigdDoor ?? '' });
       m.set(e, x);
@@ -6758,7 +6759,7 @@ function personenUitProjecten(projecten) {
 }
 
 /** Zet een persoon in (of uit) de ledenlijst van projecten; info wordt per project bewaard. */
-async function zetPersoonInProjecten(email, gewenst, info = {}) {
+async function zetPersoonInProjecten(email, gewenst, info = {}, alleenVoor = null) {
   const nu = new Date().toISOString();
   for (const p of await zichtbareProjecten()) {
     const leden = new Set((p.leden ?? []).map((x) => String(x).toLowerCase()));
@@ -6767,7 +6768,8 @@ async function zetPersoonInProjecten(email, gewenst, info = {}) {
     const ledenInfo = { ...(p.ledenInfo ?? {}) };
     if (moet) {
       leden.add(email);
-      ledenInfo[email] = { ...(ledenInfo[email] ?? {}), ...Object.fromEntries(Object.entries(info).filter(([, v]) => v !== undefined)) };
+      // Gegevens (naam, organisatie) alleen voor de gekozen projecten; andere projecten van deze persoon houden hun instelling.
+      if (!alleenVoor || alleenVoor.has(p.id)) ledenInfo[email] = { ...(ledenInfo[email] ?? {}), ...Object.fromEntries(Object.entries(info).filter(([, v]) => v !== undefined)) };
     } else {
       leden.delete(email);
       delete ledenInfo[email];
@@ -7335,6 +7337,9 @@ async function personenPagina() {
       <div class="velden">
         <div class="veld"><label for="p-email" class="vereist">E-mailadres</label><input id="p-email" name="email" type="email" autocomplete="off" placeholder="naam@bedrijf.nl" required></div>
         <div class="veld"><label for="p-naam">Naam</label><input id="p-naam" name="naam" autocomplete="off" placeholder="Voor- en achternaam"></div>
+        <div class="veld breed"><label class="vereist">Organisatie</label>
+          ${segment('rol', 'opdrachtnemer', [['opdrachtnemer', 'Opdrachtnemer'], ['opdrachtgever', 'Opdrachtgever']])}
+          <small><strong>Opdrachtnemer</strong>: voert uit en accepteert registraties. <strong>Opdrachtgever</strong>: ziet werkzaamheden en inspecties pas als de opdrachtnemer ze heeft goedgekeurd, en kan zelf niet goedkeuren.</small></div>
         <div class="veld breed"><label>Toegang tot projecten</label>
           ${projecten.length ? `<div class="chips">${projectChips('p-project', new Set(actief ? [actief] : []))}</div>
           <small>De persoon ziet en bewerkt alleen de inhoud van deze projecten.</small>` : '<small>Maak eerst een project aan.</small>'}</div>
@@ -7345,18 +7350,19 @@ async function personenPagina() {
     </form>
     <section class="kaart" style="padding:0">
       <div class="tabelhouder"><table>
-        <thead><tr><th>Naam</th><th>E-mailadres</th><th>Projecten</th><th>Uitnodiging</th><th>Account</th><th></th></tr></thead>
+        <thead><tr><th>Naam</th><th>E-mailadres</th><th>Organisatie</th><th>Projecten</th><th>Uitnodiging</th><th>Account</th><th></th></tr></thead>
         <tbody>${personen.length ? personen.map((x) => `<tr data-email="${esc(x.email)}">
           <td>${x.naam ? esc(x.naam) : '<span class="zacht">–</span>'}${x.email === ik ? ' <small>(jij)</small>' : ''}</td>
           <td>${esc(x.email)}</td>
-          <td>${x.projecten.map((p) => `<span class="chipje">${esc(p.naam)}</span>`).join(' ')}</td>
+          <td><select data-org aria-label="Organisatie van ${esc(x.naam || x.email)}">${x.rollen.size > 1 ? optie('', 'Verschilt per project', '') : ''}${optie('opdrachtnemer', 'Opdrachtnemer', x.rollen.size > 1 ? '' : [...x.rollen][0])}${optie('opdrachtgever', 'Opdrachtgever', x.rollen.size > 1 ? '' : [...x.rollen][0])}</select></td>
+          <td>${x.projecten.map((p) => `<span class="chipje${p.ledenInfo?.[x.email]?.rol === 'opdrachtgever' ? ' og' : ''}" title="${p.ledenInfo?.[x.email]?.rol === 'opdrachtgever' ? 'Opdrachtgever' : 'Opdrachtnemer'} in dit project">${esc(p.naam)}</span>`).join(' ')}</td>
           <td>${x.uitgenodigdOp ? `${I.vink} ${datumNL(x.uitgenodigdOp.slice(0, 10))}${x.uitgenodigdDoor ? `<br><small>door ${esc(x.uitgenodigdDoor)}</small>` : ''}` : '<span class="label-status binnenkort">Nog niet verstuurd</span>'}</td>
           <td class="accountcel" data-account="${esc(x.email)}">${kanMailen ? '<span class="zacht">laden…</span>' : '<span class="zacht">Log in om dit te zien</span>'}</td>
           <td class="acties"><button class="knop klein" type="button" data-opnieuw ${kanMailen ? '' : 'disabled'}>${I.mail} ${x.uitgenodigdOp ? 'Opnieuw' : 'Versturen'}</button>
             <button class="knop klein" type="button" data-herstel ${kanMailen ? '' : 'disabled'} title="Stuur een mail met een link om een nieuw wachtwoord in te stellen">${I.slot ?? ''} Wachtwoord resetten</button>
             <button class="knop klein" type="button" data-wijzig>Projecten</button>
             <button class="knop klein gevaar" type="button" data-weg aria-label="${esc(x.email)} verwijderen">${I.verwijder}</button></td>
-        </tr>`).join('') : '<tr><td colspan="6" class="leeg">Nog geen personen toegevoegd.</td></tr>'}</tbody>
+        </tr>`).join('') : '<tr><td colspan="7" class="leeg">Nog geen personen toegevoegd.</td></tr>'}</tbody>
       </table></div>
     </section>
     <p class="hulptekst" id="accountuitleg">${I.let} <strong>Wachtwoorden zijn niet in te zien</strong>, ook niet door een beheerder: ze worden alleen versleuteld (gehasht) opgeslagen.
@@ -7378,12 +7384,13 @@ async function personenPagina() {
     try {
       const bestaand = personen.find((x) => x.email === email);
       const huidig = new Set([...(bestaand?.projecten ?? []).map((p) => p.id), ...gekozen]);
-      await zetPersoonInProjecten(email, huidig, { naam: naam || undefined });
+      const rol = form.elements.rol.value === 'opdrachtgever' ? 'opdrachtgever' : 'opdrachtnemer';
+      await zetPersoonInProjecten(email, huidig, { naam: naam || undefined, rol }, gekozen);
       if (form.elements.mailen.checked) {
         await verstuurUitnodiging(email, naam);
-        melding(`Uitnodiging verstuurd naar ${email}`);
+        melding(`Uitnodiging verstuurd naar ${email} (${rol})`);
       } else {
-        melding(`${email} toegevoegd (zonder e-mail)`);
+        melding(`${email} toegevoegd als ${rol} (zonder e-mail)`);
       }
       personenPagina();
     } catch (fout) {
@@ -7412,6 +7419,15 @@ async function personenPagina() {
     }).catch(() => app.querySelectorAll('[data-account]').forEach((el) => { el.innerHTML = '<span class="zacht">Niet op te halen</span>'; }));
   }
 
+  app.querySelector('tbody').addEventListener('change', async (e) => {
+    const sel = e.target.closest('select[data-org]');
+    if (!sel || !sel.value) return;
+    const x = personen.find((p) => p.email === sel.closest('tr').dataset.email);
+    // Organisatie geldt voor alle projecten van deze persoon.
+    await zetPersoonInProjecten(x.email, new Set(x.projecten.map((p) => p.id)), { rol: sel.value });
+    melding(`${x.naam || x.email} is nu ${sel.value} in ${x.projecten.length === 1 ? 'het project' : `alle ${x.projecten.length} projecten`}`);
+    personenPagina();
+  });
   app.querySelector('tbody').addEventListener('click', async (e) => {
     const tr = e.target.closest('tr[data-email]');
     if (!tr) return;
