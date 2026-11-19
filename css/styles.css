@@ -1858,3 +1858,22 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
   .inzettabel td:nth-child(4)::before { content: 'Uren'; font-size: .72rem; color: var(--tekst-zacht); display: block; }
   .inzettabel td:last-child { grid-row: 1; grid-column: 3; }
 }
+
+/* Storingen- en gebrekenregister */
+.registertabel td { vertical-align: top; }
+.registertabel .regactie { display: flex; align-items: center; gap: .35rem; font-size: .85rem; margin-bottom: .15rem; }
+.registertabel .regknoppen { white-space: nowrap; }
+.registertabel .regknoppen .knop { margin: 0 .2rem .2rem 0; }
+.registertabel tr.reg-opgelost, .registertabel tr.reg-vervallen { color: var(--tekst-zacht); }
+.label-status.urg-direct { background: #d1452f; color: #fff; }
+.label-status.urg-24u { background: #fde2d6; color: #8a2a12; }
+.label-status.urg-week { background: #fff4c2; color: #7a5600; }
+.mregknoppen { display: grid; gap: .5rem; margin-bottom: .75rem; }
+.mregister .mregel-link { display: flex; gap: .6rem; align-items: center; justify-content: space-between; }
+.mregister .mregel-link > span:first-child { display: grid; gap: .15rem; min-width: 0; }
+.mregkop { display: flex; gap: .3rem; flex-wrap: wrap; }
+.mregtekst { color: var(--tekst); }
+.mtegel .mteller { margin-left: auto; background: #d1452f; color: #fff; border-radius: 999px; min-width: 1.6rem; height: 1.6rem; display: grid; place-items: center; font-weight: 700; font-size: .85rem; padding: 0 .4rem; }
+.zaakbanner { border-left-color: var(--primair, #0b4f6c) !important; }
+.mregister .mregel-link > span:first-child { flex: 1 1 auto; }
+.mregister .mregel-link > .knop { flex: 0 0 auto; width: auto; white-space: nowrap; }

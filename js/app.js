@@ -27,6 +27,7 @@ import * as UX from './uitkomstenexcel.js';
 import * as ED from './eisdossier.js';
 import * as KO from './kaartopmaak.js';
 import * as IZ from './inzet.js';
+import * as SR from './storingen.js';
 import * as IMP from './gisimport.js';
 import * as ST from './stowa.js';
 import * as DG from './digigids.js';
@@ -59,7 +60,9 @@ const ROUTES = [
   [/^\/m\/werk$/, 'm-werk', () => werkpakketKiezer(null, { mobiel: true })],
   [/^\/m\/werk\/nieuw$/, 'm-werk', (_, q) => werkFormulier(null, q.get('object'), { mobiel: true, taakId: q.get('taak'), maatregel: q.get('maatregel'), pakketId: q.get('pakket'), rondeId: q.get('ronde'), deel: q.get('deel') === '1' })],
   [/^\/m\/werk\/([^/]+)$/, 'm-werk', (id) => werkFormulier(id, null, { mobiel: true })],
-  [/^\/m\/storing$/, 'm-werk', (_, q) => werkFormulier(null, q.get('object'), { mobiel: true, storing: true, maatregel: q.get('maatregel') })],
+  [/^\/m\/storing$/, 'm-werk', (_, q) => werkFormulier(null, q.get('object'), { mobiel: true, storing: true, maatregel: q.get('maatregel'), zaak: q.get('zaak') })],
+  [/^\/m\/storingen$/, 'm-werk', () => storingenPagina(null, null, { mobiel: true })],
+  [/^\/m\/melding\/nieuw$/, 'm-werk', (_, q) => meldingFormulier(null, { mobiel: true, objectId: q.get('object') })],
   [/^\/m\/inspectie$/, 'm-inspectie', () => inspectiepakketKiezer(null, { mobiel: true })],
   [/^\/m\/inspectie\/nieuw$/, 'm-inspectie', (_, q) => inspectieFormulier(null, q.get('object'), { mobiel: true, taakId: q.get('taak'), pakketId: q.get('pakket'), rondeId: q.get('ronde'), calamiteit: q.get('calamiteit') === '1' })],
   [/^\/m\/inspectie\/([^/]+)$/, 'm-inspectie', (id) => inspectieFormulier(id, null, { mobiel: true })],
@@ -80,7 +83,9 @@ const ROUTES = [
   [/^\/vrijgaven\/([^/]+)\/bewerken$/, 'vrijgaven', (id, q) => vrijgaveFormulier(id, q)],
   [/^\/vrijgaven\/([^/]+)$/, 'vrijgaven', (id) => vrijgaveDetail(id)],
   [/^\/werkzaamheden$/, 'werkzaamheden', werkzaamhedenLijst],
-  [/^\/storing$/, 'werkzaamheden', (_, q) => werkFormulier(null, q.get('object'), { storing: true, maatregel: q.get('maatregel') })],
+  [/^\/storing$/, 'werkzaamheden', (_, q) => werkFormulier(null, q.get('object'), { storing: true, maatregel: q.get('maatregel'), zaak: q.get('zaak') })],
+  [/^\/storingen\/nieuw$/, 'werkpakketten', (_, q) => meldingFormulier(null, { objectId: q.get('object') })],
+  [/^\/storingen\/([^/]+)\/bewerken$/, 'werkpakketten', (id) => meldingFormulier(id)],
   [/^\/storingen$/, 'werkpakketten', storingenPagina],
   [/^\/werkzaamheden\/nieuw$/, 'werkzaamheden', (_, q) => werkFormulier(null, q.get('object'), { taakId: q.get('taak'), maatregel: q.get('maatregel'), pakketId: q.get('pakket'), rondeId: q.get('ronde'), deel: q.get('deel') === '1' })],
   [/^\/werkzaamheden\/([^/]+)\/bewerken$/, 'werkzaamheden', (id) => werkFormulier(id)],
@@ -5952,6 +5957,9 @@ async function mobielStart() {
   const regel = (x) => `<li><a href="${x.href}"><span class="micoon klein">${x.icoon}</span>
     <span><strong>${esc(x.titel)}</strong><small>${objectNaam(x.object)}</small></span></a></li>`;
 
+  // Storingenregister: wat er voor mij klaarstaat (van kantoor of eerder niet opgelost).
+  const regKlaar = SR.voorBuiten(SR.zaken({ meldingen: await inProject('meldingen'), werk: await inProject('werkzaamheden') }), ikEmail());
+  const regDirect = regKlaar.filter((z) => z.urgentie === 'direct').length;
   app.innerHTML = `
     <div class="mstart">
       ${opslagKaart(opslagBevestiging(), { objectMap })}
@@ -5965,9 +5973,10 @@ async function mobielStart() {
         <span class="micoon">${I.werk}</span>
         <span><strong>Registratie werkzaamheden</strong></span>
       </a>
-      <a class="mtegel storingtegel" href="#/m/storing">
+      <a class="mtegel storingtegel" href="#/m/storingen">
         <span class="micoon">${I.let}</span>
-        <span><strong>Storing of gebrek oplossen</strong></span>
+        <span><strong>Storingen en gebreken</strong><small>${regKlaar.length ? `${regKlaar.length} klaar om op te lossen${regDirect ? ` · <b>${regDirect} direct</b>` : ''}` : 'Oplossen of melden'}</small></span>
+        ${regKlaar.length ? `<span class="mteller">${regKlaar.length}</span>` : ''}
       </a>
       <a class="mtegel" href="#/m/inspectie">
         <span class="micoon">${I.inspectie}</span>
@@ -6343,7 +6352,7 @@ async function werkpakketKiezer(objectId, { mobiel = false, taakId = null, maatr
         <a class="knop" href="#/planning">Naar de planning</a></div>` : ''}</div>`}`;
 }
 
-async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maatregel = null, pakketId = null, rondeId = null, storing = false, deel = false } = {}) {
+async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maatregel = null, pakketId = null, rondeId = null, storing = false, deel = false, zaak = null } = {}) {
   if (!id && storing && !mag('storing')) return geenRecht('storing');
   if (!id && !storing && !mag('werk')) return geenRecht('werk');
   if (!id && !pakketId && !storing) return werkpakketKiezer(objectId, { mobiel, taakId, maatregel });
@@ -6367,6 +6376,15 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     omschrijving: '', materiaal: '', status: 'gereed', vervolg: '', maatregelen: [], fotoIds: [],
     ...(isStoring ? { storing: { type: maatregel ? 'Gebrek' : 'Storing', melding: '', gemeldOp: nuLokaal(), opgelostOp: nuLokaal(), resultaat: 'opgelost' } } : {}),
   };
+  // Uit het storingenregister: een klaargezette melding of een eerdere registratie die nog niet is opgelost (vervolg).
+  const zaakId = bestaand?.storing?.zaakId ?? zaak;
+  const zaakMelding = zaakId ? await db.haal('meldingen', zaakId) : null;
+  const zaakEerder = zaakId && !zaakMelding ? await db.haal('werkzaamheden', zaakId) : null;
+  if (isStoring && !bestaand && (zaakMelding || zaakEerder)) {
+    const bron = zaakMelding ?? { ...zaakEerder.storing, objectId: zaakEerder.objectId };
+    w.objectId = w.objectId || bron.objectId || '';
+    w.storing = { ...w.storing, type: bron.type || w.storing.type, melding: bron.melding || '', referentie: bron.referentie || '', gemeldOp: bron.gemeldOp || w.storing.gemeldOp };
+  }
   const fotos = await laadFotos(w.fotoIds);
   const origineleFotoIds = new Set(w.fotoIds ?? []);
   const origineleKoppelingen = new Set((w.maatregelen ?? []).map((m) => `${m.inspectieId}:${m.gebrekId}`));
@@ -6432,7 +6450,13 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
   const objectVeld = mobiel && object && !isStoring
     ? `<input type="hidden" name="objectId" value="${esc(object.id)}">`
     : objectKeuzeVeld(objecten, w.objectId);
-  const storingBanner = `<div class="kaart storingbanner">${I.let} <strong>Storing of gebrek – altijd open</strong>
+  const storingBanner = zaakMelding || zaakEerder
+    ? `<div class="kaart storingbanner zaakbanner">${I.lijst} <strong>${zaakMelding ? 'Klaargezet in het storingenregister' : 'Vervolg op een eerdere registratie'}</strong>
+      ${zaakMelding?.urgentie ? ` <span class="label-status ${zaakMelding.urgentie === 'direct' ? 'verlopen' : 'binnenkort'}">${esc(SR.URGENTIE_LABEL[zaakMelding.urgentie] ?? '')}</span>` : ''}
+      <br><small>${zaakMelding ? `Door ${esc(zaakMelding.door || 'kantoor')}${zaakMelding.gemeldOp ? ` · gemeld ${datumTijdNL(zaakMelding.gemeldOp)}` : ''}${zaakMelding.opmerking ? `<br>${I.taak} ${esc(zaakMelding.opmerking)}` : ''}`
+    : `Eerder: ${datumTijdNL(zaakEerder.storing?.opgelostOp) || datumNL(zaakEerder.datum)}${zaakEerder.uitvoerder ? ` door ${esc(zaakEerder.uitvoerder)}` : ''} – ${esc(STORING_RESULTAAT[zaakEerder.storing?.resultaat]?.label ?? '')}${zaakEerder.vervolg ? `: ${esc(zaakEerder.vervolg)}` : ''}`}
+      <br>Melding, referentie en object staan al ingevuld; vul in wat je hebt gedaan.</small></div>`
+    : `<div class="kaart storingbanner">${I.let} <strong>Storing of gebrek – altijd open</strong>
     <br><small>Hiervoor is geen werkpakket nodig, ook niet ’s nachts. Vink hieronder eventueel de openstaande maatregel aan die je hiermee oplost.</small></div>`;
   const st = w.storing ?? {};
   // Bestede uren (tabel): bestaande regels, of één regel voor de uitvoerder.
@@ -6690,7 +6714,8 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
       ...(metDelen ? { gereed: data.volledig !== 'nee', deel: data.volledig === 'nee' ? String(data.deel ?? '').trim() : '' } : {}),
       materiaal: data.materiaal,
       werkpakketId: w.werkpakketId ?? '', rondeId: w.werkpakketId ? (w.rondeId ?? '') : '',
-      ...(isStoring ? { storing: { type: data.stype, melding: String(data.melding ?? '').trim(), gemeldOp: data.gemeldOp ?? '', opgelostOp: data.opgelostOp ?? '', resultaat: data.resultaat || 'opgelost', referentie: String(data.referentie ?? '').trim(), inzet: IZ.normaliseer(inzet) } } : {}),
+      ...(isStoring ? { storing: { type: data.stype, melding: String(data.melding ?? '').trim(), gemeldOp: data.gemeldOp ?? '', opgelostOp: data.opgelostOp ?? '', resultaat: data.resultaat || 'opgelost', referentie: String(data.referentie ?? '').trim(), inzet: IZ.normaliseer(inzet),
+        ...(zaakId && (zaakMelding || zaakEerder) ? { zaakId, ...(zaakMelding ? { meldingId: zaakId } : {}) } : {}) } } : {}),
       // Bij een storing: de uren zijn de manuren uit de tabel (voor overzichten en exports).
       ...(isStoring ? { uren: IZ.totalen(inzet).manuren || '' } : {}),
       maatregelen: [...gekozen].map((k) => {
@@ -10227,38 +10252,155 @@ async function storingenKaart() {
     <small><strong>${lijst.length}</strong> geregistreerd · ${recent} afgelopen 7 dagen${open ? ` · <strong style="color:#e8710a">${open} met vervolg nodig</strong>` : ''}</small></a>`;
 }
 
-async function storingenPagina() {
-  const [werk, objecten] = await Promise.all([inProject('werkzaamheden'), inProject('objecten')]);
+/** Storingen- en gebrekenregister: kantoor zet meldingen klaar, buiten worden ze opgelost of nieuw gemeld. */
+async function storingenPagina(_, __, { mobiel = false } = {}) {
+  const [werk, objecten, meldingen, project] = await Promise.all([inProject('werkzaamheden'), inProject('objecten'), inProject('meldingen'), actiefProject()]);
   const objectMap = new Map(objecten.map((o) => [o.id, o]));
-  const lijst = werk.filter((w) => w.storing).sort((a, b) => String(b.storing.opgelostOp || b.datum).localeCompare(String(a.storing.opgelostOp || a.datum)));
+  const alle = SR.zaken({ meldingen, werk });
+  const ik = ikEmail();
+  const naamVan = (e) => project?.ledenInfo?.[e]?.naam || e;
+  const tel = SR.telling(alle);
+  const ontbreekt = sync.tabelOntbreekt?.('meldingen');
+  const oplosHref = (z) => `${mobiel ? '#/m/storing' : '#/storing'}?zaak=${encodeURIComponent(z.id)}${z.objectId ? `&object=${encodeURIComponent(z.objectId)}` : ''}`;
+  const regHref = (w) => (mobiel ? `#/m/werk/${esc(w.id)}` : `#/werkzaamheden/${esc(w.id)}`);
+  const statusChip = (z) => `<span class="label-status ${SR.STATUS[z.status].klasse}">${SR.STATUS[z.status].label}</span>`;
+  const urgChip = (z) => (z.urgentie && (z.status === 'open' || z.status === 'bezig') ? ` <span class="label-status urg-${esc(z.urgentie)}">${esc(SR.URGENTIE_LABEL[z.urgentie])}</span>` : '');
+  const bronTekst = (z) => (z.bron === 'kantoor' ? `${I.lijst} Klaargezet${z.door ? ` door ${esc(naamVan(z.door))}` : ''}` : `${I.locatie} Buiten gemeld${z.door ? ` door ${esc(z.door)}` : ''}`);
+
+  if (mobiel) {
+    // Telefoon: wat er voor mij klaarstaat, en nieuw melden of direct oplossen.
+    const voorMij = SR.voorBuiten(alle, ik);
+    app.innerHTML = `
+      <div class="mkop"><a href="#/" class="mterug" aria-label="Terug">←</a><div><small>Register</small><h1>Storingen en gebreken</h1></div></div>
+      <div class="mregknoppen">
+        ${mag('storing') ? `<a class="knop primair mgroot" href="#/m/storing">${I.let} Storing of gebrek oplossen</a>` : ''}
+        <a class="knop mgroot" href="#/m/melding/nieuw">${I.lijst} Alleen melden – later oplossen</a></div>
+      <h2 class="mlijstkop">Klaar om op te lossen (${voorMij.length})</h2>
+      ${voorMij.length ? `<ul class="mlijst mregister">${voorMij.map((z) => {
+    const o = objectMap.get(z.objectId);
+    return `<li><a href="${oplosHref(z)}" class="mregel-link"><span>
+          <span class="mregkop">${statusChip(z)}${urgChip(z)}</span>
+          <strong>${o ? `${esc(o.code)} – ${esc(o.naam)}` : 'Onbekend object'}</strong>
+          <small>${esc(z.type || 'Storing')}${z.referentie ? ` · ref. ${esc(z.referentie)}` : ''}${z.gemeldOp ? ` · ${datumTijdNL(z.gemeldOp)}` : ''}</small>
+          <small class="mregtekst">${esc(String(z.omschrijving || '').slice(0, 140))}</small>
+          ${z.laatste ? `<small class="zacht">Laatst: ${datumTijdNL(z.laatsteOp)} – ${esc(STORING_RESULTAAT[z.laatste.storing?.resultaat]?.label ?? '')}${z.laatste.vervolg ? `: ${esc(z.laatste.vervolg)}` : ''}</small>` : ''}
+          ${z.toegewezenAan ? `<small class="zacht">${I.gebruiker} ${esc(naamVan(z.toegewezenAan))}</small>` : ''}</span>
+        <span class="knop klein primair">${I.start} ${z.status === 'bezig' ? 'Vervolg' : 'Oplossen'}</span></a></li>`;
+  }).join('')}</ul>` : '<p class="mleeg">Er staat niets klaar. Nieuwe meldingen van kantoor verschijnen hier vanzelf.</p>'}`;
+    return;
+  }
+
+  const filterStatus = instelling.lees('regStatus', 'actief');
   app.innerHTML = `
-    <div class="paginakop"><div><p><a href="#/werkpakketten">← Werkpakketten</a></p><h1>${I.let} Storingen en gebreken</h1>
-      <p>Altijd open, zonder werkpakket: wat er buiten (ook buiten werktijd) direct is opgelost. Elke registratie gaat ter beoordeling naar de inbox.</p></div>
-      <div class="knoppen">${mag('storing') ? `<a class="knop primair" href="#/storing">${I.let} Storing of gebrek oplossen</a>` : ''}</div></div>
+    <div class="paginakop"><div><p><a href="#/werkpakketten">← Werkpakketten</a></p><h1>${I.let} Storingen- en gebrekenregister</h1>
+      <p>Alle storingen en gebreken op één plek: <strong>klaargezet</strong> door kantoor en <strong>buiten gemeld of opgelost</strong>. Een melding blijft open tot een registratie hem oplost.</p></div>
+      <div class="knoppen"><a class="knop primair" href="#/storingen/nieuw">${I.lijst} ＋ Storing of gebrek klaarzetten</a>
+        ${mag('storing') ? `<a class="knop" href="#/storing">${I.let} Zelf oplossen</a>` : ''}</div></div>
+    ${ontbreekt ? `<div class="kaart waarschuwingskaart">${I.let} <strong>Klaargezette meldingen worden nog niet gedeeld.</strong> Voer in Supabase (SQL Editor) eenmalig het script <code>supabase/008_meldingen.sql</code> uit; tot die tijd staan ze alleen op deze computer.</div>` : ''}
+    <div class="tegels klein">
+      <span class="tegel let"><strong>${tel.open}</strong><span>open</span></span>
+      <span class="tegel"><strong>${tel.bezig}</strong><span>in behandeling</span></span>
+      <span class="tegel goed"><strong>${tel.opgelost}</strong><span>opgelost</span></span></div>
     <div class="filters">
-      <input type="search" id="s-zoek" placeholder="Zoek op object, melding, referentie, uitvoerder…" aria-label="Zoeken">
+      <input type="search" id="s-zoek" placeholder="Zoek op object, melding, referentie, persoon…" aria-label="Zoeken">
+      <select id="s-status" aria-label="Status">${optie('actief', 'Open en in behandeling', filterStatus)}${optie('', 'Alle', filterStatus)}${Object.entries(SR.STATUS).map(([k, x]) => optie(k, x.label, filterStatus)).join('')}</select>
       <select id="s-type" aria-label="Soort"><option value="">Alle soorten</option>${STORING_TYPEN.map((t) => optie(t, t)).join('')}</select>
-      <select id="s-res" aria-label="Resultaat"><option value="">Alle resultaten</option>${Object.entries(STORING_RESULTAAT).map(([k, x]) => optie(k, x.label)).join('')}</select>
+      <select id="s-bron" aria-label="Herkomst">${optie('', 'Kantoor en buiten')}${optie('kantoor', 'Klaargezet door kantoor')}${optie('veld', 'Buiten gemeld')}</select>
     </div>
-    <div class="kaart" style="padding:0"><div class="tabelhouder"><table>
-      <thead><tr><th>Opgelost</th><th>Object</th><th>Wat was er</th><th class="verberg-mobiel">Wat is gedaan</th><th>Resultaat</th><th class="verberg-mobiel">Uren</th><th class="verberg-mobiel">Door</th></tr></thead>
+    <div class="kaart" style="padding:0"><div class="tabelhouder"><table class="registertabel">
+      <thead><tr><th>Status</th><th>Object</th><th>Melding</th><th class="verberg-mobiel">Gemeld</th><th>Acties</th><th class="verberg-mobiel">Uren</th><th></th></tr></thead>
       <tbody id="s-rijen"></tbody></table></div></div>`;
-  const f = ['s-zoek', 's-type', 's-res'].map((x) => app.querySelector(`#${x}`));
+  const f = ['s-zoek', 's-status', 's-type', 's-bron'].map((x) => app.querySelector(`#${x}`));
   const toon = () => {
-    const [zoek, type, res] = f.map((x) => x.value);
-    const rijen = lijst.filter((w) => (!type || w.storing.type === type) && (!res || w.storing.resultaat === res)
-      && (!zoek || `${objectMap.get(w.objectId)?.code} ${objectMap.get(w.objectId)?.naam} ${w.storing.melding} ${w.storing.referentie ?? ''} ${w.omschrijving} ${w.uitvoerder}`.toLowerCase().includes(zoek.toLowerCase())));
-    app.querySelector('#s-rijen').innerHTML = rijen.length ? rijen.map((w) => `<tr class="klikbaar" data-href="#/werkzaamheden/${esc(w.id)}">
-      <td class="nowrap">${datumTijdNL(w.storing.opgelostOp) || datumNL(w.datum)}${w.storing.gemeldOp && w.storing.opgelostOp ? `<small class="subregel">na ${duurTekst(w.storing.gemeldOp, w.storing.opgelostOp)}</small>` : ''}</td>
-      <td>${objectNaam(objectMap.get(w.objectId))}<small class="subregel">${esc(w.storing.type || '')}${w.storing.referentie ? ` · ref. ${esc(w.storing.referentie)}` : ''}</small></td>
-      <td>${esc(String(w.storing.melding || '').slice(0, 120))}</td><td class="verberg-mobiel">${esc(String(w.omschrijving || '').slice(0, 120))}</td>
-      <td><span class="label-status" style="background:${STORING_RESULTAAT[w.storing.resultaat]?.kleur};color:#fff">${esc(STORING_RESULTAAT[w.storing.resultaat]?.label ?? '')}</span> ${beoordelingLabel(w)}</td>
-      <td class="verberg-mobiel nowrap">${w.storing.inzet?.length ? `${String(IZ.totalen(w.storing.inzet).totaal).replace('.', ',')} u` : '–'}</td>
-      <td class="verberg-mobiel">${esc(w.uitvoerder || '–')}</td></tr>`).join('')
-      : `<tr><td colspan="7" class="leeg">${lijst.length ? 'Niets gevonden met deze filters.' : 'Nog geen storingen of gebreken opgelost.'}</td></tr>`;
+    const [zoek, status, type, bron] = f.map((x) => x.value);
+    const termen = zoekTermen(zoek);
+    const rijen = alle.filter((z) => (status === 'actief' ? (z.status === 'open' || z.status === 'bezig') : !status || z.status === status)
+      && (!type || z.type === type) && (!bron || z.bron === bron)
+      && termen.every((t) => `${objectMap.get(z.objectId)?.code} ${objectMap.get(z.objectId)?.naam} ${z.omschrijving} ${z.referentie} ${naamVan(z.toegewezenAan)} ${z.door} ${z.acties.map((a) => `${a.uitvoerder} ${a.omschrijving}`).join(' ')}`.toLowerCase().includes(t)));
+    app.querySelector('#s-rijen').innerHTML = rijen.length ? rijen.map((z) => {
+      const o = objectMap.get(z.objectId);
+      const actief = z.status === 'open' || z.status === 'bezig';
+      return `<tr class="reg-${z.status}">
+      <td>${statusChip(z)}${urgChip(z)}</td>
+      <td>${objectNaam(o)}<small class="subregel">${esc(z.type || '')}${z.referentie ? ` · ref. ${esc(z.referentie)}` : ''}</small></td>
+      <td>${esc(String(z.omschrijving || '').slice(0, 140))}${z.melding?.opmerking ? `<small class="subregel">${I.taak} ${esc(z.melding.opmerking)}</small>` : ''}${z.toegewezenAan ? `<small class="subregel">${I.gebruiker} ${esc(naamVan(z.toegewezenAan))}</small>` : ''}</td>
+      <td class="verberg-mobiel nowrap">${z.gemeldOp ? datumTijdNL(z.gemeldOp) : '–'}<small class="subregel">${bronTekst(z)}</small></td>
+      <td>${z.acties.length ? z.acties.map((a) => `<a href="${regHref(a)}" class="regactie"><span class="stip" style="background:${STORING_RESULTAAT[a.storing?.resultaat]?.kleur ?? '#8a96a3'}"></span>${datumTijdNL(a.storing?.opgelostOp) || datumNL(a.datum)}${a.uitvoerder ? ` · ${esc(a.uitvoerder)}` : ''} – ${esc(STORING_RESULTAAT[a.storing?.resultaat]?.label ?? '')} ${beoordelingLabel(a)}</a>`).join('') : '<small class="zacht">Nog niets gedaan</small>'}
+        ${z.opgelostOp && z.gemeldOp ? `<small class="subregel">opgelost na ${duurTekst(z.gemeldOp, z.opgelostOp)}</small>` : ''}</td>
+      <td class="verberg-mobiel nowrap">${z.uren.totaal ? `${String(z.uren.totaal).replace('.', ',')} u` : '–'}</td>
+      <td class="regknoppen">${actief && mag('storing') ? `<a class="knop klein primair" href="${oplosHref(z)}">${z.status === 'bezig' ? 'Vervolg' : 'Oplossen'}</a>` : ''}
+        ${z.melding && z.status !== 'opgelost' ? `<a class="knop klein" href="#/storingen/${esc(z.id)}/bewerken">Bewerken</a>` : ''}
+        ${z.melding && z.status === 'open' ? `<button type="button" class="knop klein" data-vervallen="${esc(z.id)}" title="Bijv. dubbel gemeld of niet meer nodig">Vervallen</button>` : ''}
+        ${z.status === 'vervallen' ? `<button type="button" class="knop klein" data-heropen="${esc(z.id)}">Heropenen</button>` : ''}</td></tr>`;
+    }).join('')
+      : `<tr><td colspan="7" class="leeg">${alle.length ? 'Niets gevonden met deze filters.' : 'Nog geen storingen of gebreken. Zet er een klaar of los er buiten een op.'}</td></tr>`;
   };
-  f.forEach((x) => x.addEventListener('input', toon));
+  f.forEach((x) => x.addEventListener('input', () => { instelling.schrijf('regStatus', f[1].value); toon(); }));
+  app.querySelector('#s-rijen').addEventListener('click', async (e) => {
+    const v = e.target.closest('[data-vervallen], [data-heropen]');
+    if (!v) return;
+    const id = v.dataset.vervallen ?? v.dataset.heropen;
+    const m = await db.haal('meldingen', id);
+    if (!m) return;
+    if (v.dataset.vervallen && !confirm('Deze melding laten vervallen (bijv. dubbel gemeld of niet meer nodig)? Hij verdwijnt dan van de telefoons.')) return;
+    await db.bewaar('meldingen', { ...m, vervallen: Boolean(v.dataset.vervallen), gewijzigd: new Date().toISOString() });
+    melding(v.dataset.vervallen ? 'Melding vervallen' : 'Melding heropend');
+    storingenPagina();
+  });
   toon();
+}
+
+/** Een storing of gebrek klaarzetten (kantoor) of buiten alleen melden (later oplossen). */
+async function meldingFormulier(id, { mobiel = false, objectId = null } = {}) {
+  const [objecten, project] = await Promise.all([inProject('objecten'), actiefProject()]);
+  objecten.sort((a, b) => String(a.code).localeCompare(String(b.code), 'nl', { numeric: true }));
+  const bestaand = id ? await db.haal('meldingen', id) : null;
+  if (id && !bestaand) { app.innerHTML = leegKaart('Melding niet gevonden.', '<a class="knop" href="#/storingen">Naar het register</a>'); return; }
+  const m = bestaand ?? { objectId: objectId ?? '', type: 'Storing', melding: '', referentie: '', gemeldOp: nuLokaal(), urgentie: mobiel ? 'direct' : 'normaal', toegewezenAan: '', opmerking: '' };
+  const terug = mobiel ? '#/m/storingen' : '#/storingen';
+  const leden = (project?.leden ?? []).map((x) => String(x).toLowerCase()).filter((e) => project?.ledenInfo?.[e]?.rol !== 'opdrachtgever');
+  const naamVan = (e) => project?.ledenInfo?.[e]?.naam || e;
+  const velden = `
+    ${objectKeuzeVeld(objecten, m.objectId)}
+    <div class="veld"><label for="f-stype" class="vereist">Wat is het?</label><select id="f-stype" name="type">${STORING_TYPEN.map((x) => optie(x, x, m.type)).join('')}</select></div>
+    <div class="veld"><label for="f-gemeld">Gemeld / ontdekt om</label><input id="f-gemeld" name="gemeldOp" type="datetime-local" value="${esc(m.gemeldOp ?? '')}"></div>
+    <div class="veld breed"><label for="f-melding" class="vereist">Wat is er aan de hand?</label>
+      <textarea id="f-melding" name="melding" maxlength="2000" style="min-height:80px" placeholder="bijv. slagboom gaat niet open, lantaarnpaal brandt niet, losse tegel op het voetpad">${esc(m.melding ?? '')}</textarea></div>
+    <div class="veld"><label for="f-referentie">Referentie</label><input id="f-referentie" name="referentie" maxlength="80" autocomplete="off" value="${esc(m.referentie ?? '')}" placeholder="bijv. meldingsnummer of ticket van de opdrachtgever"></div>
+    <div class="veld breed"><label>Urgentie</label>${segment('urgentie', m.urgentie || 'normaal', SR.URGENTIES)}</div>
+    ${mobiel ? '' : `<div class="veld"><label for="f-toegewezen">Wie lost het op?</label><select id="f-toegewezen" name="toegewezenAan">${optie('', 'Iedereen (eerste die het oppakt)', m.toegewezenAan)}${leden.map((e) => optie(e, naamVan(e), m.toegewezenAan)).join('')}</select></div>
+    <div class="veld breed"><label for="f-opmerking">Instructie voor buiten</label><textarea id="f-opmerking" name="opmerking" maxlength="1000" style="min-height:60px" placeholder="bijv. sleutel bij de beheerder ophalen, melder bellen: 06-…">${esc(m.opmerking ?? '')}</textarea></div>`}`;
+  const titel = bestaand ? 'Melding bewerken' : mobiel ? 'Storing of gebrek melden' : 'Storing of gebrek klaarzetten';
+  const uitleg = mobiel ? 'Je lost het nu niet op: de melding komt in het register en blijft open tot iemand hem oplost.' : 'De melding verschijnt op de telefoons onder "Storingen en gebreken" en blijft open tot een registratie hem oplost.';
+  app.innerHTML = mobiel ? `
+    <div class="mkop"><a href="${terug}" class="mterug" aria-label="Terug">←</a><div><small>Register</small><h1>${titel}</h1></div></div>
+    <div class="kaart mhier">${I.lijst} <small>${uitleg}</small></div>
+    <form id="form" class="kaart" novalidate><div class="velden">${velden}</div>
+      <div class="mvoet"><button class="knop primair mgroot" type="submit">${I.vink} Melden</button></div></form>`
+    : `<div class="paginakop"><div><p><a href="${terug}">← Register</a></p><h1>${titel}</h1><p>${uitleg}</p></div></div>
+    <form id="form" class="kaart" novalidate><div class="velden">${velden}</div>
+      <div class="formvoet"><a class="knop" href="${terug}">Annuleren</a><button class="knop primair" type="submit">${I.vink} ${bestaand ? 'Opslaan' : 'Klaarzetten'}</button></div></form>`;
+  const form = app.querySelector('#form');
+  koppelObjectKeuze(form, objecten);
+  form.addEventListener('input', () => { formulierGewijzigd = true; });
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const d = formulierData(form);
+    if (!d.objectId) return melding('Kies een object.', 'fout');
+    if (!String(d.melding ?? '').trim()) { form.querySelector('#f-melding').focus(); return melding('Beschrijf wat er aan de hand is.', 'fout'); }
+    const nu = new Date().toISOString();
+    const nieuw = {
+      ...(bestaand ?? {}), id: bestaand?.id ?? nieuwId(), projectId: bestaand?.projectId ?? projectId(), objectId: d.objectId, type: d.type, melding: String(d.melding).trim(),
+      referentie: String(d.referentie ?? '').trim(), gemeldOp: d.gemeldOp ?? '', urgentie: d.urgentie || 'normaal',
+      toegewezenAan: mobiel ? (bestaand?.toegewezenAan ?? '') : (d.toegewezenAan ?? ''), opmerking: mobiel ? (bestaand?.opmerking ?? '') : String(d.opmerking ?? '').trim(),
+      door: bestaand?.door ?? (ikEmail() || instelling.lees('inspecteur') || ''), bron: bestaand?.bron ?? (mobiel ? 'buiten' : 'kantoor'),
+      aangemaakt: bestaand?.aangemaakt ?? nu, gewijzigd: nu,
+    };
+    await db.bewaar('meldingen', nieuw);
+    formulierGewijzigd = false;
+    gedaan(bestaand ? 'Melding bijgewerkt' : mobiel ? 'Gemeld' : 'Klaargezet', { object: objecten.find((o) => o.id === d.objectId), extra: mobiel ? 'Staat in het register; iemand kan hem nu oplossen.' : 'Staat in het register en op de telefoons.' });
+    location.hash = terug;
+  };
 }
 
 async function werkpakkettenLijst() {

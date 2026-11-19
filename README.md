@@ -485,6 +485,24 @@ Rijkswaterstaat** (Loo Plan, 30 oktober 2019, definitief) en het CROW **Standaar
 - **Rapport** per boom (bijlage 5) en **SUF-BVC export** (boom, boomgebreken, maatregelen) per project of werkpakket;
   bij een BVC-werkpakket een samenvatting per klasse en maatregel.
 
+## Storingen- en gebrekenregister (kantoor ↔ buiten)
+
+Het register (**Werkpakketten → Storingen en gebreken**, of `#/storingen`) werkt twee kanten op:
+
+- **Kantoor zet klaar**: *＋ Storing of gebrek klaarzetten* – object, wat het is, wat er aan de hand is, referentie (meldingsnummer),
+  gemeld om, **urgentie** (direct, binnen 24 uur, deze week, normaal), **wie het oplost** (of iedereen) en een instructie voor buiten.
+- **Buiten** staat op de startpagina de tegel **Storingen en gebreken** met het aantal dat klaarstaat (en hoeveel *direct*). Daar zie
+  je wat voor jou (of voor iedereen) klaarstaat; **Oplossen** opent het storingsformulier met object, melding, referentie en de
+  instructie al ingevuld. Buiten kun je ook **nieuw** iets doen: *Storing of gebrek oplossen* (direct oplossen) of *Alleen melden –
+  later oplossen* (komt als open melding in het register).
+- **Status per zaak**: *Open* (nog niets gedaan), *In behandeling* (wel geregistreerd, maar tijdelijk/niet opgelost – een volgende
+  ploeg doet het **vervolg** vanuit dezelfde zaak), *Opgelost* of *Vervallen* (bijv. dubbel gemeld; weer te heropenen). Alle
+  registraties van een zaak staan eronder, met datum, uitvoerder, resultaat, beoordeling en de opgetelde bestede uren.
+- **Filters**: standaard *open en in behandeling*; verder op status, soort, herkomst (kantoor of buiten) en zoeken op object,
+  melding, referentie of persoon.
+- **Server**: voer eenmalig `supabase/008_meldingen.sql` uit (alleen een nieuwe tabel; er wordt niets gewijzigd of verwijderd).
+  Zolang dat niet is gebeurd, werkt alles lokaal en toont het register een melding; de rest van de synchronisatie gaat gewoon door.
+
 ## Storingen en gebreken – altijd open
 
 Een storing of gebrek moet je altijd kunnen oplossen, ook ’s nachts en zonder dat er een werkpakket klaarstaat:
@@ -993,6 +1011,7 @@ js/taken.js           taken samenstellen en sorteren op urgentie en locatie
 js/velden.js          eigen formuliervelden: zichtbaarheid, controle en weergave
 js/eisen.js           eisbibliotheek: inlezen, vergelijken, eisvragen en verificatie per eis (ook per periode)
 js/eisdossier.js      verificatiedossier als Excel (samenvatting, eisen, bewijs, afwijkingen)
+js/storingen.js       storingenregister: meldingen + registraties → zaken met status
 js/inzet.js           bestede uren bij storingen (regels, totalen, controle)
 js/kaartopmaak.js     opmaak van te doen / gedaan / overgeslagen op de kaarten (standaard ← project ← apparaat)
 js/pakketten.js       werkpakketten en rondes: voortgang, toewijzing en objectfilters

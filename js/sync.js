@@ -5,7 +5,14 @@
 import * as db from './db.js';
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
 
-const TABELLEN = ['projecten', 'lagen', 'objecten', 'inspecties', 'werkzaamheden', 'taken', 'werkpakketten', 'overgeslagen', 'vrijgaven'];
+const TABELLEN = ['projecten', 'lagen', 'objecten', 'inspecties', 'werkzaamheden', 'taken', 'werkpakketten', 'overgeslagen', 'vrijgaven', 'meldingen'];
+// Tabellen die nieuwer zijn dan sommige installaties: ontbreekt de tabel op de server, dan slaat de sync hem over
+// (de gegevens blijven lokaal en in de wachtrij) in plaats van helemaal te stoppen.
+const OPTIONEEL = new Set(['meldingen']);
+const ontbrekend = new Set();
+/** Ontbreekt deze (nieuwe) tabel op de server? Dan moet het SQL-script nog worden uitgevoerd. */
+export const tabelOntbreekt = (tabel) => ontbrekend.has(tabel);
+const isOntbrekendeTabel = (fout) => fout?.status === 404 || fout?.code === 'PGRST205' || fout?.code === '42P01' || /schema cache|does not exist/i.test(fout?.message ?? '');
 const BUCKET = 'fotos';
 const OVERLAP_MS = 60_000; // haal iets terug in de tijd opnieuw op i.v.m. gelijktijdige transacties
 const PAGINA = 500;
@@ -90,7 +97,10 @@ function vertaal(tekst) {
 }
 async function foutUit(res) {
   const data = await res.json().catch(() => ({}));
-  return new Error(vertaal(String(data.error_description || data.msg || data.message || data.error || `Serverfout ${res.status}`)));
+  const fout = new Error(vertaal(String(data.error_description || data.msg || data.message || data.error || `Serverfout ${res.status}`)));
+  fout.status = res.status;
+  fout.code = data.code;
+  return fout;
 }
 
 export const sessie = () => lees('sessie');
@@ -258,7 +268,7 @@ export function rol() {
 // ---------------------------------------------------------------------------
 // Versturen (lokale wachtrij → server)
 // ---------------------------------------------------------------------------
-const VOLGORDE = ['fotos', 'projecten', 'lagen', 'objecten', 'werkpakketten', 'inspecties', 'werkzaamheden', 'taken', 'overgeslagen', 'vrijgaven'];
+const VOLGORDE = ['fotos', 'projecten', 'lagen', 'objecten', 'werkpakketten', 'inspecties', 'werkzaamheden', 'taken', 'overgeslagen', 'vrijgaven', 'meldingen'];
 const BATCH = 200;
 
 async function verstuur() {
@@ -279,6 +289,7 @@ async function verstuur() {
     } catch (fout) { weiger(fout); }
   }
   for (const store of VOLGORDE.slice(1)) {
+    if (ontbrekend.has(store)) continue; // tabel bestaat (nog) niet op de server: regels blijven wachten
     const eigen = regels.filter((r) => r.store === store);
     for (let i = 0; i < eigen.length; i += BATCH) {
       const deel = eigen.slice(i, i + BATCH);
@@ -288,6 +299,7 @@ async function verstuur() {
         zetStatus({ wachtend: Math.max(0, status.wachtend - deel.length) });
       } catch (fout) {
         if (fout instanceof TypeError || fout instanceof NietIngelogd) throw fout;
+        if (OPTIONEEL.has(store) && isOntbrekendeTabel(fout)) { ontbrekend.add(store); break; }
         // Eén afgekeurde regel mag de rest niet blokkeren: probeer de regels in dit deel los.
         for (const r of deel) {
           try {
@@ -356,7 +368,14 @@ async function haalOp() {
     let nieuwsteCursor = cursor;
     for (let offset = 0; ; offset += PAGINA) {
       const filter = vanaf ? `&sync_tijd=gte.${encodeURIComponent(vanaf)}` : '';
-      const res = await api(`/rest/v1/${tabel}?select=id,data,gewijzigd,verwijderd,sync_tijd${filter}&order=sync_tijd.asc,id.asc&limit=${PAGINA}&offset=${offset}`);
+      let res;
+      try {
+        res = await api(`/rest/v1/${tabel}?select=id,data,gewijzigd,verwijderd,sync_tijd${filter}&order=sync_tijd.asc,id.asc&limit=${PAGINA}&offset=${offset}`);
+        ontbrekend.delete(tabel);
+      } catch (fout) {
+        if (OPTIONEEL.has(tabel) && isOntbrekendeTabel(fout)) { ontbrekend.add(tabel); break; }
+        throw fout;
+      }
       const rijen = await res.json();
       for (const rij of rijen) {
         if (await verwerkRij(tabel, rij)) gewijzigd += 1;
