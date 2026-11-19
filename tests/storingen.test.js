@@ -30,3 +30,13 @@ test('storingenregister: kantoor-meldingen en veldregistraties tot zaken met sta
   assert.deepEqual(S.voorBuiten(z, 'jan@x.nl').map((x) => x.id), ['m1', 'm2', 'w5']);
   assert.deepEqual(S.telling(z), { open: 1, bezig: 2, opgelost: 2, vervallen: 1 });
 });
+
+test('storingenregister: twee registraties in dezelfde minuut – volgorde op vastleggen', () => {
+  const werk = [
+    { id: 'b', objectId: 'o', datum: '2026-11-19', aangemaakt: '2026-11-19T14:55:40Z', storing: { zaakId: 'a', resultaat: 'opgelost', opgelostOp: '2026-11-19T14:55' } },
+    { id: 'a', objectId: 'o', datum: '2026-11-19', aangemaakt: '2026-11-19T14:55:10Z', storing: { type: 'Storing', melding: 'x', resultaat: 'tijdelijk', opgelostOp: '2026-11-19T14:55' } },
+  ];
+  const [z] = S.zaken({ werk });
+  assert.deepEqual(z.acties.map((x) => x.id), ['a', 'b']);
+  assert.equal(z.status, 'opgelost');
+});

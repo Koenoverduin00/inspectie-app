@@ -1879,3 +1879,7 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
 .mregister .mregel-link > .knop { flex: 0 0 auto; width: auto; white-space: nowrap; }
 .registertabel .regref { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .mregref { font-weight: 700; font-variant-numeric: tabular-nums; margin-right: .15rem; align-self: center; }
+.refknop { border: 0; background: none; padding: 0 .15rem; cursor: pointer; color: var(--tekst-zacht); vertical-align: middle; }
+.refknop svg { width: 14px; height: 14px; }
+.refknop:hover { color: var(--primair); }
+.refkoppel { border-style: dashed; }

@@ -30,7 +30,8 @@ export function zaken({ meldingen = [], werk = [] }) {
     const z = zaakVan(w);
     perZaak.set(z, [...(perZaak.get(z) ?? []), w]);
   }
-  for (const l of perZaak.values()) l.sort((a, b) => moment(a).localeCompare(moment(b)));
+  // Op tijdstip; binnen dezelfde minuut (het formulier rekent in minuten) op het moment van vastleggen.
+  for (const l of perZaak.values()) l.sort((a, b) => moment(a).localeCompare(moment(b)) || String(a.aangemaakt ?? a.gewijzigd ?? '').localeCompare(String(b.aangemaakt ?? b.gewijzigd ?? '')));
   const uit = [];
   for (const m of meldingen) {
     if (!m || m.verwijderd) continue;

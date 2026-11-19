@@ -10321,7 +10321,8 @@ async function storingenPagina(_, __, { mobiel = false } = {}) {
       const o = objectMap.get(z.objectId);
       const actief = z.status === 'open' || z.status === 'bezig';
       return `<tr class="reg-${z.status}">
-      <td class="regref">${z.referentie ? `<strong>${esc(z.referentie)}</strong>` : '<span class="zacht">–</span>'}</td>
+      <td class="regref">${z.referentie ? `<strong>${esc(z.referentie)}</strong> <button type="button" class="refknop" data-ref="${esc(z.id)}" title="Referentie wijzigen" aria-label="Referentie wijzigen">${I.concept}</button>`
+    : `<button type="button" class="knop klein refkoppel" data-ref="${esc(z.id)}" title="Referentie achteraf koppelen">＋ Koppelen</button>`}</td>
       <td>${statusChip(z)}${urgChip(z)}</td>
       <td>${objectNaam(o)}<small class="subregel">${esc(z.type || '')}</small></td>
       <td>${esc(String(z.omschrijving || '').slice(0, 140))}${z.melding?.opmerking ? `<small class="subregel">${I.taak} ${esc(z.melding.opmerking)}</small>` : ''}${z.toegewezenAan ? `<small class="subregel">${I.gebruiker} ${esc(naamVan(z.toegewezenAan))}</small>` : ''}</td>
@@ -10338,6 +10339,12 @@ async function storingenPagina(_, __, { mobiel = false } = {}) {
   };
   f.forEach((x) => x.addEventListener('input', () => { instelling.schrijf('regStatus', f[1].value); toon(); }));
   app.querySelector('#s-rijen').addEventListener('click', async (e) => {
+    const r = e.target.closest('[data-ref]');
+    if (r) {
+      const z = alle.find((x) => x.id === r.dataset.ref);
+      if (z && await referentieKoppelen(z, objectMap.get(z.objectId))) storingenPagina();
+      return;
+    }
     const v = e.target.closest('[data-vervallen], [data-heropen]');
     if (!v) return;
     const id = v.dataset.vervallen ?? v.dataset.heropen;
@@ -10349,6 +10356,50 @@ async function storingenPagina(_, __, { mobiel = false } = {}) {
     storingenPagina();
   });
   toon();
+}
+
+/**
+ * Referentie achteraf koppelen of wijzigen vanuit het register. Bij een klaargezette melding staat hij op de melding; bij een storing
+ * die buiten is gemeld op de eerste registratie van de zaak (die geldt voor de hele zaak). Wie en wanneer wordt vastgelegd.
+ */
+function referentieKoppelen(z, object) {
+  return new Promise((resolve) => {
+    const d = document.createElement('dialog');
+    d.className = 'dialoog';
+    d.innerHTML = `<form method="dialog" novalidate>
+      <h2>${z.referentie ? 'Referentie wijzigen' : 'Referentie koppelen'}</h2>
+      <p><small>${object ? `${esc(object.code)} – ${esc(object.naam)} · ` : ''}${esc(z.type || 'Storing')}${z.gemeldOp ? ` · ${datumTijdNL(z.gemeldOp)}` : ''}<br>${esc(String(z.omschrijving || '').slice(0, 160))}</small></p>
+      <div class="veld"><label for="rk-ref">Referentie</label>
+        <input id="rk-ref" maxlength="80" autocomplete="off" value="${esc(z.referentie)}" placeholder="bijv. meldingsnummer of ticket van de opdrachtgever"></div>
+      <p><small class="zacht">Geldt voor de hele zaak, ook voor de registraties die er al onder staan.</small></p>
+      <div class="formvoet">${z.referentie ? '<button class="knop" value="wis" type="submit">Verwijderen</button>' : ''}<span class="knoppen"><button class="knop" value="nee">Annuleren</button><button class="knop primair" value="ja">${I.vink} Opslaan</button></span></div></form>`;
+    document.body.append(d);
+    d.showModal();
+    d.querySelector('#rk-ref').select();
+    d.addEventListener('close', async () => {
+      const keuze = d.returnValue;
+      const waarde = keuze === 'wis' ? '' : d.querySelector('#rk-ref').value.trim();
+      d.remove();
+      if (keuze !== 'ja' && keuze !== 'wis') return resolve(false);
+      if (keuze === 'ja' && waarde === z.referentie) return resolve(false);
+      const nu = new Date().toISOString();
+      const log = { referentieGekoppeld: { door: ikEmail() || instelling.lees('inspecteur') || '', op: nu, was: z.referentie || '' } };
+      if (z.melding) {
+        await db.bewaar('meldingen', { ...z.melding, referentie: waarde, ...log, gewijzigd: nu });
+      } else {
+        // Zaak die buiten is gemeld: op de eerste registratie; oudere referenties op vervolgregistraties gaan mee.
+        for (const a of z.acties) {
+          const w = await db.haal('werkzaamheden', a.id);
+          if (!w?.storing) continue;
+          const eerste = a.id === z.id || a === z.acties[0];
+          if (!eerste && !w.storing.referentie) continue;
+          await db.bewaar('werkzaamheden', { ...w, storing: { ...w.storing, referentie: waarde, ...log }, gewijzigd: nu });
+        }
+      }
+      melding(waarde ? `Referentie ${waarde} gekoppeld` : 'Referentie verwijderd');
+      resolve(true);
+    }, { once: true });
+  });
 }
 
 /** Een storing of gebrek klaarzetten (kantoor) of buiten alleen melden (later oplossen). */
