@@ -208,6 +208,17 @@ async function toonRoute() {
       await projectenPagina();
       return;
     }
+    // Opdrachtgever: een nog niet geaccepteerde registratie niet openen (ook niet via een directe link).
+    const reg = pad.match(/^\/(?:(inspecties|werkzaamheden)\/([^/]+)(?:\/[a-z]+)?|m\/(werk|inspectie|bvc|stowa)\/([^/]+))$/);
+    if (reg && isOpdrachtgever()) {
+      const store = reg[1] ?? (reg[3] === 'werk' ? 'werkzaamheden' : 'inspecties');
+      const rid = decodeURIComponent(reg[2] ?? reg[4]);
+      const r = rid !== 'nieuw' ? await db.haal(store, rid) : null;
+      if (r && !regZichtbaar(store, r)) {
+        app.innerHTML = leegKaart('Deze registratie is nog niet geaccepteerd door de opdrachtnemer en daarom nog niet zichtbaar.', '<a class="knop" href="#/">Naar het dashboard</a>');
+        return;
+      }
+    }
     await handler(id, query);
     if (!mobiel && TAB_PAGINAS.test(pad) && location.hash.split('?')[0] === `#${pad}` && !app.querySelector('.tabbalk')) {
       app.insertAdjacentHTML('afterbegin', tabbalk(pad, sectie));
@@ -6621,7 +6632,9 @@ function kiesProject(id) {
 
 async function inProject(store) {
   const pid = projectId();
-  return (await db.alle(store)).filter((r) => r.projectId === pid);
+  const lijst = (await db.alle(store)).filter((r) => r.projectId === pid);
+  // Opdrachtgever: werkzaamheden en inspecties pas na acceptatie door de opdrachtnemer.
+  return REG_STORES.has(store) && isOpdrachtgever() ? lijst.filter((r) => regZichtbaar(store, r)) : lijst;
 }
 
 async function actiefProject() {
@@ -6674,6 +6687,20 @@ const toonUren = () => huidigProject?.urenTonen !== false;
 const ikEmail = () => String(sync.sessie()?.gebruiker?.email ?? '').toLowerCase();
 /** Toegangsregels gelden voor ingelogde projectleden; beheerders en lokaal gebruik zien alles. */
 const toegangActief = () => Boolean(ikEmail()) && !magBeheren();
+
+/**
+ * Opdrachtgever: een projectlid van de opdrachtgevende partij (Toewijzen → Organisatie). Ziet werkzaamheden en inspecties pas
+ * als iemand van de opdrachtnemer ze heeft geaccepteerd (goedgekeurd). Beheerders en lokaal gebruik zijn altijd opdrachtnemer.
+ */
+const isOpdrachtgever = (p = huidigProject) => toegangActief() && p?.ledenInfo?.[ikEmail()]?.rol === 'opdrachtgever';
+const REG_STORES = new Set(['werkzaamheden', 'inspecties']);
+/** Mag deze gebruiker deze registratie zien? Opdrachtgever: alleen geaccepteerd (en eigen registraties). */
+function regZichtbaar(store, r, p = huidigProject) {
+  if (!r || !REG_STORES.has(store) || !isOpdrachtgever(p)) return true;
+  if (r.beoordeling?.ingediendDoor && String(r.beoordeling.ingediendDoor).toLowerCase() === ikEmail()) return true;
+  if (store === 'inspecties' && r.status !== 'afgerond') return false;
+  return beoordelingVan(r) === 'goedgekeurd';
+}
 
 function mijnRechten(p = huidigProject) {
   const alle = Object.fromEntries(Object.keys(RECHTEN).map((k) => [k, !RECHTEN[k].standaardUit]));
@@ -6829,11 +6856,17 @@ async function toewijzenPagina() {
       <div style="padding:1rem 1rem .25rem"><h2 style="margin:0">Wat mag iemand doen</h2>
         <p style="margin:.25rem 0 0"><small>Zonder recht verdwijnen de bijbehorende knoppen en schermen in de app.</small></p></div>
       <div class="tabelhouder"><table class="rechten-tabel">
-        <thead><tr><th>Persoon</th>${Object.values(RECHTEN).map((r) => `<th>${esc(r.label)}<small>${esc(r.uitleg)}</small></th>`).join('')}</tr></thead>
+        <thead><tr><th>Persoon</th><th>Organisatie<small>Opdrachtgever ziet alleen geaccepteerde registraties</small></th>${Object.values(RECHTEN).map((r) => `<th>${esc(r.label)}<small>${esc(r.uitleg)}</small></th>`).join('')}</tr></thead>
         <tbody>${personen.map((e) => {
     const r = rechtenVan(e);
-    return `<tr><td><strong>${esc(naamVan(e))}</strong></td>${Object.keys(RECHTEN).map((k) => `<td><label class="toewijs-cel"><input type="checkbox" data-recht="${k}" data-e="${esc(e)}" ${r[k] ? 'checked' : ''} aria-label="${esc(naamVan(e))}: ${esc(RECHTEN[k].label)}">${I.vink}</label></td>`).join('')}</tr>`;
-  }).join('')}</tbody></table></div></section>` : ''}
+    const og = info[e]?.rol === 'opdrachtgever';
+    return `<tr class="${og ? 'rij-opdrachtgever' : ''}"><td><strong>${esc(naamVan(e))}</strong></td>
+      <td><select data-rol="${esc(e)}" aria-label="Organisatie van ${esc(naamVan(e))}">${optie('opdrachtnemer', 'Opdrachtnemer', og ? 'opdrachtgever' : 'opdrachtnemer')}${optie('opdrachtgever', 'Opdrachtgever', og ? 'opdrachtgever' : 'opdrachtnemer')}</select></td>
+      ${Object.keys(RECHTEN).map((k) => (k === 'goedkeuren' && og
+    ? `<td><span class="toewijs-cel uit" title="Accepteren gebeurt door de opdrachtnemer">–</span></td>`
+    : `<td><label class="toewijs-cel"><input type="checkbox" data-recht="${k}" data-e="${esc(e)}" ${r[k] ? 'checked' : ''} aria-label="${esc(naamVan(e))}: ${esc(RECHTEN[k].label)}">${I.vink}</label></td>`)).join('')}</tr>`;
+  }).join('')}</tbody></table></div>
+      <p style="padding:0 1rem"><small>${I.slot} <strong>Opdrachtgever</strong>: ziet werkzaamheden en inspecties pas als iemand van de opdrachtnemer ze heeft <strong>goedgekeurd</strong> (geaccepteerd) – op het dashboard, in lijsten, op de kaarten, in de voortgang en in exports. Concepten, ingediende en afgekeurde registraties blijven onzichtbaar. Goedkeuren kan een opdrachtgever niet.</small></p></section>` : ''}
     <p><small>Beheerders zien altijd alles. De toegang per project wordt door de server afgedwongen; binnen een project regelt de app welke werkpakketten en knoppen iemand ziet.</small></p>`;
   if (!isMobiel()) app.insertAdjacentHTML('afterbegin', tabbalk('/toewijzen', 'werkpakketten'));
   window.scrollTo(0, scroll);
@@ -6882,6 +6915,17 @@ async function toewijzenPagina() {
     toewijzenPagina();
   });
   app.querySelector('.rechten-tabel')?.addEventListener('change', async (e) => {
+    const sel = e.target.closest('select[data-rol]');
+    if (sel) {
+      await bewaarProject((p) => {
+        const ledenInfo = { ...(p.ledenInfo ?? {}) };
+        ledenInfo[sel.dataset.rol] = { ...(ledenInfo[sel.dataset.rol] ?? {}), rol: sel.value };
+        return { ledenInfo };
+      });
+      melding(sel.value === 'opdrachtgever' ? 'Opdrachtgever: ziet alleen geaccepteerde registraties' : 'Opdrachtnemer');
+      toewijzenPagina();
+      return;
+    }
     const cb = e.target.closest('input[data-recht]');
     if (!cb) return;
     await bewaarProject((p) => {
@@ -6954,6 +6998,8 @@ function inspectieVergrendeld(i, mobiel) {
 
 function magGoedkeuren() {
   if (magBeheren()) return true;
+  // Accepteren gebeurt door de opdrachtnemer, nooit door de opdrachtgever.
+  if (isOpdrachtgever()) return false;
   return huidigProject?.ledenInfo?.[ikEmail()]?.rechten?.goedkeuren === true;
 }
 
@@ -7468,8 +7514,8 @@ async function projectenPagina() {
   for (const p of projecten) {
     tellingen.set(p.id, {
       objecten: objecten.filter((o) => o.projectId === p.id).length,
-      inspecties: inspecties.filter((i) => i.projectId === p.id).length,
-      werk: werk.filter((w) => w.projectId === p.id).length,
+      inspecties: inspecties.filter((i) => i.projectId === p.id && regZichtbaar('inspecties', i, p)).length,
+      werk: werk.filter((w) => w.projectId === p.id && regZichtbaar('werkzaamheden', w, p)).length,
     });
   }
   const beheer = magBeheren() && !isMobiel();

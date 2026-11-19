@@ -568,6 +568,22 @@ boomgebreken, waarnemingen); handig bij de resultaten van een schouwronde. Het b
 Kopieer de objectcodes uit Vervolgacties naar het blad Objecten van het werkpakket-sjabloon om er direct een nieuw werkpakket van te maken.
 Kosten- en urenkolommen vervallen als die in het project zijn uitgezet. Alleen afgeronde inspecties tellen mee (geen concepten).
 
+## Opdrachtgever ziet alleen geaccepteerde registraties
+
+Werkzaamheden en inspecties worden pas zichtbaar voor de **opdrachtgever** als iemand van de **opdrachtnemer** ze heeft
+**goedgekeurd** (geaccepteerd).
+
+- **Wie is opdrachtgever?** In **Werkpakketten → Toewijzen**, tabel *Wat mag iemand doen*, kies je per persoon bij **Organisatie**
+  *Opdrachtnemer* of *Opdrachtgever*. Beheerders gelden altijd als opdrachtnemer.
+- **Wat ziet een opdrachtgever?** Alleen goedgekeurde werkzaamheden en afgeronde, goedgekeurde inspecties – overal: dashboard,
+  lijsten, kaarten, logboek, voortgang en percentages, rapporten en exports. Concepten, ingediende en afgekeurde registraties blijven
+  onzichtbaar; een directe link toont "nog niet geaccepteerd door de opdrachtnemer". Registraties van vóór de goedkeuringsstap
+  gelden als goedgekeurd. Eigen registraties ziet iemand altijd.
+- **Accepteren** gebeurt door de opdrachtnemer: een opdrachtgever kan niet goedkeuren (het recht *Goedkeuren* staat voor hem uit
+  en de Inbox verschijnt niet).
+- **Server**: voer eenmalig `supabase/007_opdrachtgever.sql` uit (Supabase → SQL Editor → Run). Dan stuurt de server niet-geaccepteerde
+  werkzaamheden en inspecties niet eens naar het apparaat van een opdrachtgever. Zonder dit script regelt alleen de app het.
+
 ## Ingediende inspecties zijn alleen-lezen
 
 Een schouw of inspectie kan worden aangepast zolang het een **concept** is. Na **Afronden** is hij ingediend en voor **iedereen**
