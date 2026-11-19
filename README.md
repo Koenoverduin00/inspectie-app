@@ -653,6 +653,20 @@ zodat een formulier dat al open stond (bijv. op een ander apparaat) een ingedien
 een ingediende inspectie nog wel verwijderen en de opvolging van maatregelen (uitgevoerd/open) bijhouden. Dit geldt voor alle
 inspecties (NEN, eigen typen, schouw, boomveiligheid, waterkering). De regel wordt in de app gehandhaafd; de server controleert alleen projecttoegang.
 
+## Naam en organisatie: eenmalig bij de eerste inlog
+
+Wie voor het eerst inlogt, krijgt eerst het scherm **Welkom!**: voor- en achternaam en de **organisatie** waar hij werkt (met
+suggesties uit de projecten), plus een vinkje *Mijn naam en organisatie kloppen*. Pas daarna opent de app. De gegevens worden in het
+eigen account vastgelegd (Supabase-gebruikersgegevens) en **staan daarna vast**:
+
+- de **Ik-pagina** toont naam, organisatie en e-mail alleen-lezen ("Vastgelegd bij je eerste inlog"); er is geen naamveld meer;
+- de naam die in formulieren als uitvoerder/inspecteur wordt voorgesteld, is altijd de naam uit het account;
+- een **beheerder** ziet naam en organisatie in **Instellingen → Personen** (kolom Account) en kan ze met **Gegevens** corrigeren;
+  de medewerker ziet de correctie bij de volgende synchronisatie of inlog.
+
+Voer eenmalig `supabase/010_profiel.sql` uit, zodat beheerders de gegevens zien en kunnen corrigeren (vastleggen werkt ook zonder).
+Wie de app zonder inloggen gebruikt (alleen lokaal), houdt het naamveld op de Ik-pagina.
+
 ## Mijn geschiedenis (telefoon, Ik-pagina)
 
 Op de Ik-pagina staat **Mijn geschiedenis**: alles wat je in het actieve project hebt vastgelegd – werkzaamheden, inspecties, vrijgaven en

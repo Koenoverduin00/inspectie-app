@@ -121,7 +121,37 @@ function bewaarSessie(d) {
     access_token: d.access_token,
     refresh_token: d.refresh_token,
     verloopt: Date.now() + (Number(d.expires_in) || 3600) * 1000,
-    gebruiker: { id: d.user?.id, email: d.user?.email },
+    gebruiker: { id: d.user?.id, email: d.user?.email, profiel: profielUit(d.user) ?? sessie()?.gebruiker?.profiel ?? null },
+  });
+}
+
+/** Naam en organisatie uit het account (vastgelegd bij de eerste keer inloggen). */
+function profielUit(user) {
+  const m = user?.user_metadata;
+  if (!m || (!m.naam && !m.organisatie)) return null;
+  return { naam: String(m.naam ?? ''), organisatie: String(m.organisatie ?? ''), vastOp: m.profielVastOp ?? '' };
+}
+export const profiel = () => sessie()?.gebruiker?.profiel ?? null;
+
+/** Legt naam en organisatie eenmalig vast in het eigen account. */
+export async function zetProfiel({ naam, organisatie }) {
+  const s = sessie();
+  if (!s) throw new Error('Log eerst in.');
+  const { url, key } = configuratie();
+  const res = await fetch(`${url}/auth/v1/user`, {
+    method: 'PUT', headers: { apikey: key, Authorization: `Bearer ${await toegangstoken()}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ data: { naam, organisatie, profielVastOp: new Date().toISOString() } }),
+  });
+  if (!res.ok) throw await foutUit(res);
+  const user = await res.json();
+  schrijf('sessie', { ...sessie(), gebruiker: { ...sessie().gebruiker, profiel: profielUit(user) ?? { naam, organisatie, vastOp: new Date().toISOString() } } });
+}
+
+/** Beheerder: naam en organisatie van een ander account corrigeren (script 010). */
+export async function zetProfielVan(email, { naam, organisatie }) {
+  await api('/rest/v1/rpc/zet_profiel', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_email: email, p_naam: naam, p_organisatie: organisatie }),
   });
 }
 

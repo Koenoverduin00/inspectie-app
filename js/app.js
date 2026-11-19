@@ -210,6 +210,11 @@ async function toonRoute() {
   const id = pad.match(re)[1] ? decodeURIComponent(pad.match(re)[1]) : undefined;
   try {
     await werkProjectkopBij();
+    // Eerste keer ingelogd: eerst naam en organisatie vastleggen (daarna staan ze vast).
+    if (sync.sessie() && !(sync.profiel()?.naam && sync.profiel()?.organisatie)) {
+      await profielScherm();
+      return;
+    }
     // Eerst een project kiezen; alleen projecten, instellingen en account werken zonder project.
     if (!/^\/(projecten|instellingen|m\/account)(\/|$)/.test(pad) && !(await actiefProject())) {
       await projectenPagina();
@@ -6127,11 +6132,14 @@ async function mobielAccount() {
   app.innerHTML = `
     <div class="mkop"><a href="#/" class="mterug" aria-label="Terug">←</a><div><small>Instellingen</small><h1>Account</h1></div></div>
     <section class="kaart" id="account"></section>
-    <form class="kaart" id="naam">
+    ${sync.sessie() && sync.profiel()?.naam ? `<section class="kaart" id="naam">
+      <h2 style="margin-top:0">${I.gebruiker} Je gegevens</h2>
+      <dl class="gegevens"><dt>Naam</dt><dd>${esc(sync.profiel().naam)}</dd><dt>Organisatie</dt><dd>${esc(sync.profiel().organisatie || '–')}</dd><dt>E-mail</dt><dd>${esc(ikEmail())}</dd></dl>
+      <p><small class="zacht">${I.slot} Vastgelegd bij je eerste inlog${sync.profiel().vastOp ? ` (${datumNL(sync.profiel().vastOp.slice(0, 10))})` : ''}. Klopt er iets niet? Vraag de beheerder het aan te passen.</small></p></section>` : `<form class="kaart" id="naam">
       <div class="veld"><label for="f-naam">Je naam (inspecteur / uitvoerder)</label>
         <input id="f-naam" name="naam" value="${esc(instelling.lees('inspecteur'))}" autocomplete="name"></div>
       <div class="formvoet"><button class="knop primair" type="submit">Opslaan</button></div>
-    </form>
+    </form>`}
     <section class="kaart" id="geschiedenis"><p class="leeg">Laden…</p></section>
     <section class="kaart" id="fotoopslag"><p class="leeg">Laden…</p></section>
     <section class="kaart">
@@ -6142,7 +6150,7 @@ async function mobielAccount() {
   toonAccount(app.querySelector('#account'));
   toonGeschiedenis(app.querySelector('#geschiedenis'));
   fotoOpslagBlok(app.querySelector('#fotoopslag'));
-  app.querySelector('#naam').onsubmit = (e) => {
+  if (app.querySelector('form#naam')) app.querySelector('form#naam').onsubmit = (e) => {
     e.preventDefault();
     instelling.schrijf('inspecteur', formulierData(e.target).naam);
     melding('Naam opgeslagen');
@@ -7580,6 +7588,7 @@ async function personenPagina() {
           <td class="acties"><button class="knop klein" type="button" data-opnieuw ${kanMailen ? '' : 'disabled'}>${I.mail} ${x.uitgenodigdOp ? 'Opnieuw' : 'Versturen'}</button>
             <button class="knop klein" type="button" data-herstel ${kanMailen ? '' : 'disabled'} title="Stuur een mail met een link om een nieuw wachtwoord in te stellen">${I.slot ?? ''} Wachtwoord resetten</button>
             <button class="knop klein" type="button" data-wijzig>Projecten</button>
+            <button class="knop klein" type="button" data-profiel ${kanMailen ? '' : 'disabled'} title="Naam en organisatie corrigeren">Gegevens</button>
             <button class="knop klein gevaar" type="button" data-weg aria-label="${esc(x.email)} verwijderen">${I.verwijder}</button></td>
         </tr>`).join('') : '<tr><td colspan="7" class="leeg">Nog geen personen toegevoegd.</td></tr>'}</tbody>
       </table></div>
@@ -7646,8 +7655,10 @@ async function personenPagina() {
   };
 
   // Accountstatus: heeft de persoon al een account, en wanneer voor het laatst ingelogd (zonder wachtwoorden).
+  let profielen = new Map();
   if (kanMailen && personen.length) {
     sync.accountStatus(personen.map((x) => x.email)).then((st) => {
+      if (st) profielen = st;
       if (st === null) {
         app.querySelectorAll('[data-account]').forEach((el) => { el.innerHTML = '<span class="zacht">Onbekend</span>'; });
         app.querySelector('#accountuitleg')?.insertAdjacentHTML('beforebegin', `<div class="kaart waarschuwingskaart">${I.let} De accountstatus kan nog niet worden opgehaald.
@@ -7657,9 +7668,10 @@ async function personenPagina() {
       app.querySelectorAll('[data-account]').forEach((el) => {
         const a = st.get(el.dataset.account);
         const tijd = (iso) => `${datumNL(iso.slice(0, 10))} ${new Date(iso).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}`;
-        el.innerHTML = !a ? '<span class="label-status">Geen account</span><br><small>Nog niet aangemeld</small>'
+        const pf = a?.naam || a?.organisatie ? `<br><small class="profielregel">${I.gebruiker} ${esc(a.naam || '–')}${a.organisatie ? ` · ${esc(a.organisatie)}` : ''}</small>` : '';
+        el.innerHTML = (!a ? '<span class="label-status">Geen account</span><br><small>Nog niet aangemeld</small>'
           : a.laatst_ingelogd ? `<span class="label-status afgerond">${I.vink} Actief</span><br><small>Laatst ingelogd ${tijd(a.laatst_ingelogd)}</small>`
-            : `<span class="label-status binnenkort">Nog nooit ingelogd</span><br><small>${a.uitgenodigd ? `Uitgenodigd ${datumNL(a.uitgenodigd.slice(0, 10))}` : `Account sinds ${datumNL(a.aangemaakt.slice(0, 10))}`}</small>`;
+            : `<span class="label-status binnenkort">Nog nooit ingelogd</span><br><small>${a.uitgenodigd ? `Uitgenodigd ${datumNL(a.uitgenodigd.slice(0, 10))}` : `Account sinds ${datumNL(a.aangemaakt.slice(0, 10))}`}</small>`) + pf;
       });
     }).catch(() => app.querySelectorAll('[data-account]').forEach((el) => { el.innerHTML = '<span class="zacht">Niet op te halen</span>'; }));
   }
@@ -7677,6 +7689,32 @@ async function personenPagina() {
     const tr = e.target.closest('tr[data-email]');
     if (!tr) return;
     const x = personen.find((p) => p.email === tr.dataset.email);
+    if (e.target.closest('[data-profiel]')) {
+      const huidig = profielen.get(x.email) ?? {};
+      const d = document.createElement('dialog');
+      d.className = 'dialoog';
+      d.innerHTML = `<form method="dialog" novalidate><h2>Gegevens van ${esc(x.email)}</h2>
+        <p><small>Iemand legt zijn naam en organisatie zelf vast bij de eerste inlog en kan ze daarna niet meer wijzigen. Hier corrigeer je ze.</small></p>
+        <div class="veld"><label for="pg-naam">Naam</label><input id="pg-naam" maxlength="80" value="${esc(huidig.naam || x.naam || '')}"></div>
+        <div class="veld"><label for="pg-org">Organisatie</label><input id="pg-org" maxlength="80" value="${esc(huidig.organisatie || '')}"></div>
+        <div class="formvoet"><button class="knop" value="nee">Annuleren</button><button class="knop primair" value="ja">Opslaan</button></div></form>`;
+      document.body.append(d);
+      d.showModal();
+      const ok = await new Promise((r) => d.addEventListener('close', () => r(d.returnValue === 'ja'), { once: true }));
+      const naamN = d.querySelector('#pg-naam').value.trim();
+      const orgN = d.querySelector('#pg-org').value.trim();
+      d.remove();
+      if (!ok) return;
+      try {
+        await sync.zetProfielVan(x.email, { naam: naamN, organisatie: orgN });
+        if (naamN) await zetPersoonInProjecten(x.email, new Set(x.projecten.map((p) => p.id)), { naam: naamN });
+        gedaan('Gegevens aangepast', { extra: 'De persoon ziet de nieuwe gegevens bij de volgende keer inloggen of synchroniseren.' });
+        personenPagina();
+      } catch (fout) {
+        melding(/zet_profiel|404|PGRST202|Could not find/i.test(String(fout?.message)) ? 'Voer eerst in Supabase het script supabase/010_profiel.sql uit.' : fout.message, 'fout');
+      }
+      return;
+    }
     if (e.target.closest('[data-verleng]')) {
       const basis = x.demoTot && x.demoTot > vandaag() ? x.demoTot : vandaag();
       const tot = PL.isoVan(PL.dagNr(basis) + DEMO_DAGEN);
@@ -7761,7 +7799,49 @@ async function migreerZonderProject() {
   if (!projectId()) kiesProject(STANDAARD_PROJECT);
 }
 
+/** Eenmalig bij de eerste inlog: naam en organisatie. Daarna vast; alleen een beheerder kan ze nog corrigeren. */
+async function profielScherm() {
+  const project = await actiefProject();
+  const voorstelNaam = sync.profiel()?.naam || project?.ledenInfo?.[ikEmail()]?.naam || '';
+  const organisaties = [...new Set((await zichtbareProjecten()).map((p) => p.opdrachtgever).filter(Boolean))];
+  app.innerHTML = `<section class="kaart profielkaart">
+    <h1>${I.gebruiker} Welkom!</h1>
+    <p>Vul eenmalig je naam en de organisatie waar je werkt in. Ze komen bij al je registraties te staan en <strong>staan daarna vast</strong>; klopt er later iets niet, dan past de beheerder het aan.</p>
+    <form id="profiel" novalidate><div class="velden">
+      <div class="veld breed"><label for="pf-naam" class="vereist">Voor- en achternaam</label><input id="pf-naam" name="naam" autocomplete="name" maxlength="80" value="${esc(voorstelNaam)}" required></div>
+      <div class="veld breed"><label for="pf-org" class="vereist">Organisatie</label><input id="pf-org" name="organisatie" autocomplete="organization" maxlength="80" list="pf-orgs" placeholder="bijv. de naam van je bedrijf of gemeente" required>
+        <datalist id="pf-orgs">${organisaties.map((o) => `<option value="${esc(o)}">`).join('')}</datalist></div>
+      <div class="veld breed"><label class="vink"><input type="checkbox" name="klopt" required><span>Mijn naam en organisatie kloppen</span></label></div>
+    </div>
+    <div class="formvoet"><a class="knop" href="#/m/account" id="pf-uit">Uitloggen</a><button class="knop primair" type="submit">${I.vink} Vastleggen</button></div></form>
+    <p><small class="zacht">Ingelogd als ${esc(ikEmail())}</small></p></section>`;
+  const form = app.querySelector('#profiel');
+  app.querySelector('#pf-uit').onclick = async (e) => { e.preventDefault(); await sync.uitloggen(); location.hash = '#/'; location.reload(); };
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const d = formulierData(form);
+    const naam = String(d.naam ?? '').trim().replace(/\s+/g, ' ');
+    const organisatie = String(d.organisatie ?? '').trim().replace(/\s+/g, ' ');
+    if (naam.length < 2) return melding('Vul je naam in.', 'fout');
+    if (organisatie.length < 2) return melding('Vul de organisatie in waar je werkt.', 'fout');
+    if (!form.elements.klopt.checked) return melding('Vink aan dat je naam en organisatie kloppen.', 'fout');
+    const knop = form.querySelector('button[type=submit]');
+    knop.disabled = true;
+    try {
+      await sync.zetProfiel({ naam, organisatie });
+      instelling.schrijf('inspecteur', naam);
+      gedaan('Gegevens vastgelegd', { extra: `${naam} · ${organisatie}` });
+      router();
+    } catch (fout) {
+      knop.disabled = false;
+      melding(fout instanceof TypeError || !navigator.onLine ? 'Je bent offline. Probeer het opnieuw zodra je verbinding hebt.' : fout.message, 'fout');
+    }
+  };
+}
+
 async function werkProjectkopBij() {
+  // Ingelogd met vastgelegd profiel: je naam in formulieren is altijd die uit je account.
+  if (sync.profiel()?.naam && instelling.lees('inspecteur') !== sync.profiel().naam) instelling.schrijf('inspecteur', sync.profiel().naam);
   const chip = document.getElementById('projectchip');
   if (!chip) return;
   const p = await actiefProject();

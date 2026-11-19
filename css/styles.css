@@ -1899,3 +1899,6 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
 .demowelkom-lijst a:hover { border-color: var(--primair); }
 .demowelkom-lijst span:last-child { display: grid; gap: .1rem; }
 .demowelkom-lijst small { color: var(--tekst-zacht); }
+.profielkaart { max-width: 560px; margin: 1.5rem auto; }
+.profielkaart h1 { display: flex; align-items: center; gap: .5rem; }
+.profielregel { color: var(--tekst-zacht); }
