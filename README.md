@@ -500,6 +500,12 @@ Het register (**Werkpakketten → Storingen en gebreken**, of `#/storingen`) wer
   registraties van een zaak staan eronder, met datum, uitvoerder, resultaat, beoordeling en de opgetelde bestede uren.
 - **Filters**: standaard *open en in behandeling*; verder op status, soort, herkomst (kantoor of buiten) en zoeken op object,
   referentie, object, melding of persoon. De **referentie** staat vooraan, als eerste kolom (op de telefoon vooraan in de regel). **Referentie vergeten?** Klik in het register op *＋ Koppelen* (of op het potloodje achter een bestaande referentie) om hem achteraf te koppelen, te wijzigen of te verwijderen. Hij geldt voor de hele zaak; wie en wanneer wordt vastgelegd.
+- **Exporteren** (knop in het register): kies *wat nu in de lijst staat* (met de filters) of *alles*, en eventueel een periode
+  (dit jaar, vorig jaar, deze maand of een eigen periode, op de meldingsdatum). Je krijgt een Excel met de bladen **Overzicht**
+  (aantallen per status, manuren en materieeluren), **Register** (één regel per storing: referentie, status, urgentie, object,
+  melding, gemeld om/door, toegewezen aan, laatste resultaat, vervolg, opgelost om, **doorlooptijd in uren**, manuren, materieeluren),
+  **Registraties** (elke registratie, ook tijdelijk opgelost en vervolg, met beoordeling) en **Bestede uren** (elke regel uit de
+  urentabel: werknemer, auto, boot, … met aantal en uren). Datums zijn echte Excel-datums, uren echte getallen.
 - **Server**: voer eenmalig `supabase/008_meldingen.sql` uit (alleen een nieuwe tabel; er wordt niets gewijzigd of verwijderd).
   Zolang dat niet is gebeurd, werkt alles lokaal en toont het register een melding; de rest van de synchronisatie gaat gewoon door.
 
@@ -1011,6 +1017,7 @@ js/taken.js           taken samenstellen en sorteren op urgentie en locatie
 js/velden.js          eigen formuliervelden: zichtbaarheid, controle en weergave
 js/eisen.js           eisbibliotheek: inlezen, vergelijken, eisvragen en verificatie per eis (ook per periode)
 js/eisdossier.js      verificatiedossier als Excel (samenvatting, eisen, bewijs, afwijkingen)
+js/storingenexcel.js  export van het storingenregister naar Excel
 js/storingen.js       storingenregister: meldingen + registraties → zaken met status
 js/inzet.js           bestede uren bij storingen (regels, totalen, controle)
 js/kaartopmaak.js     opmaak van te doen / gedaan / overgeslagen op de kaarten (standaard ← project ← apparaat)

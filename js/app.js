@@ -28,6 +28,7 @@ import * as ED from './eisdossier.js';
 import * as KO from './kaartopmaak.js';
 import * as IZ from './inzet.js';
 import * as SR from './storingen.js';
+import * as SX from './storingenexcel.js';
 import * as IMP from './gisimport.js';
 import * as ST from './stowa.js';
 import * as DG from './digigids.js';
@@ -10295,7 +10296,8 @@ async function storingenPagina(_, __, { mobiel = false } = {}) {
     <div class="paginakop"><div><p><a href="#/werkpakketten">← Werkpakketten</a></p><h1>${I.let} Storingen- en gebrekenregister</h1>
       <p>Alle storingen en gebreken op één plek: <strong>klaargezet</strong> door kantoor en <strong>buiten gemeld of opgelost</strong>. Een melding blijft open tot een registratie hem oplost.</p></div>
       <div class="knoppen"><a class="knop primair" href="#/storingen/nieuw">${I.lijst} ＋ Storing of gebrek klaarzetten</a>
-        ${mag('storing') ? `<a class="knop" href="#/storing">${I.let} Zelf oplossen</a>` : ''}</div></div>
+        ${mag('storing') ? `<a class="knop" href="#/storing">${I.let} Zelf oplossen</a>` : ''}
+        <button type="button" class="knop" id="s-export">${I.excel} Exporteren</button></div></div>
     ${ontbreekt ? `<div class="kaart waarschuwingskaart">${I.let} <strong>Klaargezette meldingen worden nog niet gedeeld.</strong> Voer in Supabase (SQL Editor) eenmalig het script <code>supabase/008_meldingen.sql</code> uit; tot die tijd staan ze alleen op deze computer.</div>` : ''}
     <div class="tegels klein">
       <span class="tegel let"><strong>${tel.open}</strong><span>open</span></span>
@@ -10311,12 +10313,15 @@ async function storingenPagina(_, __, { mobiel = false } = {}) {
       <thead><tr><th>Referentie</th><th>Status</th><th>Object</th><th>Melding</th><th class="verberg-mobiel">Gemeld</th><th>Acties</th><th class="verberg-mobiel">Uren</th><th></th></tr></thead>
       <tbody id="s-rijen"></tbody></table></div></div>`;
   const f = ['s-zoek', 's-status', 's-type', 's-bron'].map((x) => app.querySelector(`#${x}`));
-  const toon = () => {
+  const pastFilter = (z) => {
     const [zoek, status, type, bron] = f.map((x) => x.value);
     const termen = zoekTermen(zoek);
-    const rijen = alle.filter((z) => (status === 'actief' ? (z.status === 'open' || z.status === 'bezig') : !status || z.status === status)
+    return (status === 'actief' ? (z.status === 'open' || z.status === 'bezig') : !status || z.status === status)
       && (!type || z.type === type) && (!bron || z.bron === bron)
-      && termen.every((t) => `${objectMap.get(z.objectId)?.code} ${objectMap.get(z.objectId)?.naam} ${z.omschrijving} ${z.referentie} ${naamVan(z.toegewezenAan)} ${z.door} ${z.acties.map((a) => `${a.uitvoerder} ${a.omschrijving}`).join(' ')}`.toLowerCase().includes(t)));
+      && termen.every((t) => `${objectMap.get(z.objectId)?.code} ${objectMap.get(z.objectId)?.naam} ${z.omschrijving} ${z.referentie} ${naamVan(z.toegewezenAan)} ${z.door} ${z.acties.map((a) => `${a.uitvoerder} ${a.omschrijving}`).join(' ')}`.toLowerCase().includes(t));
+  };
+  const toon = () => {
+    const rijen = alle.filter(pastFilter);
     app.querySelector('#s-rijen').innerHTML = rijen.length ? rijen.map((z) => {
       const o = objectMap.get(z.objectId);
       const actief = z.status === 'open' || z.status === 'bezig';
@@ -10338,6 +10343,46 @@ async function storingenPagina(_, __, { mobiel = false } = {}) {
       : `<tr><td colspan="8" class="leeg">${alle.length ? 'Niets gevonden met deze filters.' : 'Nog geen storingen of gebreken. Zet er een klaar of los er buiten een op.'}</td></tr>`;
   };
   f.forEach((x) => x.addEventListener('input', () => { instelling.schrijf('regStatus', f[1].value); toon(); }));
+  app.querySelector('#s-export').addEventListener('click', async () => {
+    const jaar = vandaag().slice(0, 4);
+    const d = document.createElement('dialog');
+    d.className = 'dialoog';
+    d.innerHTML = `<form method="dialog" novalidate>
+      <h2>${I.excel} Storingen en gebreken exporteren</h2>
+      <div class="veld"><label>Welke storingen en gebreken?</label>
+        ${segment('sx-wat', 'filter', [['filter', `Wat nu in de lijst staat (${alle.filter(pastFilter).length})`], ['alles', `Alles (${alle.length})`]])}</div>
+      <div class="veld"><label>Periode (gemeld)</label>
+        <div class="knoppen" style="flex-wrap:wrap;gap:.4rem">
+          <select id="sx-periode">${optie('', 'Alle perioden')}${optie('jaar', `Dit jaar (${jaar})`)}${optie('vorigjaar', `Vorig jaar (${Number(jaar) - 1})`)}${optie('maand', 'Deze maand')}${optie('eigen', 'Eigen periode…')}</select>
+          <span id="sx-eigen" hidden><input type="date" id="sx-van" aria-label="Van"> t/m <input type="date" id="sx-tot" aria-label="Tot en met"></span></div></div>
+      <p><small>Excel met de bladen <strong>Register</strong> (per storing: status, doorlooptijd, uren), <strong>Registraties</strong> (alle registraties, ook tijdelijk opgelost en vervolg) en <strong>Bestede uren</strong> (werknemer, auto, boot, …).</small></p>
+      <div class="formvoet"><button class="knop" value="nee">Annuleren</button><button class="knop primair" value="ja">${I.excel} Exporteren</button></div></form>`;
+    document.body.append(d);
+    d.querySelector('#sx-periode').addEventListener('change', (e) => { d.querySelector('#sx-eigen').hidden = e.target.value !== 'eigen'; });
+    d.showModal();
+    const keuze = await new Promise((ok) => d.addEventListener('close', () => ok(d.returnValue), { once: true }));
+    const wat = d.querySelector('input[name=sx-wat]:checked')?.value ?? 'filter';
+    const per = d.querySelector('#sx-periode').value;
+    let van = ''; let tot = '';
+    if (per === 'jaar') { van = `${jaar}-01-01`; tot = `${jaar}-12-31`; }
+    if (per === 'vorigjaar') { van = `${Number(jaar) - 1}-01-01`; tot = `${Number(jaar) - 1}-12-31`; }
+    if (per === 'maand') { van = `${vandaag().slice(0, 7)}-01`; tot = `${vandaag().slice(0, 7)}-31`; }
+    if (per === 'eigen') { van = d.querySelector('#sx-van').value; tot = d.querySelector('#sx-tot').value; }
+    d.remove();
+    if (keuze !== 'ja') return;
+    const datumVan = (z) => String(z.gemeldOp || z.acties[0]?.storing?.opgelostOp || z.acties[0]?.datum || '').slice(0, 10);
+    const selectie = alle.filter((z) => (wat === 'alles' || pastFilter(z)) && (!van || datumVan(z) >= van) && (!tot || datumVan(z) <= tot));
+    if (!selectie.length) return melding('Er zijn geen storingen of gebreken in deze selectie.', 'fout');
+    const ExcelJS = await PX.laadExcelJS();
+    const tekstSelectie = [wat === 'alles' ? 'alle storingen en gebreken' : 'zoals gefilterd in het register', van || tot ? `gemeld ${van ? datumNL(van) : '…'} t/m ${tot ? datumNL(tot) : '…'}` : ''].filter(Boolean).join(', ');
+    const wb = SX.maakWerkboek(ExcelJS, selectie, { project: project?.naam ?? '', selectie: `${tekstSelectie} – ${selectie.length} stuks` }, {
+      object: (id) => objectMap.get(id), naam: (e) => (e ? naamVan(e) : ''), resultaat: (k) => STORING_RESULTAAT[k]?.label ?? '',
+      beoordeling: (r) => BEOORDELING[beoordelingVan(r)]?.label ?? '',
+    });
+    const buf = await wb.xlsx.writeBuffer();
+    download(`storingen-en-gebreken-${String(project?.naam ?? 'project').replace(/[^\w-]+/g, '_')}-${vandaag()}.xlsx`, buf, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    melding(`${selectie.length} storingen en gebreken geëxporteerd`);
+  });
   app.querySelector('#s-rijen').addEventListener('click', async (e) => {
     const r = e.target.closest('[data-ref]');
     if (r) {

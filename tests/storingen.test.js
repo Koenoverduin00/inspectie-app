@@ -40,3 +40,27 @@ test('storingenregister: twee registraties in dezelfde minuut – volgorde op va
   assert.deepEqual(z.acties.map((x) => x.id), ['a', 'b']);
   assert.equal(z.status, 'opgelost');
 });
+
+test('storingen-export: rijen per zaak, registratie en bestede uren', async () => {
+  const SX = await import('../js/storingenexcel.js');
+  const z = S.zaken({
+    meldingen: [{ id: 'm1', objectId: 'o1', type: 'Storing', melding: 'Slagboom', referentie: 'MLD-1', urgentie: 'direct', gemeldOp: '2026-11-18T08:00', opmerking: 'Sleutel' }],
+    werk: [
+      { id: 'w1', objectId: 'o1', datum: '2026-11-18', uitvoerder: 'Jan', omschrijving: 'Gereset', vervolg: 'Motor', storing: { meldingId: 'm1', resultaat: 'tijdelijk', opgelostOp: '2026-11-18T09:30', inzet: [{ middel: 'Werknemer', omschrijving: 'Jan', aantal: 2, uren: 1 }] } },
+      { id: 'w2', objectId: 'o1', datum: '2026-11-18', uitvoerder: 'Piet', omschrijving: 'Motor vervangen', storing: { meldingId: 'm1', resultaat: 'opgelost', opgelostOp: '2026-11-18T14:00', inzet: [{ middel: 'Boot', aantal: 1, uren: 1.5 }] } },
+    ],
+  });
+  const fmt = { object: () => ({ code: 'KW-1', naam: 'Brug' }), naam: (e) => e ?? '', resultaat: (k) => k, beoordeling: () => 'Ingediend' };
+  const r = SX.rijen(z, fmt);
+  assert.equal(r.zaakRijen.length, 1);
+  const zr = r.zaakRijen[0].waarden;
+  assert.equal(zr[0], 'MLD-1');
+  assert.equal(zr[1], 'Opgelost');
+  assert.equal(zr[17], 6); // 08:00 → 14:00
+  assert.deepEqual([zr[18], zr[19], zr[20]], [2, 1.5, 3.5]);
+  assert.equal(r.regRijen.length, 2);
+  assert.equal(r.inzetRijen.length, 2);
+  assert.equal(r.inzetRijen[0][8] ?? r.inzetRijen[0].waarden[8], 2);
+  assert.equal(SX.doorlooptijdUren('2026-11-18T08:00', '2026-11-18T07:00'), '');
+  assert.equal(zr.length, SX.ZAAK_KOLOMMEN.length);
+});
