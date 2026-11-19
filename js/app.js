@@ -26,6 +26,7 @@ import * as RX from './resultatenexcel.js';
 import * as UX from './uitkomstenexcel.js';
 import * as ED from './eisdossier.js';
 import * as KO from './kaartopmaak.js';
+import * as IZ from './inzet.js';
 import * as IMP from './gisimport.js';
 import * as ST from './stowa.js';
 import * as DG from './digigids.js';
@@ -6212,7 +6213,11 @@ async function werkDetail(id) {
     ${w.storing ? `<section class="kaart storingbanner"><h2 style="margin-top:0">${I.let} ${esc(w.storing.type || 'Storing')} – ${esc(STORING_RESULTAAT[w.storing.resultaat]?.label ?? '')}</h2>
       <p style="white-space:pre-wrap;margin:.25rem 0">${esc(w.storing.melding || '–')}</p>
       <small>${w.storing.gemeldOp ? `Gemeld ${datumTijdNL(w.storing.gemeldOp)}` : ''}${w.storing.opgelostOp ? ` · opgelost ${datumTijdNL(w.storing.opgelostOp)}` : ''}${w.storing.gemeldOp && w.storing.opgelostOp && duurTekst(w.storing.gemeldOp, w.storing.opgelostOp) ? ` · doorlooptijd ${duurTekst(w.storing.gemeldOp, w.storing.opgelostOp)}` : ''}
-        · zonder werkpakket (storingen en gebreken)</small></section>` : ''}
+        · zonder werkpakket (storingen en gebreken)</small>
+      ${w.storing.inzet?.length ? `<h3 style="margin:.75rem 0 .25rem">Bestede uren</h3><div class="tabelhouder"><table class="inzettabel">
+        <thead><tr><th>Wat</th><th>Wie / welke</th><th>Aantal</th><th>Uren</th><th>Totaal</th></tr></thead>
+        <tbody>${w.storing.inzet.map((r) => `<tr><td>${esc(r.middel)}</td><td>${esc(r.omschrijving || '–')}</td><td>${r.aantal}</td><td>${String(r.uren).replace('.', ',')}</td><td>${String(Math.round(r.aantal * r.uren * 100) / 100).replace('.', ',')} u</td></tr>`).join('')}</tbody>
+        <tfoot><tr><td colspan="4"><strong>Totaal</strong>${(() => { const t = IZ.totalen(w.storing.inzet); return t.manuren && t.materieeluren ? ` <small>(${String(t.manuren).replace('.', ',')} manuren · ${String(t.materieeluren).replace('.', ',')} materieel)</small>` : ''; })()}</td><td><strong>${String(IZ.totalen(w.storing.inzet).totaal).replace('.', ',')} u</strong></td></tr></tfoot></table></div>` : ''}</section>` : ''}
     <div class="raster-2">
       <section class="kaart">
         <h2>Gegevens</h2>
@@ -6429,6 +6434,8 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
   const storingBanner = `<div class="kaart storingbanner">${I.let} <strong>Storing of gebrek – altijd open</strong>
     <br><small>Hiervoor is geen werkpakket nodig, ook niet ’s nachts. Vink hieronder eventueel de openstaande maatregel aan die je hiermee oplost.</small></div>`;
   const st = w.storing ?? {};
+  // Bestede uren (tabel): bestaande regels, of één regel voor de uitvoerder.
+  let inzet = (st.inzet?.length ? st.inzet : [{ middel: IZ.MENS, omschrijving: w.uitvoerder || '', aantal: 1, uren: '' }]).map((r) => ({ ...r }));
   const storingVelden = isStoring ? `
     <div class="veld${mobiel ? ' breed' : ''}"><label for="f-stype" class="vereist">Wat is het?</label>
       <select id="f-stype" name="stype">${STORING_TYPEN.map((x) => optie(x, x, st.type)).join('')}</select></div>
@@ -6441,13 +6448,18 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     <div class="veld breed"><label for="f-soort" class="vereist">Soort werkzaamheid</label>
       <select id="f-soort" name="soort" required><option value="">– kies –</option>${[...new Set([...(isStoring ? [STORING_SOORT] : []), ...WERKSOORTEN, ...(w.soort ? [w.soort] : [])])].map((s) => optie(s, s, w.soort)).join('')}</select></div>
     <div class="veld"><label for="f-datum" class="vereist">Datum</label><input id="f-datum" name="datum" type="date" required value="${esc(w.datum)}"></div>
-    ${toonUren() ? `<div class="veld"><label for="f-uren">Uren</label><input id="f-uren" name="uren" type="number" min="0" max="1000" step="0.25" inputmode="decimal" value="${esc(w.uren)}"></div>` : ''}
+    ${toonUren() && !isStoring ? `<div class="veld"><label for="f-uren">Uren</label><input id="f-uren" name="uren" type="number" min="0" max="1000" step="0.25" inputmode="decimal" value="${esc(w.uren)}"></div>` : ''}
     <div class="veld breed"><label for="f-omschrijving" ${isStoring ? 'class="vereist"' : ''}>${isStoring ? 'Wat heb je gedaan om het op te lossen?' : 'Wat is er gedaan?'}</label>
       <textarea id="f-omschrijving" name="omschrijving" maxlength="4000" placeholder="${isStoring ? 'bijv. zekering vervangen, tak verwijderd en weg vrijgemaakt' : 'Korte omschrijving van het uitgevoerde werk'}">${esc(w.omschrijving)}</textarea></div>
     <div class="veld breed"><label>Foto's (voor / na)</label><div id="fotos"></div></div>
     <div class="veld"><label for="f-uitvoerder">Uitvoerder</label><input id="f-uitvoerder" name="uitvoerder" maxlength="100" value="${esc(w.uitvoerder)}"></div>
     ${isStoring ? `<div class="veld${mobiel ? ' breed' : ''}"><label for="f-opgelost">Opgelost / gestopt om</label><input id="f-opgelost" name="opgelostOp" type="datetime-local" value="${esc(st.opgelostOp ?? '')}"></div>
-    <div class="veld breed"><label class="vereist">Resultaat</label>${segment('resultaat', st.resultaat ?? 'opgelost', Object.entries(STORING_RESULTAAT).map(([k, x]) => [k, x.label]))}</div>`
+    <div class="veld breed"><label class="vereist">Resultaat</label>${segment('resultaat', st.resultaat ?? 'opgelost', Object.entries(STORING_RESULTAAT).map(([k, x]) => [k, x.label]))}</div>
+    <div class="veld breed inzetveld"><label class="vereist">Bestede uren</label>
+      <small class="zacht">Per regel wat er is ingezet: werknemers, auto, boot, enz. Aantal × uren telt op.</small>
+      <div class="tabelhouder"><table class="inzettabel"><thead><tr><th>Wat</th><th>Wie / welke</th><th>Aantal</th><th>Uren</th><th></th></tr></thead>
+        <tbody id="inzet-rijen"></tbody></table></div>
+      <div class="inzetvoet"><button type="button" class="knop klein" id="inzet-erbij">＋ Regel toevoegen</button><span id="inzet-totaal"></span></div></div>`
     : `<div class="veld" id="status-veld" ${metDelen && volledigStart === 'nee' ? 'hidden' : ''}><label for="f-status">Status</label>
       <select id="f-status" name="status">${Object.entries(WERKSTATUS).map(([k, v]) => optie(k, v, w.status)).join('')}</select></div>`}
     ${metDelen ? `<div class="veld breed volledigveld"><label class="vereist">Is het vak volledig klaar?</label>
@@ -6565,6 +6577,48 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     toonFotos();
   });
 
+  // Bestede uren bij storingen: tabel met regels.
+  const tekenInzet = () => {
+    const tb = form.querySelector('#inzet-rijen');
+    if (!tb) return;
+    tb.innerHTML = inzet.map((r, n) => `<tr data-n="${n}">
+      <td><select data-iz="middel" aria-label="Wat">${[...new Set([...IZ.MIDDELEN, r.middel].filter(Boolean))].map((m) => optie(m, m, r.middel)).join('')}</select></td>
+      <td><input data-iz="omschrijving" value="${esc(r.omschrijving ?? '')}" maxlength="120" placeholder="${r.middel === IZ.MENS ? 'naam' : 'bijv. kenteken of nummer'}" aria-label="Wie of welke"></td>
+      <td><input data-iz="aantal" type="number" min="1" step="1" inputmode="numeric" value="${esc(r.aantal ?? 1)}" aria-label="Aantal"></td>
+      <td><input data-iz="uren" type="number" min="0" step="0.25" inputmode="decimal" value="${esc(r.uren ?? '')}" placeholder="0" aria-label="Uren"></td>
+      <td><button type="button" class="knop klein" data-iz-weg="${n}" aria-label="Regel verwijderen" ${inzet.length === 1 ? 'disabled' : ''}>${I.kruis}</button></td></tr>`).join('');
+    toonInzetTotaal();
+  };
+  const toonInzetTotaal = () => {
+    const el = form.querySelector('#inzet-totaal');
+    if (!el) return;
+    const t = IZ.totalen(inzet);
+    el.innerHTML = t.totaal ? `Totaal <strong>${String(t.totaal).replace('.', ',')} u</strong>${t.manuren && t.materieeluren ? ` <small>(${String(t.manuren).replace('.', ',')} manuren · ${String(t.materieeluren).replace('.', ',')} materieel)</small>` : ''}` : '<small class="zacht">nog geen uren</small>';
+  };
+  if (isStoring) {
+    tekenInzet();
+    form.querySelector('#inzet-rijen').addEventListener('input', (e) => {
+      const x = e.target.closest('[data-iz]');
+      if (!x) return;
+      const n = Number(x.closest('tr').dataset.n);
+      inzet[n][x.dataset.iz] = x.value;
+      if (x.dataset.iz === 'middel') { tekenInzet(); return; }
+      toonInzetTotaal();
+    });
+    form.querySelector('#inzet-rijen').addEventListener('change', (e) => { if (e.target.dataset.iz === 'middel') { inzet[Number(e.target.closest('tr').dataset.n)].middel = e.target.value; tekenInzet(); } });
+    form.querySelector('#inzet-rijen').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-iz-weg]');
+      if (!b) return;
+      inzet.splice(Number(b.dataset.izWeg), 1);
+      tekenInzet();
+    });
+    form.querySelector('#inzet-erbij').addEventListener('click', () => {
+      const vorige = inzet[inzet.length - 1];
+      inzet.push({ middel: vorige?.middel === IZ.MENS ? IZ.MENS : 'Auto / bus', omschrijving: '', aantal: 1, uren: vorige?.uren ?? '' });
+      tekenInzet();
+      form.querySelector('#inzet-rijen tr:last-child [data-iz=omschrijving]')?.focus();
+    });
+  }
   // Geopend via "Deels gedaan": banner en knoptekst meteen goed zetten.
   const neeKeuze = form.querySelector('input[name=volledig][value=nee]');
   if (neeKeuze?.checked) ['input', 'change'].forEach((t) => neeKeuze.dispatchEvent(new Event(t, { bubbles: true })));
@@ -6583,6 +6637,10 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     if (!data.datum) return melding('Vul de datum in.', 'fout');
     if (isStoring && !String(data.melding ?? '').trim()) return melding('Beschrijf wat er aan de hand was.', 'fout');
     if (isStoring && !String(data.omschrijving ?? '').trim()) return melding('Beschrijf wat je hebt gedaan.', 'fout');
+    if (isStoring) {
+      const iz = IZ.fouten(inzet);
+      if (iz.length) { form.querySelector('.inzetveld')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return melding(iz[0], 'fout'); }
+    }
     if (isStoring) data.status = data.resultaat === 'opgelost' ? 'gereed' : 'vervolg';
     if (metDelen && !data.volledig) {
       app.querySelector('.volledigveld').scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -6630,7 +6688,9 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
       ...(metDelen ? { gereed: data.volledig !== 'nee', deel: data.volledig === 'nee' ? String(data.deel ?? '').trim() : '' } : {}),
       materiaal: data.materiaal,
       werkpakketId: w.werkpakketId ?? '', rondeId: w.werkpakketId ? (w.rondeId ?? '') : '',
-      ...(isStoring ? { storing: { type: data.stype, melding: String(data.melding ?? '').trim(), gemeldOp: data.gemeldOp ?? '', opgelostOp: data.opgelostOp ?? '', resultaat: data.resultaat || 'opgelost' } } : {}),
+      ...(isStoring ? { storing: { type: data.stype, melding: String(data.melding ?? '').trim(), gemeldOp: data.gemeldOp ?? '', opgelostOp: data.opgelostOp ?? '', resultaat: data.resultaat || 'opgelost', inzet: IZ.normaliseer(inzet) } } : {}),
+      // Bij een storing: de uren zijn de manuren uit de tabel (voor overzichten en exports).
+      ...(isStoring ? { uren: IZ.totalen(inzet).manuren || '' } : {}),
       maatregelen: [...gekozen].map((k) => {
         const [inspectieId, gebrekId] = k.split(':');
         return { inspectieId, gebrekId };
@@ -10179,7 +10239,7 @@ async function storingenPagina() {
       <select id="s-res" aria-label="Resultaat"><option value="">Alle resultaten</option>${Object.entries(STORING_RESULTAAT).map(([k, x]) => optie(k, x.label)).join('')}</select>
     </div>
     <div class="kaart" style="padding:0"><div class="tabelhouder"><table>
-      <thead><tr><th>Opgelost</th><th>Object</th><th>Wat was er</th><th class="verberg-mobiel">Wat is gedaan</th><th>Resultaat</th><th class="verberg-mobiel">Door</th></tr></thead>
+      <thead><tr><th>Opgelost</th><th>Object</th><th>Wat was er</th><th class="verberg-mobiel">Wat is gedaan</th><th>Resultaat</th><th class="verberg-mobiel">Uren</th><th class="verberg-mobiel">Door</th></tr></thead>
       <tbody id="s-rijen"></tbody></table></div></div>`;
   const f = ['s-zoek', 's-type', 's-res'].map((x) => app.querySelector(`#${x}`));
   const toon = () => {
@@ -10191,8 +10251,9 @@ async function storingenPagina() {
       <td>${objectNaam(objectMap.get(w.objectId))}<small class="subregel">${esc(w.storing.type || '')}</small></td>
       <td>${esc(String(w.storing.melding || '').slice(0, 120))}</td><td class="verberg-mobiel">${esc(String(w.omschrijving || '').slice(0, 120))}</td>
       <td><span class="label-status" style="background:${STORING_RESULTAAT[w.storing.resultaat]?.kleur};color:#fff">${esc(STORING_RESULTAAT[w.storing.resultaat]?.label ?? '')}</span> ${beoordelingLabel(w)}</td>
+      <td class="verberg-mobiel nowrap">${w.storing.inzet?.length ? `${String(IZ.totalen(w.storing.inzet).totaal).replace('.', ',')} u` : '–'}</td>
       <td class="verberg-mobiel">${esc(w.uitvoerder || '–')}</td></tr>`).join('')
-      : `<tr><td colspan="6" class="leeg">${lijst.length ? 'Niets gevonden met deze filters.' : 'Nog geen storingen of gebreken opgelost.'}</td></tr>`;
+      : `<tr><td colspan="7" class="leeg">${lijst.length ? 'Niets gevonden met deze filters.' : 'Nog geen storingen of gebreken opgelost.'}</td></tr>`;
   };
   f.forEach((x) => x.addEventListener('input', toon));
   toon();
@@ -11086,7 +11147,8 @@ async function exporteerUitkomsten({ voorPakket = null } = {}) {
       extra: (rec, soort) => [
         ...(rec.storing ? [['Storing: soort', rec.storing.type ?? ''], ['Storing: wat was er', rec.storing.melding ?? ''], ['Storing: gemeld om', datumTijdNL(rec.storing.gemeldOp)],
           ['Storing: opgelost om', datumTijdNL(rec.storing.opgelostOp)], ['Storing: doorlooptijd', rec.storing.gemeldOp && rec.storing.opgelostOp ? duurTekst(rec.storing.gemeldOp, rec.storing.opgelostOp) : ''],
-          ['Storing: resultaat', STORING_RESULTAAT[rec.storing.resultaat]?.label ?? '']] : []),
+          ['Storing: resultaat', STORING_RESULTAAT[rec.storing.resultaat]?.label ?? ''],
+          ['Storing: bestede uren', IZ.tekst(rec.storing.inzet)], ['Storing: manuren', IZ.totalen(rec.storing.inzet).manuren || ''], ['Storing: materieeluren', IZ.totalen(rec.storing.inzet).materieeluren || '']] : []),
         ...extraWeergave(rec, defs[soort] ?? []).filter(({ d: x }) => !['foto', 'bijlage'].includes(x.type))
           .map(({ d: x, v }) => [x.eis ? `${x.eis.nummer} – ${x.label}` : x.label, velden.toonWaarde(x, v, datumNL)]),
       ],

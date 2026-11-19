@@ -499,6 +499,14 @@ Een storing of gebrek moet je altijd kunnen oplossen, ook ’s nachts en zonder 
   "Storingen en gebreken (zonder werkpakket)" met de storingsgegevens als kolommen. Vervolg nodig komt in het blad Vervolgacties.
 - Recht **Storingen oplossen** (standaard aan) per persoon in te stellen bij Toewijzen. Werkt offline; versturen gebeurt zodra er verbinding is.
 
+
+**Bestede uren** (verplicht): in het formulier *Storing of gebrek oplossen* staat een tabel waarin je per regel invult wat er is
+ingezet – **Werknemer**, **Auto / bus**, **Vrachtwagen**, **Boot**, **Kraan / hoogwerker**, **Aggregaat / pomp** of **Overig
+materieel** – met *wie / welke* (naam, kenteken, bootnummer), **aantal** en **uren**. Met *＋ Regel toevoegen* voeg je regels toe;
+aantal × uren telt op tot een totaal, gesplitst in manuren en materieeluren. Minstens één regel met uren is verplicht. De tabel
+staat op de detailpagina, het totaal in de storingenlijst, en de uitkomsten-export krijgt de kolommen *Storing: bestede uren*,
+*manuren* en *materieeluren*. Het gewone veld *Uren* van de werkzaamheid krijgt de manuren.
+
 ## Object kiezen in een formulier
 
 Waar je in een inspectie, schouw of werkzaamheid zelf het object kiest (bijv. een inspectie na incident, of een pakket met meerdere objecten),
@@ -982,6 +990,7 @@ js/taken.js           taken samenstellen en sorteren op urgentie en locatie
 js/velden.js          eigen formuliervelden: zichtbaarheid, controle en weergave
 js/eisen.js           eisbibliotheek: inlezen, vergelijken, eisvragen en verificatie per eis (ook per periode)
 js/eisdossier.js      verificatiedossier als Excel (samenvatting, eisen, bewijs, afwijkingen)
+js/inzet.js           bestede uren bij storingen (regels, totalen, controle)
 js/kaartopmaak.js     opmaak van te doen / gedaan / overgeslagen op de kaarten (standaard ← project ← apparaat)
 js/pakketten.js       werkpakketten en rondes: voortgang, toewijzing en objectfilters
 js/pakketexcel.js     Excel-sjabloon (keuzelijsten, controles, beveiliging) en import met controle
