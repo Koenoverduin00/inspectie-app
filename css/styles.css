@@ -1883,3 +1883,19 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
 .refknop svg { width: 14px; height: 14px; }
 .refknop:hover { color: var(--primair); }
 .refkoppel { border-style: dashed; }
+
+/* Demo-account */
+.rol-demo .nav a[data-nav=instellingen], .rol-demo .nav a[data-nav=inbox] { display: none !important; }
+.rol-demo .knop.gevaar, .rol-demo button.gevaar { display: none !important; }
+.demobalk { background: #fff4c2; color: #5c4700; border-bottom: 1px solid #e6c34a; padding: .4rem 1rem; font-size: .85rem; display: flex; align-items: center; gap: .4rem; justify-content: center; text-align: center; }
+.demobalk svg { width: 16px; height: 16px; flex: none; }
+.demowelkom { border-left: 5px solid #f2c200; background: color-mix(in srgb, #f2c200 7%, var(--vlak)); }
+.demowelkom-kop { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
+.demowelkom-kop h2 { margin: .15rem 0 .35rem; }
+.demowelkom-kop small { color: var(--tekst-zacht); display: inline-flex; gap: .3rem; align-items: center; }
+.demowelkom-kop p { margin: 0 0 .5rem; font-size: .9rem; }
+.demowelkom-lijst { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .5rem; }
+.demowelkom-lijst a { display: flex; gap: .6rem; align-items: center; padding: .55rem .65rem; border: 1px solid var(--rand); border-radius: 10px; background: var(--vlak); color: var(--tekst); text-decoration: none; }
+.demowelkom-lijst a:hover { border-color: var(--primair); }
+.demowelkom-lijst span:last-child { display: grid; gap: .1rem; }
+.demowelkom-lijst small { color: var(--tekst-zacht); }

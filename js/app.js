@@ -215,6 +215,16 @@ async function toonRoute() {
       await projectenPagina();
       return;
     }
+    // Demo-account: verlopen = geen toegang meer; instellingen en beheer zijn dicht.
+    if (demoVerlopen()) {
+      app.innerHTML = leegKaart(`Je demo-toegang is verlopen op ${datumNL(demoTot())}. Neem contact op als je verder wilt kijken.`, '<a class="knop" href="#/m/account">Account</a>');
+      if (!/^\/m\/account$/.test(pad)) return;
+    }
+    if (isDemoGebruiker() && DEMO_DICHT.test(pad)) {
+      location.replace('#/');
+      melding('Dit onderdeel is in de demo niet beschikbaar.');
+      return;
+    }
     // Opdrachtgever: alleen het dashboard (plus account en projectkeuze).
     if (isOpdrachtgever() && !OG_PAGINAS.test(pad)) {
       location.replace('#/');
@@ -2120,6 +2130,31 @@ const DASH_ROLLEN = { opdrachtnemer: 'Opdrachtnemer', opdrachtgever: 'Opdrachtge
 
 let dashBewerken = false;
 
+/** Voor een demo-account: wat je kunt uitproberen (tot hij op "Sluiten" tikt). */
+function demoWelkom(mobiel) {
+  if (!isDemoGebruiker() || instelling.lees(`demoWelkomWeg:${projectId()}`, '') === '1') return '';
+  const items = mobiel ? [
+    ['#/m/kaart', I.kaart, 'Bekijk de kaart', 'oranje = te doen, groen = gedaan; tik op een object'],
+    ['#/m/werk', I.werk, 'Registreer een werkzaamheid', 'kies een werkpakket en een object, maak een foto'],
+    ['#/m/inspectie', I.inspectie, 'Doe een schouw of inspectie', 'met conditiescore, gebreken en foto'],
+    ['#/m/storingen', I.let, 'Meld of los een storing op', 'met referentie en bestede uren'],
+  ] : [
+    ['#/', I.grafiek, 'Pas je dashboard aan', 'kies zelf welke blokken je ziet'],
+    ['#/planning', I.kalender, 'Bekijk de planning', 'rondes per werkpakket, met voortgang'],
+    ['#/storingen', I.let, 'Open het storingenregister', 'klaarzetten, oplossen en exporteren'],
+    ['#/werkpakketten', I.pakket, 'Bekijk een werkpakket', 'objecten op de kaart en de uitkomsten'],
+  ];
+  return `<section class="kaart demowelkom"><div class="demowelkom-kop"><div><small>${I.start} Demo</small><h2>Welkom! Probeer dit eens</h2>
+    <p>Alles wat je hier doet, gebeurt in je eigen demo-project met voorbeeldgegevens. Je kunt niets kapotmaken.${mobiel ? '' : ' Op je telefoon werkt de app nog beter: open hem daar ook eens.'}</p></div>
+    <button type="button" class="knop klein" data-demowelkom-weg>Sluiten</button></div>
+    <ul class="demowelkom-lijst">${items.map(([h, ic, t, u]) => `<li><a href="${h}"><span class="micoon klein">${ic}</span><span><strong>${t}</strong><small>${u}</small></span></a></li>`).join('')}</ul></section>`;
+}
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('[data-demowelkom-weg]')) return;
+  instelling.schrijf(`demoWelkomWeg:${projectId()}`, '1');
+  e.target.closest('.demowelkom')?.remove();
+});
+
 /** Toon de uitleg voor de opdrachtgever (tot hij op "Begrepen" tikt; via de knop Uitleg komt hij terug). */
 const ogUitlegZien = (project) => instelling.lees(`ogUitlegWeg:${project.id}`, '') !== '1';
 function ogUitleg(project, blokken) {
@@ -2465,7 +2500,7 @@ async function dashboard() {
       : '<a class="knop" href="#/inspecties/nieuw">+ Inspectie</a><a class="knop primair" href="#/werkzaamheden/nieuw">+ Werkzaamheid</a>'}
       </div>
     </div>
-    ${og ? (ogUitlegZien(project) ? ogUitleg(project, beschikbaar.map((id) => BLOKKEN[id])) : '') : await inrichtingBanner()}
+    ${og ? (ogUitlegZien(project) ? ogUitleg(project, beschikbaar.map((id) => BLOKKEN[id])) : '') : isDemoGebruiker() ? demoWelkom(false) : await inrichtingBanner()}
     ${inhoud}</div>`;
   koppelPeriodeKiezer(app.querySelector('.dashpagina .paginakop'), () => dashboard());
   app.querySelectorAll('input[name=dashrol]').forEach((r) => r.addEventListener('change', () => {
@@ -5968,6 +6003,7 @@ async function mobielStart() {
         <li><a href="${x.href}"><span class="micoon klein">${I.concept}</span><span><strong>${esc(x.titel)} · ${datumNL(x.r.datum)}</strong>
           <small>${objectNaam(objectMap.get(x.r.objectId))}</small><small class="reden">${esc(x.r.beoordeling?.opmerking || 'Geen reden opgegeven')}</small></span></a></li>`).join('')}</ul></section>` : ''}
       <p class="mgroet">${groet()}${naam ? `, ${esc(naam)}` : ''}</p>
+      ${demoWelkom(true)}
       ${installKaart()}
       ${loginHint}
       <a class="mtegel" href="#/m/werk">
@@ -6820,6 +6856,16 @@ const toegangActief = () => Boolean(ikEmail()) && !magBeheren();
  */
 const isOpdrachtgever = (p = huidigProject) => toegangActief() && p?.ledenInfo?.[ikEmail()]?.rol === 'opdrachtgever';
 const REG_STORES = new Set(['werkzaamheden', 'inspecties']);
+/**
+ * Demo-account: iemand die de app even mag uitproberen in een eigen demo-project met voorbeeldgegevens. Kan de basisfuncties
+ * gebruiken (kaart, registreren, inspecteren, storingen, dashboard, planning bekijken), maar niet bij instellingen, personen,
+ * imports of verwijderen. De toegang verloopt op een einddatum.
+ */
+const isDemoGebruiker = (p = huidigProject) => toegangActief() && p?.ledenInfo?.[ikEmail()]?.rol === 'demo';
+const demoTot = (p = huidigProject) => p?.ledenInfo?.[ikEmail()]?.verlooptOp || '';
+const demoVerlopen = (p = huidigProject) => isDemoGebruiker(p) && Boolean(demoTot(p)) && demoTot(p) < vandaag();
+const DEMO_DICHT = /^\/(instellingen|personen|toewijzen|inbox|gis\/|inspectietypen|bibliotheek|decompositie|eisen|projecten\/(nieuw|[^/]+\/(bewerken|velden))|werkpakketten\/(nieuw|[^/]+\/(bewerken|afroep))|objecten\/(nieuw|[^/]+\/bewerken)|storingen\/[^/]+\/bewerken)/;
+const DEMO_DAGEN = 14;
 /** Pagina's die een opdrachtgever mag openen: het dashboard, zijn account en de projectkeuze. */
 const OG_PAGINAS = /^\/(m\/account|projecten)?$/;
 /** Mag deze gebruiker deze registratie zien? Opdrachtgever: alleen geaccepteerd (en eigen registraties). */
@@ -6860,8 +6906,22 @@ function geenRecht(recht, terug = '#/') {
 function werkRechtenKlassenBij() {
   const og = isOpdrachtgever();
   document.body.classList.toggle('rol-opdrachtgever', og);
+  const demo = isDemoGebruiker();
+  document.body.classList.toggle('rol-demo', demo);
+  let balk = document.getElementById('demobalk');
+  if (demo) {
+    if (!balk) {
+      balk = document.createElement('div');
+      balk.id = 'demobalk';
+      balk.className = 'demobalk';
+      document.querySelector('header')?.after(balk);
+    }
+    const tot = demoTot();
+    const dagen = tot ? Math.max(0, Math.round((Date.parse(tot) - Date.parse(vandaag())) / 864e5)) : null;
+    balk.innerHTML = `${I.start} <strong>Demo</strong> · je werkt met voorbeeldgegevens in je eigen demo-project${tot ? ` · ${dagen === 0 ? 'laatste dag' : `nog ${dagen} dag${dagen === 1 ? '' : 'en'}`} (tot ${datumNL(tot)})` : ''}`;
+  } else balk?.remove();
   const sync = document.getElementById('syncstatus');
-  if (sync) sync.setAttribute('href', og ? '#/m/account' : '#/instellingen');
+  if (sync) sync.setAttribute('href', og || isDemoGebruiker() ? '#/m/account' : '#/instellingen');
   const r = mijnRechten();
   for (const k of Object.keys(RECHTEN)) document.body.classList.toggle(`geen-${k}`, r[k] === false);
 }
@@ -6881,7 +6941,8 @@ function personenUitProjecten(projecten) {
       const info = p.ledenInfo?.[e] ?? {};
       const x = m.get(e) ?? { email: e, naam: '', projecten: [], uitgenodigdOp: '', uitgenodigdDoor: '', rollen: new Set() };
       x.projecten.push(p);
-      x.rollen.add(info.rol === 'opdrachtgever' ? 'opdrachtgever' : 'opdrachtnemer');
+      x.rollen.add(info.rol === 'opdrachtgever' || info.rol === 'demo' ? info.rol : 'opdrachtnemer');
+      if (info.rol === 'demo' && info.verlooptOp) x.demoTot = info.verlooptOp;
       if (info.naam && !x.naam) x.naam = info.naam;
       if (info.uitgenodigdOp && info.uitgenodigdOp > x.uitgenodigdOp) Object.assign(x, { uitgenodigdOp: info.uitgenodigdOp, uitgenodigdDoor: info.uitgenodigdDoor ?? '' });
       m.set(e, x);
@@ -6909,6 +6970,26 @@ async function zetPersoonInProjecten(email, gewenst, info = {}, alleenVoor = nul
     const infoGewijzigd = moet && JSON.stringify(ledenInfo[email]) !== JSON.stringify(p.ledenInfo?.[email]);
     if (was !== moet || infoGewijzigd) await db.bewaar('projecten', { ...p, leden: [...leden], ledenInfo, gewijzigd: nu });
   }
+}
+
+/** Eigen demo-project met voorbeeldgegevens voor een demo-account; alleen deze persoon (en beheerders) heeft toegang. */
+async function maakDemoProject(email, naam, tot) {
+  const nu = new Date().toISOString();
+  const project = {
+    id: nieuwId(), naam: `Demo – ${naam || email.split('@')[0]}`, opdrachtgever: 'Voorbeeldgemeente', omschrijving: 'Demo-omgeving met voorbeeldgegevens om de app uit te proberen.',
+    status: 'actief', planningswijze: 'gepland', kostenTonen: true, urenTonen: true, demo: true,
+    leden: [email], ledenInfo: { [email]: { naam: naam || '', rol: 'demo', verlooptOp: tot } },
+    aangemaakt: nu, gewijzigd: nu, door: ikEmail() || '',
+  };
+  await db.bewaar('projecten', project);
+  const data = demoData();
+  for (const store of ['lagen', 'objecten', 'inspecties', 'werkzaamheden', 'taken', 'werkpakketten']) {
+    data[store] = (data[store] ?? []).map((r) => ({ ...r, projectId: project.id }));
+  }
+  // De demo-werkpakketten zijn voor iedereen in het demo-project (dus ook voor de demo-gebruiker).
+  data.werkpakketten = data.werkpakketten.map((p) => ({ ...p, toegewezen: [] }));
+  await db.importeer({ ...data, projecten: undefined });
+  return project;
 }
 
 /** Verstuurt de uitnodiging en legt vast wanneer en door wie. */
@@ -6994,8 +7075,9 @@ async function toewijzenPagina() {
         <tbody>${personen.map((e) => {
     const r = rechtenVan(e);
     const og = info[e]?.rol === 'opdrachtgever';
+    const rolNu = info[e]?.rol === 'demo' ? 'demo' : og ? 'opdrachtgever' : 'opdrachtnemer';
     return `<tr class="${og ? 'rij-opdrachtgever' : ''}"><td><strong>${esc(naamVan(e))}</strong></td>
-      <td><select data-rol="${esc(e)}" aria-label="Organisatie van ${esc(naamVan(e))}">${optie('opdrachtnemer', 'Opdrachtnemer', og ? 'opdrachtgever' : 'opdrachtnemer')}${optie('opdrachtgever', 'Opdrachtgever', og ? 'opdrachtgever' : 'opdrachtnemer')}</select></td>
+      <td><select data-rol="${esc(e)}" aria-label="Organisatie van ${esc(naamVan(e))}">${optie('opdrachtnemer', 'Opdrachtnemer', rolNu)}${optie('opdrachtgever', 'Opdrachtgever', rolNu)}${rolNu === 'demo' ? optie('demo', 'Demo', rolNu) : ''}</select></td>
       ${Object.keys(RECHTEN).map((k) => (k === 'goedkeuren' && og
     ? `<td><span class="toewijs-cel uit" title="Accepteren gebeurt door de opdrachtnemer">–</span></td>`
     : `<td><label class="toewijs-cel"><input type="checkbox" data-recht="${k}" data-e="${esc(e)}" ${r[k] ? 'checked' : ''} aria-label="${esc(naamVan(e))}: ${esc(RECHTEN[k].label)}">${I.vink}</label></td>`)).join('')}</tr>`;
@@ -7470,9 +7552,13 @@ async function personenPagina() {
         <div class="veld"><label for="p-email" class="vereist">E-mailadres</label><input id="p-email" name="email" type="email" autocomplete="off" placeholder="naam@bedrijf.nl" required></div>
         <div class="veld"><label for="p-naam">Naam</label><input id="p-naam" name="naam" autocomplete="off" placeholder="Voor- en achternaam"></div>
         <div class="veld breed"><label class="vereist">Organisatie</label>
-          ${segment('rol', 'opdrachtnemer', [['opdrachtnemer', 'Opdrachtnemer'], ['opdrachtgever', 'Opdrachtgever']])}
-          <small><strong>Opdrachtnemer</strong>: voert uit en accepteert registraties. <strong>Opdrachtgever</strong>: ziet werkzaamheden en inspecties pas als de opdrachtnemer ze heeft goedgekeurd, en kan zelf niet goedkeuren.</small></div>
-        <div class="veld breed"><label>Toegang tot projecten</label>
+          ${segment('rol', 'opdrachtnemer', [['opdrachtnemer', 'Opdrachtnemer'], ['opdrachtgever', 'Opdrachtgever'], ['demo', 'Demo (uitproberen)']])}
+          <small><strong>Opdrachtnemer</strong>: voert uit en accepteert registraties. <strong>Opdrachtgever</strong>: ziet werkzaamheden en inspecties pas als de opdrachtnemer ze heeft goedgekeurd, en kan zelf niet goedkeuren.
+            <strong>Demo</strong>: krijgt een eigen demo-project met voorbeeldgegevens om de app uit te proberen, zonder instellingen; je echte projecten ziet hij niet.</small></div>
+        <div class="veld breed" id="p-demo" hidden><label for="p-tot">Demo-toegang tot en met</label>
+          <input type="date" id="p-tot" name="tot" value="${PL.isoVan(PL.dagNr(vandaag()) + DEMO_DAGEN)}" min="${vandaag()}">
+          <small>Er wordt automatisch een eigen project <em>Demo – naam</em> met voorbeeldgegevens aangemaakt. Na deze datum kan hij niet meer inloggen op de demo.</small></div>
+        <div class="veld breed" id="p-projecten"><label>Toegang tot projecten</label>
           ${projecten.length ? `<div class="chips">${projectChips('p-project', new Set(actief ? [actief] : []))}</div>
           <small>De persoon ziet en bewerkt alleen de inhoud van deze projecten.</small>` : '<small>Maak eerst een project aan.</small>'}</div>
         <div class="veld breed"><label class="vink"><input type="checkbox" name="mailen" ${kanMailen ? 'checked' : 'disabled'}>
@@ -7486,7 +7572,8 @@ async function personenPagina() {
         <tbody>${personen.length ? personen.map((x) => `<tr data-email="${esc(x.email)}">
           <td>${x.naam ? esc(x.naam) : '<span class="zacht">–</span>'}${x.email === ik ? ' <small>(jij)</small>' : ''}</td>
           <td>${esc(x.email)}</td>
-          <td><select data-org aria-label="Organisatie van ${esc(x.naam || x.email)}">${x.rollen.size > 1 ? optie('', 'Verschilt per project', '') : ''}${optie('opdrachtnemer', 'Opdrachtnemer', x.rollen.size > 1 ? '' : [...x.rollen][0])}${optie('opdrachtgever', 'Opdrachtgever', x.rollen.size > 1 ? '' : [...x.rollen][0])}</select></td>
+          <td><select data-org aria-label="Organisatie van ${esc(x.naam || x.email)}">${x.rollen.size > 1 ? optie('', 'Verschilt per project', '') : ''}${optie('opdrachtnemer', 'Opdrachtnemer', x.rollen.size > 1 ? '' : [...x.rollen][0])}${optie('opdrachtgever', 'Opdrachtgever', x.rollen.size > 1 ? '' : [...x.rollen][0])}${x.rollen.has('demo') ? optie('demo', 'Demo', x.rollen.size > 1 ? '' : 'demo') : ''}</select>
+            ${x.demoTot ? `<small class="subregel ${x.demoTot < vandaag() ? 'fouttekst' : ''}">${x.demoTot < vandaag() ? 'verlopen' : 'tot'} ${datumNL(x.demoTot)}</small><button type="button" class="knop klein" data-verleng>+${DEMO_DAGEN} dagen</button>` : ''}</td>
           <td>${x.projecten.map((p) => `<span class="chipje${p.ledenInfo?.[x.email]?.rol === 'opdrachtgever' ? ' og' : ''}" title="${p.ledenInfo?.[x.email]?.rol === 'opdrachtgever' ? 'Opdrachtgever' : 'Opdrachtnemer'} in dit project">${esc(p.naam)}</span>`).join(' ')}</td>
           <td>${x.uitgenodigdOp ? `${I.vink} ${datumNL(x.uitgenodigdOp.slice(0, 10))}${x.uitgenodigdDoor ? `<br><small>door ${esc(x.uitgenodigdDoor)}</small>` : ''}` : '<span class="label-status binnenkort">Nog niet verstuurd</span>'}</td>
           <td class="accountcel" data-account="${esc(x.email)}">${kanMailen ? '<span class="zacht">laden…</span>' : '<span class="zacht">Log in om dit te zien</span>'}</td>
@@ -7504,12 +7591,38 @@ async function personenPagina() {
   if (!isMobiel()) app.insertAdjacentHTML('afterbegin', tabbalk('/personen', 'instellingen'));
 
   const form = app.querySelector('#uitnodigen');
+  form.querySelectorAll('input[name=rol]').forEach((r) => r.addEventListener('change', () => {
+    const demo = form.elements.rol.value === 'demo';
+    form.querySelector('#p-demo').hidden = !demo;
+    form.querySelector('#p-projecten').hidden = demo;
+  }));
   form.onsubmit = async (e) => {
     e.preventDefault();
     const email = form.elements.email.value.trim().toLowerCase();
     const naam = form.elements.naam.value.trim();
     const gekozen = new Set([...form.querySelectorAll('input[name=p-project]:checked')].map((x) => x.value));
     if (!EMAIL_RE.test(email)) return melding('Vul een geldig e-mailadres in.', 'fout');
+    const isDemo = form.elements.rol.value === 'demo';
+    if (isDemo) {
+      const tot = form.elements.tot.value;
+      if (!tot || tot < vandaag()) return melding('Kies tot wanneer de demo-toegang geldt.', 'fout');
+      const knopD = form.querySelector('button[type=submit]');
+      knopD.disabled = true;
+      try {
+        const demoProject = await maakDemoProject(email, naam, tot);
+        if (form.elements.mailen.checked) {
+          await verstuurUitnodiging(email, naam);
+          gedaan('Demo-uitnodiging verstuurd', { extra: `${naam || email} kan tot ${datumNL(tot)} rondkijken in "${demoProject.naam}".` });
+        } else {
+          gedaan('Demo-account aangemaakt', { extra: `"${demoProject.naam}" met voorbeeldgegevens, tot ${datumNL(tot)}. Verstuur de uitnodiging als je bent ingelogd.` });
+        }
+        personenPagina();
+      } catch (fout) {
+        melding(fout instanceof TypeError ? 'Geen verbinding met de server.' : fout.message, 'fout');
+        knopD.disabled = false;
+      }
+      return;
+    }
     if (!gekozen.size) return melding('Kies minstens één project.', 'fout');
     const knop = form.querySelector('button[type=submit]');
     knop.disabled = true;
@@ -7564,6 +7677,15 @@ async function personenPagina() {
     const tr = e.target.closest('tr[data-email]');
     if (!tr) return;
     const x = personen.find((p) => p.email === tr.dataset.email);
+    if (e.target.closest('[data-verleng]')) {
+      const basis = x.demoTot && x.demoTot > vandaag() ? x.demoTot : vandaag();
+      const tot = PL.isoVan(PL.dagNr(basis) + DEMO_DAGEN);
+      const demoProjecten = x.projecten.filter((p) => p.ledenInfo?.[x.email]?.rol === 'demo');
+      await zetPersoonInProjecten(x.email, new Set(x.projecten.map((p) => p.id)), { verlooptOp: tot }, new Set(demoProjecten.map((p) => p.id)));
+      melding(`Demo verlengd tot ${datumNL(tot)}`);
+      personenPagina();
+      return;
+    }
     if (e.target.closest('[data-herstel]')) {
       const knop = e.target.closest('[data-herstel]');
       if (!confirm(`Een mail sturen naar ${x.email} met een link om een nieuw wachtwoord in te stellen?`)) return;

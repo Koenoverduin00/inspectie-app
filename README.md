@@ -603,6 +603,21 @@ boomgebreken, waarnemingen); handig bij de resultaten van een schouwronde. Het b
 Kopieer de objectcodes uit Vervolgacties naar het blad Objecten van het werkpakket-sjabloon om er direct een nieuw werkpakket van te maken.
 Kosten- en urenkolommen vervallen als die in het project zijn uitgezet. Alleen afgeronde inspecties tellen mee (geen concepten).
 
+## Demo-accounts (iemand laten uitproberen)
+
+Bij **Instellingen → Personen → Persoon uitnodigen** kies je bij *Organisatie* **Demo (uitproberen)** en een einddatum (standaard
+14 dagen). De app maakt dan automatisch een eigen project **Demo – naam** met voorbeeldgegevens (objecten, werkpakketten, inspecties,
+werkzaamheden) en zet alleen die persoon erin. Je echte projecten ziet hij niet – ook de server geeft ze niet.
+
+- **Wat kan een demo-gebruiker**: dashboard (en zelf indelen), objecten, werkpakketten en planning bekijken, de kaart, werkzaamheden
+  registreren, schouwen en inspecteren met foto's, storingen melden en oplossen, exporteren. Alles blijft in zijn demo-project.
+- **Wat niet**: instellingen, personen, toewijzen, inbox (goedkeuren), GIS- en decompositie-import, eisbibliotheek, projecten,
+  werkpakketten en objecten aanmaken of bewerken, en verwijderen. Directe links daarheen sturen terug naar het dashboard.
+- **In beeld**: een gele balk *Demo · nog X dagen* bovenaan, en op het dashboard en de telefoon een kaart *Welkom! Probeer dit eens*
+  met de mooiste functies om mee te beginnen (sluitbaar).
+- **Einddatum**: na de einddatum toont de app "Je demo-toegang is verlopen". In de personenlijst staat de einddatum met een knop
+  *+14 dagen* om te verlengen. Voer `supabase/009_demo.sql` eenmalig uit om de einddatum ook op de server af te dwingen.
+
 ## Opdrachtgever ziet alleen geaccepteerde registraties
 
 Werkzaamheden en inspecties worden pas zichtbaar voor de **opdrachtgever** als iemand van de **opdrachtnemer** ze heeft
