@@ -305,6 +305,17 @@ Naast een frequentie kan een werkpakket voorgeschreven hoeveelheden hebben, bijv
 - **Pakketpagina**: per post een balk, bijvoorbeeld *120 / 300 m² (40%)*, met een waarschuwing als er meer is gedaan dan voorgeschreven.
 - **Export uitkomsten**: per post een extra kolom, bijvoorbeeld *Zetsteen herstel (m²)*.
 
+## Voortgangsoverzicht voor overleg (planning → export)
+
+Planning → **Voortgangsoverzicht**: een overzicht om de voortgang te bespreken in het projectteam of met de opdrachtgever.
+
+- **1. Had al af moeten zijn**: rondes waarvan de einddatum verstreken is en die nog niet af zijn (met het aantal dagen te laat), plus losse taken over hun deadline.
+- **2. Lopend**: rondes die nu in uitvoering zijn, met voortgang, verwachte voortgang volgens de planning (streepje in de balk) en "op schema" / "achter"; plus open losse taken.
+- **3. Start binnenkort**: rondes die binnen het gekozen aantal weken vanaf vandaag beginnen (1, 2, 3, 4, 6, 8, 12 of 26 weken; standaard 4).
+- Per regel: code (bijv. WP-001-R2), werkpakket en ronde, periode, voortgang (objecten en eventuele hoeveelheden), stand, uitvoerders en een lege kolom **Bespreekpunt / actie** om tijdens het overleg in te vullen.
+- Filters: soort (werk / inspecties) en wel of geen losse taken. Afgeronde rondes en rondes zonder startdatum staan er niet in (het aantal niet-ingeplande rondes staat onderaan).
+- **Afdrukken / opslaan als PDF** (A4 liggend) of **Excel** (blad Overzicht met de tellingen en blad Voortgang met alle regels, met filters).
+
 ## Werk in delen: meerdere ploegen op hetzelfde vak
 
 Soms werken twee ploegen aan hetzelfde vak, bijv. de ene **vanaf het land** en de andere **vanaf het water**. Allebei registreren ze,
@@ -1073,6 +1084,7 @@ js/velden.js          eigen formuliervelden: zichtbaarheid, controle en weergave
 js/eisen.js           eisbibliotheek: inlezen, vergelijken, eisvragen en verificatie per eis (ook per periode)
 js/eisdossier.js      verificatiedossier als Excel (samenvatting, eisen, bewijs, afwijkingen)
 js/storingenexcel.js  export van het storingenregister naar Excel
+js/voortgangsoverzicht.js  voortgangsoverzicht voor overleg: achterstallig, lopend en binnenkort (afdruk en Excel)
 js/storingen.js       storingenregister: meldingen + registraties → zaken met status
 js/inzet.js           bestede uren bij storingen (regels, totalen, controle)
 js/kaartopmaak.js     opmaak van te doen / gedaan / overgeslagen op de kaarten (standaard ← project ← apparaat)

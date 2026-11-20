@@ -1920,3 +1920,27 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
 .hvregel > label { font-weight: 600; font-size: .9rem; }
 .hvinvoer { display: flex; align-items: center; gap: .4rem; }
 .hvinvoer input { max-width: 10rem; }
+
+/* Voortgangsoverzicht (planning → overleg) */
+.voortgangsoverzicht .vo-groep { margin-top: 1.25rem; }
+.voortgangsoverzicht .vo-groep h2 small { font-weight: normal; color: var(--zacht, #6b7785); }
+.vo-tabel .vo-voortgang { min-width: 9rem; }
+.vo-tabel .balkje { position: relative; height: .5rem; border-radius: 999px; background: #e6eaee; overflow: visible; margin-bottom: .2rem; }
+.vo-tabel .balkje i { display: block; height: 100%; border-radius: 999px; }
+.vo-tabel .balkje b { position: absolute; top: -.2rem; width: 2px; height: .9rem; background: #333; }
+.vo-tabel th.vo-notitie, .vo-tabel td.vo-notitie { min-width: 10rem; }
+.voortgangsoverzicht .tegels a.tegel { text-decoration: none; color: inherit; }
+@media print {
+  @page { size: A4 landscape; margin: 12mm; }
+  .vo-tabel tr { break-inside: avoid; }
+  .vo-tabel td.vo-notitie { border-left: 1px solid #ccc; }
+  .vo-tabel .balkje, .vo-tabel .balkje i, .voortgangsoverzicht .label-status, .voortgangsoverzicht .tegel { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .voortgangsoverzicht .vo-groep h2 { break-after: avoid; }
+}
+@media screen and (max-width: 700px) { .vo-tabel .vo-notitie { display: none; } }
+.vo-tabel { table-layout: fixed; width: 100%; }
+.vo-tabel th:nth-child(1) { width: 11%; } .vo-tabel th:nth-child(2) { width: 25%; } .vo-tabel th:nth-child(3) { width: 10%; }
+.vo-tabel th:nth-child(4) { width: 12%; } .vo-tabel th:nth-child(5) { width: 16%; } .vo-tabel th:nth-child(6) { width: 10%; } .vo-tabel th:nth-child(7) { width: 16%; }
+.vo-tabel td { overflow-wrap: anywhere; }
+@media screen and (max-width: 700px) { .vo-tabel { table-layout: auto; } }
+@media print { .voortgangsoverzicht .tegels { grid-template-columns: repeat(4, 1fr); } }

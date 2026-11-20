@@ -19,7 +19,7 @@ import * as FI from './fotoinfo.js';
 import * as EI from './eisen.js';
 import {
   PAKKETSTATUS, OVERSLAAN_REDENEN, overslaanId, voortgang as pakketVoortgang, voorMij as pakketVoorMijBasis, filterObjecten,
-  rondesVan, rondeView, rondeVanId, pakketStatus, metCode, objectStatus as rondeStatusVan, teDoen as isTeDoen, isDeels, EENHEDEN, EENHEID_KORT, postenVan, hoeveelheidTekst, totaalVoortgang, STANDAARD_RONDE, PLANNINGSWIJZEN, isAfroep, AFROEP_REDENEN, onderscheid as rondeOnderscheid,
+  rondesVan, rondeCode, rondeView, rondeVanId, pakketStatus, metCode, objectStatus as rondeStatusVan, teDoen as isTeDoen, isDeels, EENHEDEN, EENHEID_KORT, postenVan, hoeveelheidTekst, totaalVoortgang, STANDAARD_RONDE, PLANNINGSWIJZEN, isAfroep, AFROEP_REDENEN, onderscheid as rondeOnderscheid,
 } from './pakketten.js';
 import * as PX from './pakketexcel.js';
 import * as RX from './resultatenexcel.js';
@@ -29,6 +29,7 @@ import * as KO from './kaartopmaak.js';
 import * as IZ from './inzet.js';
 import * as SR from './storingen.js';
 import * as SX from './storingenexcel.js';
+import * as VO from './voortgangsoverzicht.js';
 import * as IMP from './gisimport.js';
 import * as ST from './stowa.js';
 import * as DG from './digigids.js';
@@ -114,6 +115,7 @@ const ROUTES = [
   [/^\/eisen\/dossier$/, 'eisen', (_, q) => eisDossier(q)],
   [/^\/gis\/importeren$/, 'kaart', gisImport],
   [/^\/planning$/, 'taken', takenPagina],
+  [/^\/planning\/overzicht$/, 'taken', (_, q) => voortgangsOverzicht(q)],
   [/^\/taken$/, 'taken', takenPagina],
   [/^\/werkpakketten$/, 'werkpakketten', werkpakkettenLijst],
   [/^\/werkpakketten\/nieuw$/, 'werkpakketten', (_, q) => pakketFormulier(null, q)],
@@ -9319,7 +9321,7 @@ async function takenPagina(_, q = new URLSearchParams()) {
   app.innerHTML = `
     <div class="paginakop">
       <div><h1>Planning</h1><p>Plan de rondes van de werkpakketten in de tijd${magBeheren() ? ': sleep een balk om te verplaatsen, sleep de randen om korter of langer te maken, of trek in een lege rij de periode' : ''}. Daaronder alle taken.</p></div>
-      <div class="knoppen">${magBeheren() ? '<a class="knop" href="#/werkpakketten/nieuw">+ Werkpakket</a>' : ''}<a class="knop" href="#/taken/nieuw">+ Taak plannen</a></div>
+      <div class="knoppen"><a class="knop" href="#/planning/overzicht">${I.bestand} Voortgangsoverzicht</a>${magBeheren() ? '<a class="knop" href="#/werkpakketten/nieuw">+ Werkpakket</a>' : ''}<a class="knop" href="#/taken/nieuw">+ Taak plannen</a></div>
     </div>
     <section class="kaart bordkaart"><div id="planningsbord"><p class="leeg">Planning laden…</p></div></section>
     <details class="takenblok" id="takenblok">
@@ -9359,6 +9361,104 @@ async function takenPagina(_, q = new URLSearchParams()) {
   };
   [bron, soort, wie, zoek].forEach((f) => f.addEventListener('input', toon));
   toon();
+}
+
+/**
+ * Voortgangsoverzicht voor overleg: wat had al af moeten zijn, wat loopt er en wat start binnen een gekozen aantal weken.
+ * Afdrukken (of opslaan als PDF) en Excel.
+ */
+async function voortgangsOverzicht(q) {
+  const project = await actiefProject();
+  if (!project) { app.innerHTML = leegKaart('Kies eerst een project.'); return; }
+  const WEKEN = [1, 2, 3, 4, 6, 8, 12, 26];
+  const weken = WEKEN.includes(Number(q?.get('weken'))) ? Number(q.get('weken')) : 4;
+  const soort = ['werk', 'inspectie'].includes(q?.get('soort')) ? q.get('soort') : '';
+  const metTaken = q?.get('taken') !== '0';
+  const g = await pakketGegevens();
+  const rondes = g.pakketten.flatMap((p) => rondesVan(p).filter((r) => !soort || r.soort === soort)
+    .map((r) => ({ pakket: p, ronde: r, vg: g.rondeVoortgang.get(`${p.id}:${r.id}`), code: rondeCode(p, r) })));
+  const taken = metTaken ? (await inProject('taken')).filter((t) => !soort || t.soort === soort) : [];
+  const nu = vandaag();
+  const ind = VO.indelen({ rondes, taken, vandaag: nu, weken });
+  const naamVan = (e) => project.ledenInfo?.[e]?.naam || e;
+  const fmt = {
+    naam: (p) => metCode(p),
+    soort: (r) => (r.soort === 'inspectie' ? r.inspectiesoort || 'Schouw / inspectie' : r.werksoort || 'Werkzaamheid'),
+    uitvoerders: (p) => (p.toegewezen?.length ? p.toegewezen.map(naamVan).join(', ') : 'iedereen'),
+    hoeveelheden: (vg) => (vg?.hoeveelheden ?? []).map((h) => `${h.post.omschrijving}: ${hoeveelheidTekst(h)}`).join('; '),
+    object: (id) => g.objectMap.get(id),
+  };
+  const organisatie = instelling.lees('organisatie');
+  const door = naamVan(ikEmail()) || instelling.lees('inspecteur') || '';
+  const vooruit = `${weken} ${weken === 1 ? 'week' : 'weken'} (t/m ${datumNL(ind.tot)})`;
+  const standKlasse = (r) => (r.dagenTeLaat != null || r.signaal === 'flinke achterstand' ? 'verlopen' : r.signaal === 'achter' ? 'binnenkort' : r.signaal === 'op schema' ? 'afgerond' : '');
+  const regel = (r) => {
+    if (r.soort === 'taak') {
+      const o = g.objectMap.get(r.taak.objectId);
+      return `<tr><td><small>Taak</small></td><td><a href="#/taken/${esc(r.taak.id)}/bewerken"><strong>${esc(r.taak.titel || 'Taak')}</strong></a>${o ? `<br><small>${objectNaam(o)}</small>` : ''}${r.taak.omschrijving ? `<br><small class="zacht">${esc(r.taak.omschrijving)}</small>` : ''}</td>
+        <td><small>${r.eind ? `uiterlijk ${datumNL(r.eind)}` : '–'}</small></td><td>–</td>
+        <td><span class="label-status ${standKlasse(r)}">${esc(VO.standTekst(r))}</span></td><td><small>${esc(r.taak.toegewezenAan ? naamVan(r.taak.toegewezenAan) : 'iedereen')}</small></td><td class="vo-notitie"></td></tr>`;
+    }
+    const vg = r.vg ?? {};
+    const v = g.views.get(`${r.pakket.id}:${r.ronde.id}`);
+    return `<tr><td><span class="wpcode">${esc(r.code)}</span></td>
+      <td><a href="${pakketPagina(v, false)}"><strong>${esc(metCode(r.pakket))}</strong></a>${r.pakket.rondes?.length && r.ronde.naam ? `<br><small>R${esc(r.ronde.nummer)} ${esc(r.ronde.naam)}</small>` : ''}
+        <br><small class="zacht">${esc(fmt.soort(r.ronde))}</small>${r.ronde.opmerking ? `<br><small>💬 ${esc(r.ronde.opmerking)}</small>` : ''}</td>
+      <td><small>${datumNL(r.start)} –<br>${datumNL(r.eind)}</small></td>
+      <td class="vo-voortgang"><div class="balkje" role="progressbar" aria-valuenow="${r.werkelijk}" aria-valuemin="0" aria-valuemax="100" aria-label="Voortgang ${r.werkelijk}%"><i style="width:${r.werkelijk}%;background:${PAKKET_KLEUR.gedaan}"></i>${r.verwacht != null && r.dagenTeLaat == null && r.startOver == null ? `<b style="left:${r.verwacht}%" title="Verwacht ${r.verwacht}%"></b>` : ''}</div>
+        <strong>${r.werkelijk}%</strong> <small>${vg.totaal ? `${(vg.gedaan?.size ?? 0) + (vg.overgeslagen?.size ?? 0)}/${vg.totaal} obj.` : ''}</small>
+        ${fmt.hoeveelheden(vg) ? `<br><small>${esc(fmt.hoeveelheden(vg))}</small>` : ''}</td>
+      <td><span class="label-status ${standKlasse(r)}">${esc(VO.standTekst(r))}</span></td>
+      <td><small>${esc(fmt.uitvoerders(r.pakket))}</small></td><td class="vo-notitie"></td></tr>`;
+  };
+  const tabel = (lijst) => `<div class="tabelhouder"><table class="dossiertabel vo-tabel">
+    <thead><tr><th>Code</th><th>Werkpakket / ronde</th><th>Periode</th><th>Voortgang</th><th>Stand</th><th>Uitvoerders</th><th class="vo-notitie">Bespreekpunt / actie</th></tr></thead>
+    <tbody>${lijst.map(regel).join('')}</tbody></table></div>`;
+  const leegTekst = { achterstallig: 'Niets achterstallig.', lopend: 'Er loopt op dit moment niets.', komend: `Niets dat binnen ${weken} ${weken === 1 ? 'week' : 'weken'} start.` };
+  const KLASSE = { achterstallig: 'slecht', lopend: '', komend: '' };
+
+  app.innerHTML = `
+    <div class="paginakop geen-print dossierbalk">
+      <div><p><a href="#/planning">← Planning</a></p><h1>Voortgangsoverzicht</h1>
+        <p>Voor het bespreken van de voortgang in het projectteam of met de opdrachtgever.</p></div>
+      <form class="filters" id="vo-filter">
+        <label>Start binnen <select id="vo-weken">${WEKEN.map((w) => optie(String(w), `${w} ${w === 1 ? 'week' : 'weken'}`, String(weken))).join('')}</select></label>
+        <select id="vo-soort" aria-label="Soort">${optie('', 'Werk en inspecties', soort)}${optie('werk', 'Werkzaamheden', soort)}${optie('inspectie', 'Inspecties', soort)}</select>
+        <label class="vink"><input type="checkbox" id="vo-taken" ${metTaken ? 'checked' : ''}> Losse taken meenemen</label>
+      </form>
+      <div class="knoppen"><button class="knop primair" onclick="window.print()">${I.bestand} Afdrukken / opslaan als PDF</button>
+        <button class="knop" id="vo-excel">${I.excel} Excel</button></div>
+    </div>
+    <article class="rapport dossier voortgangsoverzicht">
+      <div class="rapport-kop">
+        <div>${organisatie ? `<small>${esc(organisatie)}</small>` : ''}
+          <h1 style="margin:.25rem 0">Voortgangsoverzicht</h1>
+          <div>${esc(project.naam)}${project.opdrachtgever ? ` · opdrachtgever ${esc(project.opdrachtgever)}` : ''}</div></div>
+        <div style="text-align:right"><small>Peildatum</small><br><strong>${datumNL(nu)}</strong><br><small>Vooruit: ${esc(vooruit)}${soort ? ` · alleen ${soort === 'werk' ? 'werkzaamheden' : 'inspecties'}` : ''}</small>
+          ${door ? `<br><small>Opgesteld door ${esc(door)}</small>` : ''}</div>
+      </div>
+      <div class="tegels klein">${VO.GROEPEN.map(([k, l]) => `<a class="tegel ${ind[k].length ? KLASSE[k] : ''}" href="#vo-${k}"><strong>${ind[k].length}</strong><span>${esc(l.toLowerCase())}</span></a>`).join('')}
+        ${ind.nietIngepland ? `<span class="tegel let"><strong>${ind.nietIngepland}</strong><span>nog niet ingepland</span></span>` : ''}</div>
+      ${VO.GROEPEN.map(([k, l, uitleg], n) => `<section class="vo-groep" id="vo-${k}"><h2>${n + 1}. ${esc(l)} <small>(${ind[k].length})</small></h2>
+        <p class="zacht">${k === 'komend' ? `Begint tussen morgen en ${datumNL(ind.tot)}.` : esc(uitleg)}</p>
+        ${ind[k].length ? tabel(ind[k]) : `<p>${leegTekst[k]}</p>`}</section>`).join('')}
+      ${ind.nietIngepland ? `<p class="zacht">${ind.nietIngepland === 1 ? '1 ronde is nog niet ingepland en staat' : `${ind.nietIngepland} rondes zijn nog niet ingepland en staan`} niet in dit overzicht.</p>` : ''}
+    </article>`;
+
+  const naar = () => {
+    const p = new URLSearchParams({ weken: app.querySelector('#vo-weken').value });
+    if (app.querySelector('#vo-soort').value) p.set('soort', app.querySelector('#vo-soort').value);
+    if (!app.querySelector('#vo-taken').checked) p.set('taken', '0');
+    location.hash = `#/planning/overzicht?${p}`;
+  };
+  app.querySelector('#vo-filter').addEventListener('change', naar);
+  app.querySelector('#vo-excel').addEventListener('click', async () => {
+    const ExcelJS = await PX.laadExcelJS();
+    const wb = VO.maakWerkboek(ExcelJS, ind, { project: project.naam ?? '', peildatum: datumNL(nu), vooruit }, fmt);
+    const buf = await wb.xlsx.writeBuffer();
+    download(`voortgangsoverzicht-${String(project.naam ?? 'project').replace(/[^\w-]+/g, '_')}-${nu}.xlsx`, buf, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    melding('Voortgangsoverzicht geëxporteerd');
+  });
 }
 
 async function taakFormulier(id, q = new URLSearchParams()) {
