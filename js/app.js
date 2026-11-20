@@ -10114,6 +10114,90 @@ async function extraBlok(blok, defsNu, record, { ns = '' } = {}) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Voorbeeld van het hele formulier (bij het opbouwen van vragen)
+// ---------------------------------------------------------------------------
+const BREDE_TYPEN = ['tekst', 'checklist', 'foto', 'meerkeuze', 'locatie', 'geometrie', 'handtekening', 'tijdsduur', 'bijlage'];
+
+/**
+ * Hoe het formulier eruitziet: vaste velden (grijs), eigen vragen en een voorbeeldbevinding met de vragen per bevinding.
+ * @param {object} o
+ * @param {'werk'|'inspectie'|'taak'} o.formulier
+ * @param {object|null} o.type      inspectietype (methodiek, schaal, onderdelen, punten)
+ * @param {object[]} o.defs         zichtbare eigen vragen (beide niveaus)
+ * @param {string} [o.actief]       id van de vraag die nu wordt bewerkt
+ * @param {boolean} [o.telefoon]
+ * @param {boolean} [o.uren]        uren tonen bij werkzaamheden
+ */
+function formulierVoorbeeldHtml({ formulier, type = null, defs = [], actief = '', telefoon = true, uren = true }) {
+  const vast = (label, invoer, { breed = false, vereist = false } = {}) => `<div class="veld vb-vast${breed ? ' breed' : ''}" data-vb-vast>
+    <label ${vereist ? 'class="vereist"' : ''}>${esc(label)}</label>${invoer}</div>`;
+  const tekst = (ph = '') => `<input type="text" placeholder="${esc(ph)}">`;
+  const keuze = (ph = '– kies –') => `<select><option>${esc(ph)}</option></select>`;
+  const vak = (ph = '') => `<textarea placeholder="${esc(ph)}" style="min-height:56px"></textarea>`;
+  const fotoKnop = `<div class="fotos"><span class="knop fotoknop">${I.camera} Foto</span></div>`;
+  const gpsKnop = `<div class="knoppen"><span class="knop klein">${I.gps} Mijn locatie</span><span class="knop klein">${I.locatie} Op kaart kiezen</span></div>`;
+  const eigen = (d) => {
+    const als = d.toonAls?.veld ? defs.find((x) => x.id === d.toonAls.veld) : null;
+    return `<div class="veld${BREDE_TYPEN.includes(d.type) ? ' breed' : ''} vb-eigen${d.id === actief ? ' vb-actief' : ''}" data-vb-veld="${esc(d.id)}">
+      ${d.id === actief ? '<span class="vb-badge">wordt bewerkt</span>' : ''}
+      <label ${d.verplicht ? 'class="vereist"' : ''}>${esc(d.label || '(nieuwe vraag)')}${d.eis ? ` ${eisBadge(d.eis)}` : ''}</label>
+      ${extraInvoerHtml(d, undefined, [], 'vb-')}${d.hulptekst ? `<small>${esc(d.hulptekst)}</small>` : ''}
+      ${als ? `<small class="vb-als">Alleen als <em>${esc(als.label)}</em> = ${esc(d.toonAls.waarde)}</small>` : ''}</div>`;
+  };
+  const perInspectie = velden.opNiveau(defs, 'inspectie');
+  const perBevinding = velden.opNiveau(defs, 'bevinding');
+  const eigenBlok = (lijst, kop) => `<section class="kaart vb-blok"><h3>${esc(kop)}</h3>${lijst.length
+    ? `<div class="velden">${lijst.map(eigen).join('')}</div>` : '<p class="vb-leeg">Nog geen eigen vragen. Voeg ze links toe.</p>'}</section>`;
+  const knoppen = `<div class="vb-voet"><span class="knop">Concept</span><span class="knop primair">${I.vink} Afronden</span></div>`;
+
+  if (formulier === 'werk') {
+    return `<section class="kaart vb-blok"><div class="velden">
+        ${vast('Object', keuze('Kies een object'), { breed: true, vereist: true })}${vast('Soort werkzaamheid', keuze(), { vereist: true })}${vast('Datum', '<input type="date">', { vereist: true })}
+        ${uren ? vast('Uren', '<input type="number">') : ''}${vast('Uitvoerder', tekst())}${vast('Wat is er gedaan?', vak(), { breed: true })}${vast("Foto's (voor / na)", fotoKnop, { breed: true })}</div></section>
+      ${eigenBlok(perInspectie, 'Extra gegevens')}${knoppen}`;
+  }
+  if (formulier === 'taak') {
+    return `<section class="kaart vb-blok"><div class="velden">
+        ${vast('Wat moet er gebeuren?', tekst(), { breed: true, vereist: true })}${vast('Object / GIS-vlak', keuze(), { breed: true, vereist: true })}${vast('Soort', keuze())}
+        ${vast('Prioriteit', keuze('Normaal'))}${vast('Uiterlijk', '<input type="date">')}${vast('Toegewezen aan', keuze())}${vast('Toelichting', vak(), { breed: true })}</div></section>
+      ${eigenBlok(perInspectie, 'Extra gegevens')}<div class="vb-voet"><span class="knop primair">Opslaan</span></div>`;
+  }
+  // Inspectie
+  const m = type?.methodiek ?? 'nen';
+  const bevVragen = perBevinding.length ? `<div class="veld breed bevextra"><div class="velden">${perBevinding.map(eigen).join('')}</div></div>`
+    : '<div class="veld breed vb-bevleeg"><small>Vragen <strong>bij elke bevinding</strong> komen hier (bijv. een ingewonnen lijn of vlak).</small></div>';
+  const advies = `<details class="vb-details"><summary>${telefoon ? 'Plaats, advies en urgentie' : 'Advies, urgentie en status maatregel'}</summary></details>`;
+  let bevindingen;
+  if (m === 'checklist') {
+    const punten = type?.punten?.length ? type.punten : ['Controlepunt 1', 'Controlepunt 2'];
+    const seg = (sel) => `<div class="segment checkseg">${Object.entries(TY.CHECK).map(([k, l]) => `<label class="cs-${k}"><input type="radio" ${k === sel ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>`;
+    bevindingen = `<h3 class="vb-kop">Controlepunten</h3>${punten.slice(0, 4).map((pt, n) => `<div class="checkpunt ${n === 0 ? 'nok' : ''}">
+        <div class="checkpunt-kop"><strong>${n + 1}. ${esc(pt)}</strong>${seg(n === 0 ? 'nok' : '')}</div>
+        ${n === 0 ? `<p class="vb-hint">Zo ziet een punt eruit dat <strong>niet in orde</strong> is:</p><div class="velden">${vast('Wat is er niet in orde?', vak(), { breed: true })}${vast("Foto's", fotoKnop, { breed: true })}
+          ${vast('Locatie (GPS)', gpsKnop, { breed: true })}${bevVragen}</div>${advies}` : ''}</div>`).join('')}
+      ${punten.length > 4 ? `<p class="vb-hint">+ ${punten.length - 4} controlepunten</p>` : ''}`;
+  } else {
+    const nen = m === 'nen';
+    const schaal = (type?.schaal ?? TY.STANDAARD_SCHAAL).map((x) => `<label><input type="radio"><span style="--k:${esc(x.kleur)}">${esc(x.label)}</span></label>`).join('');
+    const velden1 = nen
+      ? `${vast('Bouwdeel', keuze())}${vast('Gebrek', keuze())}${vast('Ernst', keuze('Gering'))}${vast('Intensiteit', keuze('1 · Beginstadium'))}${vast('Omvang (% van bouwdeel)', '<input type="number">')}`
+      : `${vast('Onderdeel', type?.onderdelen?.length ? keuze() : tekst('bijv. rijbaan'))}${vast('Gebrek', type?.gebreken?.length ? keuze() : tekst('bijv. scheurvorming'))}
+         ${vast('Oordeel', `<div class="segment schaalsegment">${schaal}</div>`, { breed: true, vereist: true })}`;
+    bevindingen = `<h3 class="vb-kop">${nen ? 'Gebreken' : 'Bevindingen'}</h3>
+      <div class="gebrek vb-gebrek"><div class="gebrek-kop"><h3 style="margin:0">${nen ? 'Gebrek' : 'Bevinding'} 1</h3></div>
+        <div class="velden">${vast("Foto's", fotoKnop, { breed: true })}${vast('Locatie (GPS)', gpsKnop, { breed: true })}${velden1}
+          ${vast('Toelichting / waarneming', vak(), { breed: true })}${bevVragen}</div>${advies}</div>
+      <p class="vb-hint"><span class="knop klein">＋ ${nen ? 'Gebrek' : 'Bevinding'} ${telefoon ? 'vastleggen' : 'toevoegen'}</span> – elke ${nen ? 'gebrek' : 'bevinding'} krijgt dezelfde vragen.</p>`;
+  }
+  return `<section class="kaart vb-blok"><div class="velden">
+      ${vast('Object', keuze('Kies een object'), { breed: true })}${vast('Soort', keuze(type?.naam ?? 'Inspectie'))}${vast('Datum', '<input type="date">', { vereist: true })}
+      ${vast('Samenvatting / algemene bevindingen', vak(), { breed: true })}${vast("Overzichtsfoto's", fotoKnop, { breed: true })}
+      ${telefoon ? '<details class="vb-details"><summary>Inspecteur en weer</summary></details>' : `${vast('Inspecteur', tekst())}${vast('Weersomstandigheden', keuze('–'))}`}</div></section>
+    ${eigenBlok(perInspectie, 'Extra gegevens (eenmaal per inspectie)')}
+    <section class="vb-bevindingen">${bevindingen}</section>${knoppen}`;
+}
+
 /** Velddefinities van het actieve project, als functie die de huidige soort leest. */
 async function projectVelden(formulier, soortFn, niveau = 'inspectie') {
   const p = await actiefProject();
@@ -10238,6 +10322,29 @@ async function formulierveldenPagina(id, q) {
     await db.bewaar('projecten', project);
   };
 
+  // Voorbeeld: telefoon of computer, en (zonder vast type) bij welke soort.
+  let vbApparaat = instelling.lees('vbApparaat', 'telefoon') === 'pc' ? 'pc' : 'telefoon';
+  let vbSoort = formulier === 'werk' ? WERKSOORTEN[0] : standaardInspectiesoort();
+  const tekenVoorbeeld = () => {
+    const el = app.querySelector('#vb');
+    if (!el) return;
+    // De vraag in de editor telt al mee, op zijn plek (of achteraan als hij nieuw is).
+    let alle = lijst.map((d) => (bewerk && d.id === bewerk.id ? bewerk : d));
+    if (bewerk && !lijst.some((d) => d.id === bewerk.id)) alle = [...alle, bewerk];
+    const soort = bib ? null : scopeType ?? (formulier === 'taak' ? null : vbSoort);
+    const defs = alle.map((d) => velden.normaliseer({ ...d, label: d.label || '' }))
+      .filter((d) => d.formulier === formulier && (soort === null || !d.alleenBij.length || d.alleenBij.includes(soort)));
+    const type = bib ? project.type : formulier === 'inspectie' ? (typeRecord ?? TY.typeVoor(inspectieTypen(project), soort)) : null;
+    el.className = `vb-scherm ${vbApparaat}`;
+    el.innerHTML = formulierVoorbeeldHtml({ formulier, type, defs, actief: bewerk?.id ?? '', telefoon: vbApparaat === 'telefoon', uren: project.urenTonen !== false });
+    // De vraag die wordt bewerkt in beeld houden (alleen binnen het voorbeeld scrollen, niet de pagina).
+    const act = el.querySelector('.vb-actief');
+    if (act) {
+      const boven = act.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop;
+      if (boven < el.scrollTop || boven + act.offsetHeight > el.scrollTop + el.clientHeight) el.scrollTop = Math.max(0, boven - 40);
+    }
+  };
+
   const veldRegel = (d, i, groep) => `
             <li class="${bewerk?.id === d.id ? 'actief' : ''}">
               <div><strong>${esc(d.label || '(zonder naam)')}</strong>${d.eis ? ` ${eisBadge(d.eis)}` : ''}
@@ -10269,7 +10376,7 @@ async function formulierveldenPagina(id, q) {
         <a role="tab" class="tab ${k === formulier ? 'actief' : ''}" href="#/projecten/${esc(id)}/velden?formulier=${k}"
           aria-selected="${k === formulier}">${x} <span class="teller">${lijst.filter((d) => d.formulier === k).length}</span></a>`).join('')}</div>`}
       <div class="veldenindeling">
-        <section class="kaart">
+        <div class="vl-links"><section class="kaart">
           <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">${bib || scopeType ? 'Vragen' : velden.FORMULIEREN[formulier]}</h2>
             <span class="knoppen">${bib ? '' : `<button class="knop" id="uit-eisen" type="button" title="Eisvragen uit de eisbibliotheek van dit project als vraag toevoegen">${I.taak} ＋ Uit eisbibliotheek</button>`}
               <button class="knop primair" id="nieuw" type="button">＋ Vraag toevoegen</button></span></div>
@@ -10282,9 +10389,36 @@ async function formulierveldenPagina(id, q) {
           ${algemeen.length ? `<p><small>${I.let} Daarnaast ${algemeen.length === 1 ? 'staat 1 vraag' : `staan ${algemeen.length} vragen`} in álle inspectieformulieren van dit project
             (${algemeen.slice(0, 4).map((d) => esc(d.label)).join(', ')}${algemeen.length > 4 ? ', …' : ''}). <a href="#/projecten/${esc(id)}/velden?formulier=inspectie">Alle formuliervelden</a></small></p>` : ''}
         </section>
-        <section class="kaart" id="editor" ${bewerk ? '' : 'hidden'}></section>
+        <section class="kaart" id="editor" ${bewerk ? '' : 'hidden'}></section></div>
+        <section class="kaart vb-paneel" aria-label="Voorbeeld van het formulier">
+          <div class="vb-paneelkop"><h2>Zo ziet het formulier eruit</h2>
+            ${segment('vbApparaat', vbApparaat, [['telefoon', 'Telefoon'], ['pc', 'Computer']], 'data-vb-apparaat')}</div>
+          ${!bib && !scopeType && formulier !== 'taak' ? `<div class="veld vb-soortkeuze"><label for="vb-soort">Voorbeeld bij soort</label><select id="vb-soort">
+            ${(formulier === 'werk' ? WERKSOORTEN : inspectieSoorten().filter((x) => x !== BV.BVC_SOORT && x !== ST.STOWA_SOORT)).map((x) => optie(x, x, vbSoort)).join('')}</select></div>` : ''}
+          <p class="vb-legenda"><span class="vb-l-vast">vast veld</span><span class="vb-l-eigen">eigen vraag</span><span class="vb-l-actief">wordt bewerkt</span> · klik op een eigen vraag om hem te bewerken</p>
+          <div id="vb" class="vb-scherm"></div>
+        </section>
       </div>`;
 
+    app.querySelectorAll('[data-vb-apparaat]').forEach((r) => r.addEventListener('change', () => {
+      vbApparaat = r.value;
+      instelling.schrijf('vbApparaat', vbApparaat);
+      tekenVoorbeeld();
+    }));
+    app.querySelector('#vb-soort')?.addEventListener('change', (e) => { vbSoort = e.target.value; tekenVoorbeeld(); });
+    // Klik op een eigen vraag in het voorbeeld: die vraag bewerken.
+    app.querySelector('#vb').addEventListener('click', (e) => {
+      e.preventDefault();
+      const veld = e.target.closest('[data-vb-veld]');
+      if (veld) {
+        if (bewerk?.id === veld.dataset.vbVeld) { app.querySelector('#v-label')?.focus(); return; }
+        const d = lijst.find((x) => x.id === veld.dataset.vbVeld);
+        if (d) { bewerk = { ...d }; teken(); app.querySelector('#editor')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+        return;
+      }
+      if (e.target.closest('[data-vb-vast]')) melding('Dit veld staat altijd in het formulier.');
+    });
+    tekenVoorbeeld();
     app.querySelector('#uit-eisen')?.addEventListener('click', () => eisenKiezen());
     app.querySelector('#nieuw').onclick = () => { bewerk = nieuwVeld(); teken(); };
     app.querySelectorAll('[data-nieuw-niveau]').forEach((k) => { k.onclick = () => { bewerk = nieuwVeld({ niveau: k.dataset.nieuwNiveau }); teken(); }; });
@@ -10437,8 +10571,7 @@ async function formulierveldenPagina(id, q) {
             <div class="chips">${soorten.map((s) => `<label class="chip"><input type="checkbox" name="alleenBij" value="${esc(s)}" ${d.alleenBij?.includes(s) ? 'checked' : ''}><span>${esc(SOORT_LABEL[s] ?? s)}</span></label>`).join('')}</div>
             <small>Niets aangevinkt = altijd tonen.</small></div>
         </div>
-        <h3 style="margin-top:1rem">Voorbeeld</h3>
-        <div class="voorbeeld">${d.label ? extraVeldenHtml([velden.normaliseer(d)], {}, {}, 'vb-') : '<p class="leeg">Vul de vraag in.</p>'}</div>
+        <p class="vb-tip"><small>${I.let} Rechts zie je direct hoe het formulier met deze vraag eruitziet.</small></p>
         <div class="formvoet">
           <button class="knop" type="button" id="annuleer">Annuleren</button>
           <button class="knop primair" type="submit">${d.nieuw ? 'Toevoegen' : 'Opslaan'}</button>
@@ -10469,14 +10602,15 @@ async function formulierveldenPagina(id, q) {
     form.addEventListener('change', (e) => {
       lees();
       if (e.target.name === 'type' || e.target.name === 'toonAlsVeld' || e.target.name === 'niveau') tekenEditor();
-      else el.querySelector('.voorbeeld').innerHTML = bewerk.label ? extraVeldenHtml([velden.normaliseer(bewerk)], {}, {}, 'vb-') : '';
+      else tekenVoorbeeld();
     });
     form.addEventListener('input', (e) => {
       if (e.target.name !== 'label' && e.target.name !== 'opties' && e.target.name !== 'eenheid' && e.target.name !== 'hulptekst') return;
       lees();
-      el.querySelector('.voorbeeld').innerHTML = bewerk.label ? extraVeldenHtml([velden.normaliseer(bewerk)], {}, {}, 'vb-') : '';
+      tekenVoorbeeld();
     });
     el.querySelector('#annuleer').onclick = () => { bewerk = null; formulierGewijzigd = false; teken(); };
+    tekenVoorbeeld();
     el.querySelector('#ontkoppel')?.addEventListener('click', () => {
       if (!confirm(`Het veld loskoppelen van eis ${bewerk.eis.nummer}? De vraag blijft staan, maar telt niet meer mee voor de verificatie van de eis.`)) return;
       lees(); bewerk.eis = null; tekenEditor();

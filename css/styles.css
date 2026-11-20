@@ -1959,7 +1959,7 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
 
 /* Vragen per bevinding en het vragenoverzicht bij een inspectietype */
 .veldgroep-kop { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-top: 1rem; }
-.veldgroep-kop h3 { margin: 0; flex: 1; font-size: 1rem; }
+.veldgroep-kop h3 { margin: 0; flex: 1 0 auto; font-size: 1rem; white-space: nowrap; }
 .veldgroep-uitleg { margin: .2rem 0 .4rem; color: var(--tekst-zacht); }
 .vraaglijst { margin: .25rem 0 .75rem; padding-left: 1.2rem; }
 .vraaglijst li { margin: .2rem 0; }
@@ -1967,3 +1967,41 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
 .bevextra { border-top: 1px dashed var(--rand); padding-top: .6rem; }
 .bevextra > .extra-velden > .velden { margin: 0; }
 .gk-extra { margin: .5rem 0; }
+
+/* Voorbeeld van het hele formulier bij het opbouwen van vragen */
+.veldenindeling .vl-links { display: grid; gap: 1rem; align-content: start; min-width: 0; }
+.veldenindeling .vl-links > .kaart { margin: 0; }
+.vb-paneel { position: sticky; top: 72px; min-width: 0; }
+.vb-paneelkop { display: flex; justify-content: space-between; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.vb-paneelkop h2 { margin: 0; font-size: 1.05rem; }
+.vb-paneelkop .segment { flex: none; }
+.vb-paneelkop .segment label span { padding: .3rem .7rem; font-size: .85rem; }
+.vb-soortkeuze { margin: .6rem 0 0; max-width: 320px; }
+.vb-legenda { margin: .5rem 0; font-size: .8rem; color: var(--tekst-zacht); display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+.vb-legenda > span { padding: .05rem .45rem; border-radius: 6px; border: 1px solid var(--rand); }
+.vb-l-vast { background: var(--achtergrond); }
+.vb-l-eigen { border-left: 3px solid var(--primair) !important; }
+.vb-l-actief { outline: 2px solid #e07b00; }
+.vb-scherm { max-height: calc(100vh - 230px); overflow: auto; background: var(--achtergrond); border-radius: 12px; padding: .75rem; }
+.vb-scherm.telefoon { width: 380px; max-width: 100%; margin: 0 auto; border: 10px solid #1d2733; border-radius: 28px; padding: .6rem .5rem; }
+.vb-scherm .kaart { margin: 0 0 .6rem; padding: .75rem; box-shadow: none; }
+.vb-scherm h3 { font-size: .95rem; margin: 0 0 .5rem; }
+.vb-scherm.telefoon .velden { grid-template-columns: 1fr; }
+.vb-scherm input, .vb-scherm select, .vb-scherm textarea, .vb-scherm .knop, .vb-scherm .segment, .vb-scherm canvas { pointer-events: none; }
+.vb-scherm .veld { position: relative; }
+.vb-vast > label { color: var(--tekst-zacht); }
+.vb-vast input, .vb-vast select, .vb-vast textarea { background: var(--achtergrond); }
+.vb-eigen { border-left: 3px solid var(--primair); padding-left: .55rem; cursor: pointer; border-radius: 4px; }
+.vb-eigen:hover { background: var(--primair-licht); }
+.vb-actief { outline: 2px solid #e07b00; outline-offset: 3px; background: #fff6ea; }
+.vb-badge { position: absolute; top: -.55rem; right: .25rem; background: #e07b00; color: #fff; font-size: .68rem; font-weight: 700; padding: .05rem .4rem; border-radius: 999px; }
+.vb-als { color: #8a5a00; }
+.vb-leeg, .vb-hint { margin: .25rem 0; font-size: .85rem; color: var(--tekst-zacht); }
+.vb-bevleeg { border: 1px dashed var(--rand); border-radius: 8px; padding: .5rem; }
+.vb-kop { margin: .9rem 0 .5rem; }
+.vb-gebrek { margin: 0 0 .5rem; }
+.vb-details { margin-top: .5rem; color: var(--tekst-zacht); font-size: .9rem; }
+.vb-voet { display: flex; gap: .5rem; justify-content: flex-end; margin-top: .6rem; }
+.vb-scherm.telefoon .vb-voet .knop { flex: 1; justify-content: center; }
+.vb-tip { margin: .75rem 0 0; }
+@media (max-width: 900px) { .vb-paneel { position: static; } .vb-scherm { max-height: none; } }

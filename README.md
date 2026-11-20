@@ -886,6 +886,12 @@ Bij elk inspectietype (Instellingen → Inspectietypen → type) en elk formulie
 - **＋ Coördinaten per bevinding** – in één klik een vraag *Inwinning coördinaten* die in elke bevinding staat (inspecteur kiest punten, lijn of vlak).
 - **Vragen beheren** – volgorde wijzigen (per groep), verwijderen, eisvragen toevoegen.
 
+**Voorbeeld van het formulier**: naast de vragen staat altijd *Zo ziet het formulier eruit* – het complete formulier zoals de
+inspecteur het krijgt: de vaste velden (grijs), je eigen vragen (blauwe streep), de *Extra gegevens* en een voorbeeldbevinding (of een
+controlepunt dat niet in orde is, of een NEN-gebrek) met de vragen per bevinding. De vraag die je bewerkt staat oranje omlijnd en verandert
+mee terwijl je typt. Schakel tussen **Telefoon** en **Computer**; klik op een eigen vraag in het voorbeeld om hem te bewerken. Op de algemene
+pagina Formuliervelden kies je bij welke soort je het voorbeeld ziet (ook voor werkzaamheden en taken).
+
 Op de pagina *Vragen · <type>* staan alleen de vragen van dat type, met een terugknop naar het type. Vragen die in álle inspectieformulieren
 staan, worden eronder genoemd. Pas je de vragen aan van een type dat uit de bibliotheek komt, dan staat het type daarna als *aangepast in dit project*.
 
