@@ -1485,12 +1485,20 @@ async function inspectietypeEditor(id, { bibliotheek = false } = {}) {
         <div id="schaal"></div>
         <button type="button" class="knop klein" id="schaal-bij">＋ Niveau</button>
         <div class="velden" style="margin-top:1rem">
-          <div class="veld"><label for="t-onderdelen">Onderdelen</label><textarea id="t-onderdelen" name="onderdelen" placeholder="Eén per regel, bijv.&#10;Rijbaan&#10;Fietspad&#10;Trottoir">${esc((t.onderdelen ?? []).join('\n'))}</textarea>
-            <small>Keuzelijst voor de inspecteur. Leeg = vrij invullen.</small></div>
-          <div class="veld"><label for="t-gebreken">Gebreken</label><textarea id="t-gebreken" name="gebreken" placeholder="Eén per regel, bijv.&#10;Rafeling&#10;Scheurvorming">${esc((t.gebreken ?? []).join('\n'))}</textarea>
-            <small>Keuzelijst. Leeg = vrij invullen.</small></div>
           <div class="veld breed"><label>Oordeel van de hele inspectie</label>
             ${segment('oordeelRegel', t.oordeelRegel ?? 'slechtste', [['slechtste', 'Slechtste bevinding (automatisch)'], ['handmatig', 'Inspecteur kiest zelf']])}</div>
+        </div>
+      </section>
+      <section class="kaart" data-m="oordeel"><div class="paginakop" style="margin-bottom:.25rem"><h2 style="margin:0">Onderdelen en gebreken</h2>
+          <span class="knoppen"><button type="button" class="knop klein" id="lijst-sjabloon">${I.sjabloon} Sjabloon</button>
+            <label class="knop klein">${I.excel} Importeren uit Excel<input type="file" id="lijst-import" accept=".xlsx,.csv,.txt" hidden></label></span></div>
+        <p><small>Keuzelijsten voor de inspecteur bij elke bevinding. Leeg = vrij invullen. Importeren kan met een Excel- of CSV-bestand met twee kolommen:
+          <strong>A = onderdeel</strong>, <strong>B = gebrek</strong> (een kopregel mag). Tip: plak meerdere regels tegelijk in een vak, of druk op Enter voor een nieuwe regel.</small></p>
+        <div class="lijsten">
+          <div><h3>Onderdelen <span class="teller" data-lijst-teller="onderdelen"></span></h3><div id="lijst-onderdelen"></div>
+            <button type="button" class="knop klein" data-lijst-bij="onderdelen">＋ Onderdeel</button></div>
+          <div><h3>Gebreken <span class="teller" data-lijst-teller="gebreken"></span></h3><div id="lijst-gebreken"></div>
+            <button type="button" class="knop klein" data-lijst-bij="gebreken">＋ Gebrek</button></div>
         </div>
       </section>
       <section class="kaart" data-m="checklist"><h2>Controlepunten</h2>
@@ -1525,6 +1533,89 @@ async function inspectietypeEditor(id, { bibliotheek = false } = {}) {
     </form>`;
 
   const form = app.querySelector('#typeform');
+  // Onderdelen en gebreken als lijst met regels (zoals de schaal).
+  const lijsten = { onderdelen: [...(t.onderdelen ?? [])], gebreken: [...(t.gebreken ?? [])] };
+  const LIJST_VOORBEELD = { onderdelen: ['Rijbaan', 'Fietspad', 'Trottoir'], gebreken: ['Rafeling', 'Scheurvorming', 'Spoorvorming'] };
+  const tekenLijst = (naam, focus = null) => {
+    const l = lijsten[naam];
+    app.querySelector(`#lijst-${naam}`).innerHTML = l.length ? l.map((x, n) => `<div class="lijstrij">
+      <span class="schaalnr">${n + 1}</span><input data-lijst="${naam}" data-n="${n}" value="${esc(x)}" maxlength="120" placeholder="bijv. ${esc(LIJST_VOORBEELD[naam][n % 3])}" aria-label="${naam === 'onderdelen' ? 'Onderdeel' : 'Gebrek'} ${n + 1}">
+      <button type="button" class="knop klein" data-lijst-weg="${naam}:${n}" aria-label="Verwijderen">${I.kruis}</button></div>`).join('')
+      : `<p class="leeg lijstleeg">Geen ${naam} – de inspecteur vult zelf in.</p>`;
+    app.querySelector(`[data-lijst-teller="${naam}"]`).textContent = l.filter((x) => x.trim()).length || '';
+    if (focus != null) app.querySelector(`[data-lijst="${naam}"][data-n="${focus}"]`)?.focus();
+  };
+  const voegRegelsIn = (naam, na, nieuw) => {
+    lijsten[naam].splice(na + 1, 0, ...nieuw);
+    formulierGewijzigd = true;
+    tekenLijst(naam, na + nieuw.length);
+  };
+  tekenLijst('onderdelen');
+  tekenLijst('gebreken');
+  form.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || !e.target.dataset?.lijst) return;
+    e.preventDefault(); // Enter = nieuwe regel eronder, niet opslaan
+    voegRegelsIn(e.target.dataset.lijst, Number(e.target.dataset.n), ['']);
+  });
+  form.addEventListener('paste', (e) => {
+    const naam = e.target.dataset?.lijst;
+    const tekst = e.clipboardData?.getData('text') ?? '';
+    if (!naam || !/[\r\n]/.test(tekst.trim())) return;
+    // Meerdere regels geplakt (bijv. een kolom uit Excel): elke regel wordt een eigen regel.
+    e.preventDefault();
+    const n = Number(e.target.dataset.n);
+    const regels = tekst.split(/\r?\n/).map((x) => x.split('\t')[0].trim()).filter(Boolean);
+    const huidig = lijsten[naam][n];
+    if (!huidig.trim()) { lijsten[naam][n] = regels.shift() ?? ''; }
+    voegRegelsIn(naam, n, regels);
+  });
+  form.addEventListener('click', (e) => {
+    const bij = e.target.closest('[data-lijst-bij]');
+    if (bij) { const naam = bij.dataset.lijstBij; voegRegelsIn(naam, lijsten[naam].length - 1, ['']); return; }
+    const weg = e.target.closest('[data-lijst-weg]');
+    if (weg) {
+      const [naam, n] = weg.dataset.lijstWeg.split(':');
+      lijsten[naam].splice(Number(n), 1);
+      formulierGewijzigd = true;
+      tekenLijst(naam);
+    }
+  });
+  app.querySelector('#lijst-sjabloon').onclick = async () => {
+    const ExcelJS = await PX.laadExcelJS();
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Onderdelen en gebreken');
+    ws.columns = [{ header: 'Onderdeel', width: 28 }, { header: 'Gebrek', width: 28 }];
+    ws.getRow(1).font = { bold: true };
+    const a = lijsten.onderdelen.filter((x) => x.trim());
+    const b = lijsten.gebreken.filter((x) => x.trim());
+    const n = Math.max(a.length, b.length);
+    if (n) for (let i = 0; i < n; i++) ws.addRow([a[i] ?? '', b[i] ?? '']);
+    else LIJST_VOORBEELD.onderdelen.forEach((x, i) => ws.addRow([x, LIJST_VOORBEELD.gebreken[i]]));
+    download(`onderdelen-gebreken-${(t.naam || 'inspectietype').replace(/[^\w-]+/g, '_')}.xlsx`, await wb.xlsx.writeBuffer(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  };
+  app.querySelector('#lijst-import').onchange = async (e) => {
+    const bestand = e.target.files?.[0];
+    e.target.value = '';
+    if (!bestand) return;
+    try {
+      const [blad] = await leesDecompBestand(bestand);
+      const r = TY.lijstenUitTabel(blad?.regels ?? []);
+      if (!r.onderdelen.length && !r.gebreken.length) return melding('Geen onderdelen of gebreken gevonden. Zet onderdelen in kolom A en gebreken in kolom B.', 'fout');
+      const voor = { onderdelen: lijsten.onderdelen.filter((x) => x.trim()).length, gebreken: lijsten.gebreken.filter((x) => x.trim()).length };
+      for (const naam of ['onderdelen', 'gebreken']) {
+        lijsten[naam] = TY.samenvoegen(lijsten[naam], r[naam]);
+        tekenLijst(naam);
+      }
+      formulierGewijzigd = true;
+      const bijO = lijsten.onderdelen.length - voor.onderdelen;
+      const bijG = lijsten.gebreken.length - voor.gebreken;
+      if (!bijO && !bijG) return melding(`Alles uit het bestand stond er al in (${r.onderdelen.length} onderdelen, ${r.gebreken.length} gebreken).`);
+      melding(`${bijO} onderde${bijO === 1 ? 'el' : 'len'} en ${bijG} gebrek${bijG === 1 ? '' : 'en'} toegevoegd${bijO + bijG < r.onderdelen.length + r.gebreken.length ? ' (dubbele overgeslagen)' : ''}. Vergeet niet op te slaan.`);
+    } catch (fout) {
+      console.error(fout);
+      melding(`Importeren mislukt: ${fout.message}`, 'fout');
+    }
+  };
   const tekenSchaal = () => {
     app.querySelector('#schaal').innerHTML = schaal.map((x, n) => `<div class="schaalrij">
       <span class="schaalnr">${n + 1}</span><input data-s="${n}" data-k="label" value="${esc(x.label)}" maxlength="30" placeholder="Naam niveau" aria-label="Naam niveau ${n + 1}">
@@ -1542,6 +1633,10 @@ async function inspectietypeEditor(id, { bibliotheek = false } = {}) {
   form.addEventListener('change', (e) => { if (e.target.name === 'methodiek') toonMethodiek(); if (e.target.dataset.k === 'kleur') tekenSchaal(); });
   form.addEventListener('input', (e) => {
     formulierGewijzigd = true;
+    if (e.target.dataset.lijst) {
+      lijsten[e.target.dataset.lijst][Number(e.target.dataset.n)] = e.target.value;
+      return;
+    }
     const s = e.target.dataset.s;
     if (s === undefined) return;
     schaal[Number(s)][e.target.dataset.k] = e.target.value;
@@ -1566,7 +1661,7 @@ async function inspectietypeEditor(id, { bibliotheek = false } = {}) {
     const andere = bibliotheek ? items.filter((x) => x.id !== item?.id).map((x) => x.naam) : andereTypeNamen(project, bestaand?.id);
     const { type, fouten } = TY.controleer({
       ...(bestaand ?? {}), naam: naamVast ? t.naam : d.naam, omschrijving: d.omschrijving, methodiek: d.methodiek,
-      schaal, onderdelen: regels(d.onderdelen), gebreken: regels(d.gebreken), punten: regels(d.punten), oordeelRegel: d.oordeelRegel,
+      schaal, onderdelen: lijsten.onderdelen, gebreken: lijsten.gebreken, punten: regels(d.punten), oordeelRegel: d.oordeelRegel,
     }, { andereNamen: andere });
     if (fouten.length) return melding(fouten[0], 'fout');
     const nu = new Date().toISOString();

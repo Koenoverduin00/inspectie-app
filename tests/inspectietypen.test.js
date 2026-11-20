@@ -70,3 +70,13 @@ test('in project zetten met velden en bron', () => {
   assert.equal(TY.nieuwereVersie(r.type, [{ id: 'bib1', versie: 3 }]), null);
   assert.equal(TY.veldenVoorBibliotheek(p.velden, 'Bebording').length, 1);
 });
+
+test('onderdelen en gebreken uit een tabel met twee kolommen', () => {
+  const r = TY.lijstenUitTabel([['Onderdeel', 'Gebrek'], ['Rijbaan', 'Rafeling'], ['Fietspad', { richText: [{ text: 'Scheur' }, { text: 'vorming' }] }],
+    ['rijbaan', ''], ['', 'Spoorvorming'], [null, null], ['Trottoir', { result: 'Rafeling' }]]);
+  assert.deepEqual(r.onderdelen, ['Rijbaan', 'Fietspad', 'Trottoir']);
+  assert.deepEqual(r.gebreken, ['Rafeling', 'Scheurvorming', 'Spoorvorming']);
+  // zonder kopregel telt de eerste regel mee
+  assert.deepEqual(TY.lijstenUitTabel([['Rijbaan', 'Rafeling']]), { onderdelen: ['Rijbaan'], gebreken: ['Rafeling'] });
+  assert.deepEqual(TY.samenvoegen(['Rijbaan'], ['RIJBAAN', ' Berm ', '']), ['Rijbaan', 'Berm']);
+});

@@ -794,6 +794,10 @@ Niet elke inspectie volgt NEN 2767. Per **inspectietype** kies je de methodiek (
 | **Checklist** | Vaste controlepunten: in orde / niet in orde / n.v.t.; bij "niet in orde" toelichting, foto's en maatregel | Aantal punten niet in orde |
 
 - **Eigen inspectie maken**: naam, methodiek, schaal (2–6 niveaus met eigen namen en kleuren), onderdelen, gebreken of controlepunten.
+- **Onderdelen en gebreken** (methodiek *oordeel*): twee lijsten met een regel per naam en **＋ Onderdeel** / **＋ Gebrek**, net als de schaal.
+  Enter maakt een nieuwe regel; plak je meerdere regels (bijv. een kolom uit Excel), dan wordt elke regel een eigen regel.
+  **Importeren uit Excel** leest een Excel- of CSV-bestand met twee kolommen: **A = onderdeel**, **B = gebrek** (een kopregel mag,
+  lege cellen en dubbele namen worden overgeslagen; bestaande namen blijven staan). **Sjabloon** downloadt zo'n bestand, gevuld met de huidige lijsten.
   Extra velden (handtekening, meetwaarde, …) stel je in bij Formuliervelden met "Alleen bij: <type>".
 - **Standaardtypen**: de vaste soorten blijven bestaan. *Conditiemeting NEN 2767*, *Nadere / specialistische inspectie* en *Duikinspectie*
   gebruiken NEN 2767; de overige (bijv. *Schouw*, *Visuele inspectie*) standaard een eenvoudig oordeel goed / matig / slecht. Per project aan te

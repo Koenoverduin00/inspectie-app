@@ -1333,7 +1333,14 @@ form:not(.afroep-inspectie) .a-insp { display: none; }
 .methodiek:has(input:checked) { border-color: var(--primair); background: var(--primair-licht); }
 .methodiek input { margin-top: .25rem; }
 .methodiek span { display: flex; flex-direction: column; gap: .2rem; }
-.schaalrij { display: grid; grid-template-columns: 1.6rem minmax(120px, 1fr) 9rem auto auto; gap: .5rem; align-items: center; margin-bottom: .4rem; }
+.schaalrij { display: grid; grid-template-columns: 1.6rem minmax(120px, 1fr) 9rem 7rem 2.6rem; gap: .5rem; align-items: center; margin-bottom: .4rem; }
+.schaalrij .schaalchip { justify-self: start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.schaalrij > button, .lijstrij > button { justify-self: end; }
+.lijsten { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-top: .5rem; }
+.lijsten h3 { font-size: 1rem; margin: 0 0 .5rem; }
+.lijstrij { display: grid; grid-template-columns: 1.6rem 1fr 2.6rem; gap: .5rem; align-items: center; margin-bottom: .4rem; }
+.lijstleeg { margin: .25rem 0 .5rem; padding: .5rem; }
+@media (max-width: 700px) { .lijsten { grid-template-columns: 1fr; } }
 .schaalnr { font-weight: 700; color: var(--tekst-zacht); text-align: center; }
 .schaalsegment { flex-wrap: wrap; }
 .schaalsegment label { flex: 1 1 5rem; }

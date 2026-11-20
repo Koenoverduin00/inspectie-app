@@ -221,3 +221,39 @@ export const VOORBEELDEN = [
     schaal: STANDAARD_SCHAAL.map(({ label, kleur }) => ({ label, kleur })), onderdelen: [], gebreken: [], punten: [], oordeelRegel: 'slechtste',
   },
 ];
+
+/** Tekst van een cel uit Excel (ExcelJS) of CSV: ook rich text, formules en hyperlinks. */
+export function celTekst(c) {
+  if (c == null) return '';
+  if (typeof c !== 'object') return String(c).trim();
+  if (c instanceof Date) return c.toISOString().slice(0, 10);
+  if (Array.isArray(c.richText)) return c.richText.map((x) => x.text ?? '').join('').trim();
+  if (c.text != null) return celTekst(c.text);
+  if (c.result != null) return celTekst(c.result);
+  return '';
+}
+
+/**
+ * Onderdelen en gebreken uit een simpele tabel met twee kolommen: A = onderdeel, B = gebrek.
+ * Een kopregel ("Onderdeel" / "Gebrek") en lege cellen worden overgeslagen; dubbele namen tellen één keer.
+ * @param {any[][]} regels
+ * @returns {{ onderdelen: string[], gebreken: string[] }}
+ */
+export function lijstenUitTabel(regels) {
+  const rijen = (regels ?? []).map((r) => [celTekst(r?.[0]), celTekst(r?.[1])]);
+  const kop = rijen.findIndex(([a, b]) => a || b);
+  if (kop >= 0 && /^onderde/i.test(rijen[kop][0]) && (!rijen[kop][1] || /^gebrek/i.test(rijen[kop][1]))) rijen.splice(0, kop + 1);
+  else if (kop >= 0 && !rijen[kop][0] && /^gebrek/i.test(rijen[kop][1])) rijen.splice(0, kop + 1);
+  return { onderdelen: samenvoegen([], rijen.map((r) => r[0])), gebreken: samenvoegen([], rijen.map((r) => r[1])) };
+}
+
+/** Voegt namen toe aan een lijst zonder dubbelen (hoofdletters maken niet uit); lege namen vallen weg. */
+export function samenvoegen(lijst, erbij) {
+  const uit = [...(lijst ?? [])].map((x) => String(x).trim()).filter(Boolean);
+  const gezien = new Set(uit.map((x) => x.toLowerCase()));
+  for (const x of erbij ?? []) {
+    const n = String(x ?? '').trim();
+    if (n && !gezien.has(n.toLowerCase())) { gezien.add(n.toLowerCase()); uit.push(n); }
+  }
+  return uit;
+}
