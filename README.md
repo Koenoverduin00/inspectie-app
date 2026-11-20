@@ -1215,6 +1215,11 @@ supabase/schema.sql   database, beveiliging (RLS) en foto-opslag voor Supabase
 .github/workflows/    automatisch publiceren op GitHub Pages
 ```
 
-**Versie bij een update**: verhoog het versienummer in `sw.js` (`inspectie-app-vNN`) en alle `?v=NN` in `index.html`. De *import map* in
-`index.html` laat élke module met hetzelfde versienummer laden, zodat de browser nooit een oude module naast een nieuwe `app.js` gebruikt.
-Een nieuwe module voeg je toe aan de import map én aan de lijst in `sw.js`.
+**Versie bij een update**: verhoog het versienummer in `sw.js` (`inspectie-app-vNN`) en alle `?v=NN` in `index.html` (app.js, de
+opmaak en de *import map*). De import map laat élke module met hetzelfde versienummer laden, zodat de browser nooit een oude module naast
+een nieuwe `app.js` gebruikt. Een nieuwe module voeg je toe aan de import map én aan de lijst in `sw.js`.
+
+**Snel starten (service worker)**: bestanden met het versienummer van de geïnstalleerde versie komen direct van het toestel, zonder op het
+netwerk te wachten. De startpagina komt eerst van de server (zo zie je een update meteen), maar de app wacht daar hoogstens 3 seconden op.
+Na een update haalt de app alle bestanden van de nieuwe versie vers op en ruimt de oude cache op. Gemeten met 300 ms vertraging per bestand:
+herhaald starten van 2,5 s (37 bestanden van de server) naar 0,4 s (2 bestanden); zonder internet van 2,5 naar 0,4 s.
