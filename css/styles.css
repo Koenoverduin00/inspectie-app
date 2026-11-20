@@ -1956,3 +1956,14 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
 .geomschets path.vlak { fill: rgba(11, 79, 108, .2); }
 .geomschets circle { fill: #0b4f6c; }
 @media print { .geomschets { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+
+/* Vragen per bevinding en het vragenoverzicht bij een inspectietype */
+.veldgroep-kop { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-top: 1rem; }
+.veldgroep-kop h3 { margin: 0; flex: 1; font-size: 1rem; }
+.veldgroep-uitleg { margin: .2rem 0 .4rem; color: var(--tekst-zacht); }
+.vraaglijst { margin: .25rem 0 .75rem; padding-left: 1.2rem; }
+.vraaglijst li { margin: .2rem 0; }
+.vraaglijst small { color: var(--tekst-zacht); margin-left: .35rem; }
+.bevextra { border-top: 1px dashed var(--rand); padding-top: .6rem; }
+.bevextra > .extra-velden > .velden { margin: 0; }
+.gk-extra { margin: .5rem 0; }

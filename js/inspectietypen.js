@@ -173,7 +173,12 @@ export function zetInProject(project, type, { velden = [], bron = null, nieuwId 
   if (i >= 0) lijst[i] = nieuw; else lijst.push(nieuw);
   // Velden: bestaande velden bij dit type vervangen door die uit de bron.
   const anders = (project?.velden ?? []).filter((d) => !(d.formulier === 'inspectie' && (d.alleenBij ?? []).length === 1 && d.alleenBij[0] === type.naam));
-  const erbij = velden.map((d) => ({ ...d, id: nieuwId(), formulier: 'inspectie', alleenBij: [type.naam] }));
+  // Nieuwe ids; voorwaarden ("alleen tonen als …") wijzen naar de nieuwe ids van hetzelfde type.
+  const nieuweIds = new Map(velden.map((d) => [d.id, nieuwId()]));
+  const erbij = velden.map((d) => ({
+    ...d, id: nieuweIds.get(d.id), formulier: 'inspectie', alleenBij: [type.naam],
+    toonAls: d.toonAls?.veld && nieuweIds.has(d.toonAls.veld) ? { ...d.toonAls, veld: nieuweIds.get(d.toonAls.veld) } : null,
+  }));
   return { inspectietypen: lijst, velden: [...anders, ...erbij], type: nieuw, vervangen: i >= 0 };
 }
 

@@ -135,6 +135,7 @@ const ROUTES = [
   [/^\/inspectietypen$/, 'inspectietypen', inspectietypenPagina],
   [/^\/inspectietypen\/([^/]+)$/, 'inspectietypen', (id) => inspectietypeEditor(id)],
   [/^\/bibliotheek$/, 'bibliotheek', bibliotheekPagina],
+  [/^\/bibliotheek\/([^/]+)\/vragen$/, 'bibliotheek', (id, q) => formulierveldenPagina(id, q)],
   [/^\/bibliotheek\/([^/]+)$/, 'bibliotheek', (id) => inspectietypeEditor(id, { bibliotheek: true })],
   [/^\/inrichting$/, 'inrichting', inrichtingPagina],
   [/^\/inbox$/, 'inbox', inboxPagina],
@@ -1499,10 +1500,26 @@ async function inspectietypeEditor(id, { bibliotheek = false } = {}) {
       <section class="kaart" data-m="nen"><h2>NEN 2767</h2>
         <p>Gebreken met bouwdeel, ernst, intensiteit en omvang; de conditiescore (1–6) wordt berekend. Heeft het object een gekoppelde
           <a href="#/decompositie">decompositie</a>, dan scoort de inspecteur per bouwdeel.</p></section>
-      <section class="kaart"><h2>Extra velden</h2>
-        ${typeVelden.length ? `<ul>${typeVelden.map((d) => `<li>${esc(d.label)} <small>(${esc(velden.VELDTYPEN[d.type] ?? d.type)}${d.verplicht ? ', verplicht' : ''})</small></li>`).join('')}</ul>` : '<p class="leeg" style="margin:0">Geen extra velden.</p>'}
-        <p><small>${bibliotheek ? 'Extra velden komen mee als je een type vanuit een project in de bibliotheek opslaat, en gaan mee naar elk project dat het formulier krijgt.'
-    : `Extra velden (bijv. een handtekening, meetwaarde of keuzelijst) stel je in bij <a href="#/projecten/${encodeURIComponent(project.id)}/velden?formulier=inspectie">Formuliervelden</a> met "Alleen bij: ${esc(t.naam || 'dit type')}". Ze gaan mee naar de bibliotheek.`}</small></p>
+      <section class="kaart" id="typevragen"><h2>Vragen</h2>
+        ${(() => {
+    if (!bestaand) return '<p class="leeg" style="margin:0">Sla het inspectietype eerst op; daarna voeg je hier vragen toe.</p>';
+    const basis = bibliotheek ? `#/bibliotheek/${encodeURIComponent(item.id)}/vragen?` : `#/projecten/${encodeURIComponent(project.id)}/velden?type=${encodeURIComponent(t.naam)}&`;
+    const groep = (niveau, titel) => {
+      const l = velden.opNiveau(typeVelden.map((d) => ({ ...d, formulier: 'inspectie' })), niveau);
+      return `<div class="veldgroep-kop"><h3>${titel} <span class="teller">${l.length}</span></h3></div>
+        ${l.length ? `<ul class="vraaglijst">${l.map((d) => `<li><a href="${basis}bewerk=${encodeURIComponent(d.id)}">${esc(d.label)}</a>
+          <small>${esc(velden.VELDTYPEN[d.type] ?? d.type)}${d.type === 'geometrie' ? ` · ${esc(GI.INWINNING[d.inwinning || 'keuze'])}` : ''}${d.verplicht ? ' · verplicht' : ''}</small></li>`).join('')}</ul>`
+    : `<p class="leeg" style="margin:.25rem 0 .75rem">${niveau === 'bevinding' ? 'Nog geen vragen per bevinding.' : 'Nog geen vragen.'}</p>`}`;
+    };
+    return `${groep('inspectie', 'Eenmaal per inspectie')}${groep('bevinding', 'Bij elke bevinding')}
+        <div class="knoppen" style="margin-top:.5rem">
+          <a class="knop primair" href="${basis}nieuw=1" data-vraagnav>＋ Vraag toevoegen</a>
+          <a class="knop" href="${basis}nieuw=1&niveau=bevinding&veldtype=geometrie" data-vraagnav>${I.locatie} ＋ Coördinaten per bevinding</a>
+          <a class="knop" href="${basis.slice(0, -1)}" data-vraagnav>Vragen beheren</a></div>
+        <p><small>${bibliotheek ? 'De vragen horen bij dit bibliotheekformulier en gaan mee naar elk project dat het formulier krijgt.'
+    : 'Deze vragen staan alleen in dit inspectietype en gaan mee als je het type in de bibliotheek opslaat.'}
+          Per vraag kies je of hij één keer per inspectie wordt gesteld of in elke bevinding (bijv. een punt, lijn of vlak per gebrek).</small></p>`;
+  })()}
       </section>
       <div class="formvoet kaart"><a class="knop" href="${terug}">Annuleren</a><button class="knop primair" type="submit">${I.vink} Opslaan</button></div>
     </form>`;
@@ -2064,6 +2081,15 @@ function locatieBlok(o) {
 const kenmerk = (label, waarde) => (waarde === '' || waarde === null || waarde === undefined ? ''
   : `<span class="kenmerk"><small>${esc(label)}</small>${waarde}</span>`);
 
+/** Antwoorden op de vragen per bevinding (bijv. een ingewonnen lijn of vlak met schets). */
+function bevAntwoordenHtml(g, i) {
+  if (!g?.extra || !Object.keys(g.extra).length) return '';
+  const regels = extraWeergave({ extra: g.extra, extraLabels: i?.bevindingLabels }, (huidigProject?.velden ?? []).filter((d) => d.formulier === 'inspectie'));
+  if (!regels.length) return '';
+  return `<dl class="gegevens gk-extra">${regels.map(({ d, v }) => `<dt>${esc(d.label)}</dt><dd>${esc(velden.toonWaarde(d, v, datumNL))}${d.type === 'geometrie' ? geomSchetsHtml(v) : ''}${d.type === 'locatie'
+    ? ` <a href="https://www.google.com/maps/search/?api=1&query=${Number(v.lat)},${Number(v.lng)}" target="_blank" rel="noopener">Kaart ${I.extern}</a>` : ''}</dd>`).join('')}</dl>`;
+}
+
 /** Eén NEN 2767-gebrek als overzichtelijke kaart. */
 async function nenGebrekKaart(g, n, i = null) {
   if (i && TY.methodiekVan(i) !== 'nen') {
@@ -2080,6 +2106,7 @@ async function nenGebrekKaart(g, n, i = null) {
       ${g.toelichting || g.maatregel ? `<div class="gk-tekst">
         ${g.toelichting ? `<div><h4>Waarneming</h4><p>${esc(g.toelichting)}</p></div>` : ''}
         ${g.maatregel ? `<div><h4>Maatregel</h4><p>${esc(g.maatregel)}</p></div>` : ''}</div>` : ''}
+      ${bevAntwoordenHtml(g, i)}
       ${await fotoGalerij(g.fotoIds, { titel: "Foto's" })}
     </article>`;
   }
@@ -2101,6 +2128,7 @@ async function nenGebrekKaart(g, n, i = null) {
     ${g.toelichting || g.maatregel ? `<div class="gk-tekst">
       ${g.toelichting ? `<div><h4>Waarneming</h4><p>${esc(g.toelichting)}</p></div>` : ''}
       ${g.maatregel ? `<div><h4>Maatregel</h4><p>${esc(g.maatregel)}</p></div>` : ''}</div>` : ''}
+    ${bevAntwoordenHtml(g, i)}
     ${await fotoGalerij(g.fotoIds, { titel: "Foto's" })}
   </article>`;
 }
@@ -4065,7 +4093,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     ? {
       ...bestaand,
       fotos: await laadFotos(bestaand.fotoIds),
-      gebreken: await Promise.all((bestaand.gebreken ?? []).map(async (g) => ({ ...g, fotos: await laadFotos(g.fotoIds) }))),
+      gebreken: await Promise.all((bestaand.gebreken ?? []).map(async (g) => ({ ...g, id: g.id ?? nieuwId(), fotos: await laadFotos(g.fotoIds) }))),
     }
     : {
       objectId: objectId ?? '', datum: vandaag(), inspecteur: instelling.lees('inspecteur'), werkpakketId: pakketId ?? '', rondeId: rondeId ?? '',
@@ -4112,12 +4140,14 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
   const methodiek = () => type?.methodiek ?? 'nen';
   const perBd = () => methodiek() === 'nen' && Array.isArray(staat.bouwdelen) && staat.bouwdelen.length > 0;
   const maakChecklist = () => {
-    const oud = new Map((staat.checklist ?? []).map((c) => [c.punt, c]));
+    // Alleen punten die al in dit formulier zijn opgebouwd; de opgeslagen checklist (punt + status) wordt hieronder aangevuld.
+    const oud = new Map((staat.checklist ?? []).filter((c) => Array.isArray(c.fotos)).map((c) => [c.punt, c]));
     const details = new Map((bestaand?.gebreken ?? []).filter((g) => g.checkpunt).map((g) => [g.checkpunt, g]));
     staat.checklist = (type?.punten ?? []).map((punt) => oud.get(punt) ?? {
       id: details.get(punt)?.id ?? nieuwId(), punt, status: (bestaand?.checklist ?? []).find((c) => c.punt === punt)?.status ?? '',
       toelichting: details.get(punt)?.toelichting ?? '', maatregel: details.get(punt)?.maatregel ?? '', urgentie: details.get(punt)?.urgentie ?? '',
       kostenraming: details.get(punt)?.kostenraming ?? '', maatregelStatus: details.get(punt)?.maatregelStatus ?? 'open', ...gpsVan(details.get(punt)),
+      extra: details.get(punt)?.extra ?? {},
       fotos: staat.gebreken.find((g) => g.checkpunt === punt)?.fotos ?? [],
     });
   };
@@ -4195,6 +4225,10 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
   const form = app.querySelector('#form');
   koppelObjectKeuze(form, objecten);
   const extraB = await extraBlok(app.querySelector('#extra-blok'), await projectVelden('inspectie', () => form.elements.soort.value), bestaand);
+  // Vragen die in elke bevinding staan (bijv. inwinning van een punt, lijn of vlak per gebrek).
+  const bevDefs = await projectVelden('inspectie', () => form.elements.soort.value, 'bevinding');
+  const bevExtraHtml = (sleutel) => (bevDefs().length
+    ? `<div class="veld breed bevextra" data-bevextra="${esc(String(sleutel))}"><div class="extra-velden"></div></div>` : '');
   form.addEventListener('change', (e) => {
     if (e.target.name !== 'soort') return;
     if (e.target.value === ST.STOWA_SOORT && !bestaand) {
@@ -4221,6 +4255,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     extraB.teken();
     toonBouwdelen();
     toonGebreken();
+    for (const b of bevBlokken.values()) b.blok.then((x) => x.teken());
   });
 
   const fotoBlok = (fotos, sleutel) => `
@@ -4307,13 +4342,14 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
         ${optie('open', 'Open', g.maatregelStatus)}${optie('uitgevoerd', 'Uitgevoerd', g.maatregelStatus)}</select></div>`,
       fotos: `<div class="veld breed"><label>Foto's</label>${fotoBlok(g.fotos, `g${i}`)}</div>`,
       gps: gpsVeldHtml(g, `g${i}`),
+      extra: bevExtraHtml(g.id),
     };
     const sleutel = `advies-${g.id}`;
     const inhoud = mobiel
-      ? `<div class="velden">${v.fotos}${v.gps}${v.bouwdeel}${v.gebrek}${v.ernst}${v.intensiteit}${v.omvang}${v.toelichting}</div>
+      ? `<div class="velden">${v.fotos}${v.gps}${v.bouwdeel}${v.gebrek}${v.ernst}${v.intensiteit}${v.omvang}${v.toelichting}${v.extra}</div>
          <details data-details="${sleutel}" ${openDetails.has(sleutel) ? 'open' : ''}><summary>Plaats, advies en urgentie</summary>
            <div class="velden" style="margin-top:.75rem">${v.locatie}${v.maatregel}${v.urgentie}${v.kosten}${v.conditie}${v.status}</div></details>`
-      : `<div class="velden">${v.bouwdeel}${v.gebrek}${v.locatie}${v.ernst}${v.intensiteit}${v.omvang}${v.conditie}${v.toelichting}
+      : `<div class="velden">${v.bouwdeel}${v.gebrek}${v.locatie}${v.ernst}${v.intensiteit}${v.omvang}${v.conditie}${v.toelichting}${v.extra}
            ${v.maatregel}${v.urgentie}${v.kosten}${v.status}${v.gps}${v.fotos}</div>`;
     return `
     <div class="gebrek" data-gebrek="${i}" style="border-left-color:${CONDITIES[gebrekScore(g)].kleur}">
@@ -4347,13 +4383,14 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
       toelichting: `<div class="veld breed"><label>Toelichting / waarneming</label><textarea data-g="${i}" data-veld="toelichting" maxlength="4000">${esc(g.toelichting ?? '')}</textarea></div>`,
       fotos: `<div class="veld breed"><label>Foto's</label>${fotoBlok(g.fotos, `g${i}`)}</div>`,
       gps: gpsVeldHtml(g, `g${i}`),
+      extra: bevExtraHtml(g.id),
     };
     const sleutel = `advies-${g.id}`;
     const inhoud = mobiel
-      ? `<div class="velden">${v.fotos}${v.gps}${v.onderdeel}${v.gebrek}${v.oordeel}${v.toelichting}</div>
+      ? `<div class="velden">${v.fotos}${v.gps}${v.onderdeel}${v.gebrek}${v.oordeel}${v.toelichting}${v.extra}</div>
          <details data-details="${sleutel}" ${openDetails.has(sleutel) ? 'open' : ''}><summary>Plaats, advies en urgentie</summary>
            <div class="velden" style="margin-top:.75rem">${v.locatie}${a.maatregel}${a.urgentie}${a.kosten}${a.status}</div></details>`
-      : `<div class="velden">${v.onderdeel}${v.gebrek}${v.locatie}${v.oordeel}${v.toelichting}${a.maatregel}${a.urgentie}${a.kosten}${a.status}${v.gps}${v.fotos}</div>`;
+      : `<div class="velden">${v.onderdeel}${v.gebrek}${v.locatie}${v.oordeel}${v.toelichting}${v.extra}${a.maatregel}${a.urgentie}${a.kosten}${a.status}${v.gps}${v.fotos}</div>`;
     return `<div class="gebrek" data-gebrek="${i}" style="border-left-color:${esc(o.kleur)}">
       <div class="gebrek-kop"><h3 style="margin:0">Bevinding ${i + 1}</h3>
         <div class="knoppen"><span data-score="${i}">${oordeelChip(o)}</span>
@@ -4371,6 +4408,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
         <div class="veld breed"><label>Wat is er niet in orde?</label><textarea data-c="${n}" data-cveld="toelichting" maxlength="2000" style="min-height:60px">${esc(c.toelichting)}</textarea></div>
         <div class="veld breed"><label>Foto's</label>${fotoBlok(c.fotos, `c${n}`)}</div>
         ${gpsVeldHtml(c, `c${n}`)}
+        ${bevExtraHtml(c.id)}
         ${a.maatregel}${a.urgentie}${a.kosten}${a.status}</div>` : ''}</div>`;
   }).join('');
   const toonOordeelBlok = () => {
@@ -4381,7 +4419,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
       <div class="segment schaalsegment" role="radiogroup">${type.schaal.map((x) => `<label><input type="radio" name="oordeelHandmatig" data-oh value="${x.waarde}" ${Number(staat.oordeelHandmatig) === Number(x.waarde) ? 'checked' : ''}><span style="--k:${esc(x.kleur)}">${esc(x.label)}</span></label>`).join('')}</div>` : '';
   };
 
-  const toonGebreken = () => {
+  const toonGebrekenKaal = () => {
     const kop = app.querySelector('#gebreken-kop');
     const knop = app.querySelector('#gebrek-toevoegen');
     toonOordeelBlok();
@@ -4408,6 +4446,23 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
           ? 'Geen gebreken? Rond de schouw dan direct af.'
           : 'Geen gebreken vastgelegd. Een inspectie zonder gebreken krijgt conditie 1 (uitstekend).');
     toonTotaal();
+  };
+  // Vragen per bevinding: elk blok houdt bij het hertekenen zijn invoer, kaart en een lopende GPS-inwinning.
+  const bevBlokken = new Map(); // sleutel (id van gebrek/controlepunt) → { el, blok: Promise<extraBlok> }
+  let bevTeller = 0;
+  const bevindingVan = (k) => staat.gebreken.find((g) => g.id === k) ?? (staat.checklist ?? []).find((c) => c.id === k);
+  const toonGebreken = () => {
+    toonGebrekenKaal();
+    app.querySelectorAll('#gebreken [data-bevextra]').forEach((plek) => {
+      const k = plek.dataset.bevextra;
+      const oud = bevBlokken.get(k);
+      if (oud) { if (oud.el !== plek) plek.replaceWith(oud.el); return; }
+      const x = bevindingVan(k);
+      if (!x) return;
+      x.extra ??= {};
+      bevBlokken.set(k, { el: plek, blok: extraBlok(plek, bevDefs, { extra: x.extra }, { ns: `b${bevTeller++}-` }) });
+    });
+    for (const k of [...bevBlokken.keys()]) if (!bevindingVan(k)) bevBlokken.delete(k);
   };
   const toonAlgemeneFotos = () => { app.querySelector('#algemene-fotos').innerHTML = fotoBlok(staat.fotos, 'alg'); };
   const fotoLijst = (sleutel) => (sleutel === 'alg' ? staat.fotos
@@ -4570,6 +4625,20 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
         return melding(`${fouten[0]}${fouten.length > 1 ? ` (en ${fouten.length - 1} meer)` : ''}`, 'fout');
       }
     }
+    // Vragen per bevinding: bij afronden controleren, daarna de antwoorden bij de bevinding zetten.
+    for (const [k, b] of bevBlokken) {
+      if (status !== 'afgerond' || !b.el.isConnected) continue;
+      const fouten = (await b.blok).fouten();
+      if (!fouten.length) continue;
+      const x = bevindingVan(k);
+      const gi = staat.gebreken.indexOf(x);
+      b.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return melding(`${gi >= 0 ? `${methodiek() === 'nen' ? 'Gebrek' : 'Bevinding'} ${gi + 1}` : `Controlepunt "${x?.punt ?? ''}"`}: ${fouten[0]}`, 'fout');
+    }
+    for (const [k, b] of bevBlokken) {
+      const x = bevindingVan(k);
+      if (x) x.extra = (await b.blok).waarden();
+    }
     const inspectieId = id ?? nieuwId();
     const nu = new Date().toISOString();
     const extraFotoIds = await extraB.bewaarFotos({ inspectieId, projectId: staat.projectId ?? projectId(), datum: nu });
@@ -4580,6 +4649,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
       staat.gebreken = staat.checklist.filter((c) => c.status === 'nok').map((c) => ({
         id: c.id, checkpunt: c.punt, bouwdeel: c.punt, gebrek: TY.CHECK.nok, locatie: '', toelichting: c.toelichting ?? '', maatregel: c.maatregel ?? '',
         urgentie: c.urgentie ?? '', kostenraming: c.kostenraming ?? '', maatregelStatus: c.maatregelStatus ?? 'open', fotos: c.fotos ?? [], ...gpsVan(c),
+        extra: c.extra ?? {},
       }));
     }
     const alleFotos = [...staat.fotos, ...staat.gebreken.flatMap((g) => g.fotos)];
@@ -4603,6 +4673,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
       fotoIds: staat.fotos.map((f) => f.id),
       extra: extraB.waarden(),
       extraLabels: extraB.labels(),
+      ...(bevDefs.alle.length || bestaand?.bevindingLabels ? { bevindingLabels: { ...(bestaand?.bevindingLabels ?? {}), ...Object.fromEntries(bevDefs.alle.map((d) => [d.id, d.label])) } } : {}),
       extraFotoIds,
       bouwdelen: perBd() ? staat.bouwdelen.map((b) => ({ id: b.id, code: b.code ?? '', naam: b.naam, nietGeinspecteerd: Boolean(b.nietGeinspecteerd), reden: b.nietGeinspecteerd ? b.reden ?? '' : '' })) : undefined,
       ...(type ? { type: TY.momentopname(type) } : {}),
@@ -4613,6 +4684,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
         locatie: g.locatie ?? '', toelichting: g.toelichting ?? '', maatregel: g.maatregel ?? '', urgentie: g.urgentie ?? '',
         kostenraming: g.kostenraming === '' || g.kostenraming == null ? '' : Number(g.kostenraming), maatregelStatus: g.maatregelStatus ?? 'open',
         ...gpsVan(g), fotoIds: fotos.map((f) => f.id),
+        ...(g.extra && Object.keys(g.extra).length ? { extra: g.extra } : {}),
       })) : staat.gebreken.map(({ fotos, ...g }) => ({
         ...g,
         intensiteit: Number(g.intensiteit) || 1,
@@ -9592,8 +9664,8 @@ function bepaalPositie(klaar, { stil = false } = {}) {
 // ---------------------------------------------------------------------------
 // Extra formuliervelden (per project in te stellen)
 // ---------------------------------------------------------------------------
-function extraInvoerHtml(d, waarde, fotos = []) {
-  const id = `x-${d.id}`;
+function extraInvoerHtml(d, waarde, fotos = [], ns = '') {
+  const id = `x-${ns}${d.id}`;
   const attr = `data-extra="${esc(d.id)}"`;
   switch (d.type) {
     case 'getal':
@@ -9634,7 +9706,7 @@ function extraInvoerHtml(d, waarde, fotos = []) {
       const soort = mag.includes(waarde?.soort) ? waarde.soort : mag[0];
       const did = esc(d.id);
       return `<div class="geomveld" data-geomveld="${did}">
-        ${mag.length > 1 ? `<div class="segment geomsoort" role="radiogroup" aria-label="Wat win je in?">${mag.map((x) => `<label><input type="radio" name="gs-${did}" value="${x}" data-geomsoort="${did}" ${x === soort ? 'checked' : ''}><span>${GI.SOORTEN[x]}</span></label>`).join('')}</div>` : ''}
+        ${mag.length > 1 ? `<div class="segment geomsoort" role="radiogroup" aria-label="Wat win je in?">${mag.map((x) => `<label><input type="radio" name="gs-${esc(ns)}${did}" value="${x}" data-geomsoort="${did}" ${x === soort ? 'checked' : ''}><span>${GI.SOORTEN[x]}</span></label>`).join('')}</div>` : ''}
         <div class="knoppen">
           <button type="button" class="knop" data-geom-gps="${did}">${I.gps} GPS-punt toevoegen</button>
           ${soort !== 'punt' ? `<button type="button" class="knop" data-geom-loop="${did}">▶ Lopend inwinnen</button>` : ''}
@@ -9674,14 +9746,14 @@ function extraInvoerHtml(d, waarde, fotos = []) {
   }
 }
 
-function extraVeldenHtml(defs, extra, extraFotos) {
+function extraVeldenHtml(defs, extra, extraFotos, ns = '') {
   return `<div class="velden">${defs.map((d) => {
     const breed = ['tekst', 'checklist', 'foto', 'meerkeuze', 'locatie', 'geometrie', 'handtekening', 'tijdsduur', 'bijlage'].includes(d.type) ? ' breed' : '';
     const hulp = d.hulptekst || (d.type === 'checklist' && d.verplicht ? 'Alle punten moeten worden afgevinkt.' : '');
     return `<div class="veld${breed}" data-extraveld="${esc(d.id)}">
-      <label for="x-${esc(d.id)}" ${d.verplicht ? 'class="vereist"' : ''}>${esc(d.label)}${d.eis ? ` ${eisBadge(d.eis)}` : ''}</label>
+      <label for="x-${esc(ns)}${esc(d.id)}" ${d.verplicht ? 'class="vereist"' : ''}>${esc(d.label)}${d.eis ? ` ${eisBadge(d.eis)}` : ''}</label>
       ${d.eis?.tekst ? `<small class="eistekst">${esc(d.eis.tekst.length > 160 ? `${d.eis.tekst.slice(0, 157)}…` : d.eis.tekst)}</small>` : ''}
-      ${extraInvoerHtml(d, extra[d.id], extraFotos[d.id])}${hulp ? `<small>${esc(hulp)}</small>` : ''}</div>`;
+      ${extraInvoerHtml(d, extra[d.id], extraFotos[d.id], ns)}${hulp ? `<small>${esc(hulp)}</small>` : ''}</div>`;
   }).join('')}</div>`;
 }
 
@@ -9729,7 +9801,7 @@ async function locatieKaart(blok, id, extra, alleDefs) {
  * @param {() => object[]} defsNu functie die de nu zichtbare velddefinities geeft
  * @param {object} record         bestaande registratie (met extra / extraFotoIds)
  */
-async function extraBlok(blok, defsNu, record) {
+async function extraBlok(blok, defsNu, record, { ns = '' } = {}) {
   const extra = { ...(record?.extra ?? {}) };
   const alleDefs = defsNu.alle ?? [];
   const extraFotos = {};
@@ -9872,7 +9944,7 @@ async function extraBlok(blok, defsNu, record) {
   const teken = () => {
     const defs = zichtbaarNu();
     blok.hidden = !defs.length;
-    doel.innerHTML = defs.length ? extraVeldenHtml(defs, extra, extraFotos) : '';
+    doel.innerHTML = defs.length ? extraVeldenHtml(defs, extra, extraFotos, ns) : '';
     for (const d of defs.filter((x) => x.type === 'geometrie')) {
       geomBijwerken(d.id);
       if (geomOpen.has(d.id) || extra[d.id]?.punten?.length) geomKaart(d.id);
@@ -10043,9 +10115,9 @@ async function extraBlok(blok, defsNu, record) {
 }
 
 /** Velddefinities van het actieve project, als functie die de huidige soort leest. */
-async function projectVelden(formulier, soortFn) {
+async function projectVelden(formulier, soortFn, niveau = 'inspectie') {
   const p = await actiefProject();
-  const alle = (p?.velden ?? []).filter((d) => d.formulier === formulier);
+  const alle = velden.opNiveau((p?.velden ?? []).filter((d) => d.formulier === formulier), niveau);
   const fn = () => velden.zichtbareVelden(alle, formulier, soortFn());
   fn.alle = alle;
   return fn;
@@ -10056,7 +10128,9 @@ function extraWeergave(record, defs) {
   const labels = record?.extraLabels ?? {};
   const bekend = new Map((defs ?? []).map((d) => [d.id, d]));
   const regels = Object.keys(extra).map((id) => {
-    const d = bekend.get(id) ?? { id, label: labels[id] ?? 'Veld', type: Array.isArray(extra[id]) ? 'checklist' : 'tekst' };
+    const w = extra[id];
+    const d = bekend.get(id) ?? { id, label: labels[id] ?? 'Veld',
+      type: Array.isArray(w) ? 'checklist' : w?.punten ? 'geometrie' : w?.lat != null ? 'locatie' : 'tekst' };
     return { d, v: extra[id] };
   }).filter(({ d, v }) => d.type === 'janee' ? v === true || v === false : !velden.isLeeg({ ...d, type: 'lijst' }, v));
   return regels;
@@ -10125,71 +10199,121 @@ async function formulierveldenPagina(id, q) {
     app.innerHTML = leegKaart('Alleen beheerders kunnen formuliervelden instellen.', '<a class="knop" href="#/projecten">Terug</a>');
     return;
   }
-  const formulier = velden.FORMULIEREN[q.get('formulier')] ? q.get('formulier') : 'werk';
+  // Bibliotheekformulier: de vragen horen bij dat ene formulier. Inspectietype in een project (?type=):
+  // alleen de vragen van dat type, nieuwe vragen krijgen "alleen bij" dit type.
+  const bib = isBibliotheek(project);
+  const scopeType = bib ? null : (q.get('type') || null);
+  const formulier = bib || scopeType ? 'inspectie' : (velden.FORMULIEREN[q.get('formulier')] ? q.get('formulier') : 'werk');
+  const typeRecord = scopeType ? inspectieTypen(project, { ookVerborgen: true }).find((t) => t.naam === scopeType) : null;
+  const terugLink = bib ? `#/bibliotheek/${encodeURIComponent(id)}` : typeRecord ? `#/inspectietypen/${encodeURIComponent(typeRecord.id)}` : '#/projecten';
+  const terugTekst = bib ? `Formulier ${project.naam}` : typeRecord ? `Inspectietype ${typeRecord.naam}` : 'Projecten';
   let lijst = (project.velden ?? []).map((d) => ({ ...d }));
   let bewerk = null; // veld dat open staat in de editor
+  let versieOmhoog = false;
+  const inScope = (d) => d.formulier === formulier && (!scopeType || (d.alleenBij ?? []).includes(scopeType));
+  const nieuwVeld = (extra = {}) => ({ id: nieuwId(), formulier, label: '', type: 'tekst', verplicht: false, alleenBij: scopeType ? [scopeType] : [], opties: [], eenheid: '',
+    min: '', max: '', hulptekst: '', niveau: 'inspectie', nieuw: true, ...extra });
+  // Snel toevoegen via de link (bijv. "Coördinaten per bevinding" vanuit het inspectietype).
+  if (q.get('nieuw')) {
+    const vt = velden.VELDTYPEN[q.get('veldtype')] ? q.get('veldtype') : 'tekst';
+    const niveau = formulier === 'inspectie' && q.get('niveau') === 'bevinding' ? 'bevinding' : 'inspectie';
+    bewerk = nieuwVeld({ type: vt, niveau, ...(vt === 'geometrie' ? { label: niveau === 'bevinding' ? 'Ingewonnen locatie bevinding' : 'Ingewonnen locatie', inwinning: 'keuze' } : {}) });
+  }
+  const bewerkId = q.get('bewerk');
+  if (bewerkId && lijst.some((d) => d.id === bewerkId)) bewerk = { ...lijst.find((d) => d.id === bewerkId) };
 
   const opslaan = async () => {
     const nu = new Date().toISOString();
     project.velden = lijst.map(velden.normaliseer);
     project.gewijzigd = nu;
+    // Bibliotheek: één nieuwe versie per bewerkronde, zodat projecten zien dat er een update is.
+    if (bib && !versieOmhoog) { project.versie = Number(project.versie || 1) + 1; versieOmhoog = true; }
+    // Type uit de bibliotheek in dit project aangepast: dat tonen we bij het type.
+    if (typeRecord?.bron?.bibId && !typeRecord.bron.aangepast) {
+      project.inspectietypen = (project.inspectietypen ?? []).some((t) => t.id === typeRecord.id)
+        ? project.inspectietypen.map((t) => (t.id === typeRecord.id ? { ...t, bron: { ...t.bron, aangepast: true } } : t))
+        : [...(project.inspectietypen ?? []), { ...typeRecord, standaard: undefined, bron: { ...typeRecord.bron, aangepast: true } }];
+      typeRecord.bron.aangepast = true;
+    }
     await db.bewaar('projecten', project);
   };
 
-  const teken = () => {
-    const eigen = lijst.filter((d) => d.formulier === formulier);
-    app.innerHTML = `
-      <div class="paginakop"><div><p><a href="#/projecten">← Projecten</a></p>
-        <h1>Formuliervelden</h1><p>${esc(project.naam)} · extra regels die bij elke registratie worden ingevuld, op telefoon en pc.</p></div></div>
-      <div class="tabs" role="tablist">${Object.entries(velden.FORMULIEREN).map(([k, v]) => `
-        <a role="tab" class="tab ${k === formulier ? 'actief' : ''}" href="#/projecten/${esc(id)}/velden?formulier=${k}"
-          aria-selected="${k === formulier}">${v} <span class="teller">${lijst.filter((d) => d.formulier === k).length}</span></a>`).join('')}</div>
-      <div class="veldenindeling">
-        <section class="kaart">
-          <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">${velden.FORMULIEREN[formulier]}</h2>
-            <span class="knoppen"><button class="knop" id="uit-eisen" type="button" title="Eisvragen uit de eisbibliotheek van dit project als vraag toevoegen">${I.taak} ＋ Uit eisbibliotheek</button>
-              <button class="knop primair" id="nieuw" type="button">+ Veld toevoegen</button></span></div>
-          <p><small>Standaardvelden zoals datum, ${formulier === 'werk' ? (project.urenTonen === false ? 'soort en uitvoerder' : 'soort, uren en uitvoerder') : formulier === 'inspectie' ? 'soort, inspecteur en gebreken' : 'titel, prioriteit en deadline'} staan er altijd al in.</small></p>
-          ${eigen.length ? `<ol class="veldlijst">${eigen.map((d, i) => `
+  const veldRegel = (d, i, groep) => `
             <li class="${bewerk?.id === d.id ? 'actief' : ''}">
               <div><strong>${esc(d.label || '(zonder naam)')}</strong>${d.eis ? ` ${eisBadge(d.eis)}` : ''}
-                <small>${velden.VELDTYPEN[d.type]}${d.type === 'getal' && d.eenheid ? ` (${esc(d.eenheid)})` : ''}${d.verplicht ? ' · verplicht' : ''}
-                ${d.alleenBij?.length ? ` · alleen bij ${d.alleenBij.map((s) => esc(SOORT_LABEL[s] ?? s)).join(', ')}` : ''}
+                <small>${velden.VELDTYPEN[d.type]}${d.type === 'getal' && d.eenheid ? ` (${esc(d.eenheid)})` : ''}${d.type === 'geometrie' ? ` · ${esc(GI.INWINNING[d.inwinning || 'keuze'])}` : ''}${d.verplicht ? ' · verplicht' : ''}
+                ${!scopeType && !bib && d.alleenBij?.length ? ` · alleen bij ${d.alleenBij.map((x) => esc(SOORT_LABEL[x] ?? x)).join(', ')}` : ''}
                 ${d.toonAls?.veld ? ` · alleen als <em>${esc(lijst.find((x) => x.id === d.toonAls.veld)?.label ?? '?')}</em> = ${esc(d.toonAls.waarde)}` : ''}</small></div>
               <div class="knoppen" style="flex-wrap:nowrap">
                 <button class="knop klein" data-omhoog="${esc(d.id)}" ${i === 0 ? 'disabled' : ''} aria-label="Omhoog">↑</button>
-                <button class="knop klein" data-omlaag="${esc(d.id)}" ${i === eigen.length - 1 ? 'disabled' : ''} aria-label="Omlaag">↓</button>
+                <button class="knop klein" data-omlaag="${esc(d.id)}" ${i === groep.length - 1 ? 'disabled' : ''} aria-label="Omlaag">↓</button>
                 <button class="knop klein" data-bewerk="${esc(d.id)}">Bewerken</button>
                 <button class="knop klein gevaar" data-weg="${esc(d.id)}" aria-label="Verwijderen">${I.verwijder}</button>
-              </div></li>`).join('')}</ol>` : '<p class="leeg">Nog geen extra velden voor dit formulier.</p>'}
+              </div></li>`;
+
+  const teken = () => {
+    const eigen = lijst.filter(inScope);
+    const groepen = formulier === 'inspectie'
+      ? [['inspectie', 'Eenmaal per inspectie', 'Staan één keer in het formulier, bijv. weersomstandigheden of een handtekening.'],
+        ['bevinding', 'Bij elke bevinding', 'Staan in elk gebrek, elke bevinding en elk controlepunt dat niet in orde is, bijv. de ingewonnen lijn of het vlak van de schade.']]
+        .map(([k, titel, uitleg]) => ({ k, titel, uitleg, velden: velden.opNiveau(eigen, k) }))
+      : [{ k: 'inspectie', titel: '', uitleg: '', velden: eigen }];
+    const algemeen = scopeType ? lijst.filter((d) => d.formulier === 'inspectie' && !(d.alleenBij ?? []).length) : [];
+    const titel = bib ? `Vragen · ${esc(project.naam)}` : scopeType ? `Vragen · ${esc(scopeType)}` : 'Formuliervelden';
+    app.innerHTML = `
+      <div class="paginakop"><div><p><a href="${terugLink}">← ${esc(terugTekst)}</a></p>
+        <h1>${titel}</h1><p>${bib ? `${I.lijst} Formulier in de bibliotheek van het bedrijf · versie ${esc(project.versie ?? 1)}. Projecten die het formulier gebruiken krijgen een melding dat er een nieuwere versie is.`
+    : scopeType ? `${esc(project.naam)} · vragen die alleen in het formulier <strong>${esc(scopeType)}</strong> staan, op telefoon en pc.`
+      : `${esc(project.naam)} · extra regels die bij elke registratie worden ingevuld, op telefoon en pc.`}</p></div></div>
+      ${bib || scopeType ? '' : `<div class="tabs" role="tablist">${Object.entries(velden.FORMULIEREN).map(([k, x]) => `
+        <a role="tab" class="tab ${k === formulier ? 'actief' : ''}" href="#/projecten/${esc(id)}/velden?formulier=${k}"
+          aria-selected="${k === formulier}">${x} <span class="teller">${lijst.filter((d) => d.formulier === k).length}</span></a>`).join('')}</div>`}
+      <div class="veldenindeling">
+        <section class="kaart">
+          <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">${bib || scopeType ? 'Vragen' : velden.FORMULIEREN[formulier]}</h2>
+            <span class="knoppen">${bib ? '' : `<button class="knop" id="uit-eisen" type="button" title="Eisvragen uit de eisbibliotheek van dit project als vraag toevoegen">${I.taak} ＋ Uit eisbibliotheek</button>`}
+              <button class="knop primair" id="nieuw" type="button">＋ Vraag toevoegen</button></span></div>
+          <p><small>Standaardvelden zoals datum, ${formulier === 'werk' ? (project.urenTonen === false ? 'soort en uitvoerder' : 'soort, uren en uitvoerder') : formulier === 'inspectie' ? 'soort, inspecteur, bevindingen met foto\'s en GPS-locatie' : 'titel, prioriteit en deadline'} staan er altijd al in.</small></p>
+          ${groepen.map((g) => `${g.titel ? `<div class="veldgroep-kop"><h3>${esc(g.titel)} <span class="teller">${g.velden.length}</span></h3>
+              <button class="knop klein" type="button" data-nieuw-niveau="${g.k}">＋ Vraag</button>
+              ${g.k === 'bevinding' ? `<button class="knop klein" type="button" data-snel-geom>${I.locatie} ＋ Coördinaten (punt, lijn of vlak)</button>` : ''}</div>
+            <p class="veldgroep-uitleg"><small>${esc(g.uitleg)}</small></p>` : ''}
+            ${g.velden.length ? `<ol class="veldlijst">${g.velden.map((d, i) => veldRegel(d, i, g.velden)).join('')}</ol>` : `<p class="leeg">${g.titel ? 'Nog geen vragen.' : 'Nog geen extra velden voor dit formulier.'}</p>`}`).join('')}
+          ${algemeen.length ? `<p><small>${I.let} Daarnaast ${algemeen.length === 1 ? 'staat 1 vraag' : `staan ${algemeen.length} vragen`} in álle inspectieformulieren van dit project
+            (${algemeen.slice(0, 4).map((d) => esc(d.label)).join(', ')}${algemeen.length > 4 ? ', …' : ''}). <a href="#/projecten/${esc(id)}/velden?formulier=inspectie">Alle formuliervelden</a></small></p>` : ''}
         </section>
         <section class="kaart" id="editor" ${bewerk ? '' : 'hidden'}></section>
       </div>`;
 
-    app.querySelector('#uit-eisen').onclick = () => eisenKiezen();
-    app.querySelector('#nieuw').onclick = () => {
-      bewerk = { id: nieuwId(), formulier, label: '', type: 'tekst', verplicht: false, alleenBij: [], opties: [], eenheid: '', min: '', max: '', hulptekst: '', nieuw: true };
+    app.querySelector('#uit-eisen')?.addEventListener('click', () => eisenKiezen());
+    app.querySelector('#nieuw').onclick = () => { bewerk = nieuwVeld(); teken(); };
+    app.querySelectorAll('[data-nieuw-niveau]').forEach((k) => { k.onclick = () => { bewerk = nieuwVeld({ niveau: k.dataset.nieuwNiveau }); teken(); }; });
+    app.querySelector('[data-snel-geom]')?.addEventListener('click', () => {
+      bewerk = nieuwVeld({ niveau: 'bevinding', type: 'geometrie', inwinning: 'keuze', label: 'Ingewonnen locatie bevinding' });
       teken();
-    };
+      app.querySelector('#v-label')?.select();
+    });
     app.querySelectorAll('[data-bewerk]').forEach((k) => { k.onclick = () => { bewerk = { ...lijst.find((d) => d.id === k.dataset.bewerk) }; teken(); }; });
     app.querySelectorAll('[data-weg]').forEach((k) => {
       k.onclick = async () => {
         const d = lijst.find((x) => x.id === k.dataset.weg);
         const afhankelijk = lijst.filter((x) => x.toonAls?.veld === d.id).map((x) => x.label);
-        if (!confirm(`Veld "${d.label}" verwijderen? Al ingevulde antwoorden blijven bij de registraties bewaard.${afhankelijk.length ? `\n\nDeze velden hangen ervan af en worden daarna altijd getoond: ${afhankelijk.join(', ')}.` : ''}`)) return;
+        if (!confirm(`Vraag "${d.label}" verwijderen? Al ingevulde antwoorden blijven bij de registraties bewaard.${afhankelijk.length ? `\n\nDeze vragen hangen ervan af en worden daarna altijd getoond: ${afhankelijk.join(', ')}.` : ''}`)) return;
         lijst = lijst.filter((x) => x.id !== d.id).map((x) => (x.toonAls?.veld === d.id ? { ...x, toonAls: null } : x));
         if (bewerk?.id === d.id) bewerk = null;
         await opslaan();
         teken();
       };
     });
+    // Verplaatsen binnen dezelfde groep (formulier, type en niveau).
     const verplaats = (vid, richting) => {
-      const eigenIds = lijst.filter((d) => d.formulier === formulier).map((d) => d.id);
-      const i = eigenIds.indexOf(vid);
+      const d = lijst.find((x) => x.id === vid);
+      const groepIds = lijst.filter((x) => inScope(x) && velden.isBevindingVeld(x) === velden.isBevindingVeld(d)).map((x) => x.id);
+      const i = groepIds.indexOf(vid);
       const j = i + richting;
-      if (j < 0 || j >= eigenIds.length) return;
-      const a = lijst.findIndex((d) => d.id === eigenIds[i]);
-      const b = lijst.findIndex((d) => d.id === eigenIds[j]);
+      if (j < 0 || j >= groepIds.length) return;
+      const a = lijst.findIndex((x) => x.id === groepIds[i]);
+      const b = lijst.findIndex((x) => x.id === groepIds[j]);
       [lijst[a], lijst[b]] = [lijst[b], lijst[a]];
     };
     app.querySelectorAll('[data-omhoog]').forEach((k) => { k.onclick = async () => { verplaats(k.dataset.omhoog, -1); await opslaan(); teken(); }; });
@@ -10204,7 +10328,7 @@ async function formulierveldenPagina(id, q) {
       if (confirm('Er is nog geen eisbibliotheek voor dit project. Nu de eisen inlezen?')) ga('#/eisen');
       return;
     }
-    const alInFormulier = new Set(lijst.filter((x) => x.formulier === formulier && x.eis).map((x) => EI.sleutel(x.eis.nummer)));
+    const alInFormulier = new Set(lijst.filter((x) => inScope(x) && x.eis).map((x) => EI.sleutel(x.eis.nummer)));
     const gekozen = new Set();
     const d = document.createElement('dialog');
     d.className = 'dialoog eiskiezer';
@@ -10243,7 +10367,7 @@ async function formulierveldenPagina(id, q) {
       const ok = d.returnValue === 'ja';
       d.remove();
       if (!ok || !gekozen.size) return;
-      const nieuw = eisen.filter((e) => gekozen.has(e.nummer)).map((e) => EI.naarVeld(e, formulier, nieuwId()));
+      const nieuw = eisen.filter((e) => gekozen.has(e.nummer)).map((e) => ({ ...EI.naarVeld(e, formulier, nieuwId()), ...(scopeType ? { alleenBij: [scopeType] } : {}) }));
       lijst.push(...nieuw);
       await opslaan();
       melding(`${nieuw.length} eisvra${nieuw.length === 1 ? 'ag' : 'gen'} toegevoegd aan ${velden.FORMULIEREN[formulier]}`);
@@ -10256,18 +10380,24 @@ async function formulierveldenPagina(id, q) {
     const d = bewerk;
     formulierGewijzigd = true; // niet opnieuw opbouwen terwijl een veld open staat
     const soorten = SOORTEN_PER_FORMULIER[formulier]();
+    const opBevinding = velden.isBevindingVeld(velden.normaliseer(d));
+    const typen = Object.entries(velden.VELDTYPEN).filter(([k]) => !opBevinding || velden.BEVINDING_TYPEN.includes(k));
     el.innerHTML = `
-      <h2>${d.nieuw ? 'Nieuw veld' : 'Veld bewerken'}</h2>
+      <h2>${d.nieuw ? 'Nieuwe vraag' : 'Vraag bewerken'}</h2>
       ${d.eis ? `<div class="eisblok">${eisBadge(d.eis)} <span><strong>Gekoppeld aan eis ${esc(d.eis.nummer)}</strong>${d.eis.vervallen ? ' <span class="label-status verlopen">vervallen in de bibliotheek</span>' : ''}
         <small>${esc(d.eis.tekst)}${d.eis.bron ? ` <em>(${esc(d.eis.bron)})</em>` : ''}</small>
         <small class="zacht">De vraag komt uit de eisbibliotheek en wordt bij een nieuwe versie bijgewerkt.</small></span>
         <button type="button" class="knop klein" id="ontkoppel">Ontkoppelen</button></div>` : ''}
       <form id="veldform" novalidate>
         <div class="velden">
-          <div class="veld breed"><label for="v-label" class="vereist">Naam van het veld</label>
+          <div class="veld breed"><label for="v-label" class="vereist">Vraag</label>
             <input id="v-label" name="label" maxlength="80" value="${esc(d.label)}" placeholder="bijv. Gemaaide oppervlakte"></div>
-          <div class="veld"><label for="v-type">Type</label><select id="v-type" name="type">
-            ${Object.entries(velden.VELDTYPEN).map(([k, v]) => optie(k, v, d.type)).join('')}</select></div>
+          ${formulier === 'inspectie' && !d.eis ? `<div class="veld breed"><label>Waar staat de vraag?</label>
+            ${segment('niveau', opBevinding ? 'bevinding' : 'inspectie', Object.entries(velden.NIVEAUS))}
+            <small>${opBevinding ? 'De vraag staat in elke bevinding (gebrek, bevinding of controlepunt dat niet in orde is). Handig om per bevinding een punt, lijn of vlak in te winnen.'
+    : 'De vraag staat één keer in het inspectieformulier.'}</small></div>` : ''}
+          <div class="veld"><label for="v-type">Type antwoord</label><select id="v-type" name="type">
+            ${typen.map(([k, x]) => optie(k, x, d.type)).join('')}</select></div>
           <div class="veld" style="justify-content:flex-end"><label class="vink"><input type="checkbox" name="verplicht" ${d.verplicht ? 'checked' : ''}>
             <span><strong>Verplicht</strong><small>Nodig om op te slaan of af te ronden</small></span></label></div>
           ${d.type === 'getal' ? `
@@ -10290,7 +10420,9 @@ async function formulierveldenPagina(id, q) {
           ${d.type === 'handtekening' ? '<div class="veld breed"><small>De ondertekenaar tekent met de vinger op de telefoon en vult zijn naam in. Bij verplicht zijn handtekening én naam nodig.</small></div>' : ''}
           ${d.type === 'bijlage' ? '<div class="veld breed"><small>Pdf, foto of document (Word, Excel), maximaal 10 MB per bestand, meerdere bestanden mogelijk.</small></div>' : ''}
           ${(() => {
-    const bronnen = lijst.filter((x) => x.formulier === formulier && x.id !== d.id && velden.VOORWAARDE_TYPEN.includes(x.type) && x.label);
+    // Voorwaarde alleen op een vraag van hetzelfde niveau (een bevinding kan niet afhangen van een andere bevinding).
+    const bronnen = lijst.filter((x) => x.formulier === formulier && x.id !== d.id && velden.VOORWAARDE_TYPEN.includes(x.type) && x.label
+      && velden.isBevindingVeld(x) === opBevinding && (!scopeType || !(x.alleenBij ?? []).length || x.alleenBij.includes(scopeType)));
     if (!bronnen.length) return '';
     const bron = bronnen.find((x) => x.id === d.toonAls?.veld);
     const waarden = bron ? (bron.type === 'janee' ? ['Ja', 'Nee'] : (bron.opties ?? [])) : [];
@@ -10301,12 +10433,12 @@ async function formulierveldenPagina(id, q) {
   })()}
           <div class="veld breed"><label for="v-hulp">Toelichting voor de invuller</label>
             <input id="v-hulp" name="hulptekst" maxlength="200" value="${esc(d.hulptekst)}" placeholder="optioneel"></div>
-          <div class="veld breed"><label>Alleen tonen bij ${formulier === 'taak' ? 'soort taak' : 'soort'}</label>
+          <div class="veld breed" ${bib ? 'hidden' : ''}><label>Alleen tonen bij ${formulier === 'taak' ? 'soort taak' : 'soort'}</label>
             <div class="chips">${soorten.map((s) => `<label class="chip"><input type="checkbox" name="alleenBij" value="${esc(s)}" ${d.alleenBij?.includes(s) ? 'checked' : ''}><span>${esc(SOORT_LABEL[s] ?? s)}</span></label>`).join('')}</div>
             <small>Niets aangevinkt = altijd tonen.</small></div>
         </div>
         <h3 style="margin-top:1rem">Voorbeeld</h3>
-        <div class="voorbeeld">${d.label ? extraVeldenHtml([velden.normaliseer(d)], {}, {}) : '<p class="leeg">Geef het veld een naam.</p>'}</div>
+        <div class="voorbeeld">${d.label ? extraVeldenHtml([velden.normaliseer(d)], {}, {}, 'vb-') : '<p class="leeg">Vul de vraag in.</p>'}</div>
         <div class="formvoet">
           <button class="knop" type="button" id="annuleer">Annuleren</button>
           <button class="knop primair" type="submit">${d.nieuw ? 'Toevoegen' : 'Opslaan'}</button>
@@ -10319,6 +10451,10 @@ async function formulierveldenPagina(id, q) {
         label: String(fd.get('label') ?? ''), type: String(fd.get('type')), verplicht: fd.get('verplicht') === 'on',
         hulptekst: String(fd.get('hulptekst') ?? ''), alleenBij: fd.getAll('alleenBij').map(String),
       });
+      if (fd.has('niveau')) bewerk.niveau = String(fd.get('niveau'));
+      // Per bevinding geen foto-, handtekening- of bijlagevraag: kies dan een passend type.
+      if (velden.isBevindingVeld(bewerk) && !velden.BEVINDING_TYPEN.includes(bewerk.type)) bewerk.type = 'tekst';
+      if (bewerk.toonAls?.veld && velden.isBevindingVeld(lijst.find((x) => x.id === bewerk.toonAls.veld)) !== velden.isBevindingVeld(bewerk)) bewerk.toonAls = null;
       if (fd.has('eenheid')) Object.assign(bewerk, { eenheid: String(fd.get('eenheid')), min: String(fd.get('min')), max: String(fd.get('max')) });
       if (fd.has('opties')) bewerk.opties = String(fd.get('opties')).split('\n');
       if (bewerk.type === 'tijdsduur') Object.assign(bewerk, { pauze: fd.get('pauze') === 'on', ploeg: fd.get('ploeg') === 'on' });
@@ -10332,13 +10468,13 @@ async function formulierveldenPagina(id, q) {
     };
     form.addEventListener('change', (e) => {
       lees();
-      if (e.target.name === 'type' || e.target.name === 'toonAlsVeld') tekenEditor();
-      else el.querySelector('.voorbeeld').innerHTML = bewerk.label ? extraVeldenHtml([velden.normaliseer(bewerk)], {}, {}) : '';
+      if (e.target.name === 'type' || e.target.name === 'toonAlsVeld' || e.target.name === 'niveau') tekenEditor();
+      else el.querySelector('.voorbeeld').innerHTML = bewerk.label ? extraVeldenHtml([velden.normaliseer(bewerk)], {}, {}, 'vb-') : '';
     });
     form.addEventListener('input', (e) => {
       if (e.target.name !== 'label' && e.target.name !== 'opties' && e.target.name !== 'eenheid' && e.target.name !== 'hulptekst') return;
       lees();
-      el.querySelector('.voorbeeld').innerHTML = bewerk.label ? extraVeldenHtml([velden.normaliseer(bewerk)], {}, {}) : '';
+      el.querySelector('.voorbeeld').innerHTML = bewerk.label ? extraVeldenHtml([velden.normaliseer(bewerk)], {}, {}, 'vb-') : '';
     });
     el.querySelector('#annuleer').onclick = () => { bewerk = null; formulierGewijzigd = false; teken(); };
     el.querySelector('#ontkoppel')?.addEventListener('click', () => {
@@ -10349,7 +10485,7 @@ async function formulierveldenPagina(id, q) {
       e.preventDefault();
       lees();
       const n = velden.normaliseer(bewerk);
-      if (!n.label) return melding('Geef het veld een naam.', 'fout');
+      if (!n.label) return melding('Vul de vraag in.', 'fout');
       if ((n.type === 'keuze' || n.type === 'checklist' || n.type === 'meerkeuze') && !n.opties.length) return melding('Vul minstens één keuze of punt in.', 'fout');
       if (n.type === 'getal' && n.min !== '' && n.max !== '' && Number(n.min) > Number(n.max)) return melding('Minimum is groter dan maximum.', 'fout');
       const i = lijst.findIndex((x) => x.id === n.id);
@@ -10357,7 +10493,7 @@ async function formulierveldenPagina(id, q) {
       bewerk = null;
       formulierGewijzigd = false;
       await opslaan();
-      melding('Veld opgeslagen');
+      melding(bib ? `Vraag opgeslagen · formulier nu versie ${project.versie}` : 'Vraag opgeslagen');
       teken();
     };
     el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -11973,6 +12109,12 @@ async function exporteerUitkomsten({ voorPakket = null } = {}) {
           ['Storing: bestede uren', IZ.tekst(rec.storing.inzet)], ['Storing: manuren', IZ.totalen(rec.storing.inzet).manuren || ''], ['Storing: materieeluren', IZ.totalen(rec.storing.inzet).materieeluren || '']] : []),
         ...extraExportRegels(extraWeergave(rec, defs[soort] ?? []).filter(({ d: x }) => !['foto', 'bijlage'].includes(x.type))),
       ],
+      bevindingExtra: (rec, g) => {
+        const regels = extraWeergave({ extra: g.extra ?? {}, extraLabels: rec.bevindingLabels }, defs.inspectie);
+        if (!regels.length) return null;
+        return { tekst: regels.map(({ d: x, v }) => `${x.label}: ${velden.toonWaarde(x, v, datumNL)}`).join('; '),
+          wkt: regels.filter(({ d: x }) => x.type === 'geometrie').map(({ v }) => GI.wkt(v)).filter(Boolean).join('; ') };
+      },
       beoordeling: (rec) => beoordelingVan(rec), metUren: toonUren(), metKosten: toonKosten(),
     });
     const rondes = [...keuze.ids].map((id) => perId.get(id)).filter((p) => p && p.id !== STORINGEN.id).flatMap((p) => rondesVan(p).map((rd) => {
@@ -11995,12 +12137,19 @@ async function exporteerUitkomsten({ voorPakket = null } = {}) {
     download(`${naam.replace(/[^\w-]+/g, '_')}-${vandaag()}.xlsx`, await wb.xlsx.writeBuffer(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     melding(`Excel gemaakt: ${r.rijen.length} registraties, ${r.bevindingen.length} bevindingen, ${r.vervolg.length} vervolgacties`);
     if (keuze.geo) {
-      const features = regs.filter((x) => x.soort !== 'overgeslagen').flatMap(({ soort, r: rec, pakket, ronde, object }) => extraWeergave(rec, defs[soort] ?? [])
-        .filter(({ d: x }) => x.type === 'geometrie')
-        .map(({ d: x, v }) => GI.feature(v, { veld: x.label, registratie: rec.id, formulier: soort === 'werk' ? 'werkzaamheid' : 'inspectie', datum: String(rec.datum ?? '').slice(0, 16),
+      const features = regs.filter((x) => x.soort !== 'overgeslagen').flatMap(({ soort, r: rec, pakket, ronde, object }) => {
+        const basis = { registratie: rec.id, formulier: soort === 'werk' ? 'werkzaamheid' : 'inspectie', datum: String(rec.datum ?? '').slice(0, 16),
           objectcode: object.code ?? '', object: object.naam ?? '', werkpakket: metCode(pakket), ronde: ronde ? `R${ronde.nummer ?? ''} ${ronde.naam ?? ''}`.trim() : '',
-          door: rec.uitvoerder || rec.inspecteur || rec.beoordeling?.ingediendDoor || '' })))
-        .filter(Boolean);
+          door: rec.uitvoerder || rec.inspecteur || rec.beoordeling?.ingediendDoor || '' };
+        const geom = (regels) => regels.filter(({ d: x }) => x.type === 'geometrie');
+        return [
+          ...geom(extraWeergave(rec, defs[soort] ?? [])).map(({ d: x, v }) => GI.feature(v, { veld: x.label, ...basis })),
+          // Ingewonnen per bevinding: met nummer, onderdeel en gebrek van die bevinding.
+          ...(soort === 'inspectie' ? (rec.gebreken ?? []).flatMap((g, n) => geom(extraWeergave({ extra: g.extra ?? {}, extraLabels: rec.bevindingLabels }, defs.inspectie))
+            .map(({ d: x, v }) => GI.feature(v, { veld: x.label, ...basis, bevinding: n + 1, onderdeel: g.bouwdeel ?? '', gebrek: g.checkpunt ? 'Niet in orde' : (g.gebrek ?? ''),
+              toelichting: g.toelichting ?? '', maatregel: g.maatregel ?? '', urgentie: g.urgentie ?? '' }))) : []),
+        ];
+      }).filter(Boolean);
       if (features.length) {
         download(`${naam.replace(/[^\w-]+/g, '_')}-geometrie-${vandaag()}.geojson`, JSON.stringify({ type: 'FeatureCollection', name: 'Ingewonnen geometrie', features }, null, 1), 'application/geo+json');
         melding(`GeoJSON gemaakt met ${features.length} ingewonnen vorm${features.length === 1 ? '' : 'en'} (punten, lijnen en vlakken)`);

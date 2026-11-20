@@ -104,7 +104,7 @@ export function fotosVan(r) {
   return uit.filter((f) => !gezien.has(f.fotoId) && gezien.add(f.fotoId));
 }
 
-export function uitkomstRijen({ registraties, extra = () => [], beoordeling = () => '', metUren = true, metKosten = true }) {
+export function uitkomstRijen({ registraties, extra = () => [], bevindingExtra = () => null, beoordeling = () => '', metUren = true, metKosten = true }) {
   const extraLabels = [];
   const checkPunten = [];
   const extraPer = new Map();
@@ -185,9 +185,11 @@ export function uitkomstRijen({ registraties, extra = () => [], beoordeling = ()
     for (const [l, v] of ex) ant(l, v);
     bev.forEach((b, n) => {
       const gps = b.punt ? puntCoord(b.punt) : ['', '', '', ''];
+      // Antwoorden op de vragen per bevinding (bijv. een ingewonnen lijn of vlak).
+      const bx = (b.punt ? bevindingExtra(r, b.punt) : null) ?? { tekst: '', wkt: '' };
       bevindingen.push({
         waarden: [...basis(x), o.code ?? '', o.naam ?? '', datum(r.datum), door ?? '', inspectieSoortTekst(r), n + 1, b.onderdeel, b.gebrek, b.oordeel, b.toelichting,
-          b.maatregel, b.urgentie, ...(metKosten ? [b.kosten] : []), b.status, b.fotos || '', ...gps],
+          b.maatregel, b.urgentie, ...(metKosten ? [b.kosten] : []), b.status, b.fotos || '', bx.tekst ?? '', bx.wkt ?? '', ...gps],
         kleur: b.kleur,
       });
       if (b.open) {
@@ -221,7 +223,7 @@ export const ANTWOORD_KOLOMMEN = [['Werkpakket code', 14], ['Werkpakket', 26], [
 export const bevindingKolommen = (metKosten = true) => [['Werkpakket code', 14], ['Werkpakket', 26], ['Ronde', 18], ['Objectcode', 14], ['Object', 26],
   ['Datum', 12, 'datum'], ['Inspecteur', 20], ['Inspectiesoort', 22], ['Nr', 5], ['Onderdeel / bouwdeel', 24], ['Gebrek', 26], ['Oordeel / conditie', 22],
   ['Toelichting', 40], ['Maatregel', 34], ['Urgentie', 18], ...(metKosten ? [['Raming (€)', 12, 'euro']] : []), ['Status maatregel', 12], ["Foto's", 8],
-  ['X (RD)', 12], ['Y (RD)', 12], ['Breedtegraad', 12], ['Lengtegraad', 12]];
+  ['Vragen per bevinding', 40], ['Geometrie bevinding (WKT, WGS84)', 40], ['X (RD)', 12], ['Y (RD)', 12], ['Breedtegraad', 12], ['Lengtegraad', 12]];
 export const VERVOLG_KOLOMMEN = [['Objectcode', 14], ['Object', 26], ['Objecttype', 16], ['Bron', 26], ['Werkpakket', 26], ['Ronde', 18],
   ['Wat moet er gebeuren', 44], ['Urgentie', 18], ['Uitvoeren vóór', 13, 'datum'], ['Raming (€)', 12, 'euro'], ['Gemeld op', 12, 'datum'], ['Door', 18],
   ['Breedtegraad', 12], ['Lengtegraad', 12]];

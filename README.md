@@ -756,6 +756,23 @@ Weergave en export:
 - **Uitkomsten naar Excel** krijgt per veld een kolom met de geometrie als WKT (WGS84); de CSV van werkzaamheden ook.
 - In de uitkomstenexport kun je **Ingewonnen punten, lijnen en vlakken als GeoJSON** aanvinken: één bestand voor QGIS of ArcGIS met per vorm het veld, de registratie, datum, object, werkpakket, ronde, wie, lengte, oppervlakte en nauwkeurigheid.
 
+### Vragen per bevinding (bijv. een lijn of vlak per gebrek)
+
+Bij het inspectieformulier kies je **per vraag** waar hij staat:
+
+- **Eenmaal per inspectie** – één keer in het formulier (bijv. weersomstandigheden of een handtekening).
+- **Bij elke bevinding** – in elk gebrek (NEN 2767), elke bevinding (oordeel) en elk controlepunt dat *niet in orde* is.
+  Zo wint de inspecteur per bevinding een punt, lijn of vlak in, of vult hij per bevinding een getal (bijv. lengte van de schade),
+  keuze of ja/nee in. Foto's, handtekening en bijlage kunnen niet per bevinding (een bevinding heeft al foto's).
+
+In het formulier staan deze vragen onder de toelichting van elke bevinding, ook op de telefoon. Een bevinding toevoegen, een foto maken of
+een controlepunt omzetten wist niets: een lopende GPS-inwinning loopt gewoon door. Verplichte vragen worden bij **Afronden** per bevinding
+gecontroleerd (bijv. *Bevinding 2: Lengte schade is verplicht*). Een voorwaarde ("alleen tonen als …") kan naar een andere vraag in dezelfde bevinding.
+
+De detailpagina en het rapport tonen de antwoorden bij de bevinding, met een schets van de ingewonnen vorm. In **Uitkomsten naar Excel** krijgt
+het blad *Bevindingen* de kolommen *Vragen per bevinding* en *Geometrie bevinding (WKT, WGS84)*; de **GeoJSON** bevat ook de vormen per bevinding,
+met het nummer, onderdeel, gebrek, toelichting, maatregel en urgentie van die bevinding.
+
 ## GPS-locatie per gebrek of bevinding
 
 Elk gebrek (NEN 2767, boomveiligheidscontrole), elke bevinding (oordeel) en elk controlepunt dat niet in orde is, heeft standaard een veld
@@ -859,6 +876,22 @@ In de projectgegevens staan twee schakelaars: **Kostenramingen gebruiken** en **
 bedrijf via een ander proces (ERP- of urensysteem), zet het dan uit: het veld wordt niet meer gevraagd en bedragen of
 uren verdwijnen uit formulieren, overzichten, dashboard, inspectierapport, CSV- en Excel-exports. Al ingevulde waarden
 blijven bewaard en komen terug als je het weer aanzet.
+
+## Vragen toevoegen aan een inspectietype (standaardformulier)
+
+Bij elk inspectietype (Instellingen → Inspectietypen → type) en elk formulier in de bibliotheek staat het blok **Vragen**, in twee groepen:
+*Eenmaal per inspectie* en *Bij elke bevinding*. Klik een vraag om hem te bewerken, of kies:
+
+- **＋ Vraag toevoegen** – de editor opent direct; de vraag komt alleen in dit inspectietype (je hoeft "Alleen bij" niet meer zelf aan te vinken).
+- **＋ Coördinaten per bevinding** – in één klik een vraag *Inwinning coördinaten* die in elke bevinding staat (inspecteur kiest punten, lijn of vlak).
+- **Vragen beheren** – volgorde wijzigen (per groep), verwijderen, eisvragen toevoegen.
+
+Op de pagina *Vragen · <type>* staan alleen de vragen van dat type, met een terugknop naar het type. Vragen die in álle inspectieformulieren
+staan, worden eronder genoemd. Pas je de vragen aan van een type dat uit de bibliotheek komt, dan staat het type daarna als *aangepast in dit project*.
+
+**Bibliotheek**: de vragen van een bibliotheekformulier bewerk je nu ook rechtstreeks in de bibliotheek (Bibliotheek → formulier → Vragen).
+Elke bewerkronde maakt een nieuwe versie, zodat projecten zien dat er een update is. Bij het overnemen in een project blijven voorwaarden
+tussen vragen kloppen.
 
 ## Eigen formuliervelden per project
 

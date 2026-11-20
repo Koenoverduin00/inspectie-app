@@ -26,6 +26,18 @@ export const VELDTYPEN = {
   bijlage: 'Bijlage (pdf of document)',
 };
 
+/**
+ * Waar een vraag van het inspectieformulier staat: één keer per inspectie, of in elke bevinding (gebrek of
+ * controlepunt dat niet in orde is). Zo wint de inspecteur bijvoorbeeld per bevinding een punt, lijn of vlak in.
+ */
+export const NIVEAUS = { inspectie: 'Eenmaal per inspectie', bevinding: 'Bij elke bevinding' };
+/** Typen die per bevinding kunnen (foto's heeft een bevinding al; handtekening en bijlage horen bij de inspectie). */
+export const BEVINDING_TYPEN = Object.keys(VELDTYPEN).filter((t) => !['foto', 'handtekening', 'bijlage'].includes(t));
+/** Staat dit veld in elke bevinding? */
+export const isBevindingVeld = (d) => d?.formulier === 'inspectie' && d?.niveau === 'bevinding';
+/** Velden van één niveau ('inspectie' of 'bevinding'). */
+export const opNiveau = (defs, niveau) => (defs ?? []).filter((d) => isBevindingVeld(d) === (niveau === 'bevinding'));
+
 /** Velden waarvan het antwoord als voorwaarde voor een ander veld kan dienen. */
 export const VOORWAARDE_TYPEN = ['janee', 'keuze', 'meerkeuze'];
 
@@ -158,6 +170,7 @@ export function normaliseer(def) {
   }
   if (d.type === 'geometrie') d.inwinning = GI.INWINNING[def.inwinning] ? def.inwinning : 'keuze';
   if (d.type === 'tijdsduur') Object.assign(d, { pauze: Boolean(def.pauze), ploeg: Boolean(def.ploeg) });
+  if (def.formulier === 'inspectie' && def.niveau === 'bevinding' && BEVINDING_TYPEN.includes(d.type) && !def.eis?.nummer) d.niveau = 'bevinding';
   if (def.toonAls?.veld && def.toonAls?.waarde) d.toonAls = { veld: def.toonAls.veld, waarde: String(def.toonAls.waarde) };
   // Koppeling met een eis uit de contractstukken (eisbibliotheek).
   if (def.eis?.nummer) d.eis = { nummer: String(def.eis.nummer), tekst: String(def.eis.tekst ?? ''), bron: String(def.eis.bron ?? ''), ...(def.eis.vervallen ? { vervallen: true } : {}) };
