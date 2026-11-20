@@ -1944,3 +1944,15 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
 .vo-tabel td { overflow-wrap: anywhere; }
 @media screen and (max-width: 700px) { .vo-tabel { table-layout: auto; } }
 @media print { .voortgangsoverzicht .tegels { grid-template-columns: repeat(4, 1fr); } }
+
+/* Inwinning coördinaten: punten, lijn of vlak */
+.geomveld { display: grid; gap: .5rem; }
+.geomveld .geomsoort { justify-self: start; }
+.geomveld.loopt [data-geom-tekst] { color: var(--primair, #0b4f6c); font-weight: 600; }
+.geomveld .geomkaart { height: 320px; }
+.geomhoek { background: #fff; border: 3px solid #0b4f6c; border-radius: 50%; box-sizing: border-box; }
+.geomschets { display: block; margin-top: .35rem; max-width: 100%; height: auto; background: #f4f6f8; border: 1px solid #dde3e8; border-radius: 6px; }
+.geomschets path { fill: none; stroke: #0b4f6c; stroke-width: 2.5; stroke-linejoin: round; }
+.geomschets path.vlak { fill: rgba(11, 79, 108, .2); }
+.geomschets circle { fill: #0b4f6c; }
+@media print { .geomschets { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }

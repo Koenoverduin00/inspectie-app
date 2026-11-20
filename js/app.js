@@ -30,6 +30,7 @@ import * as IZ from './inzet.js';
 import * as SR from './storingen.js';
 import * as SX from './storingenexcel.js';
 import * as VO from './voortgangsoverzicht.js';
+import * as GI from './geominwinning.js';
 import * as IMP from './gisimport.js';
 import * as ST from './stowa.js';
 import * as DG from './digigids.js';
@@ -6239,6 +6240,7 @@ async function werkzaamhedenLijst() {
         if (d.type === 'getal') return v ?? '';
         if (d.type === 'janee') return v === true ? 'Ja' : v === false ? 'Nee' : '';
         if (d.type === 'checklist' || d.type === 'meerkeuze') return (v ?? []).join(', ');
+        if (d.type === 'geometrie') return GI.wkt(v);
         if (['locatie', 'handtekening', 'tijdsduur', 'bijlage', 'foto'].includes(d.type)) return velden.isLeeg(d, v) ? '' : velden.toonWaarde(d, v, datumNL);
         return v ?? '';
       });
@@ -9619,6 +9621,21 @@ function extraInvoerHtml(d, waarde, fotos = []) {
         <small data-loc-tekst>${heeft ? esc(velden.toonWaarde(d, waarde)) : 'Nog geen locatie gekozen.'}</small>
         <div class="locveld-kaart" hidden></div></div>`;
     }
+    case 'geometrie': {
+      const mag = GI.toegestaan(d);
+      const soort = mag.includes(waarde?.soort) ? waarde.soort : mag[0];
+      const did = esc(d.id);
+      return `<div class="geomveld" data-geomveld="${did}">
+        ${mag.length > 1 ? `<div class="segment geomsoort" role="radiogroup" aria-label="Wat win je in?">${mag.map((x) => `<label><input type="radio" name="gs-${did}" value="${x}" data-geomsoort="${did}" ${x === soort ? 'checked' : ''}><span>${GI.SOORTEN[x]}</span></label>`).join('')}</div>` : ''}
+        <div class="knoppen">
+          <button type="button" class="knop" data-geom-gps="${did}">${I.gps} GPS-punt toevoegen</button>
+          ${soort !== 'punt' ? `<button type="button" class="knop" data-geom-loop="${did}">▶ Lopend inwinnen</button>` : ''}
+          <button type="button" class="knop" data-geom-kaart="${did}">${I.locatie} Op de kaart</button>
+          <button type="button" class="knop klein" data-geom-terug="${did}" hidden>↶ Laatste punt weg</button>
+          <button type="button" class="knop klein" data-geom-wis="${did}" hidden>${I.kruis} Wissen</button></div>
+        <small data-geom-tekst></small>
+        <div class="locveld-kaart geomkaart" hidden></div></div>`;
+    }
     case 'handtekening': {
       const getekend = fotos[0];
       return `<div class="handtekening" data-handtekening="${esc(d.id)}">
@@ -9651,7 +9668,7 @@ function extraInvoerHtml(d, waarde, fotos = []) {
 
 function extraVeldenHtml(defs, extra, extraFotos) {
   return `<div class="velden">${defs.map((d) => {
-    const breed = ['tekst', 'checklist', 'foto', 'meerkeuze', 'locatie', 'handtekening', 'tijdsduur', 'bijlage'].includes(d.type) ? ' breed' : '';
+    const breed = ['tekst', 'checklist', 'foto', 'meerkeuze', 'locatie', 'geometrie', 'handtekening', 'tijdsduur', 'bijlage'].includes(d.type) ? ' breed' : '';
     const hulp = d.hulptekst || (d.type === 'checklist' && d.verplicht ? 'Alle punten moeten worden afgevinkt.' : '');
     return `<div class="veld${breed}" data-extraveld="${esc(d.id)}">
       <label for="x-${esc(d.id)}" ${d.verplicht ? 'class="vereist"' : ''}>${esc(d.label)}${d.eis ? ` ${eisBadge(d.eis)}` : ''}</label>
@@ -9723,10 +9740,135 @@ async function extraBlok(blok, defsNu, record) {
     return defs.length ? velden.zichtbareVelden(defs, defs[0].formulier, null, extra) : [];
   };
 
+  // Inwinning van punten, lijnen en vlakken (GPS los, GPS lopend of op de kaart).
+  const geomLoop = new Map(); // veldId → { watch, wakeLock }
+  const geomStatus = {};
+  const geomOpen = new Set();
+  const geomDef = (id) => alleDefs.find((x) => x.id === id);
+  const geomSoort = (id) => {
+    const mag = GI.toegestaan(geomDef(id));
+    return mag.includes(extra[id]?.soort) ? extra[id].soort : mag[0];
+  };
+  const geomZet = (id, punten) => { extra[id] = GI.maak(geomSoort(id), punten); formulierGewijzigd = true; geomBijwerken(id); };
+  const geomLeeg = (soort) => ({ punt: 'Nog geen punten. Voeg GPS-punten toe of tik ze aan op de kaart.',
+    lijn: 'Nog geen lijn. Loop de lijn af met "Lopend inwinnen", voeg GPS-punten één voor één toe of teken op de kaart.',
+    vlak: 'Nog geen vlak. Loop de rand af met "Lopend inwinnen", voeg de hoekpunten met GPS toe of teken op de kaart.' })[soort];
+  const geomStop = (id) => {
+    const l = geomLoop.get(id);
+    if (!l) return;
+    navigator.geolocation?.clearWatch(l.watch);
+    l.wakeLock?.release?.().catch(() => {});
+    geomLoop.delete(id);
+    delete geomStatus[id];
+    geomBijwerken(id);
+  };
+  const geomBijwerken = (id) => {
+    const veld = blok.querySelector(`[data-geomveld="${CSS.escape(id)}"]`);
+    if (!veld) return;
+    const v = extra[id];
+    const n = v?.punten?.length ?? 0;
+    const soort = geomSoort(id);
+    const tekstEl = veld.querySelector('[data-geom-tekst]');
+    tekstEl.textContent = `${n ? GI.tekst(v) : geomLeeg(soort)}${n && !GI.isCompleet(v) ? ` – nog ${GI.MINIMUM[soort] - n} punt${GI.MINIMUM[soort] - n === 1 ? '' : 'en'} nodig` : ''}${geomStatus[id] ? ` · ${geomStatus[id]}` : ''}`;
+    veld.querySelector('[data-geom-terug]').hidden = !n;
+    veld.querySelector('[data-geom-wis]').hidden = !n;
+    const loop = veld.querySelector('[data-geom-loop]');
+    if (loop) { loop.textContent = geomLoop.has(id) ? '■ Stop inwinnen' : '▶ Lopend inwinnen'; loop.classList.toggle('primair', geomLoop.has(id)); }
+    veld.classList.toggle('loopt', geomLoop.has(id));
+    veld.querySelector('.geomkaart')?._teken?.();
+  };
+  const geomKaart = async (id) => {
+    const veld = blok.querySelector(`[data-geomveld="${CSS.escape(id)}"]`);
+    const el = veld?.querySelector('.geomkaart');
+    if (!el) return;
+    geomOpen.add(id);
+    el.hidden = false;
+    if (el._kaart) { el._kaart.invalidateSize(); return; }
+    let L;
+    try { L = await laadLeaflet(); } catch (fout) { el.innerHTML = `<p class="leeg">${esc(fout.message)}</p>`; return; }
+    if (el._kaart || !el.isConnected) return;
+    const map = L.map(el, { zoomAnimation: false, fadeAnimation: false });
+    el._kaart = map;
+    voegAchtergrondToe(L, map);
+    const objectId = app.querySelector('#f-object')?.value;
+    const o = objectId ? await db.haal('objecten', objectId) : null;
+    const geom = o ? objectGeometrie(o) : null;
+    const objLaag = geom ? L.geoJSON(geom, { style: { color: '#e07b00', weight: 2, fillOpacity: 0.1, dashArray: '4 4' }, pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 6, color: '#e07b00' }) }).addTo(map) : null;
+    const vorm = L.layerGroup().addTo(map);
+    const hoekIcoon = L.divIcon({ className: 'geomhoek', iconSize: [14, 14] });
+    el._teken = () => {
+      vorm.clearLayers();
+      const v = extra[id];
+      const pts = (v?.punten ?? []).map((q) => [q.lat, q.lng]);
+      const kleur = '#0b4f6c';
+      if (v?.soort === 'lijn' && pts.length > 1) L.polyline(pts, { color: kleur, weight: 4 }).addTo(vorm);
+      if (v?.soort === 'vlak' && pts.length > 2) L.polygon(pts, { color: kleur, weight: 3, fillOpacity: 0.25 }).addTo(vorm);
+      if (v?.soort === 'vlak' && pts.length === 2) L.polyline(pts, { color: kleur, weight: 3, dashArray: '6 6' }).addTo(vorm);
+      pts.forEach((ll, i) => {
+        const m = L.marker(ll, { icon: hoekIcoon, draggable: true, title: `Punt ${i + 1} – versleep om te verbeteren` }).addTo(vorm);
+        m.on('dragend', () => {
+          const p = m.getLatLng();
+          geomZet(id, extra[id].punten.map((q, k) => (k === i ? { lng: p.lng, lat: p.lat, bron: 'kaart' } : q)));
+        });
+      });
+      const laatste = pts[pts.length - 1];
+      if (laatste && !map.getBounds().contains(laatste)) {
+        if (geomLoop.has(id)) map.panTo(laatste); // tijdens het lopen meeschuiven
+        else map.fitBounds(L.latLngBounds(pts), { maxZoom: 19, padding: [24, 24] });
+      }
+    };
+    const v = extra[id];
+    if (v?.punten?.length) map.fitBounds(L.latLngBounds(v.punten.map((q) => [q.lat, q.lng])), { maxZoom: 19, padding: [24, 24] });
+    else if (objLaag) map.fitBounds(objLaag.getBounds(), { maxZoom: 19, padding: [20, 20] });
+    else if (laatstePositie) map.setView([laatstePositie[1], laatstePositie[0]], 18);
+    else map.setView([52.1, 5.1], 8);
+    map.on('click', (e) => geomZet(id, [...(extra[id]?.punten ?? []), { lng: e.latlng.lng, lat: e.latlng.lat, bron: 'kaart' }]));
+    el._teken();
+  };
+  const geomGps = (id, knop) => {
+    if (!navigator.geolocation) { melding('Locatiebepaling wordt niet ondersteund.', 'fout'); return; }
+    knop.disabled = true;
+    navigator.geolocation.getCurrentPosition((pos) => {
+      knop.disabled = false;
+      laatstePositie = [pos.coords.longitude, pos.coords.latitude];
+      const r = GI.voegGpsToe(extra[id]?.punten ?? [], { lng: pos.coords.longitude, lat: pos.coords.latitude, nk: pos.coords.accuracy, t: new Date().toISOString() }, { minAfstand: 0, maxNauwkeurigheid: 1e9 });
+      geomZet(id, r.punten);
+      if (pos.coords.accuracy > 25) melding(`Punt toegevoegd, maar de GPS is onnauwkeurig (± ${Math.round(pos.coords.accuracy)} m).`, 'fout');
+      geomKaart(id);
+    }, (fout) => { knop.disabled = false; melding(`Locatie niet beschikbaar: ${fout.message}`, 'fout'); }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+  };
+  const geomLopend = (id) => {
+    if (geomLoop.has(id)) { geomStop(id); return; }
+    if (!navigator.geolocation) { melding('Locatiebepaling wordt niet ondersteund.', 'fout'); return; }
+    const l = { watch: null, wakeLock: null };
+    // Scherm aan houden tijdens het lopen (als de telefoon dat toestaat); niet op wachten.
+    navigator.wakeLock?.request('screen').then((w) => { if (geomLoop.get(id) === l) l.wakeLock = w; else w.release().catch(() => {}); }).catch(() => {});
+    l.watch = navigator.geolocation.watchPosition((pos) => {
+      if (!blok.isConnected) { navigator.geolocation.clearWatch(l.watch); l.wakeLock?.release?.().catch(() => {}); return; }
+      laatstePositie = [pos.coords.longitude, pos.coords.latitude];
+      const r = GI.voegGpsToe(extra[id]?.punten ?? [], { lng: pos.coords.longitude, lat: pos.coords.latitude, nk: pos.coords.accuracy, t: new Date().toISOString() });
+      geomStatus[id] = r.reden === 'onnauwkeurig' ? `wacht op beter GPS-signaal (± ${Math.round(pos.coords.accuracy)} m)` : `lopend inwinnen (± ${Math.round(pos.coords.accuracy)} m)`;
+      if (r.toegevoegd) geomZet(id, r.punten); else geomBijwerken(id);
+    }, (fout) => {
+      // Geen toestemming: stoppen. Signaal even kwijt (onder een brug, tussen bomen): gewoon doorgaan met zoeken.
+      if (fout.code === 1) { geomStop(id); melding('Geen toestemming voor de locatie; inwinnen gestopt.', 'fout'); return; }
+      geomStatus[id] = 'GPS-signaal kwijt, blijft zoeken…';
+      geomBijwerken(id);
+    }, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
+    geomLoop.set(id, l);
+    geomStatus[id] = 'GPS zoeken…';
+    geomBijwerken(id);
+    geomKaart(id);
+  };
+
   const teken = () => {
     const defs = zichtbaarNu();
     blok.hidden = !defs.length;
     doel.innerHTML = defs.length ? extraVeldenHtml(defs, extra, extraFotos) : '';
+    for (const d of defs.filter((x) => x.type === 'geometrie')) {
+      geomBijwerken(d.id);
+      if (geomOpen.has(d.id) || extra[d.id]?.punten?.length) geomKaart(d.id);
+    }
   };
   blok.addEventListener('input', (e) => {
     const el = e.target;
@@ -9747,6 +9889,14 @@ async function extraBlok(blok, defsNu, record) {
     if (bronnen.has(id) && el.type !== 'text' && el.type !== 'number') teken();
   });
   blok.addEventListener('change', async (e) => {
+    const gs = e.target.dataset?.geomsoort;
+    if (gs) {
+      geomStop(gs);
+      extra[gs] = GI.maak(e.target.value, extra[gs]?.punten ?? []);
+      formulierGewijzigd = true;
+      teken();
+      return;
+    }
     const bijlageId = e.target.dataset?.extraBijlage;
     if (bijlageId && e.target.files?.length) {
       for (const f of [...e.target.files]) {
@@ -9814,6 +9964,21 @@ async function extraBlok(blok, defsNu, record) {
       }, (fout) => { gps.disabled = false; melding(`Locatie niet beschikbaar: ${fout.message}`, 'fout'); }, { enableHighAccuracy: true, timeout: 15000 });
       return;
     }
+    const gg = e.target.closest('[data-geom-gps]');
+    if (gg) { geomGps(gg.dataset.geomGps, gg); return; }
+    const gl = e.target.closest('[data-geom-loop]');
+    if (gl) { geomLopend(gl.dataset.geomLoop); return; }
+    const gk = e.target.closest('[data-geom-kaart]');
+    if (gk) { await geomKaart(gk.dataset.geomKaart); return; }
+    const gt = e.target.closest('[data-geom-terug]');
+    if (gt) { geomZet(gt.dataset.geomTerug, (extra[gt.dataset.geomTerug]?.punten ?? []).slice(0, -1)); return; }
+    const gw = e.target.closest('[data-geom-wis]');
+    if (gw) {
+      if (!confirm('Alle ingewonnen punten van dit veld wissen?')) return;
+      geomStop(gw.dataset.geomWis);
+      geomZet(gw.dataset.geomWis, []);
+      return;
+    }
     const locWeg = e.target.closest('[data-loc-weg]');
     if (locWeg) { delete extra[locWeg.dataset.locWeg]; formulierGewijzigd = true; teken(); return; }
     const kaartKnop = e.target.closest('[data-loc-kaart]');
@@ -9845,6 +10010,7 @@ async function extraBlok(blok, defsNu, record) {
           const v = extra[d.id];
           uit[d.id] = { begin: v.begin ?? '', eind: v.eind ?? '', ...(d.pauze && v.pauze !== '' && v.pauze != null ? { pauze: Number(v.pauze) } : {}), ...(d.ploeg ? { personen: Number(v.personen) || 1 } : {}) };
         }
+        else if (d.type === 'geometrie') { if (!GI.isLeeg(extra[d.id])) uit[d.id] = GI.maak(extra[d.id].soort, extra[d.id].punten); }
         else if (d.type === 'getal') uit[d.id] = extra[d.id] === '' || extra[d.id] == null ? '' : Number(extra[d.id]);
         else if (extra[d.id] !== undefined) uit[d.id] = extra[d.id];
       }
@@ -9888,6 +10054,24 @@ function extraWeergave(record, defs) {
   return regels;
 }
 
+/** Schets van ingewonnen punten, lijn of vlak (zonder ondergrond, ook goed af te drukken). */
+function geomSchetsHtml(v) {
+  const sc = GI.schets(v);
+  if (!sc) return '';
+  return `<svg class="geomschets" viewBox="0 0 ${sc.breedte} ${sc.hoogte}" width="${sc.breedte}" height="${sc.hoogte}" role="img" aria-label="Schets: ${esc(GI.tekst(v))}">
+    ${v.soort !== 'punt' ? `<path d="${sc.pad}" class="${v.soort === 'vlak' ? 'vlak' : 'lijn'}"/>` : ''}
+    ${sc.punten.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="${v.soort === 'punt' ? 4 : 2.5}"/>`).join('')}</svg>`;
+}
+
+/** Extra antwoorden als exportkolommen; ingewonnen geometrie krijgt er een WKT-kolom bij (voor GIS). */
+function extraExportRegels(regels) {
+  return regels.flatMap(({ d: x, v }) => {
+    const naam = x.eis ? `${x.eis.nummer} – ${x.label}` : x.label;
+    if (x.type === 'geometrie') return [[naam, velden.toonWaarde(x, v, datumNL)], [`${naam} (WKT, WGS84)`, GI.wkt(v)]];
+    return [[naam, velden.toonWaarde(x, v, datumNL)]];
+  });
+}
+
 async function extraDetailHtml(record, formulier) {
   const p = await actiefProject();
   const regels = extraWeergave(record, (p?.velden ?? []).filter((d) => d.formulier === formulier));
@@ -9904,6 +10088,7 @@ async function extraDetailHtml(record, formulier) {
   const handtekeningen = new Map((await laadFotos(tekst.filter(({ d }) => d.type === 'handtekening').map(({ v }) => v?.foto).filter(Boolean))).map((f) => [f.id, f.data]));
   const waardeHtml = ({ d, v }) => {
     if (d.type === 'handtekening') return `${esc(velden.toonWaarde(d, v, datumNL))}${handtekeningen.get(v?.foto) ? `<br><img class="ht-weergave" src="${esc(handtekeningen.get(v.foto))}" alt="Handtekening">` : ''}`;
+    if (d.type === 'geometrie') return `${esc(velden.toonWaarde(d, v, datumNL))}${geomSchetsHtml(v)}`;
     if (d.type === 'locatie') return `${esc(velden.toonWaarde(d, v, datumNL))} <a href="https://www.google.com/maps/search/?api=1&query=${Number(v.lat)},${Number(v.lng)}" target="_blank" rel="noopener">Kaart ${I.extern}</a>`;
     return esc(velden.toonWaarde(d, v, datumNL));
   };
@@ -10091,6 +10276,9 @@ async function formulierveldenPagina(id, q) {
               <label class="chip"><input type="checkbox" name="ploeg" ${d.ploeg ? 'checked' : ''}><span>Aantal personen (manuren)</span></label></div>
               <small>De duur wordt automatisch berekend; over middernacht werken mag.</small></div>` : ''}
           ${d.type === 'locatie' ? '<div class="veld breed"><small>De invuller kiest zijn GPS-locatie of tikt een punt aan op de kaart (het object van de registratie staat erop).</small></div>' : ''}
+          ${d.type === 'geometrie' ? `<div class="veld breed"><label for="v-inwinning">Wat wordt ingewonnen?</label>
+            <select id="v-inwinning" name="inwinning">${Object.entries(GI.INWINNING).map(([k, v]) => optie(k, v, d.inwinning || 'keuze')).join('')}</select>
+            <small>De inspecteur legt de punten vast met de GPS van de telefoon: punt voor punt, of lopend (de route wordt automatisch gevolgd), of tikt ze aan op de kaart. Lengte en oppervlakte worden berekend; in de export staat de geometrie als WKT en optioneel als GeoJSON.</small></div>` : ''}
           ${d.type === 'handtekening' ? '<div class="veld breed"><small>De ondertekenaar tekent met de vinger op de telefoon en vult zijn naam in. Bij verplicht zijn handtekening én naam nodig.</small></div>' : ''}
           ${d.type === 'bijlage' ? '<div class="veld breed"><small>Pdf, foto of document (Word, Excel), maximaal 10 MB per bestand, meerdere bestanden mogelijk.</small></div>' : ''}
           ${(() => {
@@ -10126,6 +10314,7 @@ async function formulierveldenPagina(id, q) {
       if (fd.has('eenheid')) Object.assign(bewerk, { eenheid: String(fd.get('eenheid')), min: String(fd.get('min')), max: String(fd.get('max')) });
       if (fd.has('opties')) bewerk.opties = String(fd.get('opties')).split('\n');
       if (bewerk.type === 'tijdsduur') Object.assign(bewerk, { pauze: fd.get('pauze') === 'on', ploeg: fd.get('ploeg') === 'on' });
+      if (fd.has('inwinning')) bewerk.inwinning = String(fd.get('inwinning'));
       const tv = String(fd.get('toonAlsVeld') ?? '');
       bewerk.toonAls = tv ? { veld: tv, waarde: String(fd.get('toonAlsWaarde') ?? (bewerk.toonAls?.veld === tv ? bewerk.toonAls.waarde : '')) } : null;
       if (bewerk.toonAls && !bewerk.toonAls.waarde) {
@@ -11723,6 +11912,7 @@ async function exporteerUitkomsten({ voorPakket = null } = {}) {
       <label class="vink"><input type="checkbox" id="u-insp" checked><span>Inspecties</span></label>
       <label class="vink"><input type="checkbox" id="u-over" checked><span>Overgeslagen objecten</span></label>
       <label class="vink"><input type="checkbox" id="u-goed"><span>Alleen goedgekeurde registraties</span></label>
+      <label class="vink"><input type="checkbox" id="u-geo"><span><strong>Ingewonnen punten, lijnen en vlakken als GeoJSON</strong><small>Extra bestand voor GIS (QGIS, ArcGIS) met alle ingewonnen geometrie uit de formulieren.</small></span></label>
       <label class="vink"><input type="checkbox" id="u-fotos"><span><strong>Foto's opnemen</strong><small>Extra blad met de foto's per object en registratie; het bestand wordt groter.</small></span></label>
     </div>
     <div class="formvoet"><button class="knop" value="nee" type="button" data-weg>Annuleren</button><button class="knop primair" value="ja" type="submit">${I.excel} Excel maken</button></div>
@@ -11738,7 +11928,7 @@ async function exporteerUitkomsten({ voorPakket = null } = {}) {
       const ids = [...d.querySelectorAll('input[name=pakket]:checked')].map((c) => c.value);
       if (!ids.length) { melding('Kies minstens één werkpakket.', 'fout'); return; }
       ok({ ids: new Set(ids), van: d.querySelector('#u-van').value, tot: d.querySelector('#u-tot').value, werk: d.querySelector('#u-werk').checked,
-        insp: d.querySelector('#u-insp').checked, over: d.querySelector('#u-over').checked, goed: d.querySelector('#u-goed').checked, fotos: d.querySelector('#u-fotos').checked });
+        insp: d.querySelector('#u-insp').checked, over: d.querySelector('#u-over').checked, goed: d.querySelector('#u-goed').checked, fotos: d.querySelector('#u-fotos').checked, geo: d.querySelector('#u-geo').checked });
     };
   });
   d.close();
@@ -11771,8 +11961,7 @@ async function exporteerUitkomsten({ voorPakket = null } = {}) {
           ['Storing: opgelost om', datumTijdNL(rec.storing.opgelostOp)], ['Storing: doorlooptijd', rec.storing.gemeldOp && rec.storing.opgelostOp ? duurTekst(rec.storing.gemeldOp, rec.storing.opgelostOp) : ''],
           ['Storing: resultaat', STORING_RESULTAAT[rec.storing.resultaat]?.label ?? ''],
           ['Storing: bestede uren', IZ.tekst(rec.storing.inzet)], ['Storing: manuren', IZ.totalen(rec.storing.inzet).manuren || ''], ['Storing: materieeluren', IZ.totalen(rec.storing.inzet).materieeluren || '']] : []),
-        ...extraWeergave(rec, defs[soort] ?? []).filter(({ d: x }) => !['foto', 'bijlage'].includes(x.type))
-          .map(({ d: x, v }) => [x.eis ? `${x.eis.nummer} – ${x.label}` : x.label, velden.toonWaarde(x, v, datumNL)]),
+        ...extraExportRegels(extraWeergave(rec, defs[soort] ?? []).filter(({ d: x }) => !['foto', 'bijlage'].includes(x.type))),
       ],
       beoordeling: (rec) => beoordelingVan(rec), metUren: toonUren(), metKosten: toonKosten(),
     });
@@ -11795,6 +11984,18 @@ async function exporteerUitkomsten({ voorPakket = null } = {}) {
     const naam = keuze.ids.size === 1 ? `uitkomsten-${(perId.get([...keuze.ids][0]).code || perId.get([...keuze.ids][0]).naam)}` : 'uitkomsten-werkpakketten';
     download(`${naam.replace(/[^\w-]+/g, '_')}-${vandaag()}.xlsx`, await wb.xlsx.writeBuffer(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     melding(`Excel gemaakt: ${r.rijen.length} registraties, ${r.bevindingen.length} bevindingen, ${r.vervolg.length} vervolgacties`);
+    if (keuze.geo) {
+      const features = regs.filter((x) => x.soort !== 'overgeslagen').flatMap(({ soort, r: rec, pakket, ronde, object }) => extraWeergave(rec, defs[soort] ?? [])
+        .filter(({ d: x }) => x.type === 'geometrie')
+        .map(({ d: x, v }) => GI.feature(v, { veld: x.label, registratie: rec.id, formulier: soort === 'werk' ? 'werkzaamheid' : 'inspectie', datum: String(rec.datum ?? '').slice(0, 16),
+          objectcode: object.code ?? '', object: object.naam ?? '', werkpakket: metCode(pakket), ronde: ronde ? `R${ronde.nummer ?? ''} ${ronde.naam ?? ''}`.trim() : '',
+          door: rec.uitvoerder || rec.inspecteur || rec.beoordeling?.ingediendDoor || '' })))
+        .filter(Boolean);
+      if (features.length) {
+        download(`${naam.replace(/[^\w-]+/g, '_')}-geometrie-${vandaag()}.geojson`, JSON.stringify({ type: 'FeatureCollection', name: 'Ingewonnen geometrie', features }, null, 1), 'application/geo+json');
+        melding(`GeoJSON gemaakt met ${features.length} ingewonnen vorm${features.length === 1 ? '' : 'en'} (punten, lijnen en vlakken)`);
+      } else melding('Geen ingewonnen punten, lijnen of vlakken in deze selectie; alleen Excel gemaakt.');
+    }
   } catch (e) {
     console.error(e);
     melding(`Excel maken mislukt: ${e.message}`, 'fout');
@@ -11828,7 +12029,7 @@ async function exporteerResultaten({ lijst, titel, onderdeel = '', filter = '', 
     const r = RX.resultaatRijen({
       lijst,
       laagNaam: new Map(lagen.map((l) => [l.id, l.naam])),
-      extra: (i) => extraWeergave(i, defs).filter(({ d: x }) => x.type !== 'foto').map(({ d: x, v }) => [x.eis ? `${x.eis.nummer} – ${x.label}` : x.label, velden.toonWaarde(x, v, datumNL)]),
+      extra: (i) => extraExportRegels(extraWeergave(i, defs).filter(({ d: x }) => x.type !== 'foto')),
     });
     let fotoData = null;
     if (metFotos) {

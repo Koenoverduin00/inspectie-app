@@ -735,6 +735,27 @@ eerst wat open is, op afstand van de periode tot vandaag (lopend, dan binnenkort
 gedane en overgeslagen rondes in de **oorspronkelijke volgorde** (werkpakket, rondenummer), zodat je ziet wat er al gedaan is.
 De popup gebruikt dezelfde volgorde.
 
+## Inwinning coördinaten: punten, lijnen en vlakken
+
+Naast de vraag *Locatie (punt op de kaart)* is er het veldtype **Inwinning coördinaten (punten, lijn of vlak)** (Instellingen → Formuliervelden). Per veld kies je wat er wordt ingewonnen:
+
+- **Inspecteur kiest**: in het formulier kiest de inspecteur zelf *Punten*, *Lijn* of *Vlak*.
+- **Alleen punten**, **alleen een lijn** of **alleen een vlak**: vast voor dat formulier.
+
+In het formulier:
+
+- **GPS-punt toevoegen**: de huidige GPS-positie wordt een punt (of hoekpunt). Bij een onnauwkeurige GPS (meer dan ± 25 m) komt er een waarschuwing.
+- **Lopend inwinnen** (lijn en vlak): loop de lijn of de rand van het vlak af; de app volgt de route en zet een punt bij elke ~2 m verplaatsing. Posities met een onnauwkeurigheid boven ± 25 m worden overgeslagen; valt het signaal even weg, dan blijft hij zoeken. Het scherm blijft aan zolang de telefoon dat toestaat.
+- **Op de kaart**: tik punten aan; elk punt is te verslepen om te verbeteren. Het object van de registratie staat gestippeld op de kaart.
+- **Laatste punt weg** en **Wissen**.
+- Lengte (lijn), oppervlakte en omtrek (vlak) worden direct berekend. Een lijn heeft minstens 2 en een vlak minstens 3 punten nodig.
+
+Weergave en export:
+
+- De registratie toont de omschrijving (bijv. *Vlak · 12 punten · 450 m² (omtrek 92 m) (GPS ± 4 m)*) met een schets, ook op de afdruk.
+- **Uitkomsten naar Excel** krijgt per veld een kolom met de geometrie als WKT (WGS84); de CSV van werkzaamheden ook.
+- In de uitkomstenexport kun je **Ingewonnen punten, lijnen en vlakken als GeoJSON** aanvinken: één bestand voor QGIS of ArcGIS met per vorm het veld, de registratie, datum, object, werkpakket, ronde, wie, lengte, oppervlakte en nauwkeurigheid.
+
 ## GPS-locatie per gebrek of bevinding
 
 Elk gebrek (NEN 2767, boomveiligheidscontrole), elke bevinding (oordeel) en elk controlepunt dat niet in orde is, heeft standaard een veld
@@ -1084,6 +1105,7 @@ js/velden.js          eigen formuliervelden: zichtbaarheid, controle en weergave
 js/eisen.js           eisbibliotheek: inlezen, vergelijken, eisvragen en verificatie per eis (ook per periode)
 js/eisdossier.js      verificatiedossier als Excel (samenvatting, eisen, bewijs, afwijkingen)
 js/storingenexcel.js  export van het storingenregister naar Excel
+js/geominwinning.js  inwinning van punten, lijnen en vlakken: lengte, oppervlakte, WKT, GeoJSON
 js/voortgangsoverzicht.js  voortgangsoverzicht voor overleg: achterstallig, lopend en binnenkort (afdruk en Excel)
 js/storingen.js       storingenregister: meldingen + registraties → zaken met status
 js/inzet.js           bestede uren bij storingen (regels, totalen, controle)

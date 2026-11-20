@@ -1,6 +1,7 @@
 // Extra formuliervelden per project: definities, zichtbaarheid, controle en weergave.
 // Een project bevat `velden: [{ id, formulier, label, type, ... }]`; een registratie
 // bewaart de antwoorden in `extra: { [veldId]: waarde }`.
+import * as GI from './geominwinning.js';
 
 export const FORMULIEREN = {
   werk: 'Werkzaamheden',
@@ -19,6 +20,7 @@ export const VELDTYPEN = {
   checklist: 'Checklist (alles afvinken)',
   meerkeuze: 'Meerkeuze (meerdere opties)',
   locatie: 'Locatie (punt op de kaart)',
+  geometrie: 'Inwinning coördinaten (punten, lijn of vlak)',
   handtekening: 'Handtekening',
   tijdsduur: 'Begin- en eindtijd (+ ploeg)',
   bijlage: 'Bijlage (pdf of document)',
@@ -73,6 +75,7 @@ export function isLeeg(def, waarde) {
   if (def.type === 'janee') return waarde !== true && waarde !== false;
   if (def.type === 'checklist') return (def.opties ?? []).some((o) => !(waarde ?? []).includes(o));
   if (def.type === 'locatie') return !(Number.isFinite(Number(waarde?.lat)) && Number.isFinite(Number(waarde?.lng)) && waarde?.lat !== '' && waarde?.lat != null);
+  if (def.type === 'geometrie') return GI.isLeeg(waarde);
   if (def.type === 'handtekening') return !waarde?.foto;
   if (def.type === 'tijdsduur') return !waarde?.begin || !waarde?.eind;
   if (Array.isArray(waarde)) return waarde.length === 0;
@@ -86,6 +89,10 @@ export function controleer(defs, extra) {
     const v = extra?.[d.id];
     if (d.verplicht && isLeeg(d, v)) {
       fouten.push(d.type === 'checklist' ? `${d.label}: vink alle punten af` : `${d.label} is verplicht`);
+      continue;
+    }
+    if (d.type === 'geometrie' && !GI.isLeeg(v) && !GI.isCompleet(v)) {
+      fouten.push(`${d.label}: een ${GI.SOORT_ENKEL[v.soort]} heeft minstens ${GI.MINIMUM[v.soort]} punten nodig`);
       continue;
     }
     if (d.type === 'handtekening' && d.verplicht && !String(v?.naam ?? '').trim()) fouten.push(`${d.label}: vul de naam van de ondertekenaar in`);
@@ -115,6 +122,7 @@ export function toonWaarde(def, waarde, datumFn = (x) => x) {
     case 'foto': return `${waarde.length} foto('s)`;
     case 'meerkeuze': return (waarde ?? []).join(', ');
     case 'locatie': return `${Number(waarde.lat).toFixed(6)}, ${Number(waarde.lng).toFixed(6)}${waarde.bron === 'gps' ? ` (GPS${waarde.nauwkeurigheid ? ` ± ${waarde.nauwkeurigheid} m` : ''})` : ' (op de kaart gezet)'}`;
+    case 'geometrie': return GI.tekst(waarde);
     case 'handtekening': return `Getekend${waarde.naam ? ` door ${waarde.naam}` : ''}${waarde.op ? ` op ${datumFn(String(waarde.op).slice(0, 10))}` : ''}`;
     case 'tijdsduur': {
       const duur = duurMinuten(waarde);
@@ -148,6 +156,7 @@ export function normaliseer(def) {
   if (d.type === 'keuze' || d.type === 'checklist' || d.type === 'meerkeuze') {
     d.opties = [...new Set((def.opties ?? []).map((o) => String(o).trim()).filter(Boolean))];
   }
+  if (d.type === 'geometrie') d.inwinning = GI.INWINNING[def.inwinning] ? def.inwinning : 'keuze';
   if (d.type === 'tijdsduur') Object.assign(d, { pauze: Boolean(def.pauze), ploeg: Boolean(def.ploeg) });
   if (def.toonAls?.veld && def.toonAls?.waarde) d.toonAls = { veld: def.toonAls.veld, waarde: String(def.toonAls.waarde) };
   // Koppeling met een eis uit de contractstukken (eisbibliotheek).
