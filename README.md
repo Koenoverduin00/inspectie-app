@@ -1106,6 +1106,10 @@ veld zonder bereik kunt inspecteren. Ben je ingelogd, dan worden wijzigingen aut
 
 - Wijzigingen gaan in een wachtrij en worden verstuurd zodra er verbinding is (indicator rechtsboven).
 - Nieuwe gegevens van andere apparaten worden opgehaald bij het openen van de app, elke minuut en na elke wijziging.
+- **Alleen het eigen project lezen**: de lokale opslag heeft een index op project. Een pagina leest alleen de gegevens van het project
+  waarin je werkt, niet alles van alle projecten; bij het starten en na een synchronisatie wordt alleen geteld (geen foto's meer
+  ingelezen). Gemeten op een telefoon met 20 projecten, 40.000 objecten en 300 foto's: starten van 4,3 naar 0,3 s, objectenlijst
+  van 5,2 naar 0,8 s. Bij de eerste start na de update wordt de opslag eenmalig bijgewerkt; er gaat niets verloren.
 - **Lichte toegangscontrole** (update [`012_snellere_toegang.sql`](supabase/012_snellere_toegang.sql)): wie wat mag blijft precies gelijk,
   maar "ben ik beheerder?" wordt één keer per opdracht bepaald in plaats van per rij. Getest op een kopie van de inrichting met
   20.000 objecten: rechten in 70 controles identiek; een pagina objecten voor een beheerder van 784 ms naar 3 ms.

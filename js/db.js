@@ -2,9 +2,11 @@
 // Wijzigingen aan objecten, inspecties en foto's worden in een wachtrij gezet
 // zodat ze naar de server kunnen worden gesynchroniseerd zodra er verbinding is.
 const DB_NAAM = 'inspectie-app';
-const DB_VERSIE = 7;
+const DB_VERSIE = 8; // 8: index op projectId, zodat een pagina alleen het eigen project leest
 export const STORES = ['projecten', 'lagen', 'objecten', 'inspecties', 'werkzaamheden', 'taken', 'werkpakketten', 'overgeslagen', 'vrijgaven', 'meldingen', 'fotos'];
 const WACHTRIJ = 'wachtrij';
+/** Stores met een projectId (alles behalve de projecten zelf). */
+const PROJECT_STORES = STORES.filter((s) => s !== 'projecten');
 
 let dbPromise;
 const luisteraars = new Set();
@@ -27,6 +29,11 @@ function open() {
         for (const naam of [...STORES, WACHTRIJ]) {
           if (!db.objectStoreNames.contains(naam)) db.createObjectStore(naam, { keyPath: 'id' });
         }
+        // Index op project: alleen de gegevens van het project waarin je werkt lezen, niet alles van alle projecten.
+        for (const naam of PROJECT_STORES) {
+          const s = req.transaction.objectStore(naam);
+          if (!s.indexNames.contains('projectId')) s.createIndex('projectId', 'projectId', { unique: false });
+        }
       };
       req.onsuccess = () => {
         const db = req.result;
@@ -34,7 +41,10 @@ function open() {
         db.onversionchange = () => { db.close(); dbPromise = null; };
         resolve(db);
       };
-      req.onblocked = () => console.warn('Opslag wacht: sluit andere tabbladen van de app.');
+      req.onblocked = () => {
+        console.warn('Opslag wacht: sluit andere tabbladen van de app.');
+        try { window.dispatchEvent(new CustomEvent('opslag-geblokkeerd')); } catch { /* geen venster */ }
+      };
       req.onerror = () => reject(req.error);
     });
   }
@@ -62,6 +72,36 @@ function zetInWachtrij(t, store, id, actie, projectId = null) {
 const projectVan = (store, item) => (store === 'projecten' ? item?.id : item?.projectId) ?? null;
 
 export const alle = (store) => tx(store, 'readonly', (t) => t.objectStore(store).getAll());
+
+/** Alleen de records van één project (via de index; zonder index: alles lezen en filteren). */
+export async function inProject(store, pid) {
+  if (!pid) return [];
+  const db = await open();
+  return new Promise((resolve, reject) => {
+    const t = db.transaction(store, 'readonly');
+    const s = t.objectStore(store);
+    const req = s.indexNames.contains('projectId') ? s.index('projectId').getAll(pid) : s.getAll();
+    t.oncomplete = () => resolve(s.indexNames.contains('projectId') ? req.result : req.result.filter((r) => r.projectId === pid));
+    t.onerror = () => reject(t.error);
+  });
+}
+
+/** Aantal records, zonder ze te lezen. */
+export const aantal = (store) => tx(store, 'readonly', (t) => t.objectStore(store).count());
+
+/** Zijn er records zonder project? Snel: vergelijkt het totaal met het aantal in de projectindex. */
+export async function heeftZonderProject(store) {
+  const db = await open();
+  return new Promise((resolve, reject) => {
+    const t = db.transaction(store, 'readonly');
+    const s = t.objectStore(store);
+    if (!s.indexNames.contains('projectId')) { resolve(true); return; }
+    const totaal = s.count();
+    const met = s.index('projectId').count();
+    t.oncomplete = () => resolve(totaal.result !== met.result);
+    t.onerror = () => reject(t.error);
+  });
+}
 export const haal = (store, id) => tx(store, 'readonly', (t) => t.objectStore(store).get(id));
 
 export async function bewaar(store, item) {

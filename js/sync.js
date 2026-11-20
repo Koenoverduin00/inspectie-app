@@ -633,7 +633,9 @@ async function haalOntbrekendeFotosOp() {
   const actief = fotoBeleid.project?.() ?? null;
   const aanwezig = new Set(await db.sync.fotoIds());
   const nodig = new Map(); // fotoId → projectId
-  const records = [...await db.alle('inspecties'), ...await db.alle('werkzaamheden'), ...await db.alle('taken'), ...await db.alle('vrijgaven')];
+  const stores = ['inspecties', 'werkzaamheden', 'taken', 'vrijgaven'];
+  // Alleen het actieve project lezen (via de index), niet alle registraties van alle projecten.
+  const records = (await Promise.all(stores.map((st) => (actief ? db.inProject(st, actief) : db.alle(st))))).flat();
   for (const record of records) {
     if (actief && record.projectId && record.projectId !== actief) continue;
     for (const id of fotoIdsVan(record)) if (!aanwezig.has(id)) nodig.set(id, record.projectId ?? null);

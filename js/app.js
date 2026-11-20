@@ -4066,7 +4066,7 @@ async function vulFotoInfoUitRegistraties() {
   if (Date.now() - fotoInfoGeladen < 5000) return;
   fotoInfoGeladen = Date.now();
   for (const st of REGISTRATIE_STORES) {
-    for (const r of await db.alle(st)) for (const [id, info] of Object.entries(r.fotoInfo ?? {})) if (!FOTO_INFO.has(id)) FOTO_INFO.set(id, info);
+    for (const r of await db.inProject(st, projectId())) for (const [id, info] of Object.entries(r.fotoInfo ?? {})) if (!FOTO_INFO.has(id)) FOTO_INFO.set(id, info);
   }
 }
 let toestelPositieBelofte = null;
@@ -7010,8 +7010,7 @@ function kiesProject(id) {
 }
 
 async function inProject(store) {
-  const pid = projectId();
-  const lijst = (await db.alle(store)).filter((r) => r.projectId === pid);
+  const lijst = await db.inProject(store, projectId());
   // Opdrachtgever: werkzaamheden en inspecties pas na acceptatie door de opdrachtnemer.
   return REG_STORES.has(store) && isOpdrachtgever() ? lijst.filter((r) => regZichtbaar(store, r)) : lijst;
 }
@@ -7991,7 +7990,8 @@ async function migreerZonderProject() {
   const los = {};
   let totaal = 0;
   for (const store of stores) {
-    los[store] = (await db.alle(store)).filter((r) => !r.projectId);
+    // Eerst snel tellen; alleen als er echt iets zonder project is, de records lezen (bij elke start en na elke synchronisatie).
+    los[store] = await db.heeftZonderProject(store) ? (await db.alle(store)).filter((r) => !r.projectId) : [];
     totaal += los[store].length;
   }
   if (!totaal) return;
@@ -14175,7 +14175,7 @@ async function vrijgavenLijst() {
 // ---------------------------------------------------------------------------
 async function instellingen() {
   const { objecten, inspecties } = await laadAlles();
-  const fotos = await db.alle('fotos');
+  const aantalFotos = await db.aantal('fotos'); // alleen tellen: de foto's zelf kunnen honderden MB zijn
   let opslag = '';
   try {
     const est = await navigator.storage?.estimate?.();
@@ -14212,7 +14212,7 @@ async function instellingen() {
         <h2>Gegevens</h2>
         <dl class="gegevens">
           <dt>Objecten</dt><dd>${objecten.length}</dd><dt>Inspecties</dt><dd>${inspecties.length}</dd>
-          <dt>Foto's</dt><dd>${fotos.length}</dd>${opslag ? `<dt>Opslag</dt><dd>${opslag}</dd>` : ''}
+          <dt>Foto's</dt><dd>${aantalFotos}</dd>${opslag ? `<dt>Opslag</dt><dd>${opslag}</dd>` : ''}
         </dl>
         <p><small>Maak regelmatig een back-up: gegevens in de browser kunnen verloren gaan als de browsergegevens worden gewist.</small></p>
         <div class="knoppen">
@@ -14543,5 +14543,7 @@ sync.opStatus(() => {
   if (wasIngelogd && !nu && isMobiel()) router();
   wasIngelogd = nu;
 });
+// Een oud tabblad van de app houdt de bijgewerkte opslag tegen: vragen het te sluiten.
+window.addEventListener('opslag-geblokkeerd', () => melding('De app is bijgewerkt. Sluit de andere tabbladen of vensters van de app (of herlaad ze) om verder te gaan.', 'fout'));
 navigator.storage?.persist?.().catch(() => {}); // vraagt de browser de gegevens niet zomaar op te ruimen
 migreerZonderProject().finally(router);
