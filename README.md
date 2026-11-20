@@ -1088,6 +1088,9 @@ veld zonder bereik kunt inspecteren. Ben je ingelogd, dan worden wijzigingen aut
 
 Maak daarnaast af en toe een back-up via **Instellingen → Back-up downloaden**.
 
+
+**Geweigerde wijzigingen blokkeren niets meer.** Weigert de server een wijziging van een apparaat (bijvoorbeeld projectinstellingen die door iemand zonder beheerdersrechten zijn aangepast), dan haalt dat apparaat toch alle wijzigingen van anderen op. De status toont dan *Synchronisatiefout* met uitleg welke wijziging is geweigerd en waarom; op de telefoon staat *x wijziging geweigerd door de server; de rest is bijgewerkt*. Onder *Instellingen → Account* (pc) of *Account* (telefoon) staat de knop **Geweigerde wijzigingen terugdraaien**: die zet de versie van de server terug. Nieuw werk dat nog niet op de server staat, blijft bewaard en wachten. Komt er een nieuwere versie van de server binnen, dan vervangt die de geweigerde wijziging vanzelf.
+
 ## Iconen
 
 De app gebruikt lijn-iconen uit [Lucide](https://lucide.dev) (ISC-licentie) in plaats van emoji, voor een zakelijke,

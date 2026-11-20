@@ -50,7 +50,7 @@ export const isIngesteld = () => {
 // ---------------------------------------------------------------------------
 // Status (voor de indicator in de kop en de instellingenpagina)
 // ---------------------------------------------------------------------------
-const status = { fase: 'uit', fout: '', laatsteSync: lees('laatsteSync'), wachtend: 0, rol: lees('rol') };
+const status = { fase: 'uit', fout: '', laatsteSync: lees('laatsteSync'), wachtend: 0, rol: lees('rol'), geweigerd: [] };
 const statusLuisteraars = new Set();
 export function opStatus(fn) {
   statusLuisteraars.add(fn);
@@ -306,9 +306,11 @@ async function verstuur() {
   // Foto's eerst (complete inspecties op andere apparaten), dan projecten vóór hun inhoud.
   regels.sort((a, b) => VOLGORDE.indexOf(a.store) - VOLGORDE.indexOf(b.store) || a.tijd.localeCompare(b.tijd));
   let eersteFout = null;
-  const weiger = (fout) => {
+  const geweigerd = [];
+  const weiger = (fout, regel = null) => {
     if (fout instanceof TypeError || fout instanceof NietIngelogd) throw fout; // geen verbinding: stoppen
     eersteFout ??= fout; // geweigerd door de server: overslaan, de rest gaat wel door
+    if (regel) geweigerd.push({ store: regel.store, id: regel.recordId, melding: fout.message, geenRecht: isGeenRecht(fout) });
   };
 
   for (const regel of regels.filter((r) => r.store === 'fotos')) {
@@ -316,7 +318,7 @@ async function verstuur() {
       await verstuurFoto(regel);
       await db.sync.afgehandeld(regel);
       zetStatus({ wachtend: Math.max(0, status.wachtend - 1) });
-    } catch (fout) { weiger(fout); }
+    } catch (fout) { weiger(fout, regel); }
   }
   for (const store of VOLGORDE.slice(1)) {
     if (ontbrekend.has(store)) continue; // tabel bestaat (nog) niet op de server: regels blijven wachten
@@ -335,12 +337,54 @@ async function verstuur() {
           try {
             await verstuurRecords(store, [r]);
             await db.sync.afgehandeld(r);
-          } catch (los) { weiger(los); }
+          } catch (los) { weiger(los, r); }
         }
       }
     }
   }
-  if (eersteFout) throw eersteFout;
+  if (eersteFout) {
+    eersteFout.geweigerd = geweigerd;
+    throw eersteFout;
+  }
+}
+
+/** Weigert de server de regel omdat je er geen rechten voor hebt (RLS)? Dan helpt opnieuw proberen niet. */
+const isGeenRecht = (fout) => fout?.status === 401 || fout?.status === 403 || fout?.code === '42501' || /row-level security|permission denied/i.test(fout?.message ?? '');
+
+const SOORT_TEKST = {
+  projecten: 'projectinstellingen', lagen: 'kaartlaag', objecten: 'object', werkpakketten: 'werkpakket', inspecties: 'inspectie',
+  werkzaamheden: 'werkzaamheid', taken: 'taak', overgeslagen: 'overgeslagen object', vrijgaven: 'flora- en faunavrijgave', meldingen: 'storing of gebrek', fotos: 'foto',
+};
+/** Leesbare samenvatting van geweigerde wijzigingen. */
+export function geweigerdTekst(lijst = status.geweigerd) {
+  if (!lijst?.length) return '';
+  const soorten = [...new Set(lijst.map((g) => SOORT_TEKST[g.store] ?? g.store))].join(', ');
+  const rechten = lijst.every((g) => g.geenRecht);
+  return `${lijst.length} wijziging${lijst.length === 1 ? ' is' : 'en zijn'} door de server geweigerd (${soorten})${rechten
+    ? ': je account heeft geen rechten om dit te wijzigen. Projectinstellingen wijzigt alleen een beheerder.'
+    : `: ${lijst[0].melding}`} Al het andere is wel gesynchroniseerd en wijzigingen van anderen komen gewoon binnen.`;
+}
+
+/**
+ * Geweigerde wijzigingen terugdraaien: uit de wachtrij halen en de versie van de server terugzetten.
+ * Wat niet op de server staat (nieuw en nooit geaccepteerd) blijft wachten, zodat er geen werk verloren gaat.
+ */
+export async function verwerpGeweigerd() {
+  let teruggezet = 0;
+  let blijft = 0;
+  for (const g of status.geweigerd ?? []) {
+    if (g.store === 'fotos') { blijft += 1; continue; }
+    const res = await api(`/rest/v1/${g.store}?select=id,data,gewijzigd,verwijderd,sync_tijd&id=eq.${encodeURIComponent(g.id)}`);
+    const [rij] = await res.json();
+    if (!rij) { blijft += 1; continue; }
+    await db.sync.verwijderUitWachtrij(g.store, g.id);
+    await verwerkRij(g.store, rij);
+    teruggezet += 1;
+  }
+  zetStatus({ geweigerd: [] });
+  await werkWachtendBij();
+  if (teruggezet) naOphalen(teruggezet);
+  return { teruggezet, blijft };
 }
 
 async function verstuurRecords(store, regels) {
@@ -522,11 +566,22 @@ export function synchroniseer() {
       await haalRolOp().catch((fout) => {
         if (fout instanceof TypeError || fout instanceof NietIngelogd) throw fout;
       });
-      await verstuur();
+      // Een door de server geweigerde wijziging mag het ophalen niet blokkeren: anders komen wijzigingen
+      // van de pc nooit meer binnen op dit apparaat. Eerst alles ophalen, daarna de weigering melden.
+      let weigering = null;
+      try { await verstuur(); } catch (fout) {
+        if (fout instanceof TypeError || fout instanceof NietIngelogd) throw fout;
+        weigering = fout;
+      }
       const opgehaald = await haalOp();
       const nu = new Date().toISOString();
       schrijf('laatsteSync', nu);
-      zetStatus({ fase: 'ok', laatsteSync: nu });
+      // Een nieuwere versie van de server heeft een geweigerde wijziging misschien al vervangen.
+      const geweigerd = [];
+      for (const g of weigering?.geweigerd ?? []) if (await db.sync.heeftWachtend(g.store, g.id)) geweigerd.push(g);
+      if (weigering && (geweigerd.length || !weigering.geweigerd?.length)) {
+        zetStatus({ fase: 'fout', fout: geweigerd.length ? geweigerdTekst(geweigerd) : weigering.message, laatsteSync: nu, geweigerd });
+      } else zetStatus({ fase: 'ok', laatsteSync: nu, geweigerd: [] });
       if (opgehaald) naOphalen(opgehaald);
       return opgehaald;
     } catch (fout) {

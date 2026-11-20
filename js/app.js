@@ -5825,6 +5825,9 @@ function statusregel(st) {
   } else if (st.fase === 'bezig') {
     soort = 'bezig';
     tekst = `⟳ Bezig met versturen${n ? ` (${n})` : ''}…`;
+  } else if (st.fase === 'fout' && st.geweigerd?.length) {
+    soort = 'fout';
+    tekst = `${I.let} ${st.geweigerd.length} wijziging${st.geweigerd.length === 1 ? '' : 'en'} geweigerd door de server; de rest is bijgewerkt. Tik voor details`;
   } else if (st.fase === 'fout') {
     soort = 'fout';
     tekst = `${I.let} Versturen lukt niet${n ? ` – ${reg(n)} ${wacht(n)}` : ''}. Tik voor details`;
@@ -14004,6 +14007,8 @@ function toonAccount(el) {
       <dt>Laatste synchronisatie</dt><dd id="st-tijd"></dd>
     </dl>
     <p id="st-fout" class="label-status verlopen" hidden style="white-space:normal;margin-top:.75rem"></p>
+    <div id="st-geweigerd" class="knoppen" hidden style="margin-top:.5rem"><button class="knop" id="st-verwerp" type="button">${I.vernieuw} Geweigerde wijzigingen terugdraaien</button>
+      <small>Zet de versie van de server terug. Nieuw werk dat nog niet op de server staat, blijft bewaard.</small></div>
     <p id="st-team" class="label-status binnenkort" hidden style="white-space:normal;margin-top:.75rem"></p>`;
   el.querySelector('#nu').onclick = () => sync.synchroniseer();
   el.querySelector('#uit').onclick = async () => {
@@ -14021,7 +14026,17 @@ function toonAccount(el) {
     const f = el.querySelector('#st-fout');
     f.textContent = st.fout;
     f.hidden = !st.fout;
+    el.querySelector('#st-geweigerd').hidden = !st.geweigerd?.length;
   });
+  el.querySelector('#st-verwerp').onclick = async (e) => {
+    if (!confirm('De geweigerde wijzigingen op dit apparaat terugdraaien naar de versie op de server?')) return;
+    e.target.disabled = true;
+    try {
+      const r = await sync.verwerpGeweigerd();
+      melding(`${r.teruggezet} wijziging${r.teruggezet === 1 ? '' : 'en'} teruggedraaid${r.blijft ? `; ${r.blijft} nieuw item${r.blijft === 1 ? '' : 's'} blijft op dit apparaat wachten` : ''}`);
+      await sync.synchroniseer();
+    } catch (fout) { melding(fout.message, 'fout'); } finally { e.target.disabled = false; }
+  };
   if (navigator.onLine) {
     sync.haalRolOp().then((rol) => {
       const t = el.querySelector('#st-team');
