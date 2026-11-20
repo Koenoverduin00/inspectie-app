@@ -14006,7 +14006,7 @@ function toonAccount(el) {
       <dt>Te versturen</dt><dd id="st-wachtend"></dd>
       <dt>Laatste synchronisatie</dt><dd id="st-tijd"></dd>
     </dl>
-    <p id="st-fout" class="label-status verlopen" hidden style="white-space:normal;margin-top:.75rem"></p>
+    <p id="st-fout" class="label-status verlopen" hidden style="white-space:normal;margin-top:.75rem;border-radius:10px;padding:.6rem .8rem;display:block;line-height:1.4"></p>
     <div id="st-geweigerd" class="knoppen" hidden style="margin-top:.5rem"><button class="knop" id="st-verwerp" type="button">${I.vernieuw} Geweigerde wijzigingen terugdraaien</button>
       <small>Zet de versie van de server terug. Nieuw werk dat nog niet op de server staat, blijft bewaard.</small></div>
     <p id="st-team" class="label-status binnenkort" hidden style="white-space:normal;margin-top:.75rem"></p>`;
