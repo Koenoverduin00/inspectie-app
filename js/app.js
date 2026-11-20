@@ -14397,7 +14397,7 @@ function toonAccount(el) {
       <small>Zet de versie van de server terug. Nieuw werk dat nog niet op de server staat, blijft bewaard.</small></div>
     <p id="st-team" class="label-status binnenkort" hidden style="white-space:normal;margin-top:.75rem"></p>
     <div id="st-diag" hidden></div>`;
-  el.querySelector('#nu').onclick = () => sync.synchroniseer();
+  el.querySelector('#nu').onclick = () => sync.synchroniseer({ handmatig: true });
   el.querySelector('#diag').onclick = async (e) => {
     const knop = e.currentTarget;
     const vak = el.querySelector('#st-diag');

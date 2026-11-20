@@ -1106,6 +1106,12 @@ veld zonder bereik kunt inspecteren. Ben je ingelogd, dan worden wijzigingen aut
 
 - Wijzigingen gaan in een wachtrij en worden verstuurd zodra er verbinding is (indicator rechtsboven).
 - Nieuwe gegevens van andere apparaten worden opgehaald bij het openen van de app, elke minuut en na elke wijziging.
+- **Lichte toegangscontrole** (update [`012_snellere_toegang.sql`](supabase/012_snellere_toegang.sql)): wie wat mag blijft precies gelijk,
+  maar "ben ik beheerder?" wordt één keer per opdracht bepaald in plaats van per rij. Getest op een kopie van de inrichting met
+  20.000 objecten: rechten in 70 controles identiek; een pagina objecten voor een beheerder van 784 ms naar 3 ms.
+- **Server overbelast?** Bij een time-out, serverfout of *statement timeout* stopt de app direct (geen nieuwe pogingen per regel)
+  en wacht steeds langer: 30 s, 1, 2, 5 en 10 minuten. *Nu synchroniseren* werkt altijd direct. Hoogstens 3 tabellen tegelijk,
+  bladeren op sleutel in plaats van een oplopende offset, en de voortgang wordt per pagina bewaard.
 - **Snelle synchronisatie** (update [`011_snelle_sync.sql`](supabase/011_snelle_sync.sql)): de app vraagt elke 5 seconden
   met één klein verzoek of er op de server iets is gewijzigd en haalt alleen dan op. Een wijziging op de pc (bijv. een
   werkpakket) staat dan binnen enkele seconden op de telefoon in plaats van binnen een minuut. Zonder het script blijft

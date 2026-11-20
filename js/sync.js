@@ -77,6 +77,15 @@ async function werkWachtendBij() {
 class NietIngelogd extends Error {}
 /** De server gaf binnen de tijd geen antwoord. Telt als verbindingsprobleem: later opnieuw proberen. */
 class TijdOver extends TypeError {}
+/**
+ * Is de server overbelast of tijdelijk onbereikbaar (time-out, 5xx, 'statement timeout')? Dan heeft opnieuw proberen
+ * of per regel versturen geen zin: dat maakt het alleen erger. Stoppen en later rustig opnieuw.
+ */
+const isOverbelast = (f) => f instanceof TijdOver || Number(f?.status) >= 500 || f?.code === '57014'
+  || /statement timeout|canceling statement|too many connections|connection pool/i.test(f?.message ?? '');
+// Terugschalen: na een overbelaste server steeds langer wachten (30 s, 1, 2, 5, 10 min); handmatig kan altijd.
+const PAUZES = [30, 60, 120, 300, 600];
+const pauze = { tot: 0, stap: 0 };
 const WACHT_MS = 30_000; // gewone verzoeken
 const WACHT_FOTO_MS = 120_000; // foto's (groter, ook bij een trage verbinding)
 
@@ -353,7 +362,7 @@ async function verstuur() {
   let eersteFout = null;
   const geweigerd = [];
   const weiger = (fout, regel = null) => {
-    if (fout instanceof TypeError || fout instanceof NietIngelogd) throw fout; // geen verbinding: stoppen
+    if (fout instanceof TypeError || fout instanceof NietIngelogd || isOverbelast(fout)) throw fout; // geen verbinding of overbelast: stoppen
     eersteFout ??= fout; // geweigerd door de server: overslaan, de rest gaat wel door
     if (regel) geweigerd.push({ store: regel.store, id: regel.recordId, melding: fout.message, geenRecht: isGeenRecht(fout) });
   };
@@ -381,7 +390,7 @@ async function verstuur() {
         for (const r of deel) await db.sync.afgehandeld(r);
         zetStatus({ wachtend: Math.max(0, status.wachtend - deel.length) });
       } catch (fout) {
-        if (fout instanceof TypeError || fout instanceof NietIngelogd) throw fout;
+        if (fout instanceof TypeError || fout instanceof NietIngelogd || isOverbelast(fout)) throw fout;
         if (OPTIONEEL.has(store) && isOntbrekendeTabel(fout)) { ontbrekend.add(store); break; }
         // Eén afgekeurde regel mag de rest niet blokkeren: probeer de regels in dit deel los.
         for (const r of deel) {
@@ -556,16 +565,21 @@ function cursorSleutel(tabel) {
 
 async function haalOp() {
   let gewijzigd = 0;
-  // Alle tabellen tegelijk opvragen: dat scheelt per synchronisatie tien keer de wachttijd van de server.
-  await Promise.all(TABELLEN.map(async (tabel) => {
+  // Hoogstens 3 tabellen tegelijk: sneller dan één voor één, zonder de server te overladen.
+  const wachtrij = [...TABELLEN];
+  const werker = async () => { for (let t = wachtrij.shift(); t; t = wachtrij.shift()) await haalTabel(t); };
+  const haalTabel = async (tabel) => {
     const cursor = lees(cursorSleutel(tabel));
     const vanaf = cursor ? new Date(Date.parse(cursor) - OVERLAP_MS).toISOString() : null;
     let nieuwsteCursor = cursor;
-    for (let offset = 0; ; offset += PAGINA) {
-      const filter = vanaf ? `&sync_tijd=gte.${encodeURIComponent(vanaf)}` : '';
+    let na = null; // laatste rij van de vorige pagina: verder bladeren op (sync_tijd, id), niet met een oplopende offset
+    for (;;) {
+      const q = (x) => encodeURIComponent(`"${x}"`);
+      const filter = na ? `&or=(sync_tijd.gt.${q(na.t)},and(sync_tijd.eq.${q(na.t)},id.gt.${q(na.id)}))`
+        : vanaf ? `&sync_tijd=gte.${encodeURIComponent(vanaf)}` : '';
       let res;
       try {
-        res = await api(`/rest/v1/${tabel}?select=id,data,gewijzigd,verwijderd,sync_tijd${filter}&order=sync_tijd.asc,id.asc&limit=${PAGINA}&offset=${offset}`);
+        res = await api(`/rest/v1/${tabel}?select=id,data,gewijzigd,verwijderd,sync_tijd${filter}&order=sync_tijd.asc,id.asc&limit=${PAGINA}`);
         ontbrekend.delete(tabel);
       } catch (fout) {
         if (OPTIONEEL.has(tabel) && isOntbrekendeTabel(fout)) { ontbrekend.add(tabel); break; }
@@ -576,10 +590,14 @@ async function haalOp() {
         if (await verwerkRij(tabel, rij)) gewijzigd += 1;
         if (!nieuwsteCursor || rij.sync_tijd > nieuwsteCursor) nieuwsteCursor = rij.sync_tijd;
       }
+      // Na elke pagina de voortgang bewaren: wordt de synchronisatie onderbroken, dan gaat hij hier verder.
+      if (nieuwsteCursor) schrijf(cursorSleutel(tabel), nieuwsteCursor);
       if (rijen.length < PAGINA) break;
+      const laatste = rijen[rijen.length - 1];
+      na = { t: laatste.sync_tijd, id: laatste.id };
     }
-    if (nieuwsteCursor) schrijf(cursorSleutel(tabel), nieuwsteCursor);
-  }));
+  };
+  await Promise.all([werker(), werker(), werker()]);
   return gewijzigd;
 }
 
@@ -679,7 +697,9 @@ let nogmaals = false;
 let timer = null;
 let naOphalen = () => {};
 
-export function synchroniseer() {
+/** @param {{ handmatig?: boolean }} [opties] handmatig = ook tijdens een pauze na overbelasting */
+export function synchroniseer(opties = {}) {
+  if (!opties?.handmatig && Date.now() < pauze.tot && !bezig) return Promise.resolve(0);
   if (bezig) {
     nogmaals = true;
     return bezig;
@@ -701,7 +721,7 @@ export function synchroniseer() {
       // van de pc nooit meer binnen op dit apparaat. Eerst alles ophalen, daarna de weigering melden.
       let weigering = null;
       try { await verstuur(); } catch (fout) {
-        if (fout instanceof TypeError || fout instanceof NietIngelogd) throw fout;
+        if (fout instanceof TypeError || fout instanceof NietIngelogd || isOverbelast(fout)) throw fout;
         weigering = fout;
       }
       zetStatus({ voortgang: 'Ophalen van de server…' });
@@ -715,9 +735,17 @@ export function synchroniseer() {
         zetStatus({ fase: 'fout', fout: geweigerd.length ? geweigerdTekst(geweigerd) : weigering.message, laatsteSync: nu, geweigerd });
       } else zetStatus({ fase: 'ok', laatsteSync: nu, geweigerd: [] });
       if (opgehaald) naOphalen(opgehaald);
+      Object.assign(pauze, { tot: 0, stap: 0 });
       fotosOpAchtergrond();
       return opgehaald;
     } catch (fout) {
+      if (isOverbelast(fout)) {
+        // Server overbelast of traag: niet blijven aandringen. Steeds langer wachten; de knop werkt altijd.
+        const sec = PAUZES[Math.min(pauze.stap, PAUZES.length - 1)];
+        Object.assign(pauze, { tot: Date.now() + sec * 1000, stap: pauze.stap + 1 });
+        zetStatus({ fase: 'fout', fout: `De server is overbelast of reageert traag (${fout.message.replace(/ Controleer.*$/, '')}). De app wacht ${sec < 60 ? `${sec} seconden` : `${sec / 60} minu${sec === 60 ? 'ut' : 'ten'}`} en probeert het dan opnieuw; met "Nu synchroniseren" kan het direct.` });
+        return 0;
+      }
       if (fout instanceof NietIngelogd) zetStatus({ fase: 'uitgelogd', fout: fout.message });
       else if (fout instanceof TijdOver) zetStatus({ fase: 'fout', fout: fout.message });
       else if (fout instanceof TypeError) zetStatus({ fase: 'offline', fout: '' });
@@ -750,7 +778,7 @@ let controleBezig = false;
 export const snelleSync = () => snelleControle;
 
 async function controleer() {
-  if (!snelleControle || controleBezig || bezig || document.visibilityState !== 'visible') return;
+  if (!snelleControle || controleBezig || bezig || document.visibilityState !== 'visible' || Date.now() < pauze.tot) return;
   if (bepaalRustFase() !== 'ok') return;
   controleBezig = true;
   try {
