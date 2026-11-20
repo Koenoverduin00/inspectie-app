@@ -1192,8 +1192,13 @@ js/nen2767.js         conditieberekening en planning (pure functies)
 js/catalogus.js       keuzelijsten: objecttypen, bouwdelen, gebreken
 js/demo.js            voorbeelddata
 sw.js                 service worker (offline)
+supabase/diagnose.sql alleen-lezen controle bij een trage of vastgelopen database
 server.js             minimale statische server
 tests/                unittests (node --test)
 supabase/schema.sql   database, beveiliging (RLS) en foto-opslag voor Supabase
 .github/workflows/    automatisch publiceren op GitHub Pages
 ```
+
+**Versie bij een update**: verhoog het versienummer in `sw.js` (`inspectie-app-vNN`) en alle `?v=NN` in `index.html`. De *import map* in
+`index.html` laat élke module met hetzelfde versienummer laden, zodat de browser nooit een oude module naast een nieuwe `app.js` gebruikt.
+Een nieuwe module voeg je toe aan de import map én aan de lijst in `sw.js`.

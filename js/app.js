@@ -14417,6 +14417,11 @@ function toonAccount(el) {
         const li = vak.querySelector(`[data-diag="${i}"]`);
         if (li) { li.className = x.ok ? 'ok' : 'fout'; li.innerHTML = regelHtml(x); }
       });
+      // Lijst nog niet opgebouwd (bijv. een oudere versie van de test): nu alsnog tonen.
+      if (!vak.querySelector('#diag-samen')) {
+        vak.innerHTML = `<h3 style="margin:1rem 0 .4rem">Verbindingstest</h3>
+          <ul class="diaglijst">${r.map((y) => `<li class="${y.ok ? 'ok' : 'fout'}">${regelHtml(y)}</li>`).join('')}</ul><div id="diag-samen"></div>`;
+      }
       const tekst = `Verbindingstest ${new Date().toLocaleString('nl-NL')} (app ${document.querySelector('script[src*="app.js"]')?.src.split('v=')[1] ?? ''}, ${Math.round((Date.now() - t0) / 1000)} s)\n`
         + r.map((x) => `${x.ok ? 'OK ' : 'FOUT'} ${x.naam}: ${x.tekst}${duur(x.ms)}`).join('\n');
       vak.querySelector('#diag-samen').innerHTML = `<p>${r.some((x) => !x.ok) ? `<strong>${r.filter((x) => !x.ok).length} onderdeel/onderdelen werken niet.</strong> ` : '<strong>Alles werkt.</strong> '}
