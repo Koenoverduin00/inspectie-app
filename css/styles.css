@@ -2012,3 +2012,14 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
 .vb-scherm.telefoon .vb-voet .knop { flex: 1; justify-content: center; }
 .vb-tip { margin: .75rem 0 0; }
 @media (max-width: 900px) { .vb-paneel { position: static; } .vb-scherm { max-height: none; } }
+
+/* Verbindingstest */
+.diaglijst { list-style: none; margin: 0; padding: 0; display: grid; gap: .3rem; }
+.diaglijst li { display: grid; grid-template-columns: 1.4rem minmax(9rem, auto) 1fr; gap: .5rem; align-items: start; padding: .35rem .5rem; border-radius: 8px; background: var(--achtergrond); }
+.diaglijst li.fout { background: #fdecea; }
+.diaglijst li.ok > span { color: #1a7f37; }
+.diaglijst li.fout > span { color: #d1452f; }
+.diaglijst small { color: var(--tekst-zacht); overflow-wrap: anywhere; }
+.diaglijst li.fout small { color: #8f2a1d; }
+.diagtekst { width: 100%; min-height: 6rem; font-family: ui-monospace, monospace; font-size: .75rem; margin-top: .4rem; }
+@media (max-width: 560px) { .diaglijst li { grid-template-columns: 1.4rem 1fr; } .diaglijst small { grid-column: 2; } }

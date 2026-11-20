@@ -14384,7 +14384,7 @@ function toonAccount(el) {
 
   el.innerHTML = `
     <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">Account en synchronisatie</h2>
-      <div class="knoppen"><button class="knop primair" id="nu">Nu synchroniseren</button><button class="knop" id="uit">Uitloggen</button></div></div>
+      <div class="knoppen"><button class="knop primair" id="nu">Nu synchroniseren</button><button class="knop" id="diag" type="button">Verbinding testen</button><button class="knop" id="uit">Uitloggen</button></div></div>
     <dl class="gegevens">
       <dt>Ingelogd als</dt><dd>${esc(s.gebruiker?.email ?? '–')}</dd>
       <dt>Rol</dt><dd id="st-rol">–</dd>
@@ -14395,8 +14395,33 @@ function toonAccount(el) {
     <p id="st-fout" class="label-status verlopen" hidden style="white-space:normal;margin-top:.75rem;border-radius:10px;padding:.6rem .8rem;display:block;line-height:1.4"></p>
     <div id="st-geweigerd" class="knoppen" hidden style="margin-top:.5rem"><button class="knop" id="st-verwerp" type="button">${I.vernieuw} Geweigerde wijzigingen terugdraaien</button>
       <small>Zet de versie van de server terug. Nieuw werk dat nog niet op de server staat, blijft bewaard.</small></div>
-    <p id="st-team" class="label-status binnenkort" hidden style="white-space:normal;margin-top:.75rem"></p>`;
+    <p id="st-team" class="label-status binnenkort" hidden style="white-space:normal;margin-top:.75rem"></p>
+    <div id="st-diag" hidden></div>`;
   el.querySelector('#nu').onclick = () => sync.synchroniseer();
+  el.querySelector('#diag').onclick = async (e) => {
+    const knop = e.currentTarget;
+    const vak = el.querySelector('#st-diag');
+    knop.disabled = true;
+    vak.hidden = false;
+    vak.innerHTML = '<p class="leeg">Bezig met testen…</p>';
+    try {
+      const r = await sync.diagnose();
+      const tekst = `Verbindingstest ${new Date().toLocaleString('nl-NL')} (app ${document.querySelector('script[src*="app.js"]')?.src.split('v=')[1] ?? ''})\n`
+        + r.map((x) => `${x.ok ? 'OK ' : 'FOUT'} ${x.naam}: ${x.tekst}`).join('\n');
+      vak.innerHTML = `<h3 style="margin:1rem 0 .4rem">Verbindingstest</h3>
+        <ul class="diaglijst">${r.map((x) => `<li class="${x.ok ? 'ok' : 'fout'}"><span>${x.ok ? I.vink : I.kruis}</span><strong>${esc(x.naam)}</strong><small>${esc(x.tekst)}</small></li>`).join('')}</ul>
+        <p>${r.some((x) => !x.ok) ? `<strong>${r.filter((x) => !x.ok).length} onderdeel/onderdelen werken niet.</strong> ` : '<strong>Alles werkt.</strong> '}
+          <button class="knop klein" type="button" id="diag-kopie">Resultaat kopiëren</button></p>
+        <textarea class="diagtekst" readonly>${esc(tekst)}</textarea>`;
+      vak.querySelector('#diag-kopie').onclick = async () => {
+        const ta = vak.querySelector('.diagtekst');
+        try { await navigator.clipboard.writeText(ta.value); melding('Resultaat gekopieerd'); } catch { ta.select(); document.execCommand?.('copy'); melding('Resultaat geselecteerd: kopieer het met Ctrl+C'); }
+      };
+      sync.synchroniseer();
+    } catch (fout) {
+      vak.innerHTML = `<p class="label-status verlopen" style="white-space:normal">Test mislukt: ${esc(fout.message)}</p>`;
+    } finally { knop.disabled = false; }
+  };
   el.querySelector('#uit').onclick = async () => {
     const wachtend = await db.sync.aantalInWachtrij();
     if (wachtend && !confirm(`Er zijn nog ${wachtend} wijziging(en) niet verstuurd. Ze blijven op dit apparaat en worden verstuurd bij de volgende keer inloggen. Toch uitloggen?`)) return;

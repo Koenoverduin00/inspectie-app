@@ -105,7 +105,7 @@ const FOUTVERTALINGEN = [
   [/new password should be different/i, 'Kies een ander wachtwoord dan je huidige.'],
   [/signups not allowed/i, 'Nieuwe accounts aanmaken is uitgeschakeld. Vraag de beheerder om een uitnodiging.'],
   [/row-level security|permission denied|unauthorized/i,
-    'Geen toegang. Staat je e-mailadres in de tabel "teamleden" in Supabase?'],
+    'Geweigerd door de toegangsregels van de server: je account mag dit niet wijzigen (bijv. projectinstellingen zijn alleen voor beheerders, of je bent geen lid van dit project). Kijk bij Instellingen → Account → Verbinding testen.'],
   [/invalid api key|no api key/i, 'De Supabase-sleutel is ongeldig. Controleer de instellingen.'],
   [/relation .* does not exist|could not find the table/i, 'De database is nog niet ingericht. Voer supabase/schema.sql uit.'],
   [/bucket not found/i, 'De opslag voor foto\'s ontbreekt. Voer supabase/schema.sql uit.'],
@@ -397,6 +397,69 @@ async function verstuur() {
     eersteFout.geweigerd = geweigerd;
     throw eersteFout;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Verbinding testen: per onderdeel van de server nagaan of het werkt, met de exacte foutmelding.
+// ---------------------------------------------------------------------------
+const SCRIPT_VOOR = { projecten: '003', lagen: '003', objecten: 'schema.sql', inspecties: 'schema.sql', taken: '003', werkzaamheden: '002',
+  werkpakketten: '004', overgeslagen: '004', vrijgaven: '005', meldingen: '008' };
+const foutTekst = (f) => `${f?.status ? `HTTP ${f.status} ` : ''}${f?.code ? `(${f.code}) ` : ''}${f?.message ?? f}`;
+
+export async function diagnose() {
+  const uit = [];
+  const stap = async (naam, fn) => {
+    try {
+      const r = await fn();
+      uit.push({ naam, ok: r?.ok ?? true, tekst: r?.tekst ?? String(r ?? 'In orde') });
+    } catch (f) {
+      uit.push({ naam, ok: false, tekst: foutTekst(f), hint: f?.hint });
+    }
+  };
+  const rpc = async (naam) => (await api(`/rest/v1/rpc/${naam}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
+  const { url } = configuratie();
+  uit.push({ naam: 'Server', ok: Boolean(url), tekst: url ? url.replace(/^https?:\/\//, '') : 'Geen server ingesteld' });
+  await stap('Inloggen', async () => { const u = await (await api('/auth/v1/user')).json(); return `Geldig (${u.email})`; });
+  await stap('Teamlid', async () => {
+    const ja = await rpc('is_teamlid');
+    return ja ? 'Ja' : { ok: false, tekst: 'Nee: dit e-mailadres staat niet in de tabel teamleden. Voeg het toe in Supabase (SQL Editor): insert into public.teamleden (email) values (\'…\');' };
+  });
+  await stap('Rol', async () => {
+    const r = await rpc('mijn_rol');
+    return r === 'beheerder' || r === 'lid' ? r : { ok: false, tekst: `${r ?? 'onbekend'}: geen toegang tot projecten` };
+  });
+  for (const tabel of TABELLEN) {
+    await stap(`Tabel ${tabel}`, async () => {
+      try {
+        await api(`/rest/v1/${tabel}?select=id&limit=1`);
+        return 'Bereikbaar';
+      } catch (f) {
+        if (isOntbrekendeTabel(f)) return { ok: false, tekst: `Ontbreekt op de server: voer supabase/${SCRIPT_VOOR[tabel]}${SCRIPT_VOOR[tabel].endsWith('.sql') ? '' : '_*.sql'} uit` };
+        throw f;
+      }
+    });
+  }
+  await stap('Snelle synchronisatie (011)', async () => {
+    try { await rpc('laatste_wijziging'); return 'Aanwezig'; } catch (f) {
+      if (f?.status === 404 || f?.code === 'PGRST202') return { ok: false, tekst: 'Ontbreekt: voer supabase/011_snelle_sync.sql uit (synchroniseert dan eens per minuut)' };
+      throw f;
+    }
+  });
+  // Wachtende wijzigingen: per soort één regel echt versturen, zodat de exacte reden van een weigering zichtbaar wordt.
+  const regels = await db.sync.wachtrij();
+  const perStore = new Map();
+  for (const r of regels) (perStore.get(r.store) ?? perStore.set(r.store, []).get(r.store)).push(r);
+  if (!regels.length) uit.push({ naam: 'Te versturen', ok: true, tekst: 'Niets' });
+  for (const [store, lijst] of perStore) {
+    await stap(`Versturen ${SOORT_TEKST[store] ?? store} (${lijst.length})`, async () => {
+      const r = lijst[0];
+      if (store === 'fotos') await verstuurFoto(r); else await verstuurRecords(store, [r]);
+      await db.sync.afgehandeld(r);
+      return 'Gelukt (de rest volgt bij de volgende synchronisatie)';
+    });
+  }
+  await werkWachtendBij();
+  return uit;
 }
 
 /** Weigert de server de regel omdat je er geen rechten voor hebt (RLS)? Dan helpt opnieuw proberen niet. */
