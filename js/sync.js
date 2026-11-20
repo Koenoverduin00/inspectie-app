@@ -436,7 +436,8 @@ function cursorSleutel(tabel) {
 
 async function haalOp() {
   let gewijzigd = 0;
-  for (const tabel of TABELLEN) {
+  // Alle tabellen tegelijk opvragen: dat scheelt per synchronisatie tien keer de wachttijd van de server.
+  await Promise.all(TABELLEN.map(async (tabel) => {
     const cursor = lees(cursorSleutel(tabel));
     const vanaf = cursor ? new Date(Date.parse(cursor) - OVERLAP_MS).toISOString() : null;
     let nieuwsteCursor = cursor;
@@ -458,7 +459,7 @@ async function haalOp() {
       if (rijen.length < PAGINA) break;
     }
     if (nieuwsteCursor) schrijf(cursorSleutel(tabel), nieuwsteCursor);
-  }
+  }));
   await haalOntbrekendeFotosOp();
   return gewijzigd;
 }
@@ -563,7 +564,7 @@ export function synchroniseer() {
     }
     zetStatus({ fase: 'bezig', fout: '' });
     try {
-      await haalRolOp().catch((fout) => {
+      const rolOpgehaald = haalRolOp().catch((fout) => {
         if (fout instanceof TypeError || fout instanceof NietIngelogd) throw fout;
       });
       // Een door de server geweigerde wijziging mag het ophalen niet blokkeren: anders komen wijzigingen
@@ -573,7 +574,7 @@ export function synchroniseer() {
         if (fout instanceof TypeError || fout instanceof NietIngelogd) throw fout;
         weigering = fout;
       }
-      const opgehaald = await haalOp();
+      const [opgehaald] = await Promise.all([haalOp(), rolOpgehaald]);
       const nu = new Date().toISOString();
       schrijf('laatsteSync', nu);
       // Een nieuwere versie van de server heeft een geweigerde wijziging misschien al vervangen.
@@ -602,6 +603,39 @@ export function synchroniseer() {
   return bezig;
 }
 
+// ---------------------------------------------------------------------------
+// Snelle controle: elke paar seconden één klein verzoek of er op de server iets is gewijzigd (update 011).
+// Alleen dan volgt een volledige synchronisatie. Zonder de databasefunctie blijft het bij eens per minuut.
+// ---------------------------------------------------------------------------
+const CONTROLE_MS = 5_000;
+let snelleControle = true; // false zodra blijkt dat de server de functie (nog) niet heeft
+let gezien = null;
+let controleBezig = false;
+
+/** Is de snelle controle beschikbaar (SQL-update 011 uitgevoerd)? */
+export const snelleSync = () => snelleControle;
+
+async function controleer() {
+  if (!snelleControle || controleBezig || bezig || document.visibilityState !== 'visible') return;
+  if (bepaalRustFase() !== 'ok') return;
+  controleBezig = true;
+  try {
+    const res = await api('/rest/v1/rpc/laatste_wijziging', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    });
+    const laatste = await res.json();
+    if (laatste && laatste !== gezien) {
+      gezien = laatste;
+      synchroniseer();
+    }
+  } catch (fout) {
+    if (/laatste_wijziging|PGRST202|Could not find the function/i.test(String(fout?.message ?? '')) || fout?.status === 404) snelleControle = false;
+    // Netwerk- en andere fouten: de volgende controle of de minuutsynchronisatie probeert het opnieuw.
+  } finally {
+    controleBezig = false;
+  }
+}
+
 function plan(vertraging = 1500) {
   clearTimeout(timer);
   timer = setTimeout(synchroniseer, vertraging);
@@ -623,5 +657,6 @@ export function start(opties = {}) {
   setInterval(() => {
     if (document.visibilityState === 'visible') synchroniseer();
   }, 60_000);
+  setInterval(controleer, CONTROLE_MS);
   synchroniseer();
 }

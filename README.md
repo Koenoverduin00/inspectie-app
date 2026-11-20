@@ -1061,6 +1061,10 @@ veld zonder bereik kunt inspecteren. Ben je ingelogd, dan worden wijzigingen aut
 
 - Wijzigingen gaan in een wachtrij en worden verstuurd zodra er verbinding is (indicator rechtsboven).
 - Nieuwe gegevens van andere apparaten worden opgehaald bij het openen van de app, elke minuut en na elke wijziging.
+- **Snelle synchronisatie** (update [`011_snelle_sync.sql`](supabase/011_snelle_sync.sql)): de app vraagt elke 5 seconden
+  met één klein verzoek of er op de server iets is gewijzigd en haalt alleen dan op. Een wijziging op de pc (bijv. een
+  werkpakket) staat dan binnen enkele seconden op de telefoon in plaats van binnen een minuut. Zonder het script blijft
+  het bij eens per minuut. Alle tabellen worden tegelijk opgevraagd, zodat ook een volledige synchronisatie sneller is.
 - Bij gelijktijdige wijzigingen aan hetzelfde object of dezelfde inspectie wint de laatst opgeslagen versie.
 - Zonder inloggen werkt de app gewoon lokaal; wat je dan invoert wordt verstuurd zodra je inlogt.
 
