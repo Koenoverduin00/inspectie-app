@@ -792,6 +792,9 @@ Niet elke inspectie volgt NEN 2767. Per **inspectietype** kies je de methodiek (
 - Technisch: bibliotheekformulieren staan als aparte records (`soort: 'bibliotheek'`, zonder leden) in de projectentabel. De bestaande
   beveiliging zorgt dat alleen beheerders ze lezen en wijzigen; er is geen database-update nodig.
 
+
+Welk formulier opent er? Het inspectietype van de ronde in het werkpakket. Is bij een inspectieronde (nog) geen soort opgeslagen, dan geldt de soort die bovenaan de keuzelijst staat (normaal *Visuele inspectie*), op de pc én op de telefoon. Het werkpakketscherm slaat die soort ook meteen op, zodat telefoon en pc altijd hetzelfde (aangepaste) formulier openen.
+
 ## NEN 2767-decompositie (scores per bouwdeel)
 
 Voor opdrachtgevers die volgens NEN 2767 werken met een eigen decompositie (systeemdeel → object → element → bouwdeel).

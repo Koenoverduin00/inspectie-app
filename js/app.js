@@ -1200,6 +1200,11 @@ const isBibliotheek = (p) => p?.soort === 'bibliotheek';
 const inspectieTypen = (p = huidigProject, opties = {}) => TY.typenVan(p, INSPECTIESOORTEN, PROTOCOLLEN, opties);
 /** Alle kiesbare inspectiesoorten: de typen van het project plus de vaste protocollen. */
 const inspectieSoorten = (p = huidigProject) => [...inspectieTypen(p).map((t) => t.naam), ...PROTOCOLLEN];
+/**
+ * Soort voor een inspectie(ronde) waarvoor geen soort is gekozen: dezelfde als bovenaan de keuzelijst in het werkpakket
+ * (normaal Visuele inspectie). Op pc en telefoon gelijk, zodat altijd hetzelfde (eventueel aangepaste) formulier opent.
+ */
+const standaardInspectiesoort = (p = huidigProject) => inspectieSoorten(p)[0];
 const methodiekChip = (m) => `<span class="methodiekchip m-${esc(m)}">${esc(TY.METHODIEKEN[m]?.kort ?? m)}</span>`;
 const oordeelChip = (o) => (o ? `<span class="score" style="background:${esc(o.kleur)}" title="${esc(o.tekst || o.label)}">${esc(o.label)}</span>` : '');
 const schaalChips = (schaal) => (schaal ?? []).map((x) => `<span class="schaalchip" style="--k:${esc(x.kleur)}">${esc(x.label)}</span>`).join('');
@@ -4064,7 +4069,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     }
     : {
       objectId: objectId ?? '', datum: vandaag(), inspecteur: instelling.lees('inspecteur'), werkpakketId: pakketId ?? '', rondeId: rondeId ?? '',
-      soort: inspectieSoorten().includes(mobiel ? 'Schouw' : 'Visuele inspectie') ? (mobiel ? 'Schouw' : 'Visuele inspectie') : inspectieSoorten()[0],
+      soort: standaardInspectiesoort(),
       weer: '', status: 'concept', samenvatting: '', fotos: [], gebreken: [],
     };
   const origineleFotoIds = new Set([...(bestaand?.fotoIds ?? []), ...(bestaand?.gebreken ?? []).flatMap((g) => g.fotoIds ?? [])]);
@@ -11232,6 +11237,8 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
   form.querySelectorAll('input[name=planning], #f-afroepsoort').forEach((x) => x.addEventListener('change', zetPlanningswijze));
   zetPlanningswijze();
   const tekenRondes = () => {
+    // Een inspectieronde zonder gekozen soort krijgt de soort die in de keuzelijst staat, zodat pc en telefoon hetzelfde formulier openen.
+    for (const r of rondes) if (r.soort === 'inspectie' && !r.inspectiesoort) r.inspectiesoort = standaardInspectiesoort();
     $('#rondes').innerHTML = rondes.map((r, i) => `
       <div class="gebrek ronde" style="border-left-color:${r.status === 'actief' ? '#e07b00' : r.status === 'afgerond' ? '#1a7f37' : '#9aa5b1'}">
         <div class="gebrek-kop"><h3 style="margin:0">R${r.nummer}</h3>
