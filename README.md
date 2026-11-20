@@ -1106,6 +1106,12 @@ veld zonder bereik kunt inspecteren. Ben je ingelogd, dan worden wijzigingen aut
 
 - Wijzigingen gaan in een wachtrij en worden verstuurd zodra er verbinding is (indicator rechtsboven).
 - Nieuwe gegevens van andere apparaten worden opgehaald bij het openen van de app, elke minuut en na elke wijziging.
+- **Alleen je eigen projecten op het apparaat** (Instellingen → Account → *Projecten op dit apparaat*): een apparaat haalt alleen de
+  gegevens op van projecten waar je lid van bent, die je zelf hebt aangemaakt of die je hier opent. De projectenlijst zelf komt altijd
+  binnen; een ander project open je gewoon via de projectkeuze en het wordt dan direct opgehaald. Per project aan/uit te zetten;
+  beheerders kunnen kiezen voor *Alle projecten* (bijv. op de pc voor overzichten). Bij de eerste start na de update blijven het actieve
+  project en projecten met nog niet verstuurde wijzigingen er in elk geval op. Eigen wijzigingen worden altijd verstuurd; een project
+  uitzetten verwijdert niets. Wordt een project weer aangezet, dan wordt wat tussendoor is gewijzigd eenmalig ingehaald.
 - **Alleen het eigen project lezen**: de lokale opslag heeft een index op project. Een pagina leest alleen de gegevens van het project
   waarin je werkt, niet alles van alle projecten; bij het starten en na een synchronisatie wordt alleen geteld (geen foto's meer
   ingelezen). Gemeten op een telefoon met 20 projecten, 40.000 objecten en 300 foto's: starten van 4,3 naar 0,3 s, objectenlijst

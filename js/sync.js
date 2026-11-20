@@ -563,14 +563,45 @@ function cursorSleutel(tabel) {
   return `cursor:${sessie()?.gebruiker?.id ?? 'onbekend'}:${tabel}`;
 }
 
+// Welke projecten op dit apparaat worden opgehaald (alleen je eigen projecten, of alle). De app geeft een Set met
+// project-id's, of null voor alle. De projectenlijst zelf wordt altijd volledig opgehaald, zodat je elk project kunt kiezen.
+const projectBeleid = {};
+const gesynctSleutel = () => `syncSet:${sessie()?.gebruiker?.id ?? 'onbekend'}`;
+
 async function haalOp() {
   let gewijzigd = 0;
-  // Hoogstens 3 tabellen tegelijk: sneller dan één voor één, zonder de server te overladen.
-  const wachtrij = [...TABELLEN];
-  const werker = async () => { for (let t = wachtrij.shift(); t; t = wachtrij.shift()) await haalTabel(t); };
-  const haalTabel = async (tabel) => {
-    const cursor = lees(cursorSleutel(tabel));
+  // Eerst de projecten (klein): daaruit volgt welke projecten van jou zijn.
+  await haalTabel('projecten', {}, (n) => { gewijzigd += n; });
+  const keuze = (await projectBeleid.ids?.()) ?? null;
+  const ids = keuze ? [...keuze] : null;
+  // Projecten die nieuw in de keuze staan, hebben nog geen gegevens op dit apparaat: die eenmalig helemaal ophalen.
+  const gehad = lees(gesynctSleutel());
+  let nieuw = [];
+  if (Array.isArray(gehad)) {
+    // Ook terug naar "alle projecten": wat tussendoor niet werd opgehaald, eenmalig inhalen.
+    const doel = ids ?? (await db.alle('projecten')).filter((p) => !p.verwijderd && p.soort !== 'bibliotheek').map((p) => p.id);
+    nieuw = doel.filter((id) => !gehad.includes(id));
+  }
+  const taken = [];
+  for (const tabel of TABELLEN.filter((t) => t !== 'projecten')) {
+    if (!ids || ids.length) taken.push(() => haalTabel(tabel, { ids }, (n) => { gewijzigd += n; }));
+    if (nieuw.length) taken.push(() => haalTabel(tabel, { ids: nieuw, inhalen: true }, (n) => { gewijzigd += n; }));
+  }
+  // Hoogstens 3 tegelijk: sneller dan één voor één, zonder de server te overladen.
+  const werker = async () => { for (let t = taken.shift(); t; t = taken.shift()) await t(); };
+  await Promise.all([werker(), werker(), werker()]);
+  schrijf(gesynctSleutel(), ids ?? '*');
+  return gewijzigd;
+}
+
+/**
+ * Eén tabel ophalen. ids: alleen deze projecten; inhalen: alles van deze projecten (zonder of met eigen voortgang).
+ */
+async function haalTabel(tabel, { ids = null, inhalen = false } = {}, telBij = () => {}) {
+  {
+    const cursor = inhalen ? null : lees(cursorSleutel(tabel));
     const vanaf = cursor ? new Date(Date.parse(cursor) - OVERLAP_MS).toISOString() : null;
+    const projectFilter = ids && tabel !== 'projecten' ? `&project_id=in.(${ids.map((id) => encodeURIComponent(`"${id}"`)).join(',')})` : '';
     let nieuwsteCursor = cursor;
     let na = null; // laatste rij van de vorige pagina: verder bladeren op (sync_tijd, id), niet met een oplopende offset
     for (;;) {
@@ -579,7 +610,7 @@ async function haalOp() {
         : vanaf ? `&sync_tijd=gte.${encodeURIComponent(vanaf)}` : '';
       let res;
       try {
-        res = await api(`/rest/v1/${tabel}?select=id,data,gewijzigd,verwijderd,sync_tijd${filter}&order=sync_tijd.asc,id.asc&limit=${PAGINA}`);
+        res = await api(`/rest/v1/${tabel}?select=id,data,gewijzigd,verwijderd,sync_tijd${filter}${projectFilter}&order=sync_tijd.asc,id.asc&limit=${PAGINA}`);
         ontbrekend.delete(tabel);
       } catch (fout) {
         if (OPTIONEEL.has(tabel) && isOntbrekendeTabel(fout)) { ontbrekend.add(tabel); break; }
@@ -587,18 +618,17 @@ async function haalOp() {
       }
       const rijen = await res.json();
       for (const rij of rijen) {
-        if (await verwerkRij(tabel, rij)) gewijzigd += 1;
+        if (await verwerkRij(tabel, rij)) telBij(1);
         if (!nieuwsteCursor || rij.sync_tijd > nieuwsteCursor) nieuwsteCursor = rij.sync_tijd;
       }
       // Na elke pagina de voortgang bewaren: wordt de synchronisatie onderbroken, dan gaat hij hier verder.
-      if (nieuwsteCursor) schrijf(cursorSleutel(tabel), nieuwsteCursor);
+      // (Bij inhalen niet: de gewone voortgang van de tabel loopt dan al verder.)
+      if (nieuwsteCursor && !inhalen) schrijf(cursorSleutel(tabel), nieuwsteCursor);
       if (rijen.length < PAGINA) break;
       const laatste = rijen[rijen.length - 1];
       na = { t: laatste.sync_tijd, id: laatste.id };
     }
-  };
-  await Promise.all([werker(), werker(), werker()]);
-  return gewijzigd;
+  }
 }
 
 const tijd = (v) => Date.parse(v ?? '') || 0;
@@ -689,6 +719,7 @@ function blobNaarDataUrl(blob) {
 /** Zorgt dat bij de volgende synchronisatie alles opnieuw van de server wordt opgehaald. */
 export function resetOphalen() {
   for (const tabel of TABELLEN) schrijf(cursorSleutel(tabel), null);
+  schrijf(gesynctSleutel(), null);
 }
 
 // ---------------------------------------------------------------------------
@@ -808,6 +839,7 @@ function plan(vertraging = 1500) {
 export function start(opties = {}) {
   naOphalen = opties.naOphalen ?? naOphalen;
   fotoBeleid.project = opties.fotoProject;
+  projectBeleid.ids = opties.syncProjecten;
   fotoBeleid.vooraf = opties.fotosVooraf;
   db.bijWijziging(() => {
     werkWachtendBij();

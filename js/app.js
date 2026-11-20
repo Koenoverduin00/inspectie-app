@@ -7007,6 +7007,51 @@ function projectId() {
 
 function kiesProject(id) {
   instelling.schrijf('project', id);
+  // Een project dat je opent, komt op dit apparaat (en wordt dus opgehaald).
+  if (id) voegSyncProjectToe(id);
+}
+
+// ---------------------------------------------------------------------------
+// Projecten op dit apparaat: alleen je eigen projecten ophalen (lid, zelf aangemaakt of hier geopend), of alle.
+// Per apparaat en per account; de projectenlijst zelf wordt altijd opgehaald.
+// ---------------------------------------------------------------------------
+const syncKeuzeSleutel = () => `syncKeuze:${ikEmail()}`;
+function syncKeuze() {
+  try { return JSON.parse(instelling.lees(syncKeuzeSleutel(), '') || 'null'); } catch { return null; }
+}
+const zetSyncKeuze = (k) => instelling.schrijf(syncKeuzeSleutel(), JSON.stringify(k));
+/** Waarom staat dit project op het apparaat? '' = niet. */
+function syncReden(p, k = syncKeuze()) {
+  const mij = ikEmail();
+  if (!k || k.modus === 'alle') return 'alle';
+  if ((k.uit ?? []).includes(p.id)) return '';
+  if ((p.leden ?? []).some((x) => String(x).toLowerCase() === mij)) return 'lid';
+  if (p.aangemaaktDoor && String(p.aangemaaktDoor).toLowerCase() === mij) return 'eigen';
+  if ((k.extra ?? []).includes(p.id)) return 'gekozen';
+  return '';
+}
+/** Project-id's die dit apparaat ophaalt, of null voor alle (niet ingelogd, of "alle projecten"). */
+async function syncProjecten() {
+  if (!ikEmail()) return null;
+  let k = syncKeuze();
+  if (!k) {
+    // Eerste keer: het actieve project en projecten met nog niet verstuurde wijzigingen blijven in elk geval op het apparaat.
+    const wacht = await db.sync.wachtrij();
+    k = { modus: 'eigen', extra: [...new Set([projectId(), ...wacht.map((r) => r.projectId)].filter(Boolean))], uit: [], nieuw: magBeheren() };
+    zetSyncKeuze(k);
+  }
+  if (k.modus === 'alle') return null;
+  const projecten = (await db.alle('projecten')).filter((p) => !p.verwijderd && !isBibliotheek(p));
+  return new Set(projecten.filter((p) => syncReden(p, k)).map((p) => p.id));
+}
+/** Project aan de keuze toevoegen (bijv. omdat je het opent) en meteen ophalen. */
+async function voegSyncProjectToe(id) {
+  const k = syncKeuze();
+  if (!ikEmail() || !k || k.modus === 'alle') return;
+  const p = await db.haal('projecten', id);
+  if (p && syncReden(p, k)) return;
+  zetSyncKeuze({ ...k, extra: [...new Set([...(k.extra ?? []), id])], uit: (k.uit ?? []).filter((x) => x !== id) });
+  sync.synchroniseer({ handmatig: true });
 }
 
 async function inProject(store) {
@@ -8094,7 +8139,8 @@ async function projectenPagina() {
           <span class="projectnaam">${esc(p.naam)}${p.id === actief ? ' <span class="label-status afgerond">Geopend</span>' : ''}</span>
           ${p.opdrachtgever ? `<small>${esc(p.opdrachtgever)}</small>` : ''}
           ${p.omschrijving ? `<small>${esc(p.omschrijving)}</small>` : ''}
-          <small>${t.objecten} objecten · ${t.inspecties} inspecties · ${t.werk} werkzaamheden${p.status === 'afgerond' ? ' · afgerond' : ''}</small>
+          ${ikEmail() && syncKeuze() && !syncReden(p) ? `<small>${I.wacht} Niet op dit apparaat – wordt opgehaald zodra je het opent</small>`
+    : `<small>${t.objecten} objecten · ${t.inspecties} inspecties · ${t.werk} werkzaamheden${p.status === 'afgerond' ? ' · afgerond' : ''}</small>`}
         </button>
         ${beheer ? `<div class="knoppen"><a class="knop klein" href="#/projecten/${esc(p.id)}/bewerken">Bewerken</a>
           <a class="knop klein" href="#/projecten/${esc(p.id)}/velden">Formuliervelden${(p.velden ?? []).length ? ` (${p.velden.length})` : ''}</a></div>` : ''}
@@ -8172,6 +8218,7 @@ async function projectFormulier(id) {
     const nu = new Date().toISOString();
     const opslaan = {
       ...p, id: bestaand?.id ?? nieuwId(), naam: d.naam, opdrachtgever: d.opdrachtgever, omschrijving: d.omschrijving,
+      ...(bestaand ? {} : { aangemaaktDoor: ikEmail() || '' }),
       status: d.status, planningswijze: d.planningswijze || 'gepland', kostenTonen: form.elements.kostenTonen.checked, urenTonen: form.elements.urenTonen.checked, leden, bevindingenAlsTaak: form.elements.bevindingenAlsTaak.checked, aangemaakt: p.aangemaakt ?? nu, gewijzigd: nu,
     };
     await db.bewaar('projecten', opslaan);
@@ -14396,7 +14443,9 @@ function toonAccount(el) {
     <div id="st-geweigerd" class="knoppen" hidden style="margin-top:.5rem"><button class="knop" id="st-verwerp" type="button">${I.vernieuw} Geweigerde wijzigingen terugdraaien</button>
       <small>Zet de versie van de server terug. Nieuw werk dat nog niet op de server staat, blijft bewaard.</small></div>
     <p id="st-team" class="label-status binnenkort" hidden style="white-space:normal;margin-top:.75rem"></p>
+    <div id="st-projecten"></div>
     <div id="st-diag" hidden></div>`;
+  tekenSyncProjecten(el.querySelector('#st-projecten'));
   el.querySelector('#nu').onclick = () => sync.synchroniseer({ handmatig: true });
   el.querySelector('#diag').onclick = async (e) => {
     const knop = e.currentTarget;
@@ -14477,6 +14526,47 @@ function toonAccount(el) {
   }
 }
 
+let syncProjectenOpen = false;
+/** Keuze welke projecten op dit apparaat staan (Instellingen → Account). */
+async function tekenSyncProjecten(vak) {
+  if (!vak || !ikEmail()) return;
+  await syncProjecten(); // maakt bij de eerste keer de standaardkeuze
+  const k = syncKeuze();
+  const projecten = await zichtbareProjecten();
+  const REDEN = { lid: 'je bent lid', eigen: 'door jou aangemaakt', gekozen: 'op dit apparaat gekozen', alle: '' };
+  const aan = projecten.filter((p) => syncReden(p, k));
+  vak.innerHTML = `<details class="syncprojecten" ${k.nieuw || syncProjectenOpen ? 'open' : ''}><summary><strong>Projecten op dit apparaat</strong>
+      <small>${k.modus === 'alle' ? `Alle projecten (${projecten.length})` : `${aan.length} van ${projecten.length} project${projecten.length === 1 ? '' : 'en'}`}</small></summary>
+    ${k.nieuw ? '<p class="label-status binnenkort" style="white-space:normal;display:block;border-radius:10px;padding:.6rem .8rem;line-height:1.4;margin:.5rem 0">Nieuw: dit apparaat haalt alleen je eigen projecten op (waar je lid van bent, die je zelf hebt aangemaakt of hier opent). Dat is sneller en ontlast de server. Een ander project open je gewoon via de projectkeuze; het komt dan vanzelf op dit apparaat.</p>' : ''}
+    ${magBeheren() ? `<div class="veld" style="margin:.5rem 0">${segment('syncModus', k.modus, [['eigen', 'Mijn projecten (aanbevolen)'], ['alle', 'Alle projecten']])}
+      <small>Alle projecten: handig op de pc voor overzichten over alle projecten heen; trager en zwaarder voor de server.</small></div>` : ''}
+    ${k.modus === 'alle' ? '' : `<ul class="syncprojectlijst">${projecten.map((p) => {
+    const r = syncReden(p, k);
+    return `<li><label class="vink"><input type="checkbox" data-syncproject="${esc(p.id)}" ${r ? 'checked' : ''}>
+        <span>${esc(p.naam)}${p.id === projectId() ? ' <small>(actief)</small>' : ''}<small>${r ? esc(REDEN[r]) : 'niet op dit apparaat'}</small></span></label></li>`;
+  }).join('') || '<li class="leeg">Nog geen projecten.</li>'}</ul>`}
+    <p><small>Je eigen wijzigingen worden altijd verstuurd. Een project uitzetten verwijdert niets; het wordt alleen niet meer bijgewerkt op dit apparaat.</small></p></details>`;
+  if (k.nieuw) zetSyncKeuze({ ...k, nieuw: false });
+  // Open laten na een wijziging, ook als de pagina opnieuw wordt opgebouwd (nieuwe gegevens binnen).
+  vak.querySelector('details').addEventListener('toggle', (e) => { syncProjectenOpen = e.target.open; });
+  vak.querySelectorAll('input[name=syncModus]').forEach((r) => r.addEventListener('change', () => {
+    zetSyncKeuze({ ...syncKeuze(), modus: r.value });
+    tekenSyncProjecten(vak);
+    sync.synchroniseer({ handmatig: true });
+  }));
+  vak.querySelectorAll('[data-syncproject]').forEach((c) => c.addEventListener('change', async () => {
+    const id = c.dataset.syncproject;
+    const nu = syncKeuze();
+    const p = projecten.find((x) => x.id === id);
+    const zonder = { ...nu, extra: (nu.extra ?? []).filter((x) => x !== id), uit: (nu.uit ?? []).filter((x) => x !== id) };
+    // Aan: als het niet vanzelf van jou is, als gekozen toevoegen. Uit: als het wel van jou is, uitzetten.
+    if (c.checked) { if (!syncReden(p, zonder)) zonder.extra.push(id); } else if (syncReden(p, zonder)) zonder.uit.push(id);
+    zetSyncKeuze(zonder);
+    tekenSyncProjecten(vak);
+    if (c.checked) sync.synchroniseer({ handmatig: true });
+  }));
+}
+
 // ---------------------------------------------------------------------------
 // Globale interacties
 // ---------------------------------------------------------------------------
@@ -14524,6 +14614,7 @@ let laatsteSyncStatus = null;
 sync.opStatus((st) => { laatsteSyncStatus = { ...st }; statusregel(st); });
 ['online', 'offline'].forEach((ev) => window.addEventListener(ev, () => laatsteSyncStatus && statusregel(laatsteSyncStatus)));
 sync.start({
+  syncProjecten,
   fotoProject: () => projectId() || null,
   fotosVooraf: () => instelling.lees('fotosVooraf', 'project') !== 'opvraag',
   // Nieuwe gegevens van een ander apparaat: scherm verversen, behalve tijdens het invullen van een formulier.
