@@ -406,58 +406,64 @@ const SCRIPT_VOOR = { projecten: '003', lagen: '003', objecten: 'schema.sql', in
   werkpakketten: '004', overgeslagen: '004', vrijgaven: '005', meldingen: '008' };
 const foutTekst = (f) => `${f?.status ? `HTTP ${f.status} ` : ''}${f?.code ? `(${f.code}) ` : ''}${f?.message ?? f}`;
 
-export async function diagnose() {
-  const uit = [];
-  const stap = async (naam, fn) => {
-    try {
-      const r = await fn();
-      uit.push({ naam, ok: r?.ok ?? true, tekst: r?.tekst ?? String(r ?? 'In orde') });
-    } catch (f) {
-      uit.push({ naam, ok: false, tekst: foutTekst(f), hint: f?.hint });
-    }
-  };
-  const rpc = async (naam) => (await api(`/rest/v1/rpc/${naam}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
+/**
+ * Alle controles tegelijk, elk met een korte tijdslimiet; opStap(i, resultaat) meldt elk resultaat zodra het binnen is.
+ * @returns {Promise<{naam, ok, tekst, ms}[]>}
+ */
+export async function diagnose(opStap = () => {}) {
+  const LIMIET = 10_000;
+  const rpc = async (naam) => (await api(`/rest/v1/rpc/${naam}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', limiet: LIMIET })).json();
   const { url } = configuratie();
-  uit.push({ naam: 'Server', ok: Boolean(url), tekst: url ? url.replace(/^https?:\/\//, '') : 'Geen server ingesteld' });
-  await stap('Inloggen', async () => { const u = await (await api('/auth/v1/user')).json(); return `Geldig (${u.email})`; });
-  await stap('Teamlid', async () => {
-    const ja = await rpc('is_teamlid');
-    return ja ? 'Ja' : { ok: false, tekst: 'Nee: dit e-mailadres staat niet in de tabel teamleden. Voeg het toe in Supabase (SQL Editor): insert into public.teamleden (email) values (\'…\');' };
-  });
-  await stap('Rol', async () => {
-    const r = await rpc('mijn_rol');
-    return r === 'beheerder' || r === 'lid' ? r : { ok: false, tekst: `${r ?? 'onbekend'}: geen toegang tot projecten` };
-  });
-  for (const tabel of TABELLEN) {
-    await stap(`Tabel ${tabel}`, async () => {
+  const stappen = [
+    ['Server', async () => (url ? url.replace(/^https?:\/\//, '') : { ok: false, tekst: 'Geen server ingesteld' })],
+    ['Inloggen', async () => { const u = await (await api('/auth/v1/user', { limiet: LIMIET })).json(); return `Geldig (${u.email})`; }],
+    ['Teamlid', async () => ((await rpc('is_teamlid')) ? 'Ja'
+      : { ok: false, tekst: 'Nee: dit e-mailadres staat niet in de tabel teamleden. Voeg het toe in Supabase (SQL Editor): insert into public.teamleden (email) values (\'…\');' })],
+    ['Rol', async () => { const r = await rpc('mijn_rol'); return r === 'beheerder' || r === 'lid' ? r : { ok: false, tekst: `${r ?? 'onbekend'}: geen toegang tot projecten` }; }],
+    ...TABELLEN.map((tabel) => [`Tabel ${tabel}`, async () => {
       try {
-        await api(`/rest/v1/${tabel}?select=id&limit=1`);
+        await api(`/rest/v1/${tabel}?select=id&limit=1`, { limiet: LIMIET });
         return 'Bereikbaar';
       } catch (f) {
         if (isOntbrekendeTabel(f)) return { ok: false, tekst: `Ontbreekt op de server: voer supabase/${SCRIPT_VOOR[tabel]}${SCRIPT_VOOR[tabel].endsWith('.sql') ? '' : '_*.sql'} uit` };
         throw f;
       }
-    });
-  }
-  await stap('Snelle synchronisatie (011)', async () => {
-    try { await rpc('laatste_wijziging'); return 'Aanwezig'; } catch (f) {
-      if (f?.status === 404 || f?.code === 'PGRST202') return { ok: false, tekst: 'Ontbreekt: voer supabase/011_snelle_sync.sql uit (synchroniseert dan eens per minuut)' };
-      throw f;
-    }
-  });
+    }]),
+    ['Snelle synchronisatie (011)', async () => {
+      try { await rpc('laatste_wijziging'); return 'Aanwezig'; } catch (f) {
+        if (f?.status === 404 || f?.code === 'PGRST202') return { ok: false, tekst: 'Ontbreekt: voer supabase/011_snelle_sync.sql uit (synchroniseert dan eens per minuut)' };
+        throw f;
+      }
+    }],
+  ];
   // Wachtende wijzigingen: per soort één regel echt versturen, zodat de exacte reden van een weigering zichtbaar wordt.
   const regels = await db.sync.wachtrij();
   const perStore = new Map();
   for (const r of regels) (perStore.get(r.store) ?? perStore.set(r.store, []).get(r.store)).push(r);
-  if (!regels.length) uit.push({ naam: 'Te versturen', ok: true, tekst: 'Niets' });
+  if (!regels.length) stappen.push(['Te versturen', async () => 'Niets']);
   for (const [store, lijst] of perStore) {
-    await stap(`Versturen ${SOORT_TEKST[store] ?? store} (${lijst.length})`, async () => {
+    stappen.push([`Versturen ${SOORT_TEKST[store] ?? store} (${lijst.length})`, async () => {
       const r = lijst[0];
       if (store === 'fotos') await verstuurFoto(r); else await verstuurRecords(store, [r]);
       await db.sync.afgehandeld(r);
       return 'Gelukt (de rest volgt bij de volgende synchronisatie)';
-    });
+    }]);
   }
+  const uit = stappen.map(([naam]) => ({ naam, ok: null, tekst: 'Bezig…', ms: 0 }));
+  opStap(-1, uit);
+  // Eerst de sleutel vernieuwen (één keer), daarna alles tegelijk.
+  try { await toegangstoken(); } catch { /* elke stap meldt het zelf */ }
+  await Promise.all(stappen.map(async ([naam, fn], i) => {
+    const t0 = performance.now();
+    try {
+      const r = await fn();
+      uit[i] = { naam, ok: r?.ok ?? true, tekst: r?.tekst ?? String(r ?? 'In orde') };
+    } catch (f) {
+      uit[i] = { naam, ok: false, tekst: foutTekst(f) };
+    }
+    uit[i].ms = Math.round(performance.now() - t0);
+    opStap(i, uit[i]);
+  }));
   await werkWachtendBij();
   return uit;
 }

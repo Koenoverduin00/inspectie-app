@@ -1119,7 +1119,8 @@ veld zonder bereik kunt inspecteren. Ben je ingelogd, dan worden wijzigingen aut
 - **Verbinding testen** (Instellingen → Account, ook op de telefoon onder Ik → Account): controleert stap voor stap het inloggen,
   of je in *teamleden* staat, je rol, elke tabel op de server (ontbreekt er een, dan staat erbij welk SQL-script nog moet), de snelle
   synchronisatie (011) en verstuurt per soort één wachtende wijziging, met de exacte reden als de server die weigert.
-  Met **Resultaat kopiëren** stuur je de uitkomst eenvoudig door.
+  Alle controles lopen tegelijk en wachten elk hoogstens 10 seconden; de uitkomsten verschijnen zodra ze binnen zijn, met de tijd
+  die de server nodig had. Met **Resultaat kopiëren** stuur je de uitkomst eenvoudig door.
 - **Synchroniseren terwijl de app dicht is** kan een website niet betrouwbaar (iPhone helemaal niet, Android beperkt). De app synchroniseert
   daarom direct bij het openen, bij terugkeer naar de app, zodra er weer verbinding is, elke 5 seconden een korte controle en elke minuut volledig.
 - Zonder inloggen werkt de app gewoon lokaal; wat je dan invoert wordt verstuurd zodra je inlogt.

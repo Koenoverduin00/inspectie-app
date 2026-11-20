@@ -2023,3 +2023,4 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
 .diaglijst li.fout small { color: #8f2a1d; }
 .diagtekst { width: 100%; min-height: 6rem; font-family: ui-monospace, monospace; font-size: .75rem; margin-top: .4rem; }
 @media (max-width: 560px) { .diaglijst li { grid-template-columns: 1.4rem 1fr; } .diaglijst small { grid-column: 2; } }
+.diaglijst li.bezig { opacity: .7; }

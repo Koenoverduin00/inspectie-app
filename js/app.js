@@ -14404,13 +14404,22 @@ function toonAccount(el) {
     knop.disabled = true;
     vak.hidden = false;
     vak.innerHTML = '<p class="leeg">Bezig met testen…</p>';
+    const duur = (ms) => (ms ? ` · ${(ms / 1000).toFixed(1).replace('.', ',')} s` : '');
+    const regelHtml = (x) => `<span>${x.ok === null ? I.wacht : x.ok ? I.vink : I.kruis}</span><strong>${esc(x.naam)}</strong><small>${esc(x.tekst)}${duur(x.ms)}</small>`;
+    const t0 = Date.now();
     try {
-      const r = await sync.diagnose();
-      const tekst = `Verbindingstest ${new Date().toLocaleString('nl-NL')} (app ${document.querySelector('script[src*="app.js"]')?.src.split('v=')[1] ?? ''})\n`
-        + r.map((x) => `${x.ok ? 'OK ' : 'FOUT'} ${x.naam}: ${x.tekst}`).join('\n');
-      vak.innerHTML = `<h3 style="margin:1rem 0 .4rem">Verbindingstest</h3>
-        <ul class="diaglijst">${r.map((x) => `<li class="${x.ok ? 'ok' : 'fout'}"><span>${x.ok ? I.vink : I.kruis}</span><strong>${esc(x.naam)}</strong><small>${esc(x.tekst)}</small></li>`).join('')}</ul>
-        <p>${r.some((x) => !x.ok) ? `<strong>${r.filter((x) => !x.ok).length} onderdeel/onderdelen werken niet.</strong> ` : '<strong>Alles werkt.</strong> '}
+      const r = await sync.diagnose((i, x) => {
+        if (i === -1) {
+          vak.innerHTML = `<h3 style="margin:1rem 0 .4rem">Verbindingstest</h3>
+            <ul class="diaglijst">${x.map((y, n) => `<li class="bezig" data-diag="${n}">${regelHtml(y)}</li>`).join('')}</ul><div id="diag-samen"></div>`;
+          return;
+        }
+        const li = vak.querySelector(`[data-diag="${i}"]`);
+        if (li) { li.className = x.ok ? 'ok' : 'fout'; li.innerHTML = regelHtml(x); }
+      });
+      const tekst = `Verbindingstest ${new Date().toLocaleString('nl-NL')} (app ${document.querySelector('script[src*="app.js"]')?.src.split('v=')[1] ?? ''}, ${Math.round((Date.now() - t0) / 1000)} s)\n`
+        + r.map((x) => `${x.ok ? 'OK ' : 'FOUT'} ${x.naam}: ${x.tekst}${duur(x.ms)}`).join('\n');
+      vak.querySelector('#diag-samen').innerHTML = `<p>${r.some((x) => !x.ok) ? `<strong>${r.filter((x) => !x.ok).length} onderdeel/onderdelen werken niet.</strong> ` : '<strong>Alles werkt.</strong> '}
           <button class="knop klein" type="button" id="diag-kopie">Resultaat kopiëren</button></p>
         <textarea class="diagtekst" readonly>${esc(tekst)}</textarea>`;
       vak.querySelector('#diag-kopie').onclick = async () => {
