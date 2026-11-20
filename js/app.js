@@ -1474,6 +1474,8 @@ async function inspectietypeEditor(id, { bibliotheek = false } = {}) {
         <div class="veld"><label for="t-naam" class="vereist">Naam</label><input id="t-naam" name="naam" value="${esc(t.naam)}" maxlength="80" ${naamVast ? 'readonly' : ''} placeholder="bijv. Staat verhardingen">
           ${naamVast ? '<small>De naam van een standaardtype ligt vast.</small>' : ''}</div>
         <div class="veld breed"><label for="t-omschrijving">Omschrijving</label><input id="t-omschrijving" name="omschrijving" value="${esc(t.omschrijving ?? '')}" maxlength="200" placeholder="Waar is deze inspectie voor?"></div>
+        <div class="veld breed"><label class="vink"><input type="checkbox" name="overzichtsfotos" ${t.overzichtsfotos ? 'checked' : ''}>
+          <span><strong>Overzichtsfoto's vragen</strong><small>Eén keer per inspectie foto's van het hele object, naast de foto's per bevinding. Uit = het veld staat niet in het formulier.</small></span></label></div>
       </div></section>
       <section class="kaart"><h2>Methodiek</h2>
         <div class="methodieken">${Object.entries(TY.METHODIEKEN).map(([k, m]) => `
@@ -1662,6 +1664,7 @@ async function inspectietypeEditor(id, { bibliotheek = false } = {}) {
     const { type, fouten } = TY.controleer({
       ...(bestaand ?? {}), naam: naamVast ? t.naam : d.naam, omschrijving: d.omschrijving, methodiek: d.methodiek,
       schaal, onderdelen: lijsten.onderdelen, gebreken: lijsten.gebreken, punten: regels(d.punten), oordeelRegel: d.oordeelRegel,
+      overzichtsfotos: form.elements.overzichtsfotos.checked,
     }, { andereNamen: andere });
     if (fouten.length) return melding(fouten[0], 'fout');
     const nu = new Date().toISOString();
@@ -4264,7 +4267,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
       <select id="f-weer" name="weer"><option value="">–</option>${WEER.map((w) => optie(w, w, staat.weer)).join('')}</select></div>`;
   const veldSamenvatting = `<div class="veld breed"><label for="f-samenvatting">${mobiel ? 'Algemene bevindingen' : 'Samenvatting / algemene bevindingen'}</label>
       <textarea id="f-samenvatting" name="samenvatting" maxlength="4000">${esc(staat.samenvatting)}</textarea></div>`;
-  const veldFotos = `<div class="veld breed"><label>Overzichtsfoto's</label><div id="algemene-fotos"></div></div>`;
+  const veldFotos = `<div class="veld breed" id="algemene-fotos-veld" hidden><label>Overzichtsfoto's</label><div id="algemene-fotos"></div></div>`;
 
   app.innerHTML = mobiel ? `
     <div class="mkop"><a href="${terug}" class="mterug" aria-label="Terug">←</a>
@@ -4348,6 +4351,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     type = nieuwType;
     if (methodiek() === 'checklist') maakChecklist();
     extraB.teken();
+    toonAlgemeneFotos();
     toonBouwdelen();
     toonGebreken();
     for (const b of bevBlokken.values()) b.blok.then((x) => x.teken());
@@ -4559,7 +4563,11 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     });
     for (const k of [...bevBlokken.keys()]) if (!bevindingVan(k)) bevBlokken.delete(k);
   };
-  const toonAlgemeneFotos = () => { app.querySelector('#algemene-fotos').innerHTML = fotoBlok(staat.fotos, 'alg'); };
+  // Overzichtsfoto's alleen als het inspectietype erom vraagt; al gemaakte foto's blijven altijd zichtbaar.
+  const toonAlgemeneFotos = () => {
+    app.querySelector('#algemene-fotos-veld').hidden = !(type?.overzichtsfotos || staat.fotos.length);
+    app.querySelector('#algemene-fotos').innerHTML = fotoBlok(staat.fotos, 'alg');
+  };
   const fotoLijst = (sleutel) => (sleutel === 'alg' ? staat.fotos
     : sleutel[0] === 'c' ? staat.checklist[Number(sleutel.slice(1))].fotos : staat.gebreken[Number(sleutel.slice(1))].fotos);
   const herteken = (sleutel) => (sleutel === 'alg' ? toonAlgemeneFotos() : toonGebreken());
@@ -10287,7 +10295,7 @@ function formulierVoorbeeldHtml({ formulier, type = null, defs = [], actief = ''
   }
   return `<section class="kaart vb-blok"><div class="velden">
       ${vast('Object', keuze('Kies een object'), { breed: true })}${vast('Soort', keuze(type?.naam ?? 'Inspectie'))}${vast('Datum', '<input type="date">', { vereist: true })}
-      ${vast('Samenvatting / algemene bevindingen', vak(), { breed: true })}${vast("Overzichtsfoto's", fotoKnop, { breed: true })}
+      ${vast('Samenvatting / algemene bevindingen', vak(), { breed: true })}${type?.overzichtsfotos ? vast("Overzichtsfoto's", fotoKnop, { breed: true }) : ''}
       ${telefoon ? '<details class="vb-details"><summary>Inspecteur en weer</summary></details>' : `${vast('Inspecteur', tekst())}${vast('Weersomstandigheden', keuze('–'))}`}</div></section>
     ${eigenBlok(perInspectie, 'Extra gegevens (eenmaal per inspectie)')}
     <section class="vb-bevindingen">${bevindingen}</section>${knoppen}`;

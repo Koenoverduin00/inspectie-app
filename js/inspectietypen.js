@@ -74,8 +74,8 @@ export function methodiekVan(i) {
 /** Momentopname van het type die bij de inspectie wordt bewaard. */
 export function momentopname(t) {
   if (!t) return null;
-  const { id, naam, methodiek, schaal, onderdelen, gebreken, punten, oordeelRegel, bron } = t;
-  return { id, naam, methodiek, schaal, onderdelen, gebreken, punten, oordeelRegel, versie: bron?.versie ?? null };
+  const { id, naam, methodiek, schaal, onderdelen, gebreken, punten, oordeelRegel, overzichtsfotos, bron } = t;
+  return { id, naam, methodiek, schaal, onderdelen, gebreken, punten, oordeelRegel, overzichtsfotos: Boolean(overzichtsfotos), versie: bron?.versie ?? null };
 }
 
 const schaalVan = (i) => (i?.type?.schaal?.length ? i.type.schaal : STANDAARD_SCHAAL);
@@ -148,6 +148,8 @@ export function controleer(t, { andereNamen = [] } = {}) {
       schaal: schaal.length ? schaal : STANDAARD_SCHAAL.map((x) => ({ ...x })),
       onderdelen: schoon(t?.onderdelen), gebreken: schoon(t?.gebreken), punten,
       oordeelRegel: t?.oordeelRegel === 'handmatig' ? 'handmatig' : 'slechtste',
+      // Overzichtsfoto's van de hele inspectie: standaard niet gevraagd, per type aan te zetten.
+      overzichtsfotos: Boolean(t?.overzichtsfotos),
     },
   };
 }

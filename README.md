@@ -794,6 +794,8 @@ Niet elke inspectie volgt NEN 2767. Per **inspectietype** kies je de methodiek (
 | **Checklist** | Vaste controlepunten: in orde / niet in orde / n.v.t.; bij "niet in orde" toelichting, foto's en maatregel | Aantal punten niet in orde |
 
 - **Eigen inspectie maken**: naam, methodiek, schaal (2–6 niveaus met eigen namen en kleuren), onderdelen, gebreken of controlepunten.
+- **Overzichtsfoto's vragen** (per type, onder *Algemeen*): standaard uit, ook voor de standaardtypen en schouwrondes. Aan = het formulier krijgt
+  één keer per inspectie het veld *Overzichtsfoto's*, naast de foto's per bevinding. Een inspectie die al overzichtsfoto's heeft, toont ze altijd.
 - **Onderdelen en gebreken** (methodiek *oordeel*): twee lijsten met een regel per naam en **＋ Onderdeel** / **＋ Gebrek**, net als de schaal.
   Enter maakt een nieuwe regel; plak je meerdere regels (bijv. een kolom uit Excel), dan wordt elke regel een eigen regel.
   **Importeren uit Excel** leest een Excel- of CSV-bestand met twee kolommen: **A = onderdeel**, **B = gebrek** (een kopregel mag,
