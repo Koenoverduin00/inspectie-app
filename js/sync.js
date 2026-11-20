@@ -75,6 +75,24 @@ async function werkWachtendBij() {
 // Authenticatie
 // ---------------------------------------------------------------------------
 class NietIngelogd extends Error {}
+/** De server gaf binnen de tijd geen antwoord. Telt als verbindingsprobleem: later opnieuw proberen. */
+class TijdOver extends TypeError {}
+const WACHT_MS = 30_000; // gewone verzoeken
+const WACHT_FOTO_MS = 120_000; // foto's (groter, ook bij een trage verbinding)
+
+/** fetch met een tijdslimiet: een verzoek dat blijft hangen mag de synchronisatie niet eindeloos laten wachten. */
+async function haalMetLimiet(url, opties = {}, ms = WACHT_MS) {
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), ms);
+  try {
+    return await fetch(url, { ...opties, signal: ac.signal });
+  } catch (fout) {
+    if (ac.signal.aborted) throw new TijdOver(`De server reageerde niet binnen ${Math.round(ms / 1000)} seconden. Controleer de verbinding; de app probeert het zo opnieuw.`);
+    throw fout;
+  } finally {
+    clearTimeout(t);
+  }
+}
 
 const FOUTVERTALINGEN = [
   [/invalid login credentials/i, 'Onjuist e-mailadres of wachtwoord.'],
@@ -107,7 +125,7 @@ export const sessie = () => lees('sessie');
 
 async function authVerzoek(pad, body) {
   const { url, key } = configuratie();
-  const res = await fetch(`${url}/auth/v1/${pad}`, {
+  const res = await haalMetLimiet(`${url}/auth/v1/${pad}`, {
     method: 'POST',
     headers: { apikey: key, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -230,28 +248,55 @@ export async function uitloggen() {
   zetStatus({ fase: bepaalRustFase(), fout: '', rol: null });
 }
 
+// Eén vernieuwing tegelijk: Supabase accepteert elke vernieuwingssleutel maar één keer. Vroegen meerdere verzoeken
+// tegelijk een nieuwe sleutel aan (bijv. na een uur, als de app weer opent), dan werden de andere geweigerd en werd je uitgelogd.
+let vernieuwing = null;
+
 async function toegangstoken(forceer = false) {
   const s = sessie();
   if (!s) throw new NietIngelogd('Niet ingelogd.');
   if (!forceer && Date.now() < s.verloopt - 60_000) return s.access_token;
+  vernieuwing ??= vernieuw(s).finally(() => { vernieuwing = null; });
+  return vernieuwing;
+}
+
+async function vernieuw(s) {
+  // Ook tussen tabbladen: met een slot vernieuwt maar één tabblad tegelijk; de andere nemen de nieuwe sessie over.
+  if (navigator.locks?.request) return navigator.locks.request('inspectie-app:vernieuw', () => vernieuwNu(s));
+  return vernieuwNu(s);
+}
+
+async function vernieuwNu(oud) {
+  const huidig = sessie();
+  if (!huidig) throw new NietIngelogd('Niet ingelogd.');
+  if (huidig.refresh_token !== oud.refresh_token && Date.now() < huidig.verloopt - 60_000) return huidig.access_token;
+  const s = huidig;
   try {
     bewaarSessie(await authVerzoek('token?grant_type=refresh_token', { refresh_token: s.refresh_token }));
+    return sessie().access_token;
   } catch (fout) {
     if (fout instanceof TypeError) throw fout; // netwerkfout: later opnieuw proberen
+    // Intussen al vernieuwd (bijv. in een ander tabblad)? Dan die sessie gebruiken in plaats van uit te loggen.
+    const nu = sessie();
+    if (nu && nu.refresh_token !== s.refresh_token) return nu.access_token;
+    // Alleen uitloggen als de server de sleutel echt afwijst; bij een serverstoring later opnieuw proberen.
+    if (fout.status && fout.status >= 500) throw fout;
     schrijf('sessie', null);
     throw new NietIngelogd('Je sessie is verlopen. Log opnieuw in.');
   }
-  return sessie().access_token;
 }
 
 async function api(pad, opties = {}, opnieuw = true) {
   const { url, key } = configuratie();
-  const res = await fetch(url + pad, {
-    ...opties,
-    headers: { apikey: key, Authorization: `Bearer ${await toegangstoken()}`, ...opties.headers },
-  });
+  const gebruikt = await toegangstoken();
+  const { limiet, ...rest } = opties;
+  const res = await haalMetLimiet(url + pad, {
+    ...rest,
+    headers: { apikey: key, Authorization: `Bearer ${gebruikt}`, ...rest.headers },
+  }, limiet ?? (pad.startsWith('/storage/') ? WACHT_FOTO_MS : WACHT_MS));
   if (res.status === 401 && opnieuw) {
-    await toegangstoken(true);
+    // Sleutel geweigerd: vernieuwen (gedeeld met andere verzoeken), tenzij een ander verzoek dat net al deed.
+    if (sessie()?.access_token === gebruikt) await toegangstoken(true);
     return api(pad, opties, false);
   }
   if (!res.ok) throw await foutUit(res);
@@ -313,8 +358,13 @@ async function verstuur() {
     if (regel) geweigerd.push({ store: regel.store, id: regel.recordId, melding: fout.message, geenRecht: isGeenRecht(fout) });
   };
 
+  const totaal = regels.length;
+  let klaar = 0;
+  const voortgang = (n = 0) => { klaar += n; zetStatus({ voortgang: totaal ? `Versturen: ${Math.min(klaar, totaal)} van ${totaal}` : '' }); };
+  voortgang();
   for (const regel of regels.filter((r) => r.store === 'fotos')) {
     try {
+      voortgang(1);
       await verstuurFoto(regel);
       await db.sync.afgehandeld(regel);
       zetStatus({ wachtend: Math.max(0, status.wachtend - 1) });
@@ -325,6 +375,7 @@ async function verstuur() {
     const eigen = regels.filter((r) => r.store === store);
     for (let i = 0; i < eigen.length; i += BATCH) {
       const deel = eigen.slice(i, i + BATCH);
+      voortgang(deel.length);
       try {
         await verstuurRecords(store, deel);
         for (const r of deel) await db.sync.afgehandeld(r);
@@ -460,7 +511,6 @@ async function haalOp() {
     }
     if (nieuwsteCursor) schrijf(cursorSleutel(tabel), nieuwsteCursor);
   }));
-  await haalOntbrekendeFotosOp();
   return gewijzigd;
 }
 
@@ -501,7 +551,10 @@ async function haalOntbrekendeFotosOp() {
     if (actief && record.projectId && record.projectId !== actief) continue;
     for (const id of fotoIdsVan(record)) if (!aanwezig.has(id)) nodig.set(id, record.projectId ?? null);
   }
+  let n = 0;
   for (const [id, projectId] of nodig) {
+    n += 1;
+    zetStatus({ fotosOphalen: `Foto's ophalen: ${n} van ${nodig.size}` });
     try {
       const res = await api(`/storage/v1/object/authenticated/${BUCKET}/${fotoPad(id, projectId)}`);
       const data = await blobNaarDataUrl(await res.blob());
@@ -511,6 +564,13 @@ async function haalOntbrekendeFotosOp() {
       console.warn(`Foto ${id} nog niet beschikbaar`, fout.message); // volgende keer opnieuw
     }
   }
+}
+
+// Foto's ophalen gebeurt na de synchronisatie, op de achtergrond: veel of grote foto's houden de rest niet op.
+let fotosBezig = null;
+function fotosOpAchtergrond() {
+  fotosBezig ??= haalOntbrekendeFotosOp().catch((fout) => console.warn('Foto\'s ophalen onderbroken', fout.message))
+    .finally(() => { fotosBezig = null; zetStatus({ fotosOphalen: '' }); });
 }
 
 const fotoBeleid = {};
@@ -562,11 +622,12 @@ export function synchroniseer() {
       zetStatus({ fase: rust });
       return 0;
     }
-    zetStatus({ fase: 'bezig', fout: '' });
+    zetStatus({ fase: 'bezig', fout: '', voortgang: '' });
     try {
       const rolOpgehaald = haalRolOp().catch((fout) => {
         if (fout instanceof TypeError || fout instanceof NietIngelogd) throw fout;
       });
+      rolOpgehaald.catch(() => {}); // stopt het versturen eerder (bijv. geen verbinding), dan geen losse foutmelding
       // Een door de server geweigerde wijziging mag het ophalen niet blokkeren: anders komen wijzigingen
       // van de pc nooit meer binnen op dit apparaat. Eerst alles ophalen, daarna de weigering melden.
       let weigering = null;
@@ -574,6 +635,7 @@ export function synchroniseer() {
         if (fout instanceof TypeError || fout instanceof NietIngelogd) throw fout;
         weigering = fout;
       }
+      zetStatus({ voortgang: 'Ophalen van de server…' });
       const [opgehaald] = await Promise.all([haalOp(), rolOpgehaald]);
       const nu = new Date().toISOString();
       schrijf('laatsteSync', nu);
@@ -584,13 +646,16 @@ export function synchroniseer() {
         zetStatus({ fase: 'fout', fout: geweigerd.length ? geweigerdTekst(geweigerd) : weigering.message, laatsteSync: nu, geweigerd });
       } else zetStatus({ fase: 'ok', laatsteSync: nu, geweigerd: [] });
       if (opgehaald) naOphalen(opgehaald);
+      fotosOpAchtergrond();
       return opgehaald;
     } catch (fout) {
       if (fout instanceof NietIngelogd) zetStatus({ fase: 'uitgelogd', fout: fout.message });
+      else if (fout instanceof TijdOver) zetStatus({ fase: 'fout', fout: fout.message });
       else if (fout instanceof TypeError) zetStatus({ fase: 'offline', fout: '' });
       else zetStatus({ fase: 'fout', fout: fout.message });
       return 0;
     } finally {
+      zetStatus({ voortgang: '' });
       await werkWachtendBij();
     }
   })().finally(() => {

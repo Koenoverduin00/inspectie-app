@@ -1111,6 +1111,13 @@ veld zonder bereik kunt inspecteren. Ben je ingelogd, dan worden wijzigingen aut
   werkpakket) staat dan binnen enkele seconden op de telefoon in plaats van binnen een minuut. Zonder het script blijft
   het bij eens per minuut. Alle tabellen worden tegelijk opgevraagd, zodat ook een volledige synchronisatie sneller is.
 - Bij gelijktijdige wijzigingen aan hetzelfde object of dezelfde inspectie wint de laatst opgeslagen versie.
+- **Ingelogd blijven**: de inlogsleutel wordt ongeveer elk uur vernieuwd. Dat gebeurt één keer tegelijk, ook met meerdere tabbladen open,
+  zodat je niet onverwacht wordt uitgelogd als de app na een tijd weer opent.
+- **Nooit eindeloos 'Synchroniseren…'**: elk verzoek aan de server heeft een tijdslimiet (30 s, foto's 120 s). Reageert de server niet,
+  dan staat er een duidelijke melding en probeert de app het vanzelf opnieuw. Tijdens het versturen zie je de voortgang
+  (*Versturen: 13 van 28*); foto's van anderen worden daarna op de achtergrond opgehaald (*Foto's ophalen: 2 van 10*) en houden de rest niet op.
+- **Synchroniseren terwijl de app dicht is** kan een website niet betrouwbaar (iPhone helemaal niet, Android beperkt). De app synchroniseert
+  daarom direct bij het openen, bij terugkeer naar de app, zodra er weer verbinding is, elke 5 seconden een korte controle en elke minuut volledig.
 - Zonder inloggen werkt de app gewoon lokaal; wat je dan invoert wordt verstuurd zodra je inlogt.
 
 ### Eenmalig instellen

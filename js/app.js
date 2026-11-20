@@ -5999,7 +5999,7 @@ function statusregel(st) {
     tekst = `${I.offline} Offline – alles wordt op je telefoon bewaard${n ? ` (${reg(n)} ${wacht(n)})` : ''}`;
   } else if (st.fase === 'bezig') {
     soort = 'bezig';
-    tekst = `⟳ Bezig met versturen${n ? ` (${n})` : ''}…`;
+    tekst = st.voortgang ? `⟳ ${st.voortgang}` : `⟳ Bezig met versturen${n ? ` (${n})` : ''}…`;
   } else if (st.fase === 'fout' && st.geweigerd?.length) {
     soort = 'fout';
     tekst = `${I.let} ${st.geweigerd.length} wijziging${st.geweigerd.length === 1 ? '' : 'en'} geweigerd door de server; de rest is bijgewerkt. Tik voor details`;
@@ -14406,7 +14406,7 @@ function toonAccount(el) {
   stopAccountStatus = sync.opStatus((st) => {
     if (!el.isConnected) { stopAccountStatus(); return; }
     if (st.fase === 'uitgelogd' && !sync.sessie()) { toonAccount(el); return; }
-    el.querySelector('#st-fase').textContent = FASE_TEKST[st.fase] ?? st.fase;
+    el.querySelector('#st-fase').textContent = `${FASE_TEKST[st.fase] ?? st.fase}${st.fase === 'bezig' && st.voortgang ? ` – ${st.voortgang}` : ''}${st.fotosOphalen ? ` · ${st.fotosOphalen}` : ''}`;
     el.querySelector('#st-wachtend').textContent = String(st.wachtend);
     el.querySelector('#st-tijd').textContent = st.laatsteSync ? new Date(st.laatsteSync).toLocaleString('nl-NL') : '–';
     const f = el.querySelector('#st-fout');
@@ -14431,7 +14431,10 @@ function toonAccount(el) {
       if (!t || rol !== 'geen') return;
       t.textContent = `Je account heeft nog geen toegang. Vraag de beheerder om ${s.gebruiker?.email ?? 'je e-mailadres'} toe te voegen aan een project.`;
       t.hidden = false;
-    }).catch(() => {});
+    }).catch((fout) => {
+      const r = el.querySelector('#st-rol');
+      if (r) r.textContent = `Kon niet worden opgehaald (${fout.message})`;
+    });
   }
 }
 

@@ -28,7 +28,13 @@ function open() {
           if (!db.objectStoreNames.contains(naam)) db.createObjectStore(naam, { keyPath: 'id' });
         }
       };
-      req.onsuccess = () => resolve(req.result);
+      req.onsuccess = () => {
+        const db = req.result;
+        // Een nieuwere versie van de app (ander tabblad) wil de opslag bijwerken: niet tegenhouden.
+        db.onversionchange = () => { db.close(); dbPromise = null; };
+        resolve(db);
+      };
+      req.onblocked = () => console.warn('Opslag wacht: sluit andere tabbladen van de app.');
       req.onerror = () => reject(req.error);
     });
   }
