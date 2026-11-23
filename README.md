@@ -316,6 +316,24 @@ Planning → **Voortgangsoverzicht**: een overzicht om de voortgang te bespreken
 - Filters: soort (werk / inspecties) en wel of geen losse taken. Afgeronde rondes en rondes zonder startdatum staan er niet in (het aantal niet-ingeplande rondes staat onderaan).
 - **Afdrukken / opslaan als PDF** (A4 liggend) of **Excel** (blad Overzicht met de tellingen en blad Voortgang met alle regels, met filters).
 
+## Planning naar MS Project
+
+Op de pagina **Planning** staat de knop **MS Project**. Je kiest:
+
+- **MS Project (XML)** – openen in Microsoft Project via *Bestand → Openen*, bestandstype **XML-indeling** (Project 2010 en nieuwer).
+  - Elk werkpakket wordt een **samenvattingstaak** (code + naam, met het aantal objecten in de notitie), met de **rondes** eronder op startdatum.
+  - Rondes krijgen de begin- en einddatum uit de app (08:00–17:00), de duur in werkdagen (ma–vr) en **% voltooid** = de voortgang
+    uit de app. Ze zijn **handmatig gepland**, zodat Project de datums niet verschuift. Een ronde zonder einddatum telt (zoals in de app)
+    als één week; dat staat in de notitie. In de notitie staan ook de soort werk of inspectie, hoeveel objecten gedaan zijn en de status.
+  - De **uitvoerders** van een werkpakket worden resources, toegewezen aan de rondes.
+  - **Taken met een deadline** (niet gereed) komen als **mijlpalen** onder *Taken (deadlines)*, met de toegewezen persoon.
+  - Rondes zonder startdatum gaan niet mee; de dialoog noemt ze vooraf.
+- **Excel** – dezelfde regels als tabel (overzichtsnummer en -niveau, naam, begin- en einddatum, duur in werkdagen, % voltooid,
+  mijlpaal, resourcenamen, notities), voor de importwizard van Project of om zelf te bekijken.
+
+Filters: werk en inspecties of één van beide, met of zonder afgeronde rondes, met of zonder taken.
+Het is een export (eenrichtingsverkeer): wijzigingen in Project komen niet terug in de app.
+
 ## Werk in delen: meerdere ploegen op hetzelfde vak
 
 Soms werken twee ploegen aan hetzelfde vak, bijv. de ene **vanaf het land** en de andere **vanaf het water**. Allebei registreren ze,
@@ -1233,6 +1251,7 @@ js/eisen.js           eisbibliotheek: inlezen, vergelijken, eisvragen en verific
 js/eisdossier.js      verificatiedossier als Excel (samenvatting, eisen, bewijs, afwijkingen)
 js/storingenexcel.js  export van het storingenregister naar Excel
 js/geominwinning.js  inwinning van punten, lijnen en vlakken: lengte, oppervlakte, WKT, GeoJSON
+js/msproject.js      planning naar Microsoft Project (MSPDI-XML) en een Excel-tabel voor de importwizard
 js/ingewonnen.js     ingewonnen vormen, locaties en GPS van bevindingen uit de formulieren verzamelen (kaartlaag)
 js/voortgangsoverzicht.js  voortgangsoverzicht voor overleg: achterstallig, lopend en binnenkort (afdruk en Excel)
 js/storingen.js       storingenregister: meldingen + registraties → zaken met status

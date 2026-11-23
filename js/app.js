@@ -32,6 +32,7 @@ import * as SX from './storingenexcel.js';
 import * as VO from './voortgangsoverzicht.js';
 import * as GI from './geominwinning.js';
 import * as IW from './ingewonnen.js';
+import * as MP from './msproject.js';
 import * as IMP from './gisimport.js';
 import * as ST from './stowa.js';
 import * as DG from './digigids.js';
@@ -2310,6 +2311,7 @@ document.addEventListener('click', (e) => {
   blok.querySelectorAll('[data-vpweergave]').forEach((x) => { const aan = x.dataset.vpweergave === w; x.classList.toggle('actief', aan); x.setAttribute('aria-pressed', String(aan)); });
 });
 document.addEventListener('click', (e) => {
+  if (e.target.closest('[data-msproject]')) exporteerMsProject().catch((f) => melding(`Exporteren mislukt: ${f.message}`, 'fout'));
   if (e.target.closest('[data-iw-export]')) exporteerIngewonnen().catch((f) => melding(`Exporteren mislukt: ${f.message}`, 'fout'));
 });
 document.addEventListener('click', (e) => {
@@ -8923,6 +8925,85 @@ function toonIngewonnen(L, map, blok, { formulier = false } = {}) {
   }).catch((f) => { console.warn('Ingewonnen gegevens niet geladen', f); return null; });
 }
 
+/** De planning (werkpakketten → rondes, en taken met een deadline) downloaden voor Microsoft Project. */
+async function exporteerMsProject() {
+  const project = await actiefProject();
+  if (!project) return melding('Kies eerst een project.', 'fout');
+  const g = await pakketGegevens();
+  const taken = await inProject('taken');
+  const naamVan = (e) => project.ledenInfo?.[e]?.naam || e;
+  const d = document.createElement('dialog');
+  d.className = 'dialoog';
+  d.innerHTML = `<form method="dialog" novalidate>
+    <h2>Planning naar MS Project</h2>
+    <p><small>Elk werkpakket wordt een samenvattingstaak met de rondes eronder, met begin- en einddatum, % voltooid (de voortgang uit de app)
+      en de uitvoerders als resources. De rondes zijn handmatig gepland, zodat de datums precies blijven zoals in de app.</small></p>
+    <div class="veld"><label>Bestand</label>
+      <label class="vink"><input type="radio" name="mp-formaat" value="xml" checked><span>MS Project (XML)<small>Openen in Project: Bestand → Openen → kies bij bestandstype <em>XML-indeling</em>. Werkt in Project 2010 en nieuwer en in Project Online desktop.</small></span></label>
+      <label class="vink"><input type="radio" name="mp-formaat" value="xlsx"><span>Excel<small>Tabel met overzichtsniveau, naam, datums, duur, % voltooid en resources: voor de importwizard van Project, of om te bekijken.</small></span></label></div>
+    <div class="veld"><label for="mp-soort">Welke rondes</label><select id="mp-soort">
+      <option value="">Werk en inspecties</option><option value="werk">Alleen werkzaamheden</option><option value="inspectie">Alleen inspecties</option></select></div>
+    <label class="vink"><input type="checkbox" id="mp-afgerond" checked><span>Ook afgeronde rondes</span></label>
+    <label class="vink"><input type="checkbox" id="mp-taken" checked><span>Taken met een deadline als mijlpalen</span></label>
+    <p id="mp-info"><small></small></p>
+    <div class="formvoet"><button class="knop" type="button" data-weg>Annuleren</button><button class="knop primair" type="submit">Downloaden</button></div></form>`;
+  document.body.append(d);
+  const sluit = () => { d.close(); d.remove(); };
+  d.querySelector('[data-weg]').onclick = sluit;
+  d.addEventListener('cancel', (e) => { e.preventDefault(); sluit(); });
+  const maak = () => {
+    const soort = d.querySelector('#mp-soort').value;
+    const metAfgerond = d.querySelector('#mp-afgerond').checked;
+    const groepen = g.pakketten.filter((p) => !p.verwijderd).map((p) => ({
+      code: p.code ?? '', naam: p.naam ?? '', uitvoerders: (p.toegewezen ?? []).map(naamVan),
+      notitie: [p.omschrijving, `${(p.objecten ?? []).length} objecten`].filter(Boolean).join('\n'),
+      rondes: rondesVan(p).filter((r) => (!soort || (r.soort ?? 'werk') === soort) && (metAfgerond || r.status !== 'afgerond')).map((r) => {
+        const vg = g.rondeVoortgang.get(`${p.id}:${r.id}`);
+        return { code: rondeCode(p, r), naam: r.naam && r.naam !== p.naam ? r.naam : (r.soort === 'inspectie' ? r.inspectiesoort || 'Inspectie' : r.werksoort || 'Werkzaamheden'),
+          start: r.start, eind: r.eind, percentage: vg?.percentage ?? (r.status === 'afgerond' ? 100 : 0),
+          notitie: [r.soort === 'inspectie' ? `Inspectie${r.inspectiesoort ? `: ${r.inspectiesoort}` : ''}` : `Werk${r.werksoort ? `: ${r.werksoort}` : ''}`,
+            vg ? `${vg.gedaan?.size ?? 0} van ${vg.totaal ?? 0} objecten gedaan` : '', `Status in de app: ${r.status ?? 'gepland'}`].filter(Boolean).join('\n') };
+      }),
+    }));
+    const mijlpalen = d.querySelector('#mp-taken').checked ? taken.filter((t) => t.deadline && t.status !== 'gereed' && !t.verwijderd && (!soort || t.soort === soort))
+      .map((t) => ({ naam: t.titel || (t.soort === 'werk' ? 'Werkzaamheid' : 'Inspectie'), datum: t.deadline, uitvoerder: t.toegewezenAan ? naamVan(t.toegewezenAan) : '', notitie: t.omschrijving ?? '' })) : [];
+    return MP.mspdi({ naam: project.naam ?? 'Planning', groepen, mijlpalen, auteur: instelling.lees('organisatie') || '' });
+  };
+  const info = () => {
+    const r = maak();
+    d.querySelector('#mp-info small').textContent = `${r.taken} ${r.taken === 1 ? 'taak' : 'taken'} in het bestand.${r.nietGepland.length
+      ? ` ${r.nietGepland.length} ronde${r.nietGepland.length === 1 ? ' heeft' : 's hebben'} nog geen startdatum en ${r.nietGepland.length === 1 ? 'gaat' : 'gaan'} niet mee: ${r.nietGepland.slice(0, 3).join('; ')}${r.nietGepland.length > 3 ? ' …' : ''}` : ''}`;
+  };
+  d.querySelectorAll('select, input').forEach((x) => x.addEventListener('change', info));
+  info();
+  d.querySelector('form').onsubmit = async (e) => {
+    e.preventDefault();
+    const r = maak();
+    if (!r.taken) return melding('Er staat niets met een datum in de planning.', 'fout');
+    const naam = `${String(project.naam ?? 'planning').replace(/[^\w-]+/g, '_')}-planning-${vandaag()}`;
+    if (d.querySelector('[name=mp-formaat]:checked').value === 'xml') {
+      download(`${naam}.xml`, r.xml, 'application/xml');
+    } else {
+      const ExcelJS = await PX.laadExcelJS();
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet('Planning');
+      ws.addRow(MP.EXCEL_KOLOMMEN).font = { bold: true };
+      for (const rij of MP.excelRegels(r.regels)) {
+        const x = ws.addRow(rij.map((v, i) => ([3, 4].includes(i) && v ? new Date(`${v}T00:00:00Z`) : v)));
+        if (rij[1] === 1) x.font = { bold: true };
+        x.getCell(3).alignment = { indent: (rij[1] - 1) * 2 };
+      }
+      [4, 5].forEach((c) => { ws.getColumn(c).numFmt = 'dd-mm-yyyy'; });
+      ws.columns.forEach((c, i) => { c.width = [16, 10, 48, 12, 12, 10, 10, 9, 28, 50][i] ?? 14; });
+      ws.views = [{ state: 'frozen', ySplit: 1 }];
+      download(`${naam}.xlsx`, await wb.xlsx.writeBuffer(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    }
+    melding(`Planning gedownload: ${r.taken} ${r.taken === 1 ? 'taak' : 'taken'}`);
+    sluit();
+  };
+  d.showModal();
+}
+
 /** Alle ingewonnen geometrie van het project downloaden: GeoJSON, Excel of KML. */
 async function exporteerIngewonnen() {
   const g = await ingewonnenGegevens({ metObjecten: true });
@@ -9810,7 +9891,7 @@ async function takenPagina(_, q = new URLSearchParams()) {
   app.innerHTML = `
     <div class="paginakop">
       <div><h1>Planning</h1><p>Plan de rondes van de werkpakketten in de tijd${magBeheren() ? ': sleep een balk om te verplaatsen, sleep de randen om korter of langer te maken, of trek in een lege rij de periode' : ''}. Daaronder alle taken.</p></div>
-      <div class="knoppen"><a class="knop" href="#/planning/overzicht">${I.bestand} Voortgangsoverzicht</a>${magBeheren() ? '<a class="knop" href="#/werkpakketten/nieuw">+ Werkpakket</a>' : ''}<a class="knop" href="#/taken/nieuw">+ Taak plannen</a></div>
+      <div class="knoppen"><a class="knop" href="#/planning/overzicht">${I.bestand} Voortgangsoverzicht</a><button type="button" class="knop" data-msproject title="Planning downloaden voor Microsoft Project">${I.exporteer} MS Project</button>${magBeheren() ? '<a class="knop" href="#/werkpakketten/nieuw">+ Werkpakket</a>' : ''}<a class="knop" href="#/taken/nieuw">+ Taak plannen</a></div>
     </div>
     <section class="kaart bordkaart"><div id="planningsbord"><p class="leeg">Planning laden…</p></div></section>
     <details class="takenblok" id="takenblok">
