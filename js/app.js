@@ -8132,8 +8132,7 @@ async function projectenPagina() {
   const nietIngelogd = sync.isIngesteld() && !sync.sessie();
   app.innerHTML = `
     <div class="paginakop">
-      <div><h1>${actief && projecten.some((p) => p.id === actief) ? 'Projecten' : 'Kies een project'}</h1>
-        <p>Elk project heeft een eigen inhoud: objecten, GIS-lagen, inspecties, werkzaamheden en taken.</p></div>
+      <div><h1>${actief && projecten.some((p) => p.id === actief) ? 'Projecten' : 'Kies een project'}</h1></div>
       ${beheer ? '<div class="knoppen"><a class="knop primair" href="#/projecten/nieuw">+ Nieuw project</a></div>' : ''}
     </div>
     ${nietIngelogd ? `<a class="kaart mhint" href="${isMobiel() ? '#/m/account' : '#/instellingen'}">${I.inloggen} <span><strong>Log in</strong> om de projecten van je organisatie te zien.</span></a>` : ''}
