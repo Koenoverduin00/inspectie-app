@@ -1031,6 +1031,15 @@ naar een **eisvraag** die in de formulieren komt, gekoppeld aan het **eisnummer*
 - **Aanleveren als Excel of CSV** (knop *Sjabloon*) met de kolommen **Eisnummer**, **Eistekst** en **Eisvraag**.
   Optioneel: **Antwoordtype** (ja/nee – standaard –, keuze, meerkeuze, checklist, getal, tekst, datum, foto), **Keuzes**
   (gescheiden door `;` of `|`) en **Contractstuk** (bijv. *Bestek hfst. 3*).
+- **Gewenst antwoord** (kolom *Gewenst antwoord*, of per eis aan te passen met het potlood in de eisenlijst): wanneer voldoet het
+  antwoord aan de eis?
+  - *ja/nee*: **Ja** (standaard) of **Nee**, bijv. "Liggen er maaiselresten?" → gewenst *Nee*;
+  - *keuze*: één of meer toegestane keuzes, gescheiden door `;` (bijv. `A+;A;B`); *meerkeuze*: deze keuzes moeten zijn aangevinkt;
+  - *getal*: `<= 10`, `>= 5`, `< 3`, `> 0`, `5 - 10` (grenzen inbegrepen), `max 10`, `min 5` of een vaste waarde;
+  - *checklist*: altijd alle punten afgevinkt; *tekst*: optioneel een exacte tekst;
+  - *foto*, *datum* en andere: geen norm, een ingevuld antwoord telt als bewijs.
+  Een gewenst antwoord dat niet bij het type past, wordt bij het inlezen gemeld en genegeerd. Een nieuwe versie zonder deze kolom
+  houdt de gewenste antwoorden die al waren ingesteld. In het formulier staat onder een eisvraag **Voldoet bij: …**.
 - **Inlezen met voorbeeld**: je ziet vooraf welke eisen nieuw, gewijzigd en vervallen zijn, en welke regels fouten
   hebben (geen nummer, geen vraag, dubbel nummer).
 - **In formulieren zetten**: in **Formuliervelden** kies je *＋ Uit eisbibliotheek*. Zoek op tekst of typ één of meer
@@ -1038,11 +1047,15 @@ naar een **eisvraag** die in de formulieren komt, gekoppeld aan het **eisnummer*
   en de eistekst eronder. Eisen die al in het formulier staan zijn grijs. *Ontkoppelen* maakt er een gewoon veld van.
 - **Nieuwe versie inlezen** werkt de gekoppelde vragen automatisch bij; vervallen eisen krijgen een doorgestreepte
   badge (het veld en de antwoorden blijven bestaan).
-- **Verificatie per eis**: de eisenlijst toont per eis *Geverifieerd* (alle ja/ingevuld), *Afwijking* (minstens één
-  "nee"), *Nog niet geverifieerd* (in formulier, nog geen antwoord) of *Niet in een formulier*, met aantallen en de
+- **Verificatie per eis**: elk antwoord wordt vergeleken met het gewenste antwoord (*Voldoet* / *Voldoet niet*). De eisenlijst toont
+  per eis *Geverifieerd* (alles voldoet of is ingevuld), *Afwijking* (minstens één antwoord voldoet niet), *Nog niet geverifieerd* (in formulier, nog geen antwoord) of *Niet in een formulier*, met aantallen en de
   laatste datum. Filter op status en exporteer als CSV.
 - **Uitkomsten-export**: kolommen van eisvragen heten *Eisnummer – vraag* en er komt een blad **Eisverificatie** bij.
-- **Verificatiedossier** (knop op de pagina Eisen): een rapport over een **kalenderjaar**, een **eigen periode** of alle jaren,
+- **Verificatiedossier** (knop op de pagina Eisen, en **Verificatiedossier** op elke werkpakketpagina): je kiest zelf de selectie:
+  **werkpakket**, **ronde** (bij een werkpakket met meer rondes), **contractstuk** en **periode** (kalenderjaar, eigen periode of alles),
+  in elke combinatie. De selectie staat in de kop van het dossier, in de Excel (blad *Samenvatting*) en in de bestandsnaam. Elk bewijs toont het
+  **gewenste antwoord**, het **gegeven antwoord** en de **uitkomst** (*Voldoet* / *Voldoet niet*); *Afwijkingen* zijn de antwoorden die niet voldoen.
+  Het dossier is een rapport over de gekozen selectie,
   met samenvatting (aantallen per status, afdekking), overzicht per eis, afwijkingen, verantwoording per eis (elk antwoord met
   datum, object, werkpakket/ronde en uitvoerder, klikbaar naar de registratie), de eisen die niet zijn geverifieerd en een
   ondertekeningsblok. Optioneel met foto's als bewijs. *Afdrukken / opslaan als PDF* geeft het dossier; *Excel* geeft

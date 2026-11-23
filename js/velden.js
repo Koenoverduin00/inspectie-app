@@ -200,6 +200,9 @@ export function normaliseer(def) {
   if (def.formulier === 'inspectie' && def.niveau === 'bevinding' && BEVINDING_TYPEN.includes(d.type) && !def.eis?.nummer) d.niveau = 'bevinding';
   if (def.toonAls?.veld && def.toonAls?.waarde) d.toonAls = { veld: def.toonAls.veld, waarde: String(def.toonAls.waarde) };
   // Koppeling met een eis uit de contractstukken (eisbibliotheek).
-  if (def.eis?.nummer) d.eis = { nummer: String(def.eis.nummer), tekst: String(def.eis.tekst ?? ''), bron: String(def.eis.bron ?? ''), ...(def.eis.vervallen ? { vervallen: true } : {}) };
+  if (def.eis?.nummer) {
+    d.eis = { nummer: String(def.eis.nummer), tekst: String(def.eis.tekst ?? ''), bron: String(def.eis.bron ?? ''),
+      ...(def.eis.gewenst ? { gewenst: String(def.eis.gewenst) } : {}), ...(def.eis.vervallen ? { vervallen: true } : {}) };
+  }
   return d;
 }

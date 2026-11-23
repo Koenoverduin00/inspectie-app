@@ -432,7 +432,7 @@ async function eisenPagina() {
       <p class="decompbron"><small>${project.eisen?.bestand ? `Bron: ${esc(project.eisen.bestand)} · ` : ''}${project.eisen?.op ? `ingelezen ${datumNL(project.eisen.op.slice(0, 10))}` : ''}</small></p>
       <div class="filters"><input type="search" id="e-zoek" placeholder="Zoek op eisnummer, tekst of vraag…" aria-label="Zoek eis">
         <select id="e-status" aria-label="Status">${optie('', 'Alle eisen')}${Object.entries(EIS_STATUS).map(([k, v]) => optie(k, v.label)).join('')}</select></div>
-      <div class="tabelhouder"><table class="eistabel"><thead><tr><th>Eisnummer</th><th>Eistekst</th><th>Eisvraag</th><th>In formulier</th><th>Verificatie</th></tr></thead>
+      <div class="tabelhouder"><table class="eistabel"><thead><tr><th>Eisnummer</th><th>Eistekst</th><th>Eisvraag</th><th>Gewenst antwoord</th><th>In formulier</th><th>Verificatie</th></tr></thead>
         <tbody id="e-rijen"></tbody></table></div></section>` : `<section class="kaart">
       <h2>Nog geen eisen</h2>
       <p>Lever een Excel- of CSV-bestand aan met per regel een eis uit het contract:</p>
@@ -440,7 +440,8 @@ async function eisenPagina() {
         <li><strong>Eistekst</strong> – de tekst van de eis zoals in het contractstuk</li>
         <li><strong>Eisvraag</strong> – de eis omgeschreven naar een vraag: dít komt in het formulier</li>
         <li>optioneel <strong>Antwoordtype</strong> (Ja/nee, Tekst, Getal, Keuze, Meerkeuze, Checklist, Foto, Datum – standaard Ja/nee),
-          <strong>Keuzes</strong> (gescheiden door ;) en <strong>Contractstuk</strong> (bijv. Bestek hfst. 3)</li></ul>
+          <strong>Keuzes</strong> (gescheiden door ;), <strong>Gewenst antwoord</strong> (wanneer voldoet het antwoord: Ja, Nee, <= 10, A+;A;B …)
+          en <strong>Contractstuk</strong> (bijv. Bestek hfst. 3)</li></ul>
       <p>Download het sjabloon voor een voorbeeld. Daarna kies je bij <a href="#/projecten/${esc(project.id)}/velden">Formuliervelden</a>
         <em>＋ Uit eisbibliotheek</em> en importeer je de vragen op eisnummer.</p></section>`}`;
 
@@ -454,10 +455,31 @@ async function eisenPagina() {
       <td><strong>${esc(x.eis.nummer)}</strong>${x.eis.bron ? `<br><small>${esc(x.eis.bron)}</small>` : ''}</td>
       <td><small>${esc(x.eis.tekst)}</small></td>
       <td>${esc(x.eis.vraag)}<br><small class="zacht">${esc(velden.VELDTYPEN[x.eis.type] ?? x.eis.type)}${x.eis.opties?.length ? `: ${esc(x.eis.opties.join(', '))}` : ''}</small></td>
+      <td class="gewenstcel"><strong>${esc(EI.gewenstTekst(x.eis))}</strong>
+        <button type="button" class="knop klein" data-gewenst="${esc(x.eis.nummer)}" title="Gewenst antwoord aanpassen" aria-label="Gewenst antwoord van ${esc(x.eis.nummer)} aanpassen">${I.concept}</button></td>
       <td>${x.velden.length ? x.velden.map((d) => `<small>${esc(velden.FORMULIEREN[d.formulier] ?? d.formulier)}${d.alleenBij?.length ? ` (${esc(d.alleenBij.map((s) => SOORT_LABEL[s] ?? s).join(', '))})` : ''}</small>`).join('<br>') : '<small class="zacht">–</small>'}</td>
-      <td><span class="label-status ${EIS_STATUS[x.status].klasse}">${EIS_STATUS[x.status].label}</span>${x.antwoorden ? `<br><small>${x.antwoorden} antwoord${x.antwoorden === 1 ? '' : 'en'}${x.ja || x.nee ? ` · ja ${x.ja} · nee ${x.nee}` : ''}${x.laatste ? ` · laatst ${datumNL(x.laatste)}` : ''}</small>` : ''}</td></tr>`).join('')
-      : '<tr><td colspan="5" class="leeg">Geen eisen gevonden.</td></tr>';
+      <td><span class="label-status ${EIS_STATUS[x.status].klasse}">${EIS_STATUS[x.status].label}</span>${x.antwoorden ? `<br><small>${x.antwoorden} antwoord${x.antwoorden === 1 ? '' : 'en'}${x.ja || x.nee ? ` · voldoet ${x.ja} · voldoet niet ${x.nee}` : ''}${x.laatste ? ` · laatst ${datumNL(x.laatste)}` : ''}</small>` : ''}</td></tr>`).join('')
+      : '<tr><td colspan="6" class="leeg">Geen eisen gevonden.</td></tr>';
   };
+  app.querySelector('#e-rijen')?.addEventListener('click', async (e) => {
+    const k = e.target.closest('[data-gewenst]');
+    if (!k) return;
+    const eis = lijst.find((x) => x.nummer === k.dataset.gewenst);
+    const hulp = { janee: 'Ja of Nee', getal: 'bijv. <= 10, >= 5, 5 - 10 of 4', keuze: `één of meer van: ${(eis.opties ?? []).join('; ')} (gescheiden door ;)`,
+      meerkeuze: `deze moeten aangevinkt zijn: ${(eis.opties ?? []).join('; ')} (gescheiden door ;)`, checklist: 'altijd: alle punten afgevinkt', tekst: 'een exacte tekst, of leeg = ingevuld is genoeg' }[eis.type] ?? 'leeg = ingevuld is genoeg';
+    const nieuw = prompt(`Gewenst antwoord voor ${eis.nummer}\n${eis.vraag}\n\n(${hulp})`, eis.gewenst ?? (eis.type === 'janee' ? 'Ja' : ''));
+    if (nieuw === null) return;
+    const fout = EI.controleerGewenst({ ...eis, gewenst: nieuw });
+    if (fout) return melding(fout, 'fout');
+    const p = await actiefProject();
+    const eisen = (p.eisen?.lijst ?? []).map((x) => (x.nummer === eis.nummer ? { ...x, gewenst: nieuw.trim() || undefined } : x));
+    const bij = EI.werkVeldenBij(p.velden ?? [], eisen);
+    project = { ...p, eisen: { ...p.eisen, lijst: eisen }, velden: bij.defs.map(velden.normaliseer), gewijzigd: new Date().toISOString() };
+    await db.bewaar('projecten', project);
+    huidigProject = project;
+    melding(`Gewenst antwoord van ${eis.nummer}: ${EI.gewenstTekst({ ...eis, gewenst: nieuw.trim() })}`);
+    eisenPagina();
+  });
   app.querySelector('#e-zoek')?.addEventListener('input', tekenRijen);
   app.querySelector('#e-status')?.addEventListener('change', tekenRijen);
   tekenRijen();
@@ -465,8 +487,8 @@ async function eisenPagina() {
   app.querySelector('#e-sjabloon').onclick = () => download('eisbibliotheek-sjabloon.csv', csv(EI.SJABLOON), 'text/csv;charset=utf-8');
   app.querySelector('#e-formulier')?.addEventListener('click', () => formulierUitEisen());
   app.querySelector('#e-export')?.addEventListener('click', () => {
-    const regels = [['Eisnummer', 'Eistekst', 'Eisvraag', 'Antwoordtype', 'Keuzes', 'Contractstuk', 'In formulier', 'Verificatie', 'Antwoorden', 'Ja', 'Nee', 'Laatst']];
-    for (const x of ver) regels.push([x.eis.nummer, x.eis.tekst, x.eis.vraag, velden.VELDTYPEN[x.eis.type] ?? x.eis.type, (x.eis.opties ?? []).join(';'), x.eis.bron,
+    const regels = [['Eisnummer', 'Eistekst', 'Eisvraag', 'Antwoordtype', 'Keuzes', 'Gewenst antwoord', 'Contractstuk', 'In formulier', 'Verificatie', 'Antwoorden', 'Voldoet', 'Voldoet niet', 'Laatst']];
+    for (const x of ver) regels.push([x.eis.nummer, x.eis.tekst, x.eis.vraag, velden.VELDTYPEN[x.eis.type] ?? x.eis.type, (x.eis.opties ?? []).join(';'), x.eis.gewenst ?? '', x.eis.bron,
       x.velden.map((d) => velden.FORMULIEREN[d.formulier] ?? d.formulier).join(', '), EIS_STATUS[x.status].label, x.antwoorden, x.ja, x.nee, x.laatste]);
     download(`eisen-${String(project.naam ?? 'project').replace(/[^\w-]+/g, '_')}.csv`, csv(regels), 'text/csv;charset=utf-8');
   });
@@ -481,6 +503,14 @@ async function eisenPagina() {
     } catch (fout) {
       console.error(fout);
       return melding('Dit bestand kan niet worden gelezen. Gebruik Excel (.xlsx) of CSV.', 'fout');
+    }
+    // Zonder kolom "Gewenst antwoord" in het nieuwe bestand: het gewenste antwoord dat al was ingesteld blijft staan.
+    if (!res.kolommen.gewenst) {
+      const oudPer = new Map(lijst.map((x) => [EI.sleutel(x.nummer), x.gewenst]));
+      res.eisen = res.eisen.map((x) => {
+        const g = oudPer.get(EI.sleutel(x.nummer));
+        return g && !EI.controleerGewenst({ ...x, gewenst: g }) ? { ...x, gewenst: g } : x;
+      });
     }
     voorbeeld = { res, bestand: bestand.name, v: EI.vergelijk(lijst, res.eisen) };
     const el = app.querySelector('#e-voorbeeld');
@@ -522,16 +552,31 @@ async function eisDossier(q) {
     van = isIso(q.get('van')) ? q.get('van') : ''; tot = isIso(q.get('tot')) ? q.get('tot') : '';
     if (van && tot && van > tot) [van, tot] = [tot, van];
     periode = van && tot ? `${datumNL(van)} t/m ${datumNL(tot)}` : van ? `vanaf ${datumNL(van)}` : `tot en met ${datumNL(tot)}`;
-  } else if (q?.get('jaar') === 'alles') {
+  } else if (q?.get('jaar') === 'alles' || (!q?.get('jaar') && (q?.get('pakket') || q?.get('ronde')))) {
     van = ''; tot = ''; periode = 'Alle registraties'; jaar = 'alles';
   } else {
     jaar = /^\d{4}$/.test(q?.get('jaar') ?? '') ? q.get('jaar') : vandaag().slice(0, 4);
     van = `${jaar}-01-01`; tot = `${jaar}-12-31`; periode = `Kalenderjaar ${jaar}`;
   }
   const metFotos = q?.get('fotos') === '1';
-  const d = EI.dossier({ eisen: lijst, defs: project.velden ?? [], registraties: alle, van, tot });
   const objecten = new Map((await inProject('objecten')).map((o) => [o.id, o]));
   const pakketten = new Map((await inProject('werkpakketten')).map((p) => [p.id, p]));
+  // Selectie: werkpakket, ronde en contractstuk (naast de periode).
+  const pakketId = pakketten.has(q?.get('pakket')) ? q.get('pakket') : '';
+  const pk = pakketId ? pakketten.get(pakketId) : null;
+  const rondeLijst = pk ? rondesVan(pk) : [];
+  const rondeId = rondeLijst.some((r) => r.id === q?.get('ronde')) ? q.get('ronde') : '';
+  const rd = rondeId ? rondeLijst.find((r) => r.id === rondeId) : null;
+  const contractstukken = [...new Set(lijst.map((e) => e.bron).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'nl', { numeric: true }));
+  const bron = contractstukken.includes(q?.get('bron')) ? q.get('bron') : '';
+  const regs = EI.selectie(alle, { van, tot, pakketten: pakketId ? [pakketId] : [], ronde: rondeId, standaardRonde: STANDAARD_RONDE });
+  const d = EI.dossier({ eisen: bron ? lijst.filter((e) => e.bron === bron) : lijst, defs: project.velden ?? [], registraties: regs, van, tot });
+  const selectie = [
+    ...(pk ? [['Werkpakket', metCode(pk)]] : []),
+    ...(rd ? [['Ronde', `R${rd.nummer ?? 1} ${rd.naam ?? ''}${rd.start ? ` (${periodeTekst(rd)})` : ''}`.trim()]] : []),
+    ...(bron ? [['Contractstuk', bron]] : []),
+  ];
+  const gewenst = (eis, veld) => EI.gewenstTekst(eis, veld?.type);
   const organisatie = instelling.lees('organisatie');
   const door = ikEmail() || instelling.lees('inspecteur') || '';
   const BRON = { werkzaamheden: 'Werkzaamheid', inspecties: 'Inspectie', taken: 'Taak' };
@@ -545,8 +590,8 @@ async function eisDossier(q) {
       toelichting: r.omschrijving || r.samenvatting || r.opmerking || '' };
   };
   const tekst = (veld, waarde) => velden.toonWaarde(veld, waarde, datumNL);
-  const fmt = { info, tekst, formulier: (v) => velden.FORMULIEREN[v.formulier] ?? v.formulier };
-  const uitkomstChip = (u) => (u === 'ja' ? '<span class="label-status afgerond">Ja</span>' : u === 'nee' ? '<span class="label-status verlopen">Nee</span>' : '<span class="label-status">Ingevuld</span>');
+  const fmt = { info, tekst, gewenst, formulier: (v) => velden.FORMULIEREN[v.formulier] ?? v.formulier };
+  const uitkomstChip = (u) => (u === 'ja' ? '<span class="label-status afgerond">Voldoet</span>' : u === 'nee' ? '<span class="label-status verlopen">Voldoet niet</span>' : '<span class="label-status">Ingevuld</span>');
   const statusChip = (st) => `<span class="label-status ${EIS_STATUS[st].klasse}">${EIS_STATUS[st].label}</span>`;
   // Foto's als bewijs: per registratie de eerste foto's (alleen als gekozen; maakt het rapport groter).
   const fotoPerReg = new Map();
@@ -558,12 +603,12 @@ async function eisDossier(q) {
     }));
   }
   const bewijsTabel = (items, metEis = false) => `<div class="tabelhouder"><table class="dossiertabel">
-    <thead><tr>${metEis ? '<th>Eis</th>' : ''}<th>Datum</th><th>Object</th><th>Werkpakket / ronde</th><th>Door</th><th>Antwoord</th>${metFotos ? '<th>Foto</th>' : ''}</tr></thead>
+    <thead><tr>${metEis ? '<th>Eis</th><th>Gewenst</th>' : ''}<th>Datum</th><th>Object</th><th>Werkpakket / ronde</th><th>Door</th><th>Gegeven antwoord</th><th>Uitkomst</th>${metFotos ? '<th>Foto</th>' : ''}</tr></thead>
     <tbody>${items.map((x) => { const i = info(x.r); const f = fotoPerReg.get(x.r.id) ?? []; return `<tr>
-      ${metEis ? `<td><strong>${esc(x.eis.nummer)}</strong></td>` : ''}<td><a href="${href(x.r)}">${datumNL(x.r.datum)}</a></td>
+      ${metEis ? `<td><strong>${esc(x.eis.nummer)}</strong></td><td><small>${esc(gewenst(x.eis, x.veld))}</small></td>` : ''}<td><a href="${href(x.r)}">${datumNL(x.r.datum)}</a></td>
       <td>${esc(i.objectcode)}${i.object ? `<br><small>${esc(i.object)}</small>` : ''}</td>
       <td><small>${esc(i.pakket || '–')}${i.ronde ? `<br>${esc(i.ronde)}` : ''}</small></td><td><small>${esc(i.door || '–')}</small></td>
-      <td>${x.uitkomst === 'overig' ? `<strong>${esc(tekst(x.veld, x.waarde))}</strong>` : uitkomstChip(x.uitkomst)}${i.toelichting && x.uitkomst === 'nee' ? `<br><small>${esc(i.toelichting)}</small>` : ''}</td>
+      <td><strong>${esc(tekst(x.veld, x.waarde))}</strong>${i.toelichting && x.uitkomst === 'nee' ? `<br><small>${esc(i.toelichting)}</small>` : ''}</td><td>${uitkomstChip(x.uitkomst)}</td>
       ${metFotos ? `<td class="dossierfotos">${f.map((ft) => `<figure><img src="${esc(ft.data)}" alt="Foto" loading="lazy" data-lichtbak><figcaption>${fotoOnderschrift(ft.info)}</figcaption></figure>`).join('') || '<small class="zacht">–</small>'}</td>` : ''}</tr>`; }).join('')}</tbody></table></div>`;
   const beantwoord = d.ver.filter((x) => x.items.length);
   const open = d.ver.filter((x) => !x.items.length);
@@ -574,6 +619,10 @@ async function eisDossier(q) {
     <div class="paginakop geen-print dossierbalk">
       <div><p><a href="#/eisen">← Eisbibliotheek</a></p><h1>Verificatiedossier</h1></div>
       <form class="filters" id="ed-periode">
+        <label>Werkpakket <select id="ed-pakket"><option value="">Alle werkpakketten</option>${[...pakketten.values()].filter((p) => !p.verwijderd)
+    .sort((a, b) => metCode(a).localeCompare(metCode(b), 'nl', { numeric: true })).map((p) => optie(p.id, metCode(p), pakketId)).join('')}</select></label>
+        ${pk && rondeLijst.length > 1 ? `<label>Ronde <select id="ed-ronde"><option value="">Alle rondes</option>${rondeLijst.map((r) => optie(r.id, `R${r.nummer ?? 1} ${r.naam ?? ''}`.trim(), rondeId)).join('')}</select></label>` : ''}
+        ${contractstukken.length ? `<label>Contractstuk <select id="ed-bron"><option value="">Alle contractstukken</option>${contractstukken.map((b) => optie(b, b, bron)).join('')}</select></label>` : ''}
         <label>Periode <select id="ed-jaar">${jaarOpties}${optie('eigen', 'Eigen periode…', jaar ? '' : 'eigen')}${optie('alles', 'Alle jaren', jaar)}</select></label>
         <span id="ed-eigen" ${jaar ? 'hidden' : ''}><input type="date" id="ed-van" value="${esc(van)}" aria-label="Van"> t/m <input type="date" id="ed-tot" value="${esc(tot)}" aria-label="Tot en met">
           <button class="knop" type="submit">Toon</button></span>
@@ -587,7 +636,9 @@ async function eisDossier(q) {
         <div>${organisatie ? `<small>${esc(organisatie)}</small>` : ''}
           <h1 style="margin:.25rem 0">Verificatiedossier contracteisen</h1>
           <div>${esc(project.naam)}${project.opdrachtgever ? ` · opdrachtgever ${esc(project.opdrachtgever)}` : ''}</div></div>
-        <div style="text-align:right"><small>Periode</small><br><strong>${esc(periode)}</strong><br><small>Opgesteld ${datumNL(vandaag())}${door ? ` · ${esc(door)}` : ''}</small></div>
+        <div style="text-align:right"><small>Periode</small><br><strong>${esc(periode)}</strong>
+          ${selectie.map(([k, v]) => `<br><small>${esc(k)}</small> <strong>${esc(v)}</strong>`).join('')}
+          <br><small>Opgesteld ${datumNL(vandaag())}${door ? ` · ${esc(door)}` : ''}</small></div>
       </div>
       <h2>1. Samenvatting</h2>
       <div class="tegels klein">
@@ -596,21 +647,25 @@ async function eisDossier(q) {
         <span class="tegel ${d.tel.afwijking ? 'slecht' : ''}"><strong>${d.tel.afwijking}</strong><span>met afwijking</span></span>
         <span class="tegel let"><strong>${d.tel['nog niet geverifieerd']}</strong><span>nog niet geverifieerd</span></span>
         <span class="tegel"><strong>${d.tel['niet in formulier']}</strong><span>niet in een formulier</span></span></div>
-      <p>In de periode <strong>${esc(periode.toLowerCase())}</strong> zijn <strong>${d.antwoorden}</strong> antwoorden op eisvragen gegeven in
+      <p><small>Elk antwoord is vergeleken met het <strong>gewenste antwoord</strong> van de eis: <em>Voldoet</em> of <em>Voldoet niet</em>.
+        Bij vragen zonder norm (bijv. een foto of vrije tekst) telt een ingevuld antwoord als bewijs.</small></p>
+      <p>${selectie.length ? `Selectie: ${selectie.map(([k, v]) => `${esc(k.toLowerCase())} <strong>${esc(v)}</strong>`).join(', ')}. ` : ''}In de periode <strong>${esc(periode.toLowerCase())}</strong> zijn <strong>${d.antwoorden}</strong> antwoorden op eisvragen gegeven in
         <strong>${d.registraties}</strong> registratie${d.registraties === 1 ? "" : "s"}. Van de ${d.inFormulier} eisen die in een formulier zijn opgenomen, is <strong>${pct}%</strong> in deze periode bevraagd${d.tel.afwijking ? `; bij <strong>${d.tel.afwijking}</strong> eis${d.tel.afwijking === 1 ? '' : 'en'} is minstens één keer een afwijking vastgesteld` : ''}.
         ${project.eisen?.bestand ? `<br><small>Eisenbestand: ${esc(project.eisen.bestand)}${project.eisen.op ? `, ingelezen ${datumNL(project.eisen.op.slice(0, 10))}` : ''}.</small>` : ''}</p>
       <h2>2. Overzicht per eis</h2>
       <div class="tabelhouder"><table class="dossiertabel">
-        <thead><tr><th>Eisnummer</th><th>Eisvraag</th><th>Antwoorden</th><th>Laatst</th><th>Verificatie</th></tr></thead>
+        <thead><tr><th>Eisnummer</th><th>Eisvraag</th><th>Gewenst antwoord</th><th>Antwoorden</th><th>Laatst</th><th>Verificatie</th></tr></thead>
         <tbody>${d.ver.map((x) => `<tr><td><strong>${esc(x.eis.nummer)}</strong>${x.eis.bron ? `<br><small>${esc(x.eis.bron)}</small>` : ''}</td><td>${esc(x.eis.vraag)}</td>
-          <td>${x.antwoorden ? `${x.antwoorden}${x.ja || x.nee ? ` <small>(ja ${x.ja} · nee ${x.nee})</small>` : ''}` : '–'}</td><td>${x.laatste ? datumNL(x.laatste) : '–'}</td><td>${statusChip(x.status)}</td></tr>`).join('')}</tbody></table></div>
+          <td><strong>${esc(gewenst(x.eis, x.velden[0]))}</strong></td>
+          <td>${x.antwoorden ? `${x.antwoorden}${x.ja || x.nee ? ` <small>(voldoet ${x.ja} · voldoet niet ${x.nee})</small>` : ''}` : '–'}</td><td>${x.laatste ? datumNL(x.laatste) : '–'}</td><td>${statusChip(x.status)}</td></tr>`).join('')}</tbody></table></div>
       <h2>3. Afwijkingen</h2>
-      ${d.afwijkingen.length ? `<p>Antwoorden waarbij de eis niet werd gehaald. Klik op de datum voor de registratie.</p>${bewijsTabel(d.afwijkingen, true)}` : '<p>Geen afwijkingen vastgesteld in deze periode.</p>'}
+      ${d.afwijkingen.length ? `<p>Antwoorden die niet voldoen aan het gewenste antwoord van de eis. Klik op de datum voor de registratie.</p>${bewijsTabel(d.afwijkingen, true)}` : '<p>Geen afwijkingen vastgesteld in deze periode.</p>'}
       <h2>4. Verantwoording per eis</h2>
       ${beantwoord.length ? beantwoord.map((x) => `<section class="dossier-eis">
         <h3>${esc(x.eis.nummer)} ${statusChip(x.status)}</h3>
         <dl class="gegevens"><dt>Eis</dt><dd>${esc(x.eis.tekst || '–')}${x.eis.bron ? ` <small>(${esc(x.eis.bron)})</small>` : ''}</dd>
-          <dt>Eisvraag</dt><dd>${esc(x.eis.vraag)}</dd><dt>Verificatie</dt><dd>${x.antwoorden} antwoord${x.antwoorden === 1 ? '' : 'en'}${x.ja || x.nee ? ` · ja ${x.ja} · nee ${x.nee}` : ''} · ${datumNL(x.items[0].r.datum)} t/m ${datumNL(x.laatste)}</dd></dl>
+          <dt>Eisvraag</dt><dd>${esc(x.eis.vraag)}</dd><dt>Gewenst antwoord</dt><dd><strong>${esc(gewenst(x.eis, x.velden[0]))}</strong></dd>
+          <dt>Verificatie</dt><dd>${x.antwoorden} antwoord${x.antwoorden === 1 ? '' : 'en'}${x.ja || x.nee ? ` · voldoet ${x.ja} · voldoet niet ${x.nee}` : ''} · ${datumNL(x.items[0].r.datum)} t/m ${datumNL(x.laatste)}</dd></dl>
         ${bewijsTabel(x.items)}</section>`).join('') : '<p>In deze periode zijn geen eisvragen beantwoord.</p>'}
       <h2>5. Niet geverifieerd in deze periode</h2>
       ${open.length ? `<div class="tabelhouder"><table class="dossiertabel"><thead><tr><th>Eisnummer</th><th>Eistekst</th><th>Status</th></tr></thead>
@@ -621,7 +676,16 @@ async function eisDossier(q) {
         <div>Gezien door opdrachtgever:<br><br><br>_____________________________<br>${esc(project.opdrachtgever || '')}</div></div>
     </article>`;
 
-  const naar = (params) => { location.hash = `#/eisen/dossier?${new URLSearchParams({ ...params, ...(app.querySelector('#ed-fotos').checked ? { fotos: '1' } : {}) })}`; };
+  const naar = (params, sel = {}) => {
+    const s2 = { pakket: pakketId, ronde: rondeId, bron, ...sel };
+    if (sel.pakket !== undefined && sel.pakket !== pakketId) s2.ronde = '';
+    const extra = Object.fromEntries(Object.entries(s2).filter(([, v]) => v));
+    location.hash = `#/eisen/dossier?${new URLSearchParams({ ...params, ...extra, ...(app.querySelector('#ed-fotos').checked ? { fotos: '1' } : {}) })}`;
+  };
+  const huidigePeriode = () => (jaar ? { jaar } : { ...(van ? { van } : {}), ...(tot ? { tot } : {}) });
+  app.querySelector('#ed-pakket').addEventListener('change', (e) => naar(e.target.value && !q?.get('jaar') && !q?.get('van') && !q?.get('tot') ? { jaar: 'alles' } : huidigePeriode(), { pakket: e.target.value }));
+  app.querySelector('#ed-ronde')?.addEventListener('change', (e) => naar(huidigePeriode(), { ronde: e.target.value }));
+  app.querySelector('#ed-bron')?.addEventListener('change', (e) => naar(huidigePeriode(), { bron: e.target.value }));
   app.querySelector('#ed-jaar').addEventListener('change', (e) => {
     if (e.target.value === 'eigen') { app.querySelector('#ed-eigen').hidden = false; app.querySelector('#ed-van').focus(); return; }
     naar({ jaar: e.target.value });
@@ -632,12 +696,12 @@ async function eisDossier(q) {
     if (!v && !t) return melding('Kies een begin- of einddatum.', 'fout');
     naar({ ...(v ? { van: v } : {}), ...(t ? { tot: t } : {}) });
   });
-  app.querySelector('#ed-fotos').addEventListener('change', () => naar(jaar ? { jaar } : { ...(van ? { van } : {}), ...(tot ? { tot } : {}) }));
+  app.querySelector('#ed-fotos').addEventListener('change', () => naar(huidigePeriode()));
   app.querySelector('#ed-excel').addEventListener('click', async () => {
     const ExcelJS = await PX.laadExcelJS();
-    const wb = ED.maakDossierWerkboek(ExcelJS, d, { project: project.naam ?? '', opdrachtgever: project.opdrachtgever, periode, bron: project.eisen?.bestand, door }, fmt);
+    const wb = ED.maakDossierWerkboek(ExcelJS, d, { project: project.naam ?? '', opdrachtgever: project.opdrachtgever, periode, selectie, bron: project.eisen?.bestand, door }, fmt);
     const buf = await wb.xlsx.writeBuffer();
-    const deel = jaar && jaar !== 'alles' ? jaar : jaar === 'alles' ? 'alle-jaren' : `${van || 'begin'}_${tot || 'nu'}`;
+    const deel = [pk ? (pk.code || pk.naam) : '', rd ? `R${rd.nummer ?? 1}` : '', bron, jaar && jaar !== 'alles' ? jaar : jaar === 'alles' ? 'alle-jaren' : `${van || 'begin'}_${tot || 'nu'}`].filter(Boolean).join('-').replace(/[^\w-]+/g, '_');
     download(`verificatiedossier-${String(project.naam ?? 'project').replace(/[^\w-]+/g, '_')}-${deel}.xlsx`, buf, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   });
 }
@@ -10599,6 +10663,14 @@ function extraInvoerHtml(d, waarde, fotos = [], ns = '') {
   }
 }
 
+/** "Voldoet bij: …" onder een eisvraag (niet bij vragen zonder norm, zoals een foto). */
+function eisNormHtml(d) {
+  if (!d?.eis) return '';
+  const e = { ...d.eis, type: d.type, opties: d.opties };
+  if (EI.gewenstNorm(e).soort === 'ingevuld') return '';
+  return `<small class="eisnorm">${I.vink} Voldoet bij: <strong>${esc(EI.gewenstTekst(e))}</strong></small>`;
+}
+
 function extraVeldenHtml(defs, extra, extraFotos, ns = '') {
   return `<div class="velden">${defs.map((d) => {
     if (d.type === 'kop') return `<div class="veld breed extrakop" data-extraveld="${esc(d.id)}"><h3>${esc(d.label)}</h3>${d.hulptekst ? `<small>${esc(d.hulptekst)}</small>` : ''}</div>`;
@@ -10607,6 +10679,7 @@ function extraVeldenHtml(defs, extra, extraFotos, ns = '') {
     return `<div class="veld${breed}" data-extraveld="${esc(d.id)}">
       <label for="x-${esc(ns)}${esc(d.id)}" ${d.verplicht ? 'class="vereist"' : ''}>${esc(d.label)}${d.eis ? ` ${eisBadge(d.eis)}` : ''}</label>
       ${d.eis?.tekst ? `<small class="eistekst">${esc(d.eis.tekst.length > 160 ? `${d.eis.tekst.slice(0, 157)}…` : d.eis.tekst)}</small>` : ''}
+      ${eisNormHtml(d)}
       ${extraInvoerHtml(d, extra[d.id], extraFotos[d.id], ns)}${hulp ? `<small>${esc(hulp)}</small>` : ''}</div>`;
   }).join('')}</div>`;
 }
@@ -12965,7 +13038,7 @@ async function pakketDetail(id, q = new URLSearchParams()) {
     </section>
     ${afroep && ronde.afroep?.toelichting ? `<div class="kaart afroepkaart"><strong>${esc(ronde.afroep.reden ?? 'Afroep')}</strong><p style="white-space:pre-wrap;margin:.35rem 0 0">${esc(ronde.afroep.toelichting)}</p></div>` : ''}
     <div class="mtussen"><h2>${afroep ? 'A' : 'R'}${ronde.nummer} ${esc(ronde.naam)} <small style="font-weight:400">· ${pakketSoortTekst(p)}</small></h2>
-      <div class="knoppen"><button class="knop" id="uitkomsten-xls" title="Alle antwoorden per registratie, bevindingen en vervolgacties">${I.excel} Uitkomsten naar Excel</button>${p.soort === 'inspectie' ? '<button class="knop" id="resultaten-xls">' + I.excel + ' Resultaten ronde</button>' : ''}<button class="knop" id="export">CSV</button>${p.inspectiesoort === BV.BVC_SOORT && p.soort === 'inspectie' ? '<button class="knop" id="suf">SUF-BVC</button>' : ''}</div></div>
+      <div class="knoppen">${huidigProject?.eisen?.lijst?.length ? `<a class="knop" href="#/eisen/dossier?${new URLSearchParams({ pakket: id, ...(rondesVan(pr).length > 1 ? { ronde: ronde.id } : {}) })}" title="Verificatiedossier van de eisen voor deze ronde (te wijzigen naar het hele werkpakket of een periode)">${I.taak} Verificatiedossier</a>` : ''}<button class="knop" id="uitkomsten-xls" title="Alle antwoorden per registratie, bevindingen en vervolgacties">${I.excel} Uitkomsten naar Excel</button>${p.soort === 'inspectie' ? '<button class="knop" id="resultaten-xls">' + I.excel + ' Resultaten ronde</button>' : ''}<button class="knop" id="export">CSV</button>${p.inspectiesoort === BV.BVC_SOORT && p.soort === 'inspectie' ? '<button class="knop" id="suf">SUF-BVC</button>' : ''}</div></div>
     <section class="kaart">${voortgangBalk(v, { groot: true })}</section>
     ${p.inspectiesoort === BV.BVC_SOORT ? bvcSamenvatting(g.inspecties.filter((i) => i.werkpakketId === p.id && (i.rondeId || STANDAARD_RONDE) === (p.rondeId || STANDAARD_RONDE))) : ''}
     <div class="kaartindeling">
@@ -13154,7 +13227,7 @@ async function exporteerUitkomsten({ voorPakket = null } = {}) {
     // Eisverificatie: per eis uit de eisbibliotheek hoe vaak en met welk resultaat hij in deze registraties is bevraagd.
     const eisVer = project?.eisen?.lijst?.length ? EI.verificatie(project.eisen.lijst, project.velden ?? [], regs.filter((x) => x.soort !== 'overgeslagen').map((x) => x.r)) : [];
     const wb = UX.maakWerkboek(ExcelJS, r, { titel: 'Uitkomsten werkpakketten', project: project?.naam ?? '', filter: `${filter}${fotoData ? ` · met ${fotoData.size} foto's` : ''}`, rondes, metKosten: toonKosten(), fotoData,
-      eisen: eisVer.map((x) => ({ waarden: [x.eis.nummer, x.eis.tekst, x.eis.vraag, x.eis.bron, [...new Set(x.velden.map((d) => velden.FORMULIEREN[d.formulier] ?? d.formulier))].join(', '),
+      eisen: eisVer.map((x) => ({ waarden: [x.eis.nummer, x.eis.tekst, x.eis.vraag, EI.gewenstTekst(x.eis, x.velden[0]?.type), x.eis.bron, [...new Set(x.velden.map((d) => velden.FORMULIEREN[d.formulier] ?? d.formulier))].join(', '),
         x.antwoorden, x.ja, x.nee, x.overig, x.laatste ? new Date(`${x.laatste.slice(0, 10)}T00:00:00Z`) : '', EIS_STATUS[x.status].label], kleur: { geverifieerd: '#1a7f37', afwijking: '#d1452f', 'nog niet geverifieerd': '#e07b00' }[x.status] ?? '' })) });
     const naam = keuze.ids.size === 1 ? `uitkomsten-${(perId.get([...keuze.ids][0]).code || perId.get([...keuze.ids][0]).naam)}` : 'uitkomsten-werkpakketten';
     download(`${naam.replace(/[^\w-]+/g, '_')}-${vandaag()}.xlsx`, await wb.xlsx.writeBuffer(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

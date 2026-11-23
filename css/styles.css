@@ -2091,3 +2091,7 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
 
 .dialoog.eiskiezer .veld { margin-bottom: .6rem; }
 .dialoog.eiskiezer .ek-filters .vink, .dialoog.eiskiezer .ek-opties .vink { padding: .35rem .6rem; }
+.eisnorm { display: block; color: var(--goed, #1a7f37); font-size: .8rem; }
+.eisnorm svg { width: 13px; height: 13px; vertical-align: -2px; }
+.gewenstcel { white-space: nowrap; }
+.gewenstcel .knop { margin-left: .3rem; }

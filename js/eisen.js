@@ -23,6 +23,7 @@ const KOPPEN = {
   type: [/^(antwoord ?type|type ?antwoord|type|veldtype)$/],
   opties: [/^(keuzes|opties|antwoordopties|antwoorden)$/],
   bron: [/^(contractstuk|document|bron|referentie|hoofdstuk|paragraaf)$/],
+  gewenst: [/^(gewenst|gewenst antwoord|verwacht|verwacht antwoord|norm|eisnorm|voldoet bij|goed antwoord|criterium|acceptatiecriterium)$/],
 };
 
 // Antwoordtype uit het bestand → veldtype van de app (standaard ja/nee: is aan de eis voldaan?).
@@ -65,7 +66,13 @@ export function leesEisen(regels) {
     if (ruwType && !typeUit(ruwType)) fouten.push(`Regel ${rij}: antwoordtype "${ruwType}" onbekend; ja/nee gebruikt.`);
     const opties = k.opties !== undefined ? String(r[k.opties] ?? '').split(/[;|\n]/).map((x) => x.trim()).filter(Boolean) : [];
     if (['keuze', 'meerkeuze', 'checklist'].includes(type) && !opties.length) fouten.push(`Regel ${rij}: eis ${nummer} (${type}) heeft geen keuzes.`);
-    eisen.push({ nummer, tekst: r[k.tekst] ?? '', vraag, type, opties, bron: k.bron !== undefined ? r[k.bron] ?? '' : '' });
+    const eis = { nummer, tekst: r[k.tekst] ?? '', vraag, type, opties, bron: k.bron !== undefined ? r[k.bron] ?? '' : '' };
+    if (k.gewenst !== undefined && r[k.gewenst]) {
+      const g = controleerGewenst({ ...eis, gewenst: r[k.gewenst] });
+      if (g) fouten.push(`Regel ${rij}: eis ${nummer}: ${g} Gewenst antwoord genegeerd.`);
+      else eis.gewenst = r[k.gewenst];
+    }
+    eisen.push(eis);
   });
   const kolommen = Object.fromEntries(Object.entries(k).map(([v, i]) => [v, kop[i]]));
   return { eisen, fouten, kolommen };
@@ -75,7 +82,7 @@ export function leesEisen(regels) {
 export function vergelijk(oud, nieuw) {
   const o = new Map((oud ?? []).map((e) => [sleutel(e.nummer), e]));
   const n = new Map((nieuw ?? []).map((e) => [sleutel(e.nummer), e]));
-  const velden = ['tekst', 'vraag', 'type', 'bron'];
+  const velden = ['tekst', 'vraag', 'type', 'bron', 'gewenst'];
   const gewijzigd = [];
   const toegevoegd = [];
   for (const [s, e] of n) {
@@ -94,7 +101,7 @@ export function naarVeld(eis, formulier, id) {
   return {
     id, formulier, label: eis.vraag, type: eis.type || 'janee', verplicht: true, hulptekst: '', alleenBij: [],
     ...(eis.opties?.length ? { opties: [...eis.opties] } : {}),
-    eis: { nummer: eis.nummer, tekst: eis.tekst ?? '', bron: eis.bron ?? '' },
+    eis: { nummer: eis.nummer, tekst: eis.tekst ?? '', bron: eis.bron ?? '', ...(eis.gewenst ? { gewenst: String(eis.gewenst) } : {}) },
   };
 }
 
@@ -108,7 +115,7 @@ export function werkVeldenBij(defs, eisen) {
   const uit = (defs ?? []).map((d) => {
     if (!d.eis?.nummer) return d;
     const e = per.get(sleutel(d.eis.nummer));
-    const nieuw = e ? { ...d, label: e.vraag, eis: { nummer: e.nummer, tekst: e.tekst ?? '', bron: e.bron ?? '' } } : { ...d, eis: { ...d.eis, vervallen: true } };
+    const nieuw = e ? { ...d, label: e.vraag, eis: { nummer: e.nummer, tekst: e.tekst ?? '', bron: e.bron ?? '', ...(e.gewenst ? { gewenst: String(e.gewenst) } : {}) } } : { ...d, eis: { ...d.eis, vervallen: true } };
     if (JSON.stringify(nieuw) !== JSON.stringify(d)) n += 1;
     return nieuw;
   });
@@ -132,7 +139,7 @@ export function verificatie(eisen, defs, registraties) {
         const v = r.extra?.[d.id];
         if (v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length)) continue;
         antwoorden += 1;
-        const uitkomst = v === true ? 'ja' : v === false ? 'nee' : 'overig';
+        const uitkomst = beoordeel(eis, d, v);
         if (uitkomst === 'ja') ja += 1; else if (uitkomst === 'nee') nee += 1; else overig += 1;
         if (String(r.datum ?? '') > laatste) laatste = String(r.datum ?? '');
         items.push({ r, veld: d, waarde: v, uitkomst });
@@ -145,12 +152,125 @@ export function verificatie(eisen, defs, registraties) {
 }
 
 export const SJABLOON = [
-  ['Eisnummer', 'Eistekst', 'Eisvraag', 'Antwoordtype', 'Keuzes', 'Contractstuk'],
-  ['EIS-3.2.1', 'De opdrachtnemer houdt de grasvegetatie op een hoogte van maximaal 10 cm.', 'Is het gras na het maaien niet hoger dan 10 cm?', 'Ja/nee', '', 'Bestek hfst. 3'],
-  ['EIS-3.2.4', 'Maaisel wordt binnen 2 werkdagen afgevoerd.', 'Is het maaisel afgevoerd?', 'Ja/nee', '', 'Bestek hfst. 3'],
-  ['EIS-4.1.2', 'Zwerfvuil wordt verwijderd; de mate van vervuiling wordt vastgelegd.', 'Wat is de beeldkwaliteit zwerfvuil?', 'Keuze', 'A+;A;B;C;D', 'Beeldkwaliteitsbestek'],
-  ['EIS-5.3.1', 'Gebreken aan verhardingen worden gemeld met foto.', 'Foto van het gebrek', 'Foto', '', 'PvE 5.3'],
+  ['Eisnummer', 'Eistekst', 'Eisvraag', 'Antwoordtype', 'Keuzes', 'Gewenst antwoord', 'Contractstuk'],
+  ['EIS-3.2.1', 'De opdrachtnemer houdt de grasvegetatie op een hoogte van maximaal 10 cm.', 'Is het gras na het maaien niet hoger dan 10 cm?', 'Ja/nee', '', 'Ja', 'Bestek hfst. 3'],
+  ['EIS-3.2.4', 'Maaisel wordt binnen 2 werkdagen afgevoerd.', 'Is het maaisel afgevoerd?', 'Ja/nee', '', 'Ja', 'Bestek hfst. 3'],
+  ['EIS-4.1.2', 'Het beeldkwaliteitsniveau voor zwerfvuil is minimaal B.', 'Wat is de beeldkwaliteit zwerfvuil?', 'Keuze', 'A+;A;B;C;D', 'A+;A;B', 'Beeldkwaliteitsbestek'],
+  ['EIS-5.3.1', 'Gebreken aan verhardingen worden gemeld met foto.', 'Foto van het gebrek', 'Foto', '', '', 'PvE 5.3'],
+  ['EIS-3.2.2', 'Na het maaien liggen er geen maaiselresten op de verharding.', 'Liggen er maaiselresten op de verharding?', 'Ja/nee', '', 'Nee', 'Bestek hfst. 3'],
+  ['EIS-3.2.3', 'De grashoogte na het maaien is maximaal 10 cm.', 'Gemeten grashoogte (cm)', 'Getal', '', '<= 10', 'Bestek hfst. 3'],
 ];
+
+// ---------------------------------------------------------------------------
+// Gewenst antwoord: wanneer voldoet een antwoord aan de eis?
+// ---------------------------------------------------------------------------
+const getal = (x) => { const n = Number(String(x ?? '').trim().replace(',', '.')); return Number.isFinite(n) && String(x ?? '').trim() !== '' ? n : null; };
+const lijstVan = (x) => String(x ?? '').split(/\s*[;|]\s*|\s+of\s+/i).map((y) => y.trim()).filter(Boolean);
+
+/**
+ * Het gewenste antwoord van een eis als norm, afhankelijk van het antwoordtype.
+ * - ja/nee: "Ja" (standaard) of "Nee";
+ * - keuze: één of meer toegestane keuzes ("A+;A;B"); meerkeuze: deze keuzes moeten allemaal zijn aangevinkt;
+ * - getal: "<= 10", ">= 5", "< 3", "> 0", "= 4", "4", "5 - 10" of "5 tot 10" (grenzen inbegrepen), "max 10", "min 5";
+ * - checklist: alle punten afgevinkt (standaard);
+ * - overige typen (tekst, foto, datum, …): ingevuld is voldoende; bij tekst kan een exacte tekst.
+ * @returns {{ soort: string, [k: string]: any }}
+ */
+export function gewenstNorm(eis, type = eis?.type) {
+  const g = String(eis?.gewenst ?? '').trim();
+  const n = norm(g);
+  if (type === 'janee') return { soort: 'janee', waarde: !/^(nee|n|no|false|0|onwaar)$/.test(n) };
+  if (type === 'checklist') return { soort: 'alles' };
+  if (!g) return { soort: 'ingevuld' };
+  if (type === 'keuze' || type === 'meerkeuze') return { soort: type === 'keuze' ? 'een van' : 'bevat', lijst: lijstVan(g) };
+  if (type === 'getal') {
+    const t = g.replace(/≤/g, '<=').replace(/≥/g, '>=').replace(/,/g, '.').toLowerCase().replace(/\s+/g, ' ');
+    let m = t.match(/^(?:tussen )?(-?[\d.]+) ?(?:-|tot|t\/m|en) ?(-?[\d.]+)$/);
+    if (m && getal(m[1]) !== null && getal(m[2]) !== null) return { soort: 'getal', min: Math.min(getal(m[1]), getal(m[2])), max: Math.max(getal(m[1]), getal(m[2])) };
+    m = t.match(/^(<=|>=|<|>|=|max(?:imaal)?|min(?:imaal)?|ten hoogste|ten minste|hoogstens|minstens)? ?(-?[\d.]+)$/);
+    if (m && getal(m[2]) !== null) {
+      const w = getal(m[2]);
+      const op = m[1] ?? '=';
+      if (op === '<=' || /^(max|ten hoogste|hoogstens)/.test(op)) return { soort: 'getal', max: w };
+      if (op === '>=' || /^(min|ten minste|minstens)/.test(op)) return { soort: 'getal', min: w };
+      if (op === '<') return { soort: 'getal', max: w, strikt: true };
+      if (op === '>') return { soort: 'getal', min: w, strikt: true };
+      return { soort: 'getal', min: w, max: w };
+    }
+    return { soort: 'ongeldig' };
+  }
+  if (type === 'tekst') return { soort: 'tekst', waarde: g };
+  return { soort: 'ingevuld' };
+}
+
+/** Foutmelding als het gewenste antwoord niet past bij het antwoordtype (anders ''). */
+export function controleerGewenst(eis) {
+  const g = String(eis?.gewenst ?? '').trim();
+  if (!g) return '';
+  const nn = gewenstNorm(eis);
+  if (eis.type === 'janee' && !/^(ja|j|yes|true|1|waar|nee|n|no|false|0|onwaar)$/.test(norm(g))) return `"${g}" is geen Ja of Nee.`;
+  if (nn.soort === 'ongeldig') return `"${g}" is geen getal of bereik (bijv. <= 10, >= 5 of 5 - 10).`;
+  if (nn.lijst && eis.opties?.length) {
+    const vreemd = nn.lijst.filter((x) => !eis.opties.some((o) => norm(o) === norm(x)));
+    if (vreemd.length) return `${vreemd.map((x) => `"${x}"`).join(', ')} staat niet bij de keuzes (${eis.opties.join(', ')}).`;
+  }
+  return '';
+}
+
+const nlGetal = (x) => String(x).replace('.', ',');
+/** Het gewenste antwoord in woorden, voor het dossier en de eisenlijst. */
+export function gewenstTekst(eis, type = eis?.type) {
+  const g = gewenstNorm(eis, type);
+  switch (g.soort) {
+    case 'janee': return g.waarde ? 'Ja' : 'Nee';
+    case 'alles': return 'Alle punten afgevinkt';
+    case 'een van': return g.lijst.length === 1 ? g.lijst[0] : `${g.lijst.slice(0, -1).join(', ')} of ${g.lijst.at(-1)}`;
+    case 'bevat': return `Aangevinkt: ${g.lijst.join(', ')}`;
+    case 'getal': {
+      if (g.min !== undefined && g.max !== undefined) return g.min === g.max ? `= ${nlGetal(g.min)}` : `${nlGetal(g.min)} t/m ${nlGetal(g.max)}`;
+      if (g.max !== undefined) return `${g.strikt ? '<' : '≤'} ${nlGetal(g.max)}`;
+      return `${g.strikt ? '>' : '≥'} ${nlGetal(g.min)}`;
+    }
+    case 'tekst': return `"${g.waarde}"`;
+    case 'ongeldig': return `${eis.gewenst} (ongeldig)`;
+    default: return 'Ingevuld (geen norm)';
+  }
+}
+
+/**
+ * Voldoet het antwoord aan het gewenste antwoord van de eis?
+ * @returns {'ja'|'nee'|'overig'}  ja = voldoet, nee = voldoet niet, overig = ingevuld zonder norm (bijv. een foto of vrije tekst)
+ */
+export function beoordeel(eis, veld, waarde) {
+  const type = veld?.type ?? eis?.type;
+  const g = gewenstNorm(eis, type);
+  const gelijk = (a, b) => norm(a) === norm(b);
+  switch (g.soort) {
+    case 'janee': return waarde === g.waarde ? 'ja' : (waarde === true || waarde === false ? 'nee' : 'overig');
+    case 'alles': return (veld?.opties ?? []).every((o) => (waarde ?? []).includes(o)) ? 'ja' : 'nee';
+    case 'een van': return g.lijst.some((x) => gelijk(x, waarde)) ? 'ja' : 'nee';
+    case 'bevat': return g.lijst.every((x) => (waarde ?? []).some((w) => gelijk(w, x))) ? 'ja' : 'nee';
+    case 'getal': {
+      const v = getal(waarde);
+      if (v === null) return 'overig';
+      const boven = g.min === undefined || (g.strikt ? v > g.min : v >= g.min);
+      const onder = g.max === undefined || (g.strikt ? v < g.max : v <= g.max);
+      return boven && onder ? 'ja' : 'nee';
+    }
+    case 'tekst': return gelijk(waarde, g.waarde) ? 'ja' : 'nee';
+    default: return 'overig';
+  }
+}
+
+/**
+ * Registraties voor een dossier: binnen de periode en (optioneel) alleen van bepaalde werkpakketten en rondes.
+ * @param {{ van?: string, tot?: string, pakketten?: string[], ronde?: string, standaardRonde?: string }} keuze
+ */
+export function selectie(registraties, { van = '', tot = '', pakketten = [], ronde = '', standaardRonde = '' } = {}) {
+  const set = new Set(pakketten ?? []);
+  return inPeriode(registraties, van, tot).filter((r) => (!set.size || set.has(r.werkpakketId))
+    && (!ronde || r.rondeId === ronde || (ronde === standaardRonde && !r.rondeId)));
+}
 
 /** Registraties met een datum binnen [van, tot] (ISO, grenzen inbegrepen; leeg = open). */
 export function inPeriode(registraties, van, tot) {

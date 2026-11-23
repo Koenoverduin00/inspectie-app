@@ -17,7 +17,7 @@ test('eisen inlezen: kolommen herkennen, typen, keuzes, fouten', () => {
   assert.equal(r.fouten.length, 3);
   assert.deepEqual(r.kolommen, { nummer: 'Eis nr.', tekst: 'Eis omschrijving', vraag: 'Eisvraag', type: 'Antwoord type', opties: 'Opties', bron: 'Document' });
   assert.match(E.leesEisen([['Code', 'Naam']]).fouten.join(' '), /Eistekst/);
-  assert.equal(E.leesEisen(E.SJABLOON).eisen.length, 4);
+  assert.equal(E.leesEisen(E.SJABLOON).eisen.length, 6);
 });
 
 test('eisen bijwerken, naar formulierveld en verificatie', () => {
@@ -25,7 +25,7 @@ test('eisen bijwerken, naar formulierveld en verificatie', () => {
   const nieuw = oud.map((e) => (e.nummer === 'EIS-3.2.4' ? { ...e, vraag: 'Is het maaisel binnen 2 werkdagen afgevoerd?' } : e)).filter((e) => e.nummer !== 'EIS-5.3.1');
   nieuw.push({ nummer: 'EIS-9', tekst: 't', vraag: 'v', type: 'janee', opties: [], bron: '' });
   const v = E.vergelijk(oud, nieuw);
-  assert.deepEqual([v.toegevoegd.length, v.gewijzigd.map((g) => `${g.eis.nummer}:${g.velden}`), v.vervallen.map((e) => e.nummer), v.ongewijzigd], [1, ['EIS-3.2.4:vraag'], ['EIS-5.3.1'], 2]);
+  assert.deepEqual([v.toegevoegd.length, v.gewijzigd.map((g) => `${g.eis.nummer}:${g.velden}`), v.vervallen.map((e) => e.nummer), v.ongewijzigd], [1, ['EIS-3.2.4:vraag'], ['EIS-5.3.1'], 4]);
   const veld = E.naarVeld(oud[1], 'werk', 'v1');
   assert.deepEqual([veld.label, veld.type, veld.verplicht, veld.eis.nummer], ['Is het maaisel afgevoerd?', 'janee', true, 'EIS-3.2.4']);
   assert.deepEqual(E.naarVeld(oud[2], 'inspectie', 'v2').opties, ['A+', 'A', 'B', 'C', 'D']);

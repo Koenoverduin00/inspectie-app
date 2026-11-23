@@ -41,7 +41,8 @@ test('dossier: status en bewijs per periode', () => {
   const fmt = { info: () => ({ objectcode: 'O1', object: 'Park', pakket: 'WP', ronde: 'R1', formulier: 'Werk', door: 'Jan', toelichting: '' }), tekst: (v, w) => String(w) };
   const regel = ED.bewijsRegel(d.ver[0].items[1], eisen[0], fmt);
   assert.equal(regel[0], 'EIS-1');
-  assert.equal(regel[10], 'Nee');
+  assert.equal(regel[11], 'Voldoet niet');
+  assert.equal(ED.bewijsRegel(d.ver[0].items[1], eisen[0], { ...fmt, gewenst: (e) => E.gewenstTekst(e) })[2], 'Ja');
   assert.equal(regel.length, ED.BEWIJS_KOLOMMEN.length);
 });
 
