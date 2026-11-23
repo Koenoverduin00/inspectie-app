@@ -1808,12 +1808,12 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
 .kaartkeuze-knop { width: 36px; height: 36px; display: grid; place-items: center; background: #fff; color: #1d2b36; border: 0; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.3); cursor: pointer; padding: 0; }
 .kaartkeuze-knop svg { width: 18px; height: 18px; }
 .kaartkeuze.open .kaartkeuze-knop { background: #0b4f6c; color: #fff; }
-.kaartkeuze-paneel { position: absolute; right: 0; top: 42px; width: 214px; background: #fff; color: #1d2b36; border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.25); padding: .5rem; display: grid; gap: .5rem; }
+.kaartkeuze-paneel { position: absolute; right: 0; top: 42px; width: 224px; overflow-y: auto; background: #fff; color: #1d2b36; border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.25); padding: .5rem; display: grid; gap: .5rem; }
 .kaartkeuze-paneel[hidden] { display: none; }
 .kaartkeuze-opties { display: grid; grid-template-columns: repeat(3, 1fr); gap: .35rem; }
 .kaartkeuze-opties button { display: grid; justify-items: center; gap: .2rem; padding: .25rem; border: 2px solid transparent; border-radius: 8px; background: none; font: inherit; font-size: .72rem; color: inherit; cursor: pointer; min-height: 0; }
 .kaartkeuze-opties button.actief { border-color: #0b4f6c; font-weight: 700; }
-.kk-voorbeeld { width: 52px; height: 38px; border-radius: 6px; border: 1px solid rgba(0,0,0,.15); display: block; }
+.kk-voorbeeld { width: 52px; height: 38px; border-radius: 6px; border: 1px solid rgba(0,0,0,.15); display: block; background-color: #dde2e6; background-size: cover; background-position: center; }
 .kk-luchtfoto { background: radial-gradient(circle at 30% 35%, #6f8f4e 0 20%, transparent 21%), radial-gradient(circle at 70% 70%, #8a7a5a 0 18%, transparent 19%), linear-gradient(135deg, #5d7a45, #9aa680 55%, #7c8a66); }
 .kk-grijs { background: linear-gradient(90deg, transparent 46%, #fff 46% 54%, transparent 54%), linear-gradient(0deg, transparent 40%, #fff 40% 48%, transparent 48%), #d9dcde; }
 .kk-kaart { background: linear-gradient(90deg, transparent 44%, #f7d58b 44% 56%, transparent 56%), linear-gradient(0deg, transparent 58%, #fff 58% 66%, transparent 66%), radial-gradient(circle at 78% 25%, #b9dca0 0 22%, transparent 23%), #f2efe9; }
@@ -2044,3 +2044,7 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
 .iw-popup { display: grid; gap: .2rem; min-width: 180px; }
 .iw-popup small { color: #555; }
 .iw-popup .knop { justify-self: start; margin-top: .3rem; }
+
+.kaartkeuze-extra { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: .4rem; font-size: .75rem; padding: 0 .15rem; cursor: pointer; line-height: 1.25; }
+.kaartkeuze-extra input { min-height: 0; width: 16px; height: 16px; margin: 0; accent-color: #0b4f6c; }
+.kaartkeuze-extra small { display: block; color: #777; }

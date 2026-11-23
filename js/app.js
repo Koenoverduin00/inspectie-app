@@ -1833,7 +1833,7 @@ async function kiesOpKaart({ huidig = null, objectId = '' } = {}) {
     const el = d.querySelector('.kaartkies-kaart');
     const map = L.map(el, { zoomAnimation: false, fadeAnimation: false });
     el.leafletKaart = map;
-    voegAchtergrondToe(L, map);
+    voegAchtergrondToe(L, map, { ingewonnen: 'formulier' });
     if (geom) {
       const laag = L.geoJSON(geom, { style: { color: '#e07b00', weight: 2, fillOpacity: 0.12 }, pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 8, color: '#e07b00' }), interactive: false }).addTo(map);
       if (!heeftGps(huidig)) map.fitBounds(laag.getBounds(), { maxZoom: 19, padding: [30, 30] });
@@ -2289,6 +2289,9 @@ function demoWelkom(mobiel) {
     <button type="button" class="knop klein" data-demowelkom-weg>Sluiten</button></div>
     <ul class="demowelkom-lijst">${items.map(([h, ic, t, u]) => `<li><a href="${h}"><span class="micoon klein">${ic}</span><span><strong>${t}</strong><small>${u}</small></span></a></li>`).join('')}</ul></section>`;
 }
+document.addEventListener('click', (e) => {
+  if (e.target.closest('[data-iw-export]')) exporteerIngewonnen().catch((f) => melding(`Exporteren mislukt: ${f.message}`, 'fout'));
+});
 document.addEventListener('click', (e) => {
   if (!e.target.closest('[data-demowelkom-weg]')) return;
   instelling.schrijf(`demoWelkomWeg:${projectId()}`, '1');
@@ -3821,6 +3824,7 @@ async function inspectiesLijst() {
     <div class="paginakop">
       <div><h1>Inspecties</h1><p>${inspecties.length} inspecties geregistreerd.</p></div>
       <div class="knoppen"><button class="knop" id="resultaten-xls" title="De inspecties die nu gefilterd zijn, met gebreken en maatregelen">${I.excel} Excel</button>
+        <button class="knop" type="button" data-iw-export title="Ingewonnen punten, lijnen en vlakken als GeoJSON, Excel of KML">${I.kaart} Ingewonnen gegevens</button>
         <button class="knop" id="suf" title="Standaard Uitwisselingsformaat boomveiligheidscontrole (CROW)">SUF-BVC export</button>
         <a class="knop" href="#/inspecties/nieuw?calamiteit=1" title="Zonder werkpakket">${I.let} Incident / calamiteit</a>
         <a class="knop primair" href="#/inspecties/nieuw">+ Nieuwe inspectie</a></div>
@@ -6373,6 +6377,7 @@ async function werkzaamhedenLijst() {
       <div><h1>Werkzaamheden</h1><p>${werk.length} geregistreerde werkzaamheden.</p></div>
       <div class="knoppen">
         <button class="knop" id="export">CSV exporteren</button>
+        <button class="knop" type="button" data-iw-export title="Ingewonnen punten, lijnen en vlakken als GeoJSON, Excel of KML">${I.kaart} Ingewonnen gegevens</button>
         <a class="knop primair" href="#/werkzaamheden/nieuw">+ Werkzaamheid registreren</a>
       </div>
     </div>
@@ -8621,26 +8626,68 @@ async function verwijderLaag(laag) {
 // Kaart & GIS
 // ---------------------------------------------------------------------------
 // Achtergrondkaarten: standaard de PDOK-luchtfoto (Beeldmateriaal Nederland) op 50% sterkte, vervaagd naar wit.
+const PDOK = 'https://service.pdok.nl';
+const PDOK_ATTR = (bron) => `${bron} &copy; <a href="https://www.pdok.nl" target="_blank" rel="noopener">PDOK</a>`;
+const BRT = (stijl) => `${PDOK}/brt/achtergrondkaart/wmts/v2_0/${stijl}/EPSG:3857/{z}/{x}/{y}.png`;
+const BGT = (stijl) => `${PDOK}/lv/bgt/wmts/v1_0/${stijl}/EPSG:3857/{z}/{x}/{y}.png`;
+// Voorbeeldtegel per achtergrond (Utrecht), voor de knoppen in het paneel.
+const vb = (url, z, x, y) => url.replace('{z}', z).replace('{x}', x).replace('{y}', y);
 const ACHTERGRONDEN = {
   luchtfoto: {
-    naam: 'Luchtfoto',
-    kort: 'Luchtfoto',
-    url: 'https://service.pdok.nl/hwh/luchtfotorgb/wmts/v1_0/Actueel_orthoHR/EPSG:3857/{z}/{x}/{y}.jpeg',
-    opties: { maxZoom: 22, maxNativeZoom: 21, attribution: 'Luchtfoto &copy; <a href="https://www.pdok.nl" target="_blank" rel="noopener">PDOK</a> / Beeldmateriaal Nederland' },
+    naam: 'Luchtfoto', kort: 'Luchtfoto',
+    url: `${PDOK}/hwh/luchtfotorgb/wmts/v1_0/Actueel_orthoHR/EPSG:3857/{z}/{x}/{y}.jpeg`,
+    opties: { maxZoom: 22, maxNativeZoom: 21, attribution: `${PDOK_ATTR('Luchtfoto')} / Beeldmateriaal Nederland` },
+  },
+  infrarood: {
+    naam: 'Luchtfoto infrarood (groen = vegetatie)', kort: 'Infrarood',
+    url: `${PDOK}/hwh/luchtfotocir/wmts/v1_0/Actueel_ortho25IR/EPSG:3857/{z}/{x}/{y}.jpeg`,
+    opties: { maxZoom: 22, maxNativeZoom: 20, attribution: `${PDOK_ATTR('Infraroodluchtfoto')} / Beeldmateriaal Nederland` },
+  },
+  topo: {
+    naam: 'Topografische kaart (PDOK BRT)', kort: 'Topo',
+    url: BRT('standaard'), opties: { maxZoom: 22, maxNativeZoom: 19, attribution: PDOK_ATTR('Kaart') + ' / Kadaster BRT' },
   },
   grijs: {
-    naam: 'Grijze kaart (PDOK)',
-    kort: 'Grijs',
-    url: 'https://service.pdok.nl/brt/achtergrondkaart/wmts/v2_0/grijs/EPSG:3857/{z}/{x}/{y}.png',
-    opties: { maxZoom: 22, maxNativeZoom: 19, attribution: 'Kaart &copy; <a href="https://www.pdok.nl" target="_blank" rel="noopener">PDOK</a> / Kadaster BRT' },
+    naam: 'Grijze kaart (PDOK)', kort: 'Grijs',
+    url: BRT('grijs'), opties: { maxZoom: 22, maxNativeZoom: 19, attribution: PDOK_ATTR('Kaart') + ' / Kadaster BRT' },
+  },
+  pastel: {
+    naam: 'Pastelkaart (PDOK)', kort: 'Pastel',
+    url: BRT('pastel'), opties: { maxZoom: 22, maxNativeZoom: 19, attribution: PDOK_ATTR('Kaart') + ' / Kadaster BRT' },
+  },
+  water: {
+    naam: 'Waterkaart (PDOK)', kort: 'Water',
+    url: BRT('water'), opties: { maxZoom: 22, maxNativeZoom: 19, attribution: PDOK_ATTR('Kaart') + ' / Kadaster BRT' },
+  },
+  bgt: {
+    // De BGT heeft alleen tegels vanaf zoomniveau 17; verder uitgezoomd de grijze kaart.
+    naam: 'BGT – grootschalige topografie (vanaf inzoomen; daarboven grijs)', kort: 'BGT',
+    url: BGT('standaardvisualisatie'), opties: { minZoom: 17, maxZoom: 22, maxNativeZoom: 20, attribution: `${PDOK_ATTR('BGT')} / Kadaster` },
+    onder: { url: BRT('grijs'), opties: { maxZoom: 16, maxNativeZoom: 16 } },
+    voorbeeld: vb(BGT('standaardvisualisatie'), 17, 67315, 43076),
+  },
+  bgtlicht: {
+    naam: 'BGT lichte achtergrond (vanaf inzoomen; daarboven grijs)', kort: 'BGT licht',
+    url: BGT('achtergrondvisualisatie'), opties: { minZoom: 17, maxZoom: 22, maxNativeZoom: 20, attribution: `${PDOK_ATTR('BGT')} / Kadaster` },
+    onder: { url: BRT('grijs'), opties: { maxZoom: 16, maxNativeZoom: 16 } },
+    voorbeeld: vb(BGT('achtergrondvisualisatie'), 17, 67315, 43076),
   },
   kaart: {
-    naam: 'Kaart (OpenStreetMap)',
-    kort: 'Kaart',
+    naam: 'OpenStreetMap', kort: 'OSM',
     url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     opties: { maxZoom: 22, maxNativeZoom: 19, attribution: '&copy; OpenStreetMap-bijdragers' },
+    voorbeeld: 'https://tile.openstreetmap.org/15/16829/10768.png',
   },
 };
+for (const a of Object.values(ACHTERGRONDEN)) a.voorbeeld ??= vb(a.url, 15, 16829, 10768);
+// Extra laag over elke achtergrond: perceelgrenzen en -nummers van het Kadaster (vanaf zoomniveau 17).
+const KADASTER = { url: `${PDOK}/kadaster/kadastralekaart/wmts/v5_0/Kadastralekaart/EPSG:3857/{z}/{x}/{y}.png`,
+  opties: { minZoom: 17, maxZoom: 22, maxNativeZoom: 20, attribution: PDOK_ATTR('Kadastrale kaart') + ' / Kadaster', className: 'kadasterlaag' } };
+
+function maakAchtergrond(L, a) {
+  const laag = L.tileLayer(a.url, { ...a.opties, className: 'achtergrondlaag' });
+  return a.onder ? L.layerGroup([laag, L.tileLayer(a.onder.url, { ...a.opties, ...a.onder.opties, minZoom: 0, className: 'achtergrondlaag' })]) : laag;
+}
 
 function voegAchtergrondToe(L, map, { ingewonnen = false } = {}) {
   const keuze = ACHTERGRONDEN[instelling.lees('achtergrond', 'luchtfoto')] ? instelling.lees('achtergrond', 'luchtfoto') : 'luchtfoto';
@@ -8650,7 +8697,14 @@ function voegAchtergrondToe(L, map, { ingewonnen = false } = {}) {
   zetHelderheid(helderheid);
 
   // Eén compacte knop rechtsboven: achtergrond kiezen en de sterkte ervan instellen (per apparaat onthouden).
-  const lagen = Object.fromEntries(Object.entries(ACHTERGRONDEN).map(([id, a]) => [id, L.tileLayer(a.url, { ...a.opties, className: 'achtergrondlaag' })]));
+  // Vaste zoomgrenzen: anders past Leaflet ze aan bij elke laag met een eigen bereik (BGT vanaf 17, de onderlaag tot 16)
+  // en springt de kaart bij het wisselen van achtergrond naar een ander zoomniveau.
+  map.options.minZoom ??= 0;
+  map.options.maxZoom ??= 22;
+  const lagen = Object.fromEntries(Object.entries(ACHTERGRONDEN).map(([id, a]) => [id, maakAchtergrond(L, a)]));
+  const kadaster = L.tileLayer(KADASTER.url, KADASTER.opties);
+  let metKadaster = instelling.lees('kadaster') === '1';
+  if (metKadaster) kadaster.addTo(map);
   let huidig = keuze;
   lagen[huidig].addTo(map);
   const KaartKeuze = L.Control.extend({
@@ -8659,17 +8713,22 @@ function voegAchtergrondToe(L, map, { ingewonnen = false } = {}) {
       const div = L.DomUtil.create('div', 'kaartkeuze');
       div.innerHTML = `<button type="button" class="kaartkeuze-knop" aria-expanded="false" aria-label="Achtergrondkaart kiezen" title="Achtergrondkaart">${I.lagen}</button>
         <div class="kaartkeuze-paneel" hidden role="dialog" aria-label="Achtergrondkaart">
-          <div class="kaartkeuze-opties" role="radiogroup" aria-label="Achtergrond">${Object.entries(ACHTERGRONDEN).map(([id, a]) => `<button type="button" role="radio" data-ak="${id}" aria-checked="${id === huidig}" class="${id === huidig ? 'actief' : ''}"><i class="kk-voorbeeld kk-${id}"></i><span>${esc(a.kort ?? a.naam)}</span></button>`).join('')}</div>
+          <div class="kaartkeuze-opties" role="radiogroup" aria-label="Achtergrond">${Object.entries(ACHTERGRONDEN).map(([id, a]) => `<button type="button" role="radio" data-ak="${id}" aria-checked="${id === huidig}" class="${id === huidig ? 'actief' : ''}" title="${esc(a.naam)}"><i class="kk-voorbeeld kk-${id}" style="background-image:url('${esc(a.voorbeeld)}')"></i><span>${esc(a.kort ?? a.naam)}</span></button>`).join('')}</div>
+          <label class="kaartkeuze-extra"><input type="checkbox" data-kadaster ${metKadaster ? 'checked' : ''}><span>Perceelgrenzen (Kadaster) <small>zichtbaar bij inzoomen</small></span></label>
           <label class="kaartkeuze-sterkte"><span>Sterkte</span><input type="range" min="10" max="100" step="10" value="${helderheid}" aria-label="Sterkte achtergrond"><output>${helderheid}%</output></label>
-          ${ingewonnen ? `<div class="kaartkeuze-ingewonnen"><b>Uit formulieren</b>
-            <label><input type="checkbox" data-iw="vormen"><i class="iw-teken iw-vorm"></i><span>Ingewonnen punten, lijnen en vlakken <small data-iwn="vormen"></small></span></label>
+          ${ingewonnen ? `<div class="kaartkeuze-ingewonnen"><b>Eerder ingewonnen</b>
+            <label><input type="checkbox" data-iw="vormen"><i class="iw-teken iw-vorm"></i><span>Punten, lijnen en vlakken uit andere registraties <small data-iwn="vormen"></small></span></label>
             <label><input type="checkbox" data-iw="gps"><i class="iw-teken iw-gps"></i><span>GPS-locaties van bevindingen <small data-iwn="gps"></small></span></label></div>` : ''}
         </div>`;
       L.DomEvent.disableClickPropagation(div);
       L.DomEvent.disableScrollPropagation(div);
       const knop = div.querySelector('.kaartkeuze-knop');
       const paneel = div.querySelector('.kaartkeuze-paneel');
-      const zet = (open) => { paneel.hidden = !open; knop.setAttribute('aria-expanded', String(open)); div.classList.toggle('open', open); };
+      const zet = (open) => {
+        // Past het paneel niet in een kleine kaart (bijv. in een formulier), dan scrolt het.
+        if (open) paneel.style.maxHeight = `${Math.max(140, map.getSize().y - 56)}px`;
+        paneel.hidden = !open; knop.setAttribute('aria-expanded', String(open)); div.classList.toggle('open', open);
+      };
       knop.addEventListener('click', () => zet(paneel.hidden));
       map.on('click movestart', () => zet(false));
       div.querySelector('.kaartkeuze-opties').addEventListener('click', (e) => {
@@ -8681,13 +8740,18 @@ function voegAchtergrondToe(L, map, { ingewonnen = false } = {}) {
         instelling.schrijf('achtergrond', huidig);
         div.querySelectorAll('[data-ak]').forEach((x) => { const aan = x.dataset.ak === huidig; x.classList.toggle('actief', aan); x.setAttribute('aria-checked', String(aan)); });
       });
+      div.querySelector('[data-kadaster]').addEventListener('change', (e) => {
+        metKadaster = e.target.checked;
+        instelling.schrijf('kadaster', metKadaster ? '1' : '0');
+        if (metKadaster) kadaster.addTo(map); else map.removeLayer(kadaster);
+      });
       const invoer = div.querySelector('input[type=range]');
       invoer.addEventListener('input', () => {
         zetHelderheid(Number(invoer.value));
         div.querySelector('output').textContent = `${invoer.value}%`;
         instelling.schrijf('helderheid', invoer.value);
       });
-      if (ingewonnen) toonIngewonnen(L, map, div.querySelector('.kaartkeuze-ingewonnen'));
+      if (ingewonnen) toonIngewonnen(L, map, div.querySelector('.kaartkeuze-ingewonnen'), { formulier: ingewonnen === 'formulier' });
       return div;
     },
   });
@@ -8740,16 +8804,27 @@ function ingewonnenPopup(p) {
     <small data-iw-object></small>
     ${link ? `<a href="${link}" class="knop klein">Registratie openen</a>` : ''}</div>`;
 }
-async function ingewonnenGegevens() {
-  const [werkzaamheden, inspecties, taken] = await Promise.all(['werkzaamheden', 'inspecties', 'taken'].map((st) => inProject(st)));
-  return IW.verzamel({ werkzaamheden, inspecties, taken }, { velden: huidigProject?.velden ?? [] });
+/** De registratie die nu in een formulier open staat (uit de adresregel), of null bij een nieuwe. */
+function formulierRecordId() {
+  const m = location.hash.match(/^#\/(?:(?:inspecties|werkzaamheden|taken)\/([^/?]+)\/bewerken|m\/(?:inspectie|werk)\/([^/?]+))(?:\?|$)/);
+  const id = m ? decodeURIComponent(m[1] ?? m[2]) : null;
+  return id && id !== 'nieuw' ? id : null;
 }
-function toonIngewonnen(L, map, blok) {
+async function ingewonnenGegevens({ zonder = null, metObjecten = false } = {}) {
+  const [werkzaamheden, inspecties, taken] = await Promise.all(['werkzaamheden', 'inspecties', 'taken']
+    .map(async (st) => (await inProject(st)).filter((r) => r.id !== zonder)));
+  // Objectnamen alleen voor de export (de kaart haalt ze pas op bij het aanklikken).
+  const objecten = metObjecten ? new Map((await inProject('objecten')).map((o) => [o.id, o])) : null;
+  return IW.verzamel({ werkzaamheden, inspecties, taken }, { velden: huidigProject?.velden ?? [], objectVan: (id) => objecten?.get(id) });
+}
+/** In een formulier: eerder ingewonnen vormen ter oriëntatie (niet aanklikbaar, want tikken zet daar een punt). */
+function toonIngewonnen(L, map, blok, { formulier = false } = {}) {
   if (!blok) return;
   const keuze = ingewonnenKeuze();
   const lagen = { vormen: L.layerGroup(), gps: L.layerGroup() };
   let gegevens = null;
   const bind = (laag, p) => {
+    if (formulier) { laag.options.interactive = false; return; }
     laag.bindPopup(ingewonnenPopup(p), { maxWidth: 280 });
     laag.on('popupopen', async (e) => {
       const el = e.popup.getElement()?.querySelector('[data-iw-object]');
@@ -8795,7 +8870,7 @@ function toonIngewonnen(L, map, blok) {
       zet(cb.dataset.iw, cb.checked);
     });
   });
-  map.ingewonnen = ingewonnenGegevens().then((g) => {
+  map.ingewonnen = ingewonnenGegevens({ zonder: formulier ? formulierRecordId() : null }).then((g) => {
     gegevens = g;
     for (const soort of ['vormen', 'gps']) {
       const n = blok.querySelector(`[data-iwn="${soort}"]`);
@@ -8804,6 +8879,55 @@ function toonIngewonnen(L, map, blok) {
     }
     return g;
   }).catch((f) => { console.warn('Ingewonnen gegevens niet geladen', f); return null; });
+}
+
+/** Alle ingewonnen geometrie van het project downloaden: GeoJSON, Excel of KML. */
+async function exporteerIngewonnen() {
+  const g = await ingewonnenGegevens({ metObjecten: true });
+  const d = document.createElement('dialog');
+  d.className = 'dialoog';
+  const telling = (n) => `${n} ${n === 1 ? 'vorm' : 'vormen'}`;
+  d.innerHTML = `<form method="dialog" novalidate>
+    <h2>${I.kaart} Ingewonnen gegevens exporteren</h2>
+    <p><small>Alle punten, lijnen en vlakken en de antwoorden op locatievragen uit werkzaamheden, inspecties en taken van
+      <strong>${esc(huidigProject?.naam ?? 'dit project')}</strong>, ook de vragen per bevinding. Coördinaten in WGS84.</small></p>
+    <p><strong>${telling(g.vormen.length)}</strong> ingewonnen${g.gps.length ? ` · ${g.gps.length} GPS-locaties van bevindingen` : ''}</p>
+    <div class="veld"><label>Bestand</label>
+      <label class="vink"><input type="radio" name="iw-formaat" value="geojson" checked><span>GeoJSON<small>Voor QGIS, ArcGIS en andere GIS-pakketten</small></span></label>
+      <label class="vink"><input type="radio" name="iw-formaat" value="xlsx"><span>Excel<small>Eén regel per vorm met alle gegevens en de geometrie als WKT</small></span></label>
+      <label class="vink"><input type="radio" name="iw-formaat" value="kml"><span>KML<small>Voor Google Earth en Google My Maps</small></span></label></div>
+    <label class="vink"><input type="checkbox" id="iw-gps" ${g.gps.length ? '' : 'disabled'}><span>Ook GPS-locaties van bevindingen (${g.gps.length})</span></label>
+    <div class="formvoet"><button class="knop" type="button" data-weg>Annuleren</button>
+      <button class="knop primair" type="submit" ${g.vormen.length || g.gps.length ? '' : 'disabled'}>Downloaden</button></div></form>`;
+  document.body.append(d);
+  const sluit = () => { d.close(); d.remove(); };
+  d.querySelector('[data-weg]').onclick = sluit;
+  d.addEventListener('cancel', (e) => { e.preventDefault(); sluit(); });
+  d.querySelector('form').onsubmit = async (e) => {
+    e.preventDefault();
+    const formaat = d.querySelector('[name=iw-formaat]:checked').value;
+    const features = [...g.vormen, ...(d.querySelector('#iw-gps').checked ? g.gps : [])];
+    if (!features.length) return melding('Er is niets ingewonnen om te exporteren.', 'fout');
+    const naam = `${String(huidigProject?.naam ?? 'project').replace(/[^\w-]+/g, '_')}-ingewonnen-${vandaag()}`;
+    if (formaat === 'geojson') {
+      download(`${naam}.geojson`, JSON.stringify({ type: 'FeatureCollection', name: 'Ingewonnen gegevens', features }, null, 1), 'application/geo+json');
+    } else if (formaat === 'kml') {
+      download(`${naam}.kml`, IW.kml(features, `Ingewonnen gegevens – ${huidigProject?.naam ?? ''}`), 'application/vnd.google-earth.kml+xml');
+    } else {
+      const ExcelJS = await PX.laadExcelJS();
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet('Ingewonnen');
+      ws.addRow([...IW.KOLOMMEN.map(([kop]) => kop), 'Geometrie (WKT, WGS84)']).font = { bold: true };
+      IW.rijen(features).forEach((r) => ws.addRow(r));
+      ws.columns.forEach((c, i) => { c.width = [12, 14, 11, 28, 20, 24, 10, 28, 10, 8, 10, 12, 12, 44, 60][i] ?? 14; });
+      ws.views = [{ state: 'frozen', ySplit: 1 }];
+      ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: IW.KOLOMMEN.length + 1 } };
+      download(`${naam}.xlsx`, await wb.xlsx.writeBuffer(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    }
+    melding(`${features.length} ${features.length === 1 ? 'vorm' : 'vormen'} geëxporteerd`);
+    sluit();
+  };
+  d.showModal();
 }
 
 let leafletBelofte;
@@ -8927,6 +9051,7 @@ async function kaart() {
     <div class="paginakop">
       <div><h1>Kaart &amp; GIS</h1><p>Areaal: ${matenTekst(totaal, opKaart.length)}${opKaart.length < objecten.length ? ` (${objecten.length - opKaart.length} objecten zonder geometrie)` : ''}.</p></div>
       <div class="knoppen"><button type="button" class="knop" data-kaartopmaak title="Opmaak van te doen, gedaan en overgeslagen op alle kaarten">${I.instellingen} Opmaak te doen / gedaan</button>
+      <button class="knop" type="button" data-iw-export title="Ingewonnen punten, lijnen en vlakken uit de formulieren als GeoJSON, Excel of KML">${I.kaart} Ingewonnen gegevens exporteren</button>
       ${magBeheren() ? `<a class="knop ${lagen.length ? '' : 'primair'}" href="#/gis/importeren">${I.kaart} GIS inladen</a>` : ''}</div>
     </div>
     <div class="kaartindeling">
@@ -9018,7 +9143,7 @@ async function tekenGisKaart(el, { groepen, kleur, groepVan }) {
   el.innerHTML = '';
   const map = L.map(el, { preferCanvas: true, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
   el.leafletKaart = map; // voor tests en debuggen
-  voegAchtergrondToe(L, map, { ingewonnen: true });
+  voegAchtergrondToe(L, map);
 
   const popup = (o) => {
     const k = Object.entries(o.kenmerken ?? {}).filter(([, v]) => v !== null && v !== '' && typeof v !== 'object');
@@ -9092,7 +9217,7 @@ async function tekenObjectenKaart(el, { objecten, kleurVan, statusVan = null, po
   el.innerHTML = '';
   const map = L.map(el, { preferCanvas: true, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
   el.leafletKaart = map; // voor tests en debuggen
-  voegAchtergrondToe(L, map, { ingewonnen: true });
+  voegAchtergrondToe(L, map);
   const groep = L.featureGroup().addTo(map);
   const lagen = new Map();
   const kanAanwijzen = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
@@ -10008,7 +10133,7 @@ async function locatieKaart(blok, id, extra, alleDefs) {
   if (el._kaart) { el._kaart.invalidateSize(); return; }
   const map = L.map(el, { zoomAnimation: false, fadeAnimation: false });
   el._kaart = map;
-  voegAchtergrondToe(L, map);
+  voegAchtergrondToe(L, map, { ingewonnen: 'formulier' });
   const d = alleDefs.find((x) => x.id === id);
   const v = extra[id];
   // Startpunt: bestaande locatie, anders het gekozen object, anders je laatste positie.
@@ -10109,7 +10234,7 @@ async function extraBlok(blok, defsNu, record, { ns = '' } = {}) {
     if (el._kaart || !el.isConnected) return;
     const map = L.map(el, { zoomAnimation: false, fadeAnimation: false });
     el._kaart = map;
-    voegAchtergrondToe(L, map);
+    voegAchtergrondToe(L, map, { ingewonnen: 'formulier' });
     const objectId = app.querySelector('#f-object')?.value;
     const o = objectId ? await db.haal('objecten', objectId) : null;
     const geom = o ? objectGeometrie(o) : null;
@@ -11184,7 +11309,7 @@ async function tekenPakketKaart(el, { pakket, objecten, statusVan, positie = nul
   el.innerHTML = '';
   // Zonder animaties: die lopen anders door nadat je de pagina al hebt verlaten.
   const map = L.map(el, { preferCanvas: true, zoomControl: !mobiel, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
-  voegAchtergrondToe(L, map, { ingewonnen: true });
+  voegAchtergrondToe(L, map);
   const metGeo = objecten.filter((o) => objectGeometrie(o));
   const fc = { type: 'FeatureCollection', features: metGeo.map((o) => ({ type: 'Feature', geometry: objectGeometrie(o), properties: { id: o.id } })) };
   const objectMap = new Map(metGeo.map((o) => [o.id, o]));

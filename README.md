@@ -756,19 +756,21 @@ Weergave en export:
 - **Uitkomsten naar Excel** krijgt per veld een kolom met de geometrie als WKT (WGS84); de CSV van werkzaamheden ook.
 - In de uitkomstenexport kun je **Ingewonnen punten, lijnen en vlakken als GeoJSON** aanvinken: één bestand voor QGIS of ArcGIS met per vorm het veld, de registratie, datum, object, werkpakket, ronde, wie, lengte, oppervlakte en nauwkeurigheid.
 
-### Ingewonnen gegevens op de kaart
+### Ingewonnen gegevens: kaart in het formulier en export
 
-Wat via de formulieren is ingewonnen, staat ook op de kaarten: de **objectenkaart**, de **inspectiekaart**, **Kaart & GIS**, de
-**werkpakketkaart**, de kaarten in planning en dashboard en de **mobiele kaart**. Het gaat om de punten, lijnen en vlakken
-(*Inwinning coördinaten*), de antwoorden op *Locatie*-vragen en – desgewenst – de GPS-locaties van bevindingen, uit werkzaamheden,
-inspecties en taken van het huidige project, ook de vragen per bevinding.
-
-- **Aan en uit**: via de lagenknop rechtsboven op de kaart, onder *Uit formulieren*: **Ingewonnen punten, lijnen en vlakken** (standaard aan)
-  en **GPS-locaties van bevindingen** (standaard uit), met het aantal erachter. De keuze wordt per apparaat onthouden en geldt voor alle kaarten.
-- **Weergave**: ingewonnen vormen in magenta (vlakken half doorzichtig), GPS-locaties van bevindingen als paarse stippen. De vulling van
-  een vlak is niet aanklikbaar, zodat objecten eronder gewoon aan te klikken blijven; de rand wel.
-- **Aanklikken**: de popup toont de vraag, de omschrijving (soort, aantal punten, lengte/oppervlakte, GPS-nauwkeurigheid), het formulier,
-  datum, wie, de bevinding (bij vragen per bevinding) en het object, met **Registratie openen**.
+- **Alleen op de kaart in het formulier.** Op de kaart bij *Inwinning coördinaten*, bij een *Locatie*-vraag en bij *Op kaart kiezen*
+  (GPS per bevinding) staan ter oriëntatie de punten, lijnen en vlakken die **eerder in andere registraties** van het project zijn ingewonnen
+  (magenta; de registratie die je bewerkt telt niet mee, die staat er zelf al op). Ze zijn niet aanklikbaar, zodat tikken op de kaart gewoon
+  een punt zet. Aan/uit via de lagenknop, onder *Eerder ingewonnen*; daar kun je ook de **GPS-locaties van bevindingen** tonen (standaard uit).
+  Op de overige kaarten (objecten, inspecties, Kaart & GIS, werkpakketten, planning, dashboard, mobiele kaart) staan ze niet.
+- **Exporteren**: knop **Ingewonnen gegevens** op de pagina's *Inspecties* en *Werkzaamheden* en **Ingewonnen gegevens exporteren** op
+  *Kaart & GIS*. Alle punten, lijnen en vlakken en antwoorden op locatievragen uit werkzaamheden, inspecties en taken van het project
+  (ook per bevinding), naar keuze met de GPS-locaties van bevindingen, als:
+  - **GeoJSON** (QGIS, ArcGIS),
+  - **Excel**: één regel per vorm met formulier, registratie, datum, object, wie, vraag, bevinding, soort, aantal punten, lengte, oppervlakte,
+    nauwkeurigheid, omschrijving en de geometrie als **WKT**,
+  - **KML** (Google Earth, Google My Maps).
+  Coördinaten in WGS84. Per werkpakket kan het ook via *Uitkomsten naar Excel* (WKT-kolom en optioneel GeoJSON).
 
 ### Vragen per bevinding (bijv. een lijn of vlak per gebrek)
 
@@ -977,9 +979,24 @@ naar een **eisvraag** die in de formulieren komt, gekoppeld aan het **eisnummer*
 
 ## Achtergrondkaart kiezen
 
-Op elke kaart staat rechtsboven één knop (lagen-icoon). Die opent een klein paneel met drie voorbeeldtegels – **Luchtfoto**, **Grijs**
-(PDOK) en **Kaart** (OpenStreetMap) – en daaronder een schuif **Sterkte** (10–100%) voor de achtergrond. Het paneel sluit bij een
-klik of beweging op de kaart. Keuze en sterkte worden per apparaat onthouden en gelden voor alle kaarten.
+Op elke kaart staat rechtsboven één knop (lagen-icoon). Die opent een paneel met voorbeeldtegels:
+
+| Achtergrond | Bron | Handig voor |
+|---|---|---|
+| **Luchtfoto** | PDOK, actuele luchtfoto (8 cm) | standaard; wat er echt ligt |
+| **Infrarood** | PDOK, infraroodluchtfoto | vegetatie (rood/roze = groen), water en verharding goed te onderscheiden |
+| **Topo** | PDOK BRT-achtergrondkaart standaard | wegen, plaatsnamen, oriëntatie |
+| **Grijs** | PDOK BRT grijs | rustige ondergrond: objecten vallen het meest op |
+| **Pastel** | PDOK BRT pastel | lichte kleurenkaart |
+| **Water** | PDOK BRT water | watergangen, kades en waterkeringen |
+| **BGT** | PDOK BGT standaardvisualisatie | grootschalige topografie: verharding, groen, water, panden (vanaf zoomniveau 17; verder uitgezoomd grijs) |
+| **BGT licht** | PDOK BGT achtergrondvisualisatie | idem, lichter |
+| **OSM** | OpenStreetMap | buiten Nederland |
+
+Daaronder **Perceelgrenzen (Kadaster)**: de kadastrale kaart als extra laag over elke achtergrond (vanaf zoomniveau 17), en de schuif
+**Sterkte** (10–100%) voor de achtergrond. Het paneel sluit bij een klik of beweging op de kaart; past het niet in een kleine kaart, dan
+scrolt het. Keuze, perceelgrenzen en sterkte worden per apparaat onthouden en gelden voor alle kaarten. Wisselen van achtergrond
+verandert nooit het zoomniveau.
 
 ## Mobiele app (Android en iOS)
 

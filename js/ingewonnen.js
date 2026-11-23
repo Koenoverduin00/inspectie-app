@@ -71,3 +71,50 @@ export function verzamel(records, { velden = [], objectVan = () => undefined } =
   }
   return { vormen, gps };
 }
+
+// ---------------------------------------------------------------------------
+// Export
+// ---------------------------------------------------------------------------
+const xy = (c) => `${c[0]} ${c[1]}`;
+/** WKT van een GeoJSON-geometrie (WGS84). */
+export function wkt(g) {
+  if (!g) return '';
+  if (g.type === 'Point') return `POINT (${xy(g.coordinates)})`;
+  if (g.type === 'MultiPoint') return `MULTIPOINT (${g.coordinates.map((c) => `(${xy(c)})`).join(', ')})`;
+  if (g.type === 'LineString') return `LINESTRING (${g.coordinates.map(xy).join(', ')})`;
+  if (g.type === 'Polygon') return `POLYGON (${g.coordinates.map((r) => `(${r.map(xy).join(', ')})`).join(', ')})`;
+  return '';
+}
+
+/** Kolommen voor Excel/CSV: [kop, sleutel]. */
+export const KOLOMMEN = [
+  ['Formulier', 'formulier'], ['Registratie', 'id'], ['Datum', 'datum'], ['Object', 'object'], ['Door', 'door'],
+  ['Vraag', 'veld'], ['Bevinding', 'bevinding'], ['Bevinding omschrijving', 'bevindingNaam'], ['Soort', 'soort'],
+  ['Aantal punten', 'punten'], ['Lengte (m)', 'lengte_m'], ['Oppervlakte (m²)', 'oppervlakte_m2'], ['Nauwkeurigheid (m)', 'nauwkeurigheid_m'],
+  ['Omschrijving', 'omschrijving'],
+];
+export const rijen = (features) => features.map((f) => [...KOLOMMEN.map(([, k]) => f.properties?.[k] ?? ''), wkt(f.geometry)]);
+
+const xml = (t) => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+/** KML (Google Earth, Google My Maps). */
+export function kml(features, naam = 'Ingewonnen gegevens') {
+  const c = (l) => l.map((p) => `${p[0]},${p[1]}`).join(' ');
+  const geom = (g) => {
+    if (g.type === 'Point') return `<Point><coordinates>${c([g.coordinates])}</coordinates></Point>`;
+    if (g.type === 'MultiPoint') return `<MultiGeometry>${g.coordinates.map((p) => `<Point><coordinates>${c([p])}</coordinates></Point>`).join('')}</MultiGeometry>`;
+    if (g.type === 'LineString') return `<LineString><tessellate>1</tessellate><coordinates>${c(g.coordinates)}</coordinates></LineString>`;
+    if (g.type === 'Polygon') return `<Polygon><outerBoundaryIs><LinearRing><coordinates>${c(g.coordinates[0])}</coordinates></LinearRing></outerBoundaryIs></Polygon>`;
+    return '';
+  };
+  const pm = features.map((f) => {
+    const p = f.properties ?? {};
+    const data = KOLOMMEN.filter(([, k]) => p[k] !== undefined && p[k] !== '').map(([kop, k]) => `<Data name="${xml(kop)}"><value>${xml(p[k])}</value></Data>`).join('');
+    return `<Placemark><name>${xml(p.veld)}${p.object ? ` – ${xml(p.object)}` : ''}</name><styleUrl>#${p.soort === 'gps' ? 'gps' : 'vorm'}</styleUrl><ExtendedData>${data}</ExtendedData>${geom(f.geometry)}</Placemark>`;
+  }).join('\n');
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${xml(naam)}</name>
+<Style id="vorm"><LineStyle><color>ff5b18c2</color><width>3</width></LineStyle><PolyStyle><color>555b18c2</color></PolyStyle><IconStyle><color>ff5b18c2</color></IconStyle></Style>
+<Style id="gps"><IconStyle><color>ff9a1b6a</color><scale>0.7</scale></IconStyle></Style>
+${pm}
+</Document></kml>`;
+}
