@@ -524,7 +524,7 @@ async function verstuurRecords(store, regels) {
       if (!item) continue;
       rijen.push({
         id: item.id, project_id: store === 'projecten' ? item.id : (item.projectId ?? regel.projectId ?? null),
-        data: item, gewijzigd: item.gewijzigd || regel.tijd, verwijderd: false,
+        data: store === 'projecten' ? await projectVoorServer(item) : item, gewijzigd: item.gewijzigd || regel.tijd, verwijderd: false,
       });
     } else {
       rijen.push({ id: regel.recordId, project_id: regel.projectId ?? null, data: {}, gewijzigd: regel.tijd, verwijderd: true });
@@ -536,6 +536,118 @@ async function verstuurRecords(store, regels) {
     headers: { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
     body: JSON.stringify(rijen),
   });
+  if (store === 'projecten') await ruimOudeDecompositiesOp(rijen);
+}
+
+// ---------------------------------------------------------------------------
+// Decompositie van een project: als los, gecomprimeerd bestand in de opslag in plaats van in de projectregel.
+// Een decompositie kan vele MB's groot zijn; zo verstuurt een gewone projectwijziging maar een paar kB, en wordt
+// de decompositie alleen verstuurd en opgehaald als hij echt verandert.
+// ---------------------------------------------------------------------------
+/** Korte, stabiele vingerafdruk van een tekst (2× FNV-1a, 64 bit). */
+export function vingerafdruk(tekst) {
+  let a = 2166136261;
+  let b = 0x9747b28c;
+  for (let i = 0; i < tekst.length; i += 1) {
+    const c = tekst.charCodeAt(i);
+    a = Math.imul(a ^ c, 16777619);
+    b = Math.imul(b ^ c, 0x5bd1e995);
+    b ^= b >>> 15;
+  }
+  return `${(a >>> 0).toString(36)}${(b >>> 0).toString(36)}${tekst.length.toString(36)}`;
+}
+const GELDIG_PAD = /^[A-Za-z0-9%._~-]+\/decompositie-[a-z0-9]+\.json(\.gz)?$/;
+const vanProject = (ref, pid) => Boolean(ref?.pad && GELDIG_PAD.test(ref.pad) && ref.pad.startsWith(`${encodeURIComponent(pid)}/`));
+const oudeDecomposities = new Map(); // projectId → pad van het vorige bestand (opruimen zodra de nieuwe regel op de server staat)
+
+/** De projectregel zoals hij naar de server gaat: zonder de decompositie zelf, met een verwijzing naar het bestand. */
+export async function projectVoorServer(item) {
+  const { decompositie, _decompositieOphalen, ...rest } = item;
+  // De decompositie op dit apparaat is nog niet bijgewerkt: de nieuwere versie op de server laten staan.
+  if (_decompositieOphalen) return { ...rest, decompositieBestand: _decompositieOphalen };
+  if (decompositie == null) return { ...rest, decompositieBestand: null };
+  const json = JSON.stringify(decompositie);
+  const hash = vingerafdruk(json);
+  const eigen = item.decompositieBestand;
+  if (eigen?.hash === hash && vanProject(eigen, item.id)) return { ...rest, decompositieBestand: eigen };
+  const ref = await verstuurDecompositie(item.id, json, hash);
+  if (vanProject(eigen, item.id) && eigen.pad !== ref.pad) oudeDecomposities.set(item.id, eigen.pad);
+  // Lokaal onthouden dat deze versie al op de server staat (zonder nieuwe wijziging in de wachtrij).
+  const lokaal = await db.haal('projecten', item.id);
+  if (lokaal && lokaal.gewijzigd === item.gewijzigd) await db.sync.bewaar('projecten', { ...lokaal, decompositieBestand: ref });
+  return { ...rest, decompositieBestand: ref };
+}
+
+async function verstuurDecompositie(pid, json, hash) {
+  const gz = typeof CompressionStream === 'function';
+  const body = gz ? await new Response(new Blob([json]).stream().pipeThrough(new CompressionStream('gzip'))).blob() : new Blob([json]);
+  const pad = `${encodeURIComponent(pid)}/decompositie-${hash}.json${gz ? '.gz' : ''}`;
+  await api(`/storage/v1/object/${BUCKET}/${pad}`, {
+    method: 'POST', headers: { 'Content-Type': gz ? 'application/gzip' : 'application/json', 'x-upsert': 'true' }, body,
+  });
+  return { pad, hash, grootte: json.length, op: new Date().toISOString() };
+}
+
+async function haalDecompositie(ref) {
+  const res = await api(`/storage/v1/object/authenticated/${BUCKET}/${ref.pad}`);
+  const blob = await res.blob();
+  try {
+    const stroom = ref.pad.endsWith('.gz') ? blob.stream().pipeThrough(new DecompressionStream('gzip')) : blob.stream();
+    return JSON.parse(await new Response(stroom).text());
+  } catch (f) {
+    throw new Error(`Decompositie onleesbaar: ${f.message}`); // geen TypeError: dat zou als 'geen verbinding' gelden
+  }
+}
+
+async function ruimOudeDecompositiesOp(rijen) {
+  for (const r of rijen) {
+    const pad = oudeDecomposities.get(r.id);
+    if (!pad || r.data?.decompositieBestand?.pad === pad) continue;
+    oudeDecomposities.delete(r.id);
+    try {
+      await api(`/storage/v1/object/${BUCKET}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prefixes: [pad] }) });
+    } catch { /* niet erg: blijft als oud bestand staan */ }
+  }
+}
+
+/** Binnenkomende projectregel aanvullen met de decompositie (uit het bestand, of de al aanwezige lokale versie). */
+async function metDecompositie(data, lokaal) {
+  if (data.decompositie !== undefined || !('decompositieBestand' in data)) return data; // oude vorm, of geen decompositie
+  const ref = data.decompositieBestand;
+  if (!ref) {
+    const { decompositie, _decompositieOphalen, ...rest } = data;
+    return rest;
+  }
+  if (lokaal?.decompositie && !lokaal._decompositieOphalen && vingerafdruk(JSON.stringify(lokaal.decompositie)) === ref.hash) {
+    return { ...data, decompositie: lokaal.decompositie };
+  }
+  try {
+    if (!vanProject(ref, data.id)) throw new Error('Ongeldige verwijzing naar de decompositie');
+    return { ...data, decompositie: await haalDecompositie(ref) };
+  } catch (f) {
+    if (f instanceof TypeError || f instanceof NietIngelogd || isOverbelast(f)) throw f;
+    console.warn('Decompositie nog niet opgehaald', f.message);
+    // Later opnieuw proberen; tot die tijd de vorige versie gebruiken.
+    return { ...data, decompositie: lokaal?.decompositie, decompositieBestand: lokaal?.decompositieBestand ?? null, _decompositieOphalen: ref };
+  }
+}
+
+/** Projecten waarvan de decompositie nog niet (goed) is opgehaald: opnieuw proberen. */
+async function haalOntbrekendeDecompositiesOp() {
+  for (const p of await db.alle('projecten')) {
+    const ref = p._decompositieOphalen ?? (p.decompositieBestand && !p.decompositie ? p.decompositieBestand : null);
+    if (!ref || !vanProject(ref, p.id) || await db.sync.heeftWachtend('projecten', p.id)) continue;
+    try {
+      const decompositie = await haalDecompositie(ref);
+      const nu = await db.haal('projecten', p.id);
+      if (!nu || nu.gewijzigd !== p.gewijzigd) continue;
+      const { _decompositieOphalen, ...rest } = nu;
+      await db.sync.bewaar('projecten', { ...rest, decompositie, decompositieBestand: ref });
+    } catch (f) {
+      if (f instanceof TypeError || f instanceof NietIngelogd || isOverbelast(f)) throw f;
+      console.warn(`Decompositie van ${p.id} nog niet beschikbaar`, f.message);
+    }
+  }
 }
 
 const fotoPad = (id, projectId) => `${projectId ? `${encodeURIComponent(projectId)}/` : ''}${encodeURIComponent(id)}.jpg`;
@@ -572,6 +684,7 @@ async function haalOp() {
   let gewijzigd = 0;
   // Eerst de projecten (klein): daaruit volgt welke projecten van jou zijn.
   await haalTabel('projecten', {}, (n) => { gewijzigd += n; });
+  await haalOntbrekendeDecompositiesOp();
   const keuze = (await projectBeleid.ids?.()) ?? null;
   const ids = keuze ? [...keuze] : null;
   // Projecten die nieuw in de keuze staan, hebben nog geen gegevens op dit apparaat: die eenmalig helemaal ophalen.
@@ -653,7 +766,8 @@ async function verwerkRij(tabel, rij) {
     return true;
   }
   if (lokaal && lokaal.gewijzigd === rij.data?.gewijzigd) return false;
-  await db.sync.bewaar(tabel, { ...rij.data, id: rij.id });
+  const data = tabel === 'projecten' ? await metDecompositie({ ...rij.data, id: rij.id }, lokaal) : rij.data;
+  await db.sync.bewaar(tabel, { ...data, id: rij.id });
   return true;
 }
 

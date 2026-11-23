@@ -875,6 +875,13 @@ Voor opdrachtgevers die volgens NEN 2767 werken met een eigen decompositie (syst
   element of object: lijsten tonen de verdeling (bijv. "1×3, 4×1"), detail en rapport een tabel per bouwdeel, de Excel-export een blad *Bouwdeelscores*.
   Een GIS-vlak dat aan een bouwdeel is gekoppeld, krijgt op de objectenkaart de laatst gemeten score van dat bouwdeel.
 - Zonder decompositie of koppeling werkt de inspectie zoals voorheen (één conditie per object, maatgevend gebrek).
+- **Opslag op de server**: de decompositie staat niet in de projectregel maar als **los, gecomprimeerd bestand** in de opslag
+  (`<project>/decompositie-<vingerafdruk>.json.gz`, in de bucket `fotos`, met dezelfde toegang als de foto's van het project). De projectregel
+  bevat alleen een verwijzing (`decompositieBestand`). Daardoor verstuurt een gewone projectwijziging een paar kB in plaats van vele MB's
+  (een decompositie van 15 MB wordt een bestand van ca. 1,5 MB en een projectregel van 0,5 kB), en wordt de decompositie alleen verstuurd en
+  opgehaald als hij echt verandert. Het vorige bestand wordt na een nieuwe versie opgeruimd. Lukt het ophalen even niet, dan houdt het apparaat
+  de vorige versie en probeert het bij de volgende synchronisatie opnieuw. Oude projectregels met de decompositie erin worden gewoon gelezen en
+  bij de eerstvolgende projectwijziging automatisch omgezet; er is geen SQL-script voor nodig.
 
 ## Kosten en uren uitzetten
 
