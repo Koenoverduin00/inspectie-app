@@ -2289,6 +2289,26 @@ function demoWelkom(mobiel) {
     <button type="button" class="knop klein" data-demowelkom-weg>Sluiten</button></div>
     <ul class="demowelkom-lijst">${items.map(([h, ic, t, u]) => `<li><a href="${h}"><span class="micoon klein">${ic}</span><span><strong>${t}</strong><small>${u}</small></span></a></li>`).join('')}</ul></section>`;
 }
+// Dashboard, voortgang per werkpakket: compact of uitgebreid, en per werkpakket opengeklapt (per apparaat onthouden).
+function dashVoortgangOpen() {
+  try { return new Set(JSON.parse(instelling.lees('dashVoortgangOpen', '[]'))); } catch { return new Set(); }
+}
+document.addEventListener('toggle', (e) => {
+  const d = e.target;
+  if (!(d instanceof HTMLDetailsElement) || !d.matches('.vpregel')) return;
+  const open = dashVoortgangOpen();
+  if (d.open) open.add(d.dataset.vp); else open.delete(d.dataset.vp);
+  instelling.schrijf('dashVoortgangOpen', JSON.stringify([...open]));
+}, true);
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-vpweergave]');
+  if (!b) return;
+  const w = b.dataset.vpweergave;
+  instelling.schrijf('dashVoortgang', w);
+  const blok = b.closest('.dashvoortgang');
+  blok.querySelectorAll('[data-vpvak]').forEach((x) => { x.hidden = x.dataset.vpvak !== w; });
+  blok.querySelectorAll('[data-vpweergave]').forEach((x) => { const aan = x.dataset.vpweergave === w; x.classList.toggle('actief', aan); x.setAttribute('aria-pressed', String(aan)); });
+});
 document.addEventListener('click', (e) => {
   if (e.target.closest('[data-iw-export]')) exporteerIngewonnen().catch((f) => melding(`Exporteren mislukt: ${f.message}`, 'fout'));
 });
@@ -2487,14 +2507,37 @@ async function dashboard() {
     },
     voortgang: {
       titel: 'Voortgang per werkpakket', uitleg: 'Alle lopende werkpakketten met voortgangsbalk.', breed: true,
-      html: () => `<section class="kaart">${kop2('Voortgang per werkpakket', '#/werkpakketten', 'Alle werkpakketten')}
-        ${lopendePakketten.length ? `<div class="pakketten compact">${lopendePakketten.map((p) => {
-    const sig = ergste(p);
-    return `<a class="pakket" href="#/werkpakketten/${esc(p.id)}"><div class="pakketkop"><strong>${wpNaam(p)}</strong>${sig
-      ? `<span class="label-status ${DB.SIGNAAL[sig].klasse}">${esc(sig)}</span>` : pakketStatusLabel(p.status)}</div>
-          <small>${pakketRondesTekst(p, periodeDash)}</small>${voortgangBalk(g.voortgangen.get(p.id))}</a>`;
-  }).join('')}</div>` : '<p class="leeg">Geen lopende werkpakketten.</p>'}
-        ${afgerondRecent.length ? `<p class="tussenkop">${I.vink} Afgerond in de laatste 60 dagen: ${afgerondRecent.map((x) => wpNaam(x.v)).join(', ')}</p>` : ''}</section>`,
+      html: () => {
+        const weergave = instelling.lees('dashVoortgang', 'uitgebreid') === 'compact' ? 'compact' : 'uitgebreid';
+        const open = dashVoortgangOpen();
+        const kaartje = (p) => {
+          const sig = ergste(p);
+          return `<a class="pakket" href="#/werkpakketten/${esc(p.id)}"><div class="pakketkop"><strong>${wpNaam(p)}</strong>${sig
+            ? `<span class="label-status ${DB.SIGNAAL[sig].klasse}">${esc(sig)}</span>` : pakketStatusLabel(p.status)}</div>
+            <small>${pakketRondesTekst(p, periodeDash)}</small>${voortgangBalk(g.voortgangen.get(p.id))}</a>`;
+        };
+        // Compact: één regel per werkpakket (naam, balk, %); per werkpakket open te klappen naar de uitgebreide weergave.
+        const regel = (p) => {
+          const v = g.voortgangen.get(p.id);
+          const pct = Math.max(0, Math.min(100, Math.round(v?.percentage ?? 0)));
+          const sig = ergste(p);
+          return `<details class="vpregel" data-vp="${esc(p.id)}" ${open.has(p.id) ? 'open' : ''}><summary>
+              <span class="vp-naam">${wpNaam(p)}</span>
+              <span class="vp-balk" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="${pct}% klaar"><i style="width:${pct}%"></i></span>
+              <span class="vp-pct">${pct}%</span>
+              <span class="vp-status">${sig ? `<span class="label-status ${DB.SIGNAAL[sig].klasse}">${esc(sig)}</span>` : pakketStatusLabel(p.status)}</span></summary>
+            <div class="pakketten compact">${kaartje(p)}</div></details>`;
+        };
+        const knop = (w, label) => `<button type="button" class="${weergave === w ? 'actief' : ''}" data-vpweergave="${w}" aria-pressed="${weergave === w}">${label}</button>`;
+        return `<section class="kaart dashvoortgang">
+          <div class="paginakop" style="margin-bottom:.5rem"><h2 style="margin:0">Voortgang per werkpakket</h2>
+            <div class="vp-acties"><div class="segment klein" role="group" aria-label="Weergave">${knop('compact', 'Compact')}${knop('uitgebreid', 'Uitgebreid')}</div>
+            <a href="#/werkpakketten">Alle werkpakketten →</a></div></div>
+          ${lopendePakketten.length ? `<div class="vplijst" data-vpvak="compact" ${weergave === 'compact' ? '' : 'hidden'}>${lopendePakketten.map(regel).join('')}</div>
+            <div class="pakketten compact" data-vpvak="uitgebreid" ${weergave === 'uitgebreid' ? '' : 'hidden'}>${lopendePakketten.map(kaartje).join('')}</div>`
+            : '<p class="leeg">Geen lopende werkpakketten.</p>'}
+          ${afgerondRecent.length ? `<p class="tussenkop">${I.vink} Afgerond in de laatste 60 dagen: ${afgerondRecent.map((x) => wpNaam(x.v)).join(', ')}</p>` : ''}</section>`;
+      },
     },
     maatregelen: {
       titel: 'Open maatregelen', uitleg: 'Open maatregelen uit inspecties per urgentie' + (toonKosten() ? ', met raming.' : '.'), breed: false,

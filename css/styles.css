@@ -2048,3 +2048,27 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
 .kaartkeuze-extra { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: .4rem; font-size: .75rem; padding: 0 .15rem; cursor: pointer; line-height: 1.25; }
 .kaartkeuze-extra input { min-height: 0; width: 16px; height: 16px; margin: 0; accent-color: #0b4f6c; }
 .kaartkeuze-extra small { display: block; color: #777; }
+
+/* Dashboard: voortgang per werkpakket, compact of uitgebreid */
+.dashvoortgang .vp-acties { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
+.segment.klein { display: inline-flex; gap: 0; border: 1px solid var(--rand); border-radius: 999px; overflow: hidden; }
+.segment.klein button { border: 0; background: none; color: var(--tekst); font: inherit; font-size: .82rem; padding: .3rem .8rem; min-height: 0; cursor: pointer; border-radius: 0; }
+.segment.klein button.actief { background: #0b4f6c; color: #fff; font-weight: 600; }
+.vplijst { display: grid; border-top: 1px solid var(--rand); }
+.vpregel { border-bottom: 1px solid var(--rand); }
+.vpregel > summary { display: grid; grid-template-columns: minmax(0, 1fr) minmax(80px, 180px) 3.2em auto; align-items: center; gap: .75rem; padding: .45rem .25rem; cursor: pointer; list-style: none; }
+.vpregel > summary::-webkit-details-marker { display: none; }
+.vpregel > summary::before { content: '▸'; position: absolute; margin-left: -1rem; color: var(--tekst-zacht); transition: transform .15s; }
+.vpregel { position: relative; padding-left: 1rem; }
+.vpregel[open] > summary::before { transform: rotate(90deg); }
+.vpregel > summary:hover { background: color-mix(in srgb, var(--primair) 6%, transparent); }
+.vp-naam { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.vp-balk { display: block; height: 8px; border-radius: 999px; overflow: hidden; background: color-mix(in srgb, #e07b00 22%, var(--achtergrond)); }
+.vp-balk i { display: block; height: 100%; background: #1a7f37; }
+.vp-pct { text-align: right; font-variant-numeric: tabular-nums; font-size: .88rem; }
+.vp-status .label-status { white-space: nowrap; }
+.vpregel > .pakketten { padding: 0 0 .6rem; grid-template-columns: 1fr; }
+@media (max-width: 600px) {
+  .vpregel > summary { grid-template-columns: minmax(0, 1fr) 3em auto; }
+  .vp-balk { grid-column: 1 / -1; grid-row: 2; }
+}

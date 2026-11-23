@@ -578,6 +578,12 @@ Beschikbare blokken: Kerncijfers (tegels), Uitgevoerde werkzaamheden, Lopende ro
 maatregelen, Vervolgacties, Te beoordelen (alleen voor beoordelaars), Staat van het areaal (verdeling conditie/oordeel), Inspectieplanning
 (verlopen/binnenkort), Kaart, Recente inspecties en Recente werkzaamheden.
 
+**Voortgang per werkpakket**: rechtsboven in het blok kies je **Compact** of **Uitgebreid**. *Uitgebreid* is de bekende weergave met een
+kaart per werkpakket (status, rondes, voortgangsbalk en aantallen). *Compact* toont één regel per werkpakket: naam, balk, percentage en
+status, handig bij veel werkpakketten. Tik op een regel om **dat werkpakket** open te klappen naar de uitgebreide weergave; zo kun je
+per werkpakket kiezen wat je ziet. Zowel de weergave als welke werkpakketten zijn opengeklapt worden per apparaat onthouden.
+Wisselen gebeurt direct, zonder dat de pagina opnieuw laadt of verspringt.
+
 **Kaartblok**: kies met de knoppen boven de kaart welke werkpakketten je ziet (één, meerdere of "Alle objecten") en waarop de kleur is
 gebaseerd: **voortgang** (te doen / gedaan / overgeslagen in de actieve ronde), **werkpakket** (elk pakket een eigen kleur) of **laatste oordeel**.
 De legenda en het aantal objecten staan onder de kaart; een klik op een object toont per werkpakket de status. Je keuze wordt in je
