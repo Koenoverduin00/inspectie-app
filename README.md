@@ -756,6 +756,20 @@ Weergave en export:
 - **Uitkomsten naar Excel** krijgt per veld een kolom met de geometrie als WKT (WGS84); de CSV van werkzaamheden ook.
 - In de uitkomstenexport kun je **Ingewonnen punten, lijnen en vlakken als GeoJSON** aanvinken: één bestand voor QGIS of ArcGIS met per vorm het veld, de registratie, datum, object, werkpakket, ronde, wie, lengte, oppervlakte en nauwkeurigheid.
 
+### Ingewonnen gegevens op de kaart
+
+Wat via de formulieren is ingewonnen, staat ook op de kaarten: de **objectenkaart**, de **inspectiekaart**, **Kaart & GIS**, de
+**werkpakketkaart**, de kaarten in planning en dashboard en de **mobiele kaart**. Het gaat om de punten, lijnen en vlakken
+(*Inwinning coördinaten*), de antwoorden op *Locatie*-vragen en – desgewenst – de GPS-locaties van bevindingen, uit werkzaamheden,
+inspecties en taken van het huidige project, ook de vragen per bevinding.
+
+- **Aan en uit**: via de lagenknop rechtsboven op de kaart, onder *Uit formulieren*: **Ingewonnen punten, lijnen en vlakken** (standaard aan)
+  en **GPS-locaties van bevindingen** (standaard uit), met het aantal erachter. De keuze wordt per apparaat onthouden en geldt voor alle kaarten.
+- **Weergave**: ingewonnen vormen in magenta (vlakken half doorzichtig), GPS-locaties van bevindingen als paarse stippen. De vulling van
+  een vlak is niet aanklikbaar, zodat objecten eronder gewoon aan te klikken blijven; de rand wel.
+- **Aanklikken**: de popup toont de vraag, de omschrijving (soort, aantal punten, lengte/oppervlakte, GPS-nauwkeurigheid), het formulier,
+  datum, wie, de bevinding (bij vragen per bevinding) en het object, met **Registratie openen**.
+
 ### Vragen per bevinding (bijv. een lijn of vlak per gebrek)
 
 Bij het inspectieformulier kies je **per vraag** waar hij staat:
@@ -1196,6 +1210,7 @@ js/eisen.js           eisbibliotheek: inlezen, vergelijken, eisvragen en verific
 js/eisdossier.js      verificatiedossier als Excel (samenvatting, eisen, bewijs, afwijkingen)
 js/storingenexcel.js  export van het storingenregister naar Excel
 js/geominwinning.js  inwinning van punten, lijnen en vlakken: lengte, oppervlakte, WKT, GeoJSON
+js/ingewonnen.js     ingewonnen vormen, locaties en GPS van bevindingen uit de formulieren verzamelen (kaartlaag)
 js/voortgangsoverzicht.js  voortgangsoverzicht voor overleg: achterstallig, lopend en binnenkort (afdruk en Excel)
 js/storingen.js       storingenregister: meldingen + registraties → zaken met status
 js/inzet.js           bestede uren bij storingen (regels, totalen, controle)

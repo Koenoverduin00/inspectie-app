@@ -31,6 +31,7 @@ import * as SR from './storingen.js';
 import * as SX from './storingenexcel.js';
 import * as VO from './voortgangsoverzicht.js';
 import * as GI from './geominwinning.js';
+import * as IW from './ingewonnen.js';
 import * as IMP from './gisimport.js';
 import * as ST from './stowa.js';
 import * as DG from './digigids.js';
@@ -8641,7 +8642,7 @@ const ACHTERGRONDEN = {
   },
 };
 
-function voegAchtergrondToe(L, map) {
+function voegAchtergrondToe(L, map, { ingewonnen = false } = {}) {
   const keuze = ACHTERGRONDEN[instelling.lees('achtergrond', 'luchtfoto')] ? instelling.lees('achtergrond', 'luchtfoto') : 'luchtfoto';
   const zetHelderheid = (waarde) => map.getContainer().style.setProperty('--kaart-helderheid', String(waarde / 100));
   let helderheid = Number(instelling.lees('helderheid', '50'));
@@ -8660,6 +8661,9 @@ function voegAchtergrondToe(L, map) {
         <div class="kaartkeuze-paneel" hidden role="dialog" aria-label="Achtergrondkaart">
           <div class="kaartkeuze-opties" role="radiogroup" aria-label="Achtergrond">${Object.entries(ACHTERGRONDEN).map(([id, a]) => `<button type="button" role="radio" data-ak="${id}" aria-checked="${id === huidig}" class="${id === huidig ? 'actief' : ''}"><i class="kk-voorbeeld kk-${id}"></i><span>${esc(a.kort ?? a.naam)}</span></button>`).join('')}</div>
           <label class="kaartkeuze-sterkte"><span>Sterkte</span><input type="range" min="10" max="100" step="10" value="${helderheid}" aria-label="Sterkte achtergrond"><output>${helderheid}%</output></label>
+          ${ingewonnen ? `<div class="kaartkeuze-ingewonnen"><b>Uit formulieren</b>
+            <label><input type="checkbox" data-iw="vormen"><i class="iw-teken iw-vorm"></i><span>Ingewonnen punten, lijnen en vlakken <small data-iwn="vormen"></small></span></label>
+            <label><input type="checkbox" data-iw="gps"><i class="iw-teken iw-gps"></i><span>GPS-locaties van bevindingen <small data-iwn="gps"></small></span></label></div>` : ''}
         </div>`;
       L.DomEvent.disableClickPropagation(div);
       L.DomEvent.disableScrollPropagation(div);
@@ -8683,6 +8687,7 @@ function voegAchtergrondToe(L, map) {
         div.querySelector('output').textContent = `${invoer.value}%`;
         instelling.schrijf('helderheid', invoer.value);
       });
+      if (ingewonnen) toonIngewonnen(L, map, div.querySelector('.kaartkeuze-ingewonnen'));
       return div;
     },
   });
@@ -8715,6 +8720,90 @@ function voegAchtergrondToe(L, map) {
     },
   });
   new Passend().addTo(map);
+}
+
+// ---------------------------------------------------------------------------
+// Ingewonnen gegevens uit de formulieren op de kaart (punten, lijnen, vlakken, locatievragen en GPS van bevindingen)
+// ---------------------------------------------------------------------------
+const IW_KLEUR = { vormen: '#c2185b', gps: '#6a1b9a' };
+function ingewonnenKeuze() {
+  try { return { vormen: true, gps: false, ...(JSON.parse(instelling.lees('kaartIngewonnen', '{}')) || {}) }; } catch { return { vormen: true, gps: false }; }
+}
+const ingewonnenLink = (p) => (isMobiel()
+  ? { inspecties: `#/m/inspectie/${encodeURIComponent(p.id)}`, werkzaamheden: `#/m/werk/${encodeURIComponent(p.id)}`, taken: '' }
+  : { inspecties: `#/inspecties/${encodeURIComponent(p.id)}`, werkzaamheden: `#/werkzaamheden/${encodeURIComponent(p.id)}`, taken: `#/taken/${encodeURIComponent(p.id)}/bewerken` })[p.store] ?? '';
+function ingewonnenPopup(p) {
+  const link = ingewonnenLink(p);
+  return `<div class="iw-popup"><strong>${esc(p.veld)}</strong><div>${esc(p.omschrijving ?? '')}</div>
+    <small>${esc(p.formulier)}${p.datum ? ` · ${esc(datumNL(p.datum))}` : ''}${p.door ? ` · ${esc(p.door)}` : ''}</small>
+    ${p.bevinding ? `<small>Bevinding ${p.bevinding}${p.bevindingNaam && !/^Bevinding \d+$/.test(p.bevindingNaam) ? `: ${esc(p.bevindingNaam)}` : ''}</small>` : ''}
+    <small data-iw-object></small>
+    ${link ? `<a href="${link}" class="knop klein">Registratie openen</a>` : ''}</div>`;
+}
+async function ingewonnenGegevens() {
+  const [werkzaamheden, inspecties, taken] = await Promise.all(['werkzaamheden', 'inspecties', 'taken'].map((st) => inProject(st)));
+  return IW.verzamel({ werkzaamheden, inspecties, taken }, { velden: huidigProject?.velden ?? [] });
+}
+function toonIngewonnen(L, map, blok) {
+  if (!blok) return;
+  const keuze = ingewonnenKeuze();
+  const lagen = { vormen: L.layerGroup(), gps: L.layerGroup() };
+  let gegevens = null;
+  const bind = (laag, p) => {
+    laag.bindPopup(ingewonnenPopup(p), { maxWidth: 280 });
+    laag.on('popupopen', async (e) => {
+      const el = e.popup.getElement()?.querySelector('[data-iw-object]');
+      const r = el ? await db.haal(p.store, p.id) : null;
+      const o = r?.objectId ? await db.haal('objecten', r.objectId) : null;
+      if (el && o) el.textContent = `Object: ${[o.code, o.naam].filter(Boolean).join(' · ')}`;
+    });
+  };
+  const teken = (soort) => {
+    const groep = lagen[soort];
+    groep.clearLayers();
+    const kleur = IW_KLEUR[soort];
+    for (const f of gegevens[soort]) {
+      const p = f.properties;
+      const g = f.geometry;
+      const pt = (c) => L.latLng(c[1], c[0]);
+      if (g.type === 'Polygon') {
+        // Vlak: de vulling is niet aanklikbaar, zodat objecten eronder aanklikbaar blijven; de rand wel.
+        L.polygon(g.coordinates[0].map(pt), { color: kleur, weight: 0, fillColor: kleur, fillOpacity: 0.18, interactive: false }).addTo(groep);
+        const rand = L.polyline(g.coordinates[0].map(pt), { color: kleur, weight: 3 });
+        bind(rand, p); rand.addTo(groep);
+      } else if (g.type === 'LineString') {
+        const lijn = L.polyline(g.coordinates.map(pt), { color: kleur, weight: 4 });
+        bind(lijn, p); lijn.addTo(groep);
+      } else {
+        for (const c of g.type === 'MultiPoint' ? g.coordinates : [g.coordinates]) {
+          const m = L.circleMarker(pt(c), soort === 'gps'
+            ? { radius: 5, color: '#fff', weight: 1.5, fillColor: kleur, fillOpacity: 1 }
+            : { radius: 6, color: '#fff', weight: 2, fillColor: kleur, fillOpacity: 1 });
+          bind(m, p); m.addTo(groep);
+        }
+      }
+    }
+  };
+  const zet = (soort, aan) => {
+    if (aan) { if (gegevens) teken(soort); lagen[soort].addTo(map); } else map.removeLayer(lagen[soort]);
+  };
+  blok.querySelectorAll('[data-iw]').forEach((cb) => {
+    cb.checked = Boolean(keuze[cb.dataset.iw]);
+    cb.addEventListener('change', () => {
+      keuze[cb.dataset.iw] = cb.checked;
+      instelling.schrijf('kaartIngewonnen', JSON.stringify(keuze));
+      zet(cb.dataset.iw, cb.checked);
+    });
+  });
+  map.ingewonnen = ingewonnenGegevens().then((g) => {
+    gegevens = g;
+    for (const soort of ['vormen', 'gps']) {
+      const n = blok.querySelector(`[data-iwn="${soort}"]`);
+      if (n) n.textContent = `(${g[soort].length})`;
+      if (keuze[soort]) zet(soort, true);
+    }
+    return g;
+  }).catch((f) => { console.warn('Ingewonnen gegevens niet geladen', f); return null; });
 }
 
 let leafletBelofte;
@@ -8928,7 +9017,8 @@ async function tekenGisKaart(el, { groepen, kleur, groepVan }) {
   if (!el.isConnected) return null; // inmiddels naar een andere pagina
   el.innerHTML = '';
   const map = L.map(el, { preferCanvas: true, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
-  voegAchtergrondToe(L, map);
+  el.leafletKaart = map; // voor tests en debuggen
+  voegAchtergrondToe(L, map, { ingewonnen: true });
 
   const popup = (o) => {
     const k = Object.entries(o.kenmerken ?? {}).filter(([, v]) => v !== null && v !== '' && typeof v !== 'object');
@@ -9002,7 +9092,7 @@ async function tekenObjectenKaart(el, { objecten, kleurVan, statusVan = null, po
   el.innerHTML = '';
   const map = L.map(el, { preferCanvas: true, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
   el.leafletKaart = map; // voor tests en debuggen
-  voegAchtergrondToe(L, map);
+  voegAchtergrondToe(L, map, { ingewonnen: true });
   const groep = L.featureGroup().addTo(map);
   const lagen = new Map();
   const kanAanwijzen = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
@@ -11094,7 +11184,7 @@ async function tekenPakketKaart(el, { pakket, objecten, statusVan, positie = nul
   el.innerHTML = '';
   // Zonder animaties: die lopen anders door nadat je de pagina al hebt verlaten.
   const map = L.map(el, { preferCanvas: true, zoomControl: !mobiel, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
-  voegAchtergrondToe(L, map);
+  voegAchtergrondToe(L, map, { ingewonnen: true });
   const metGeo = objecten.filter((o) => objectGeometrie(o));
   const fc = { type: 'FeatureCollection', features: metGeo.map((o) => ({ type: 'Feature', geometry: objectGeometrie(o), properties: { id: o.id } })) };
   const objectMap = new Map(metGeo.map((o) => [o.id, o]));
