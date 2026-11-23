@@ -952,6 +952,52 @@ staan, worden eronder genoemd. Pas je de vragen aan van een type dat uit de bibl
 Elke bewerkronde maakt een nieuwe versie, zodat projecten zien dat er een update is. Bij het overnemen in een project blijven voorwaarden
 tussen vragen kloppen.
 
+## Formulieren: kopiëren, eisen verwerken en importeren
+
+**Kopie als basis.** Elk formulier kan de basis zijn voor een nieuw formulier; het origineel verandert niet.
+
+- **Kopie** (knop per rij bij *Inspectietypen* en in de *Bibliotheek*): een kopie met een nieuwe naam (voorgesteld: *Naam (kopie)*), met
+  methodiek, schaal, onderdelen, gebreken, controlepunten en alle vragen, ook eisvragen en voorwaarden. Je komt direct in de editor.
+- **＋ Op basis van bestaand**: kies een formulier uit dit project, de bibliotheek of een ander project (met zoeken) en geef de nieuwe naam.
+- **＋ Uit ander formulier** (op de pagina *Vragen* van een formulier): neem één of meer vragen over uit een ander formulier. Voorwaarden
+  blijven kloppen als hun bronvraag ook meekomt.
+- **Kopie van één vraag** (knop naast *Bewerken*): komt direct onder het origineel en opent in de editor. Een eiskoppeling gaat niet mee
+  (anders telt de eis dubbel).
+
+**Eisen verwerken.**
+
+- **＋ Formulier uit eisen** (bij *Inspectietypen* en op de pagina *Eisen*): naam, eisen kiezen, klaar. Elke eisvraag wordt een vraag
+  gekoppeld aan het eisnummer, met de eistekst eronder. Het formulier krijgt de schaal *Voldoet / Voldoet niet*; methodiek, schaal en extra
+  vragen pas je daarna aan. Met **Tussenkop per contractstuk** worden de eisvragen gegroepeerd.
+- **De eiskiezer** (ook bij *＋ Uit eisbibliotheek* in elk formulier, ook in de bibliotheek): zoeken op tekst of meerdere eisnummers,
+  filteren op **contractstuk**, **alleen eisen die nog in geen formulier staan**, **Alle zichtbare aanvinken** / **Niets aanvinken**, en kiezen
+  of de eisvragen **verplicht** zijn. Per eis zie je of hij al in dit of een ander formulier staat.
+
+**Meer aanpasbaar.**
+
+- **Tussenkop met uitleg** (veldtype *Kop*): deelt een formulier op in delen, met een uitleg eronder; geen antwoord, nooit verplicht,
+  niet in exports.
+- **Standaardwaarde**: tekst, getal, een keuze, Ja/Nee, een datum of *vandaag*, een tijd of *nu*. Staat al ingevuld in een **nieuw**
+  formulier (of een nieuwe bevinding); bestaande registraties veranderen nooit. Een standaardwaarde die niet past, wordt geweigerd.
+- Vragen tot 250 tekens (lange eisvragen) en een toelichting over meerdere regels.
+
+**Importeren: veel formulieren tegelijk** (knop *Importeren* bij *Inspectietypen* en in de *Bibliotheek*).
+
+- **Sjabloon met voorbeelden** downloadt een Excel met de bladen *Formulieren*, *Vragen*, *Uitleg* en (als het project eisen heeft)
+  *Eisen (ter info)*.
+- Blad **Vragen**: één regel per vraag. Kolommen: *Formulier, Vraag, Antwoordtype, Keuzes, Verplicht, Waar, Eisnummer, Toelichting,
+  Eenheid, Min, Max, Standaardwaarde, Alleen tonen als*. *Waar* = Per inspectie, Per bevinding, Controlepunt, Onderdeel of Gebrek.
+  Een lege formuliercel hoort bij het formulier erboven. Met alleen een eisnummer wordt de eisvraag (met type en keuzes) uit de
+  eisbibliotheek gebruikt. *Alleen tonen als* = "Vraag = Waarde".
+- Blad **Formulieren** (optioneel): *Formulier, Methodiek, Omschrijving, Schaal* (niveaus gescheiden door `;`, kleuren automatisch),
+  *Onderdelen, Gebreken, Op basis van* (begin als kopie van een bestaand formulier), *Overzichtsfoto's*.
+- **Voorbeeld vooraf**: per formulier nieuw of bestaat al, methodiek, schaal, aantallen (vragen, eisvragen, per bevinding,
+  controlepunten, onderdelen, gebreken) en per regel de fouten en opmerkingen (bijv. onbekend antwoordtype, keuzes ontbreken, eis niet
+  in de bibliotheek, voorwaarde niet gevonden). Formulieren met fouten worden overgeslagen; de rest gaat door.
+- **Bestaande formulieren**: *Vervangen* (in een project blijft het type en dus de koppeling met werkpakketten; instellingen en eigen vragen
+  worden vervangen; bestaande inspecties houden hun formulier) of *Overslaan*. In de bibliotheek wordt het een nieuwe versie.
+- **Huidige formulieren als Excel** exporteert alle formulieren in hetzelfde formaat: aanpassen in Excel en weer inlezen.
+
 ## Eigen formuliervelden per project
 
 Via **Projecten → Formuliervelden** stelt een beheerder per project extra regels in voor *werkzaamheden*,
@@ -971,7 +1017,8 @@ later wordt verwijderd.
 **Veldtypen**: tekst, getal (eenheid, min/max), keuzelijst, ja/nee, datum, tijd, foto, checklist (alles afvinken),
 **meerkeuze** (meerdere opties), **locatie** (GPS of punt op de kaart, met het object als achtergrond), **handtekening**
 (tekenen met de vinger + naam ondertekenaar; opgeslagen als afbeelding), **begin- en eindtijd** (optioneel pauze en
-aantal personen; duur en manuren worden berekend, over middernacht mag) en **bijlage** (pdf/foto/document, max. 10 MB).
+aantal personen; duur en manuren worden berekend, over middernacht mag), **bijlage** (pdf/foto/document, max. 10 MB) en
+**tussenkop met uitleg** (geen antwoord). Bij tekst, getal, keuze, ja/nee, datum en tijd kan een **standaardwaarde**.
 
 **Alleen tonen als …**: een veld kan afhangen van een ja/nee-, keuze- of meerkeuzeveld (bijv. *Hoeveelheid* en
 *Stortbon* alleen als *Afgevoerd?* = Ja). Verborgen velden zijn nooit verplicht en worden niet opgeslagen.
@@ -1251,6 +1298,7 @@ js/eisen.js           eisbibliotheek: inlezen, vergelijken, eisvragen en verific
 js/eisdossier.js      verificatiedossier als Excel (samenvatting, eisen, bewijs, afwijkingen)
 js/storingenexcel.js  export van het storingenregister naar Excel
 js/geominwinning.js  inwinning van punten, lijnen en vlakken: lengte, oppervlakte, WKT, GeoJSON
+js/formulierimport.js formulieren kopiëren, vragen overnemen, inlezen uit en exporteren naar Excel
 js/msproject.js      planning naar Microsoft Project (MSPDI-XML) en een Excel-tabel voor de importwizard
 js/ingewonnen.js     ingewonnen vormen, locaties en GPS van bevindingen uit de formulieren verzamelen (kaartlaag)
 js/voortgangsoverzicht.js  voortgangsoverzicht voor overleg: achterstallig, lopend en binnenkort (afdruk en Excel)

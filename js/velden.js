@@ -24,7 +24,31 @@ export const VELDTYPEN = {
   handtekening: 'Handtekening',
   tijdsduur: 'Begin- en eindtijd (+ ploeg)',
   bijlage: 'Bijlage (pdf of document)',
+  kop: 'Tussenkop met uitleg (geen antwoord)',
 };
+
+/** Typen met een standaardwaarde die vooraf wordt ingevuld. */
+export const STANDAARD_TYPEN = ['tekst', 'getal', 'keuze', 'janee', 'datum', 'tijd'];
+/** Is dit een vraag met een antwoord (een tussenkop is alleen opmaak)? */
+export const isInvoer = (d) => d?.type !== 'kop';
+
+/**
+ * Standaardwaarde van een vraag zoals hij in een nieuw formulier wordt ingevuld (undefined = leeg laten).
+ * Datum: 'vandaag' of een datum; tijd: 'nu' of een tijd; ja/nee: 'Ja' of 'Nee'; keuze: één van de keuzes.
+ */
+export function standaardWaarde(d, nu = new Date()) {
+  const s = String(d?.standaard ?? '').trim();
+  if (!s || !STANDAARD_TYPEN.includes(d.type)) return undefined;
+  const iso = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+  switch (d.type) {
+    case 'janee': return /^(ja|j|yes|true|1)$/i.test(s) ? true : /^(nee|n|no|false|0)$/i.test(s) ? false : undefined;
+    case 'getal': return Number.isFinite(Number(s.replace(',', '.'))) ? s.replace(',', '.') : undefined;
+    case 'keuze': return (d.opties ?? []).find((o) => o.toLowerCase() === s.toLowerCase());
+    case 'datum': return /^vandaag$/i.test(s) ? iso(nu) : /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : undefined;
+    case 'tijd': return /^nu$/i.test(s) ? `${String(nu.getHours()).padStart(2, '0')}:${String(nu.getMinutes()).padStart(2, '0')}` : /^\d{1,2}:\d{2}$/.test(s) ? s.padStart(5, '0') : undefined;
+    default: return s;
+  }
+}
 
 /**
  * Waar een vraag van het inspectieformulier staat: één keer per inspectie, of in elke bevinding (gebrek of
@@ -32,7 +56,7 @@ export const VELDTYPEN = {
  */
 export const NIVEAUS = { inspectie: 'Eenmaal per inspectie', bevinding: 'Bij elke bevinding' };
 /** Typen die per bevinding kunnen (foto's heeft een bevinding al; handtekening en bijlage horen bij de inspectie). */
-export const BEVINDING_TYPEN = Object.keys(VELDTYPEN).filter((t) => !['foto', 'handtekening', 'bijlage'].includes(t));
+export const BEVINDING_TYPEN = Object.keys(VELDTYPEN).filter((t) => !['foto', 'handtekening', 'bijlage', 'kop'].includes(t));
 /** Staat dit veld in elke bevinding? */
 export const isBevindingVeld = (d) => d?.formulier === 'inspectie' && d?.niveau === 'bevinding';
 /** Velden van één niveau ('inspectie' of 'bevinding'). */
@@ -98,6 +122,7 @@ export function isLeeg(def, waarde) {
 export function controleer(defs, extra) {
   const fouten = [];
   for (const d of defs) {
+    if (!isInvoer(d)) continue;
     const v = extra?.[d.id];
     if (d.verplicht && isLeeg(d, v)) {
       fouten.push(d.type === 'checklist' ? `${d.label}: vink alle punten af` : `${d.label} is verplicht`);
@@ -170,6 +195,8 @@ export function normaliseer(def) {
   }
   if (d.type === 'geometrie') d.inwinning = GI.INWINNING[def.inwinning] ? def.inwinning : 'keuze';
   if (d.type === 'tijdsduur') Object.assign(d, { pauze: Boolean(def.pauze), ploeg: Boolean(def.ploeg) });
+  if (d.type === 'kop') d.verplicht = false;
+  if (STANDAARD_TYPEN.includes(d.type) && String(def.standaard ?? '').trim()) d.standaard = String(def.standaard).trim();
   if (def.formulier === 'inspectie' && def.niveau === 'bevinding' && BEVINDING_TYPEN.includes(d.type) && !def.eis?.nummer) d.niveau = 'bevinding';
   if (def.toonAls?.veld && def.toonAls?.waarde) d.toonAls = { veld: def.toonAls.veld, waarde: String(def.toonAls.waarde) };
   // Koppeling met een eis uit de contractstukken (eisbibliotheek).
