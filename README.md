@@ -305,6 +305,34 @@ Naast een frequentie kan een werkpakket voorgeschreven hoeveelheden hebben, bijv
 - **Pakketpagina**: per post een balk, bijvoorbeeld *120 / 300 m² (40%)*, met een waarschuwing als er meer is gedaan dan voorgeschreven.
 - **Export uitkomsten**: per post een extra kolom, bijvoorbeeld *Zetsteen herstel (m²)*.
 
+## Ronde openen in de planning: stand, objecten en kerncijfers
+
+Klik in de planning op een ronde. Het venster heeft drie tabbladen:
+
+**Stand**: tegels met % uitgevoerd, gedaan, gedeeltelijk, nog niet gestart en overgeslagen (klik op een tegel voor die objecten), de
+voortgangsbalk, het kaartje met elk object in de kleur van zijn status, en de **kerncijfers**, gekozen om te zien of de ronde op koers ligt:
+
+| Kerncijfer | Wat je ziet |
+|---|---|
+| **Periode** | start – einde, aantal werkdagen (ma–vr), hoeveel er nog resteren, en de fase: niet ingepland, nog niet gestart, loopt, einddatum verstreken of klaar |
+| **Op schema?** | werkelijk % klaar tegenover het % dat volgens de verstreken tijd verwacht wordt, en hoeveel objecten de ronde daarmee voor of achter ligt |
+| **Tempo** | afgehandelde objecten per werkdag tot nu toe, tegenover het tempo dat nodig is om op de einddatum klaar te zijn (*te laag* als het niet haalbaar is) |
+| **Prognose** | wanneer de ronde bij het huidige tempo klaar is, en hoeveel werkdagen vóór of na de einddatum |
+| **Laatste activiteit** | datum en wie, hoeveel dagen geleden, aantal registraties en op hoeveel dagen (*stil* na 14 dagen zonder registratie) |
+| **Uren** | geregistreerde manuren (uit de inzet of de uren), gemiddeld per object en een schatting voor de rest |
+| **Uitvoerders** | wie hoeveel objecten heeft afgemeld |
+| **Oordelen** (inspecties) | verdeling van de oordelen of condities van de geïnspecteerde objecten |
+| **Vervolg nodig** (werk) | aantal objecten waar "vervolg nodig" is gemeld |
+| **Overgeslagen** | de redenen, met aantallen |
+
+**Objecten**: alle objecten van de ronde met hun status en details: *gedaan* (datum, wie, oordeel of vervolg nodig), *gedeeltelijk* (hoe vaak,
+laatste keer, wie), *overgeslagen* (reden en toelichting), *niet meer nodig* (hoeveelheden bereikt) of *nog niet gestart*. Filter op **Nog te doen**
+(standaard: nog niet gestart + gedeeltelijk), nog niet gestart, gedeeltelijk, gedaan, overgeslagen of alles, en zoek op code, naam of uitvoerder.
+Per object: 📍 op de kaart tonen, **Registratie** openen, en bij werk dat nog moet **Uitvoeren** / **Inspecteren** (opent het formulier voor dat
+object in deze ronde). **Lijst** downloadt de zichtbare objecten als CSV.
+
+**Planning wijzigen**: start, gereed uiterlijk, status en opmerkingen over de ronde (zoals voorheen), met Opslaan of Uit planning halen.
+
 ## Planningsoverleg: agenda en notulen (planning → Planningsoverleg)
 
 Planning → **Planningsoverleg**: agenda en notulen voor het bespreken van de planning in het projectteam of met de opdrachtgever.
@@ -1352,6 +1380,7 @@ js/eisen.js           eisbibliotheek: inlezen, vergelijken, eisvragen en verific
 js/eisdossier.js      verificatiedossier als Excel (samenvatting, eisen, bewijs, afwijkingen)
 js/storingenexcel.js  export van het storingenregister naar Excel
 js/geominwinning.js  inwinning van punten, lijnen en vlakken: lengte, oppervlakte, WKT, GeoJSON
+js/rondestats.js     kerncijfers van een ronde (schema, tempo, prognose, uren, uitvoerders) en de objectenlijst
 js/formulierimport.js formulieren kopiëren, vragen overnemen, inlezen uit en exporteren naar Excel
 js/msproject.js      planning naar Microsoft Project (MSPDI-XML) en een Excel-tabel voor de importwizard
 js/ingewonnen.js     ingewonnen vormen, locaties en GPS van bevindingen uit de formulieren verzamelen (kaartlaag)

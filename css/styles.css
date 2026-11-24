@@ -2142,3 +2142,31 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
   .vo-agenda { break-inside: avoid; }
   .vo-acties tr, .vo-lijst li { break-inside: avoid; }
 }
+
+/* Rondevenster in de planning: stand, objecten, planning */
+.dialoog.rondedialoog { width: min(1080px, calc(100vw - 32px)); }
+.rondedialoog .rd-kop { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: .5rem 1rem; border-bottom: 1px solid var(--rand); margin-bottom: .75rem; }
+.rondedialoog .rd-kop h2 { margin: 0; }
+.rondedialoog .rd-kop p { margin: .15rem 0 .5rem; }
+.rondedialoog .rd-tabs { border-bottom: 0; margin: 0; }
+.rondedialoog .rd-tabs .tab { background: none; border: 0; font: inherit; cursor: pointer; }
+.rondedialoog .tegels button.tegel { font: inherit; text-align: left; cursor: pointer; color: inherit; background: var(--kaart, #fff); }
+.rd-kern { display: grid; grid-template-columns: max-content 1fr; gap: .35rem .9rem; margin: .5rem 0 0; font-size: .88rem; }
+.rd-kern dt { color: var(--tekst-zacht); font-weight: 600; }
+.rd-kern dd { margin: 0; line-height: 1.45; }
+.rd-kern .label-status { white-space: normal; margin-left: .15rem; }
+.rd-filters { display: flex; flex-wrap: wrap; gap: .5rem .75rem; align-items: center; margin-bottom: .6rem; }
+.rd-filters .chips { flex: 1 1 100%; }
+.rd-filters input[type=search] { flex: 1 1 220px; }
+.rd-objecten { max-height: 52vh; overflow: auto; }
+.rd-objecten table { width: 100%; }
+.rd-objecten td { vertical-align: top; }
+.rd-objecten td small { display: block; color: var(--tekst-zacht); }
+.rd-objecten td:nth-child(2) { white-space: nowrap; }
+.rd-objecten .rd-stip { display: inline-block; margin-right: .35rem; vertical-align: -1px; }
+.rd-objecten .rd-acties { white-space: nowrap; text-align: right; }
+.rd-objecten .rd-acties .knop { margin-left: .25rem; }
+@media (max-width: 760px) { .rd-kern { grid-template-columns: 1fr; } .rd-kern dt { margin-top: .3rem; } .rd-objecten td:nth-child(2) { white-space: normal; } }
+.rondedialoog .rd-paneel { min-height: min(470px, 60vh); }
+.rondedialoog .rd-tabs .tab { border-bottom: 3px solid transparent; padding: .45rem .75rem; color: var(--tekst-zacht); }
+.rondedialoog .rd-tabs .tab.actief { border-bottom-color: var(--primair); color: var(--primair); font-weight: 600; }
