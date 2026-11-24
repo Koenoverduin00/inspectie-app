@@ -323,14 +323,17 @@ Op de pagina **Planning** staat de knop **MS Project**.
 **Indeling**
 
 - **Eén regel per ronde** (standaard): elke ronde is een regel met de **begin- en einddatum van die ronde**, op startdatum gesorteerd. De naam is
-  *rondecode + rondenaam · werkpakket* (bijv. *WP-001-R2 Maaironde 2 · Groenonderhoud Park Zuid*); het werkpakket staat ook in de notitie en in
-  de Excel-kolom *Werkpakket*. Taken met een deadline staan ertussen als **mijlpaal** (*Taak: …*).
+  *rondenaam · werkpakket* (bijv. *Maaironde 2 · Groenonderhoud Park Zuid*); het werkpakket staat ook in de notitie en in de Excel-kolom *Werkpakket*.
+- **Taakcode in een eigen kolom**: de rondecode (bijv. *WP-001-R2*, bij een werkpakket de werkpakketcode) staat in het veld **Tekst1** met de naam
+  **Taakcode**. In Project: rechtsklik op een kolomkop → *Kolom invoegen* → *Taakcode*. In de Excel is het de kolom *Taakcode*. Taken met een deadline staan ertussen als **mijlpaal** (*Taak: …*).
 - **Per werkpakket, rondes eronder**: elk werkpakket een samenvattingstaak met de rondes eronder; taken onder *Taken (deadlines)*.
 
 Elke ronde krijgt **% voltooid** = de voortgang uit de app, de duur in werkdagen (ma–vr) en de uitvoerders van het werkpakket als resources,
 met de **werkuren van de ronde** (8 uur per werkdag) op elke toewijzing. Zonder die werkuren rekent Project de duur terug naar 0 en valt het
 einde op de begindatum. Met **Uitvoerders als resources toewijzen** uit staan de namen alleen in de notitie.
-De regels zijn **handmatig gepland**, zodat Project de datums niet verschuift. Een ronde zonder eigen datums krijgt de **periode van het
+Standaard zijn alle regels **automatisch gepland**: elke regel begint *niet eerder dan* de begindatum uit de app (beperking *Niet eerder beginnen dan*)
+en de duur is het aantal werkdagen van de ronde, zodat Project het einde uitrekent en je in Project koppelingen kunt maken.
+Met **Handmatig plannen** staan begin- en einddatum vast. Een ronde zonder eigen datums krijgt de **periode van het
 werkpakket** (dat staat in de notitie); een ronde zonder einddatum telt als één week. Rondes zonder enige datum gaan niet mee; het venster noemt ze.
 
 **Filters**

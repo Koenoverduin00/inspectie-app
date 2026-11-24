@@ -31,8 +31,15 @@ test('MSPDI: hiërarchie, datums, handmatig gepland, resources en niet-geplande 
   // Rondes op startdatum, onder het werkpakket
   const namen = [...x.matchAll(/<OutlineNumber>([\d.]+)<\/OutlineNumber>/g)].map((m) => m[1]);
   assert.deepEqual(namen, ['0', '1', '1.1', '1.2', '2', '2.1']);
-  assert.match(x, /<Name>WP-001-R1 Ronde 1<\/Name>.*?<Start>2026-04-01T08:00:00<\/Start><Finish>2026-04-30T17:00:00<\/Finish><Duration>PT176H0M0S<\/Duration>/s);
-  assert.match(x, /<Name>WP-001-R2 Ronde 2<\/Name><Active>1<\/Active><Manual>1<\/Manual>/);
+  assert.match(x, /<Name>Ronde 1<\/Name>.*?<Start>2026-04-01T08:00:00<\/Start><Finish>2026-04-30T17:00:00<\/Finish><Duration>PT176H0M0S<\/Duration>/s);
+  // Standaard automatisch gepland: niet eerder dan de begindatum (ConstraintType 4), geen handmatige datums
+  assert.match(x, /<Name>Ronde 2<\/Name><Active>1<\/Active><Manual>0<\/Manual>/);
+  assert.match(x, /<ConstraintType>4<\/ConstraintType><CalendarUID>-1<\/CalendarUID><ConstraintDate>2026-06-01T08:00:00<\/ConstraintDate>/);
+  assert.doesNotMatch(x, /<ManualStart>/);
+  // Taakcode in een eigen veld (Tekst1, alias Taakcode)
+  assert.match(x, /<ExtendedAttributes><ExtendedAttribute><FieldID>188743731<\/FieldID><FieldName>Text1<\/FieldName><Alias>Taakcode<\/Alias>/);
+  assert.match(x, /<Name>Ronde 1<\/Name>[\s\S]*?<ExtendedAttribute><FieldID>188743731<\/FieldID><Value>WP-001-R1<\/Value><\/ExtendedAttribute>\n<\/Task>/);
+  assert.match(x, /<Name>Groen<\/Name>[\s\S]*?<Value>WP-001<\/Value>/);
   assert.match(x, /<PercentComplete>40<\/PercentComplete>/);
   assert.match(x, /als één week ingepland/);
   assert.match(x, /<Name>Brug<\/Name>.*?<Milestone>1<\/Milestone>/s);
@@ -43,7 +50,7 @@ test('MSPDI: hiërarchie, datums, handmatig gepland, resources en niet-geplande 
   const volgorde = [...taak.matchAll(/<(\w+)>/g)].map((m) => m[1]).filter((n) => n !== 'Task');
   const schema = ['UID', 'ID', 'Name', 'Active', 'Manual', 'Type', 'IsNull', 'CreateDate', 'WBS', 'OutlineNumber', 'OutlineLevel', 'Priority', 'Start', 'Finish',
     'Duration', 'ManualStart', 'ManualFinish', 'ManualDuration', 'DurationFormat', 'Work', 'EffortDriven', 'Recurring', 'Estimated', 'Milestone', 'Summary',
-    'PercentComplete', 'ConstraintType', 'CalendarUID', 'Notes'];
+    'PercentComplete', 'ConstraintType', 'CalendarUID', 'ConstraintDate', 'Notes', 'ExtendedAttribute', 'FieldID', 'Value'];
   assert.deepEqual(volgorde, schema.filter((n) => volgorde.includes(n)));
 });
 
@@ -51,9 +58,9 @@ test('Excel-regels voor de importwizard', () => {
   const r = MP.mspdi(invoer);
   const rijen = MP.excelRegels(r.regels);
   assert.equal(rijen.length, 5);
-  assert.deepEqual(rijen[1].slice(0, 8), ['1.1', 2, 'WP-001-R1 Ronde 1', '2026-04-01', '2026-04-30', 22, 100, 'Nee']);
-  assert.equal(rijen[1][8], 'Jan;Ploeg 2');
-  assert.deepEqual(rijen[4].slice(2, 9), ['Brug', '2026-05-15', '2026-05-15', 0, 0, 'Ja', 'Jan']);
+  assert.deepEqual(rijen[1].slice(0, 9), ['1.1', 2, 'WP-001-R1', 'Ronde 1', '2026-04-01', '2026-04-30', 22, 100, 'Nee']);
+  assert.equal(rijen[1][9], 'Jan;Ploeg 2');
+  assert.deepEqual(rijen[4].slice(2, 10), ['', 'Brug', '2026-05-15', '2026-05-15', 0, 0, 'Ja', 'Jan']);
 });
 
 test('één regel per ronde: platte lijst op startdatum, werkpakket in naam en kolom, taken als mijlpaal', () => {
@@ -62,14 +69,15 @@ test('één regel per ronde: platte lijst op startdatum, werkpakket in naam en k
   assert.deepEqual(nummers, ['0:0', '1:1', '2:1', '3:1']);
   assert.equal((r.xml.match(/<Summary>1<\/Summary>/g) ?? []).length, 1); // alleen de projectregel
   assert.deepEqual(r.regels.map((t) => [t.naam, t.start, t.eind, t.werkpakket]), [
-    ['WP-001-R1 Ronde 1 · Groen', '2026-04-01', '2026-04-30', 'WP-001 Groen'],
+    ['Ronde 1 · Groen', '2026-04-01', '2026-04-30', 'WP-001 Groen'],
     ['Taak: Brug', '2026-05-15', '2026-05-15', ''],
-    ['WP-001-R2 Ronde 2 · Groen', '2026-06-01', '2026-06-07', 'WP-001 Groen']]);
+    ['Ronde 2 · Groen', '2026-06-01', '2026-06-07', 'WP-001 Groen']]);
+  assert.deepEqual(r.regels.map((t) => t.code), ['WP-001-R1', '', 'WP-001-R2']);
   assert.match(r.xml, /<Name>Taak: Brug<\/Name>.*?<Milestone>1<\/Milestone>/s);
   assert.match(r.xml, /Werkpakket: WP-001 Groen/);
   assert.equal(r.taken, 3);
   assert.equal(r.nietGepland.length, 2);
-  assert.equal(MP.excelRegels(r.regels)[0][9], 'WP-001 Groen');
+  assert.equal(MP.excelRegels(r.regels)[0][10], 'WP-001 Groen');
 });
 
 test('periode-overlap', () => {
@@ -94,4 +102,11 @@ test('toewijzingen krijgen werkuren, zodat Project de duur niet naar 0 terugreke
     const volg = [...a.matchAll(/<(\w+)>/g)].map((m) => m[1]);
     assert.deepEqual(volg, ['UID', 'TaskUID', 'ResourceUID', 'Finish', 'RegularWork', 'RemainingWork', 'Start', 'Units', 'Work']);
   }
+});
+
+test('handmatig plannen blijft mogelijk: datums vast', () => {
+  const x = MP.mspdi({ ...invoer, planning: 'handmatig' }).xml;
+  assert.match(x, /<Name>Ronde 2<\/Name><Active>1<\/Active><Manual>1<\/Manual>/);
+  assert.match(x, /<ManualStart>2026-06-01T08:00:00<\/ManualStart><ManualFinish>2026-06-07T17:00:00<\/ManualFinish>/);
+  assert.doesNotMatch(x, /<ConstraintType>4<\/ConstraintType>/);
 });

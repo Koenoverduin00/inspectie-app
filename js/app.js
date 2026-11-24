@@ -9380,7 +9380,7 @@ async function exporteerMsProject() {
   d.innerHTML = `<form method="dialog" novalidate>
     <h2>Planning naar MS Project</h2>
     <p><small>Elke ronde wordt een regel met de begin- en einddatum van die ronde, het % voltooid uit de app en de uitvoerders als resources.
-      De regels zijn handmatig gepland, zodat Project de datums precies houdt zoals in de app.</small></p>
+      De rondecode staat in een eigen kolom <em>Taakcode</em> (in Project: kolom invoegen → <em>Taakcode</em>, het veld Tekst1).</small></p>
     <div class="veld"><label>Indeling</label>
       ${segment('mp-indeling', 'rondes', [['rondes', 'Eén regel per ronde'], ['werkpakketten', 'Per werkpakket, rondes eronder']])}</div>
     <div class="mp-filters">
@@ -9396,6 +9396,7 @@ async function exporteerMsProject() {
       <div class="knoppen"><button type="button" class="knop klein" data-mp-alle="1">Alle</button><button type="button" class="knop klein" data-mp-alle="0">Geen</button></div>
       <div class="kieslijst">${pakketLijst.map((p) => `<label class="vink"><input type="checkbox" data-mp-pk value="${esc(p.id)}" checked><span>${esc(metCode(p))}<small>${rondesVan(p).length} ronde${rondesVan(p).length === 1 ? '' : 's'}${p.status ? ` · ${esc(p.status)}` : ''}</small></span></label>`).join('')}</div></details>
     <label class="vink"><input type="checkbox" id="mp-afgerond" checked><span>Ook afgeronde rondes en taken</span></label>
+    <label class="vink"><input type="checkbox" id="mp-handmatig"><span>Handmatig plannen<small>Standaard plant Project automatisch: elke regel begint niet eerder dan de begindatum uit de app en de duur is het aantal werkdagen van de ronde. Handmatig: begin- en einddatum staan vast.</small></span></label>
     <label class="vink"><input type="checkbox" id="mp-resources" checked><span>Uitvoerders als resources toewijzen<small>Met de werkuren van de ronde (8 uur per werkdag). Uit: de namen staan alleen in de notitie.</small></span></label>
     <div class="veld"><label>Bestand</label>
       <label class="vink"><input type="radio" name="mp-formaat" value="xml" checked><span>MS Project (XML)<small>Openen in Project: Bestand → Openen → kies bij bestandstype <em>XML-indeling</em>. Werkt in Project 2010 en nieuwer.</small></span></label>
@@ -9454,7 +9455,8 @@ async function exporteerMsProject() {
       .map((t) => ({ naam: t.titel || (t.soort === 'werk' ? 'Werkzaamheid' : 'Inspectie'), datum: t.deadline, uitvoerder: metResources && t.toegewezenAan ? naamVan(t.toegewezenAan) : '',
         notitie: [t.omschrijving, t.status === 'gereed' ? 'Gereed' : '', !metResources && t.toegewezenAan ? `Toegewezen aan: ${naamVan(t.toegewezenAan)}` : ''].filter(Boolean).join('\n'), werkpakket: pkNaam.get(t.werkpakketId) ?? '' }));
     const indeling = d.querySelector('input[name=mp-indeling]:checked')?.value ?? 'rondes';
-    return { ...MP.mspdi({ naam: project.naam ?? 'Planning', groepen, mijlpalen, auteur: instelling.lees('organisatie') || '', indeling }),
+    const planning = d.querySelector('#mp-handmatig').checked ? 'handmatig' : 'automatisch';
+    return { ...MP.mspdi({ naam: project.naam ?? 'Planning', groepen, mijlpalen, auteur: instelling.lees('organisatie') || '', indeling, planning }),
       aantalRondes: groepen.reduce((n, x) => n + x.rondes.filter((r) => r.start).length, 0), aantalTaken: mijlpalen.length, gekozen: gekozen.size };
   };
   const info = () => {
@@ -9478,12 +9480,12 @@ async function exporteerMsProject() {
       const ws = wb.addWorksheet('Planning');
       ws.addRow(MP.EXCEL_KOLOMMEN).font = { bold: true };
       MP.excelRegels(r.regels).forEach((rij, n) => {
-        const x = ws.addRow(rij.map((v, i) => ([3, 4].includes(i) && v ? new Date(`${v}T00:00:00Z`) : v)));
+        const x = ws.addRow(rij.map((v, i) => ([4, 5].includes(i) && v ? new Date(`${v}T00:00:00Z`) : v)));
         if (r.regels[n].samenvatting) x.font = { bold: true };
-        x.getCell(3).alignment = { indent: (rij[1] - 1) * 2 };
+        x.getCell(4).alignment = { indent: (rij[1] - 1) * 2 };
       });
-      [4, 5].forEach((c) => { ws.getColumn(c).numFmt = 'dd-mm-yyyy'; });
-      ws.columns.forEach((c, i) => { c.width = [16, 10, 52, 12, 12, 10, 10, 9, 28, 32, 50][i] ?? 14; });
+      [5, 6].forEach((c) => { ws.getColumn(c).numFmt = 'dd-mm-yyyy'; });
+      ws.columns.forEach((c, i) => { c.width = [16, 10, 18, 48, 12, 12, 10, 10, 9, 28, 32, 50][i] ?? 14; });
       ws.views = [{ state: 'frozen', ySplit: 1 }];
       ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: MP.EXCEL_KOLOMMEN.length } };
       download(`${naam}.xlsx`, await wb.xlsx.writeBuffer(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
