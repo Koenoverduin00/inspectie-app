@@ -118,8 +118,10 @@ gevraagd wordt:
   locatie. Tik op een object voor **▶ Start**, **⏭ Overslaan** of **🧭 Navigeer erheen** (opent de routeplanner).
 - **Meerdere werkpakketten op één locatie**: staat een object in meer dan één actieve ronde, dan toont de kaart een
   badge met het aantal en meldt het kaartvenster *"2 werkpakketten op deze locatie"*. Met **Afmelden op deze locatie**
-  open je een scherm met één regel per werkpakket. Elke regel meld je bewust los af: **Gereed** (werk zonder verplichte
-  extra velden en zonder voorwaarden in de vrijgave), **Formulier** of **Overslaan**. Na opslaan kom je terug op dit scherm
+  open je een scherm met één regel per werkpakket. Elke regel meld je bewust los af: **Gereed melden** (bij een gedeeltelijk
+  gedaan object **Volledig klaar melden**; bij een inspectie **Inspecteren**) of **Overslaan**. Gereed melden kan **alleen via het
+  formulier** dat bij het werkpakket hoort: de knop opent dat formulier voor dit object en deze ronde; er is geen snel afvinken zonder
+  formulier. Bij werk in delen staat er ook **Deels gedaan** (ook via het formulier). Na opslaan kom je terug op dit scherm
   zolang er op de locatie nog iets open staat. In de lijst *Nog te doen* staat bij zo'n object een label.
 - **Statusregel** onder de kop: *✓ Alles verstuurd*, *⏳ 3 registraties wachten*, *📴 Offline – alles wordt bewaard*,
   *🔑 Niet ingelogd* of *⚠️ Versturen lukt niet*. Tik erop voor details.
@@ -301,7 +303,7 @@ Naast een frequentie kan een werkpakket voorgeschreven hoeveelheden hebben, bijv
 
 - **Inrichten** (Werkpakketten → pakket bewerken → *Hoeveelheden*): voeg bestekposten toe met omschrijving, hoeveelheid en eenheid (m², m¹, m³, ton, kg, stuks, uur). De hoeveelheid geldt **per ronde**.
 - **Voortgang meten op**: *Objecten* (elk gekoppeld object moet aan de beurt, zoals voorheen) of *Hoeveelheid*. Bij *Hoeveelheid* zijn de gekoppelde objecten de plekken waar het werk **kan** gebeuren; niet elk object hoeft aan de beurt. Is de hoeveelheid bereikt, dan staan de overige objecten op *Niet nodig* (grijs op de kaart) en telt de voortgang op de hoeveelheid.
-- **Formulier**: bij elke registratie vraagt het werkformulier per post *Uitgevoerde hoeveelheid* (verplicht; 0 als het daar niet van toepassing was), met erbij hoeveel er in deze ronde al gedaan is en hoeveel er nog openstaat. Gedeeltelijke registraties tellen mee. Snel afvinken (*Gereed*) kan niet bij pakketten met posten, omdat de hoeveelheid ingevuld moet worden.
+- **Formulier**: bij elke registratie vraagt het werkformulier per post *Uitgevoerde hoeveelheid* (verplicht; 0 als het daar niet van toepassing was), met erbij hoeveel er in deze ronde al gedaan is en hoeveel er nog openstaat. Gedeeltelijke registraties tellen mee.
 - **Pakketpagina**: per post een balk, bijvoorbeeld *120 / 300 m² (40%)*, met een waarschuwing als er meer is gedaan dan voorgeschreven.
 - **Export uitkomsten**: per post een extra kolom, bijvoorbeeld *Zetsteen herstel (m²)*.
 

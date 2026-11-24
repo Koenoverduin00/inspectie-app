@@ -6346,36 +6346,8 @@ function rondesOpObject(g, objectId, ik) {
 const locatiePagina = (objectId) => `#/m/locatie/${encodeURIComponent(objectId)}`;
 const VAN_LOCATIE = 'inspectie-app:vanLocatie';
 
-/** Snel afvinken van werk: een werkzaamheid 'gereed' zonder formulier (alleen als er geen verplichte extra velden zijn). */
-async function magSnelAfvinken(v, objectId) {
-  if (v.soort !== 'werk') return false;
-  if (postenVan(v).length) return false; // eerst de hoeveelheid invullen in het formulier
-  const p = await actiefProject();
-  const verplicht = velden.zichtbareVelden(p?.velden ?? [], 'werk', v.werksoort || '').some((d) => d.verplicht);
-  if (verplicht) return false;
-  if (v.vrijgaveVereist) {
-    const vg = eco.vrijgaveVoorObject(await inProject('vrijgaven'), objectId, vandaag());
-    // Alleen bij een geldige vrijgave zonder voorwaarden; anders via het formulier (met de voorwaarden in beeld).
-    if (eco.geldigheid(vg, vandaag()) !== 'geldig' || vg.besluit !== 'vrij') return false;
-  }
-  return true;
-}
-
 /** Werk in delen: veelgebruikte omschrijvingen van het gedane deel. */
 const DEEL_VOORBEELDEN = ['Vanaf het land', 'Vanaf het water', 'Linkerzijde', 'Rechterzijde', 'Eerste helft'];
-
-/** Werkzaamheid zonder formulier: volledig gereed, of gedeeltelijk ({ gereed: false, deel }). */
-async function snelGereed(v, object, { gereed = true, deel = '', uitvoerder } = {}) { // gereed: false alleen vanuit tests/import; deels afmelden gaat via het formulier
-  const nu = new Date().toISOString();
-  if (uitvoerder) instelling.schrijf('inspecteur', uitvoerder);
-  await db.bewaar('werkzaamheden', {
-    id: nieuwId(), projectId: projectId(), objectId: object.id, datum: vandaag(), soort: v.werksoort || 'Werkzaamheid',
-    omschrijving: gereed ? 'Afgevinkt op locatie' : `Gedeeltelijk: ${deel}`, uren: '', uitvoerder: uitvoerder ?? instelling.lees('inspecteur'), status: 'gereed', vervolg: '', materiaal: '',
-    gereed, ...(gereed ? {} : { deel }),
-    werkpakketId: v.id, rondeId: v.rondeId && v.rondeId !== STANDAARD_RONDE ? v.rondeId : '', maatregelen: [], fotoIds: [],
-    extra: {}, extraLabels: {}, extraFotoIds: [], beoordeling: beoordelingBijOpslaan(null, true), aangemaakt: nu, gewijzigd: nu,
-  });
-}
 
 async function mobielLocatie(objectId) {
   const g = await pakketGegevens();
@@ -6391,7 +6363,6 @@ async function mobielLocatie(objectId) {
   const actueel = lijst.length > 1 && isTeDoen(lijst[0].st) ? lijst[0] : null;
   const ondLoc = rondeOnderscheid(lijst.map((x) => x.v));
   const open = lijst.filter((x) => isTeDoen(x.st));
-  const snel = new Map(await Promise.all(open.map(async (x) => [`${x.v.id}:${x.v.rondeId}`, await magSnelAfvinken(x.v, objectId)])));
   const geom = objectGeometrie(o);
   const [lng, lat] = geom ? (geom.type === 'Point' ? geom.coordinates : gis.middelpunt(geom)) : [null, null];
   const regHref = (x) => {
@@ -6412,10 +6383,8 @@ async function mobielLocatie(objectId) {
           <small>${(x.vg.deels.get(objectId) ?? []).map((r) => `<a href="#/m/werk/${esc(r.id)}">${datumNL(r.datum)}${r.uitvoerder ? ` · ${esc(r.uitvoerder)}` : ''}</a>${r.deel ? `: ${esc(r.deel)}` : ''}`).join('<br>')}</small>
           <small class="zacht">Nog niet volledig klaar: blijft te doen tot iemand <strong>Volledig klaar</strong> meldt.</small></div>` : ''}
       ${isTeDoen(x.st) ? `<div class="locregel-knoppen">
-          ${snel.get(sleutel) ? `<button class="knop primair" type="button" data-gereed="${esc(sleutel)}">${I.vink} ${x.st === 'deels' ? 'Volledig klaar' : 'Gereed'}</button>
-` : ''}
+          <a class="knop primair" href="${pakketHref(x.v, objectId, true)}" title="Gereed melden gaat altijd via het formulier van dit werkpakket">${x.v.soort === 'inspectie' ? `${I.start} Inspecteren` : `${I.vink} ${x.st === 'deels' ? 'Volledig klaar melden' : 'Gereed melden'}`}</a>
           ${x.v.soort === 'werk' && x.v.deelsAfmelden ? `<a class="knop" href="${pakketHref(x.v, objectId, true)}&deel=1" title="Een deel is gedaan; het vak is nog niet helemaal klaar (bijv. een andere ploeg doet de rest). Je vult het formulier in met foto's.">${I.werk} Deels gedaan</a>` : ''}
-          <a class="knop ${snel.get(sleutel) ? '' : 'primair'}" href="${pakketHref(x.v, objectId, true)}">${x.v.soort === 'inspectie' ? `${I.start} Inspecteren` : `${I.concept} Formulier`}</a>
           <button class="knop" type="button" data-overslaan="${esc(sleutel)}">${I.overslaan} Overslaan</button></div>`
     : x.st === 'gedaan' ? `<div class="locregel-status"><span class="label-status afgerond">${I.vink} Gedaan</span> <a href="${regHref(x)}">${datumNL(r.datum)}${r.uitvoerder || r.inspecteur ? ` · ${esc(r.uitvoerder || r.inspecteur)}` : ''}</a></div>`
       : `<div class="locregel-status"><span class="label-status">${I.overslaan} Overgeslagen</span> <small>${esc(ov?.reden ?? '')}</small>
@@ -6444,17 +6413,12 @@ async function mobielLocatie(objectId) {
       try { sessionStorage.setItem(VAN_LOCATIE, objectId); } catch { /* geen opslag */ }
       return;
     }
-    const knop = e.target.closest('[data-gereed], [data-overslaan], [data-terug]');
+    // Gereed melden kan alleen via het formulier van het werkpakket (link hierboven); hier alleen overslaan en terugzetten.
+    const knop = e.target.closest('[data-overslaan], [data-terug]');
     if (!knop) return;
-    const x = ronde(knop.dataset.gereed ?? knop.dataset.overslaan ?? knop.dataset.terug);
+    const x = ronde(knop.dataset.overslaan ?? knop.dataset.terug);
     if (!x) return;
-    if (knop.dataset.gereed) {
-      knop.disabled = true;
-      await snelGereed(x.v, o);
-      gedaan('Gereed gemeld', { object: o, extra: metCode(x.v), beoordeling: true });
-      onthoudOpslag(`Afgevinkt: ${metCode(x.v)}`, objectId);
-      router();
-    } else if (knop.dataset.overslaan) {
+    if (knop.dataset.overslaan) {
       if (await slaObjectOver(x.v, o)) router();
     } else {
       await db.verwijder('overgeslagen', overslaanId(x.v.id, objectId, x.v.rondeId));
