@@ -327,7 +327,9 @@ Op de pagina **Planning** staat de knop **MS Project**.
   de Excel-kolom *Werkpakket*. Taken met een deadline staan ertussen als **mijlpaal** (*Taak: …*).
 - **Per werkpakket, rondes eronder**: elk werkpakket een samenvattingstaak met de rondes eronder; taken onder *Taken (deadlines)*.
 
-Elke ronde krijgt **% voltooid** = de voortgang uit de app, de duur in werkdagen (ma–vr) en de uitvoerders van het werkpakket als resources.
+Elke ronde krijgt **% voltooid** = de voortgang uit de app, de duur in werkdagen (ma–vr) en de uitvoerders van het werkpakket als resources,
+met de **werkuren van de ronde** (8 uur per werkdag) op elke toewijzing. Zonder die werkuren rekent Project de duur terug naar 0 en valt het
+einde op de begindatum. Met **Uitvoerders als resources toewijzen** uit staan de namen alleen in de notitie.
 De regels zijn **handmatig gepland**, zodat Project de datums niet verschuift. Een ronde zonder eigen datums krijgt de **periode van het
 werkpakket** (dat staat in de notitie); een ronde zonder einddatum telt als één week. Rondes zonder enige datum gaan niet mee; het venster noemt ze.
 

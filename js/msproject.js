@@ -115,7 +115,7 @@ export function mspdi({ naam, groepen = [], mijlpalen = [], auteur = '', nu = ne
     return `<Task>
 <UID>${t.uid}</UID><ID>${t.uid}</ID><Name>${xml(t.naam)}</Name><Active>1</Active><Manual>${t.samenvatting ? 0 : 1}</Manual><Type>1</Type><IsNull>0</IsNull>
 <CreateDate>${nu.slice(0, 19)}</CreateDate><WBS>${t.nummer}</WBS><OutlineNumber>${t.nummer}</OutlineNumber><OutlineLevel>${t.niveau}</OutlineLevel><Priority>500</Priority>
-<Start>${tijd(t.start)}</Start><Finish>${tijd(t.eind, !t.mijlpaal)}</Finish><Duration>${duur(uren)}</Duration>${t.samenvatting ? '' : `<ManualStart>${tijd(t.start)}</ManualStart><ManualFinish>${tijd(t.eind, !t.mijlpaal)}</ManualFinish><ManualDuration>${duur(uren)}</ManualDuration>`}<DurationFormat>7</DurationFormat>
+<Start>${tijd(t.start)}</Start><Finish>${tijd(t.eind, !t.mijlpaal)}</Finish><Duration>${duur(uren)}</Duration>${t.samenvatting ? '' : `<ManualStart>${tijd(t.start)}</ManualStart><ManualFinish>${tijd(t.eind, !t.mijlpaal)}</ManualFinish><ManualDuration>${duur(uren)}</ManualDuration>`}<DurationFormat>7</DurationFormat>${t.samenvatting ? '' : `<Work>${duur(uren * t.resources.length)}</Work>`}
 <EffortDriven>0</EffortDriven><Recurring>0</Recurring><Estimated>0</Estimated><Milestone>${t.mijlpaal ? 1 : 0}</Milestone><Summary>${t.samenvatting ? 1 : 0}</Summary>
 ${t.samenvatting ? '' : `<PercentComplete>${t.pct ?? 0}</PercentComplete>`}<ConstraintType>0</ConstraintType><CalendarUID>-1</CalendarUID>${t.notitie ? `<Notes>${xml(t.notitie)}</Notes>` : ''}
 </Task>`;
@@ -139,7 +139,12 @@ ${taken.map(taakXml).join('\n')}
 ${[...resources].map(([n, id]) => `<Resource><UID>${id}</UID><ID>${id}</ID><Name>${xml(n)}</Name><Type>1</Type><IsNull>0</IsNull><MaxUnits>1.00</MaxUnits></Resource>`).join('\n')}
 </Resources>
 <Assignments>
-${toewijzingen.map((a, i) => `<Assignment><UID>${i + 1}</UID><TaskUID>${a.taak.uid}</TaskUID><ResourceUID>${a.r}</ResourceUID><Units>1</Units></Assignment>`).join('\n')}
+${toewijzingen.map((a, i) => {
+    // Werk = de duur van de taak (8 uur per werkdag): zonder werk rekent Project de duur terug naar 0 en valt het einde op de begindatum.
+    const uren = a.taak.mijlpaal ? 0 : werkdagen(a.taak.start, a.taak.eind) * 8;
+    return `<Assignment><UID>${i + 1}</UID><TaskUID>${a.taak.uid}</TaskUID><ResourceUID>${a.r}</ResourceUID><Finish>${tijd(a.taak.eind, !a.taak.mijlpaal)}</Finish>`
+      + `<RegularWork>${duur(uren)}</RegularWork><RemainingWork>${duur(uren)}</RemainingWork><Start>${tijd(a.taak.start)}</Start><Units>1</Units><Work>${duur(uren)}</Work></Assignment>`;
+  }).join('\n')}
 </Assignments>
 </Project>
 `;

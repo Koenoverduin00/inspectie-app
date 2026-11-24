@@ -9396,6 +9396,7 @@ async function exporteerMsProject() {
       <div class="knoppen"><button type="button" class="knop klein" data-mp-alle="1">Alle</button><button type="button" class="knop klein" data-mp-alle="0">Geen</button></div>
       <div class="kieslijst">${pakketLijst.map((p) => `<label class="vink"><input type="checkbox" data-mp-pk value="${esc(p.id)}" checked><span>${esc(metCode(p))}<small>${rondesVan(p).length} ronde${rondesVan(p).length === 1 ? '' : 's'}${p.status ? ` · ${esc(p.status)}` : ''}</small></span></label>`).join('')}</div></details>
     <label class="vink"><input type="checkbox" id="mp-afgerond" checked><span>Ook afgeronde rondes en taken</span></label>
+    <label class="vink"><input type="checkbox" id="mp-resources" checked><span>Uitvoerders als resources toewijzen<small>Met de werkuren van de ronde (8 uur per werkdag). Uit: de namen staan alleen in de notitie.</small></span></label>
     <div class="veld"><label>Bestand</label>
       <label class="vink"><input type="radio" name="mp-formaat" value="xml" checked><span>MS Project (XML)<small>Openen in Project: Bestand → Openen → kies bij bestandstype <em>XML-indeling</em>. Werkt in Project 2010 en nieuwer.</small></span></label>
       <label class="vink"><input type="radio" name="mp-formaat" value="xlsx"><span>Excel<small>Dezelfde regels als tabel (met werkpakket), voor de importwizard van Project of om te bekijken.</small></span></label></div>
@@ -9427,9 +9428,10 @@ async function exporteerMsProject() {
     const { van, tot } = periode();
     const gekozen = new Set([...d.querySelectorAll('[data-mp-pk]:checked')].map((c) => c.value));
     const alleGekozen = gekozen.size === pakketLijst.length;
+    const metResources = d.querySelector('#mp-resources').checked;
     const groepen = wat === 'taken' ? [] : pakketLijst.filter((p) => gekozen.has(p.id)).map((p) => ({
-      code: p.code ?? '', naam: p.naam ?? '', uitvoerders: (p.toegewezen ?? []).map(naamVan),
-      notitie: [p.omschrijving, `${(p.objecten ?? []).length} objecten`].filter(Boolean).join('\n'),
+      code: p.code ?? '', naam: p.naam ?? '', uitvoerders: metResources ? (p.toegewezen ?? []).map(naamVan) : [],
+      notitie: [p.omschrijving, `${(p.objecten ?? []).length} objecten`, !metResources && p.toegewezen?.length ? `Uitvoerders: ${p.toegewezen.map(naamVan).join(', ')}` : ''].filter(Boolean).join('\n'),
       rondes: rondesVan(p).filter((r) => (!soort || (r.soort ?? 'werk') === soort) && (metAfgerond || r.status !== 'afgerond')).map((r) => {
         // Ronde zonder eigen datums: de periode van het werkpakket.
         const eigen = Boolean(r.start);
@@ -9442,14 +9444,15 @@ async function exporteerMsProject() {
           start, eind, percentage: vg?.percentage ?? (r.status === 'afgerond' ? 100 : 0),
           notitie: [r.soort === 'inspectie' ? `Inspectie${r.inspectiesoort ? `: ${r.inspectiesoort}` : ''}` : `Werk${r.werksoort ? `: ${r.werksoort}` : ''}`,
             vg ? `${vg.gedaan?.size ?? 0} van ${vg.totaal ?? 0} objecten gedaan` : '', `Status in de app: ${r.status ?? 'gepland'}`,
-            !eigen && start ? 'Periode van het werkpakket (de ronde heeft geen eigen datums).' : ''].filter(Boolean).join('\n') };
+            !eigen && start ? 'Periode van het werkpakket (de ronde heeft geen eigen datums).' : '',
+            !metResources && p.toegewezen?.length ? `Uitvoerders: ${p.toegewezen.map(naamVan).join(', ')}` : ''].filter(Boolean).join('\n') };
       }),
     }));
     const pkNaam = new Map(pakketLijst.map((p) => [p.id, metCode(p)]));
     const mijlpalen = wat === 'rondes' ? [] : taken.filter((t) => t.deadline && !t.verwijderd && (metAfgerond || t.status !== 'gereed') && (!soort || t.soort === soort)
       && (alleGekozen || gekozen.has(t.werkpakketId)) && MP.inPeriode(t.deadline, t.deadline, van, tot))
-      .map((t) => ({ naam: t.titel || (t.soort === 'werk' ? 'Werkzaamheid' : 'Inspectie'), datum: t.deadline, uitvoerder: t.toegewezenAan ? naamVan(t.toegewezenAan) : '',
-        notitie: [t.omschrijving, t.status === 'gereed' ? 'Gereed' : ''].filter(Boolean).join('\n'), werkpakket: pkNaam.get(t.werkpakketId) ?? '' }));
+      .map((t) => ({ naam: t.titel || (t.soort === 'werk' ? 'Werkzaamheid' : 'Inspectie'), datum: t.deadline, uitvoerder: metResources && t.toegewezenAan ? naamVan(t.toegewezenAan) : '',
+        notitie: [t.omschrijving, t.status === 'gereed' ? 'Gereed' : '', !metResources && t.toegewezenAan ? `Toegewezen aan: ${naamVan(t.toegewezenAan)}` : ''].filter(Boolean).join('\n'), werkpakket: pkNaam.get(t.werkpakketId) ?? '' }));
     const indeling = d.querySelector('input[name=mp-indeling]:checked')?.value ?? 'rondes';
     return { ...MP.mspdi({ naam: project.naam ?? 'Planning', groepen, mijlpalen, auteur: instelling.lees('organisatie') || '', indeling }),
       aantalRondes: groepen.reduce((n, x) => n + x.rondes.filter((r) => r.start).length, 0), aantalTaken: mijlpalen.length, gekozen: gekozen.size };

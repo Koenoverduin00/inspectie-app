@@ -42,7 +42,7 @@ test('MSPDI: hiërarchie, datums, handmatig gepland, resources en niet-geplande 
   const taak = x.match(/<Task>\n<UID>2<\/UID>[\s\S]*?<\/Task>/)[0];
   const volgorde = [...taak.matchAll(/<(\w+)>/g)].map((m) => m[1]).filter((n) => n !== 'Task');
   const schema = ['UID', 'ID', 'Name', 'Active', 'Manual', 'Type', 'IsNull', 'CreateDate', 'WBS', 'OutlineNumber', 'OutlineLevel', 'Priority', 'Start', 'Finish',
-    'Duration', 'ManualStart', 'ManualFinish', 'ManualDuration', 'DurationFormat', 'EffortDriven', 'Recurring', 'Estimated', 'Milestone', 'Summary',
+    'Duration', 'ManualStart', 'ManualFinish', 'ManualDuration', 'DurationFormat', 'Work', 'EffortDriven', 'Recurring', 'Estimated', 'Milestone', 'Summary',
     'PercentComplete', 'ConstraintType', 'CalendarUID', 'Notes'];
   assert.deepEqual(volgorde, schema.filter((n) => volgorde.includes(n)));
 });
@@ -78,4 +78,20 @@ test('periode-overlap', () => {
   assert.equal(MP.inPeriode('2026-04-01', '2026-04-30', '', '2026-03-31'), false);
   assert.equal(MP.inPeriode('2026-04-01', '', '2026-04-01', '2026-04-01'), true);
   assert.equal(MP.inPeriode('', '', '', ''), false);
+});
+
+test('toewijzingen krijgen werkuren, zodat Project de duur niet naar 0 terugrekent', () => {
+  const r = MP.mspdi({ naam: 'X', groepen: [{ code: 'OHA', naam: 'Calamiteitenroute', uitvoerders: ['Jan', 'Piet'],
+    rondes: [{ code: 'OHA-R1', naam: 'Ronde 1', start: '2026-11-02', eind: '2026-11-30' }] }], indeling: 'rondes' });
+  const taak = r.xml.match(/<Task>\n<UID>1<\/UID>[\s\S]*?<\/Task>/)[0];
+  assert.match(taak, /<Start>2026-11-02T08:00:00<\/Start><Finish>2026-11-30T17:00:00<\/Finish><Duration>PT168H0M0S<\/Duration>/);
+  assert.match(taak, /<Work>PT336H0M0S<\/Work>/);
+  const toew = [...r.xml.matchAll(/<Assignment>([\s\S]*?)<\/Assignment>/g)].map((m) => m[1]);
+  assert.equal(toew.length, 2);
+  for (const a of toew) {
+    assert.match(a, /<Finish>2026-11-30T17:00:00<\/Finish>.*<Start>2026-11-02T08:00:00<\/Start><Units>1<\/Units><Work>PT168H0M0S<\/Work>/);
+    // schemavolgorde binnen een toewijzing
+    const volg = [...a.matchAll(/<(\w+)>/g)].map((m) => m[1]);
+    assert.deepEqual(volg, ['UID', 'TaskUID', 'ResourceUID', 'Finish', 'RegularWork', 'RemainingWork', 'Start', 'Units', 'Work']);
+  }
 });
