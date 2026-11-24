@@ -55,3 +55,27 @@ test('Excel-regels voor de importwizard', () => {
   assert.equal(rijen[1][8], 'Jan;Ploeg 2');
   assert.deepEqual(rijen[4].slice(2, 9), ['Brug', '2026-05-15', '2026-05-15', 0, 0, 'Ja', 'Jan']);
 });
+
+test('één regel per ronde: platte lijst op startdatum, werkpakket in naam en kolom, taken als mijlpaal', () => {
+  const r = MP.mspdi({ ...invoer, indeling: 'rondes' });
+  const nummers = [...r.xml.matchAll(/<OutlineNumber>([\d.]+)<\/OutlineNumber>.*?<OutlineLevel>(\d)<\/OutlineLevel>/gs)].map((m) => `${m[1]}:${m[2]}`);
+  assert.deepEqual(nummers, ['0:0', '1:1', '2:1', '3:1']);
+  assert.equal((r.xml.match(/<Summary>1<\/Summary>/g) ?? []).length, 1); // alleen de projectregel
+  assert.deepEqual(r.regels.map((t) => [t.naam, t.start, t.eind, t.werkpakket]), [
+    ['WP-001-R1 Ronde 1 · Groen', '2026-04-01', '2026-04-30', 'WP-001 Groen'],
+    ['Taak: Brug', '2026-05-15', '2026-05-15', ''],
+    ['WP-001-R2 Ronde 2 · Groen', '2026-06-01', '2026-06-07', 'WP-001 Groen']]);
+  assert.match(r.xml, /<Name>Taak: Brug<\/Name>.*?<Milestone>1<\/Milestone>/s);
+  assert.match(r.xml, /Werkpakket: WP-001 Groen/);
+  assert.equal(r.taken, 3);
+  assert.equal(r.nietGepland.length, 2);
+  assert.equal(MP.excelRegels(r.regels)[0][9], 'WP-001 Groen');
+});
+
+test('periode-overlap', () => {
+  assert.equal(MP.inPeriode('2026-04-01', '2026-04-30', '2026-04-15', '2026-05-01'), true);
+  assert.equal(MP.inPeriode('2026-04-01', '2026-04-30', '2026-05-01', ''), false);
+  assert.equal(MP.inPeriode('2026-04-01', '2026-04-30', '', '2026-03-31'), false);
+  assert.equal(MP.inPeriode('2026-04-01', '', '2026-04-01', '2026-04-01'), true);
+  assert.equal(MP.inPeriode('', '', '', ''), false);
+});

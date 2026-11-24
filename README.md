@@ -318,21 +318,33 @@ Planning → **Voortgangsoverzicht**: een overzicht om de voortgang te bespreken
 
 ## Planning naar MS Project
 
-Op de pagina **Planning** staat de knop **MS Project**. Je kiest:
+Op de pagina **Planning** staat de knop **MS Project**.
 
-- **MS Project (XML)** – openen in Microsoft Project via *Bestand → Openen*, bestandstype **XML-indeling** (Project 2010 en nieuwer).
-  - Elk werkpakket wordt een **samenvattingstaak** (code + naam, met het aantal objecten in de notitie), met de **rondes** eronder op startdatum.
-  - Rondes krijgen de begin- en einddatum uit de app (08:00–17:00), de duur in werkdagen (ma–vr) en **% voltooid** = de voortgang
-    uit de app. Ze zijn **handmatig gepland**, zodat Project de datums niet verschuift. Een ronde zonder einddatum telt (zoals in de app)
-    als één week; dat staat in de notitie. In de notitie staan ook de soort werk of inspectie, hoeveel objecten gedaan zijn en de status.
-  - De **uitvoerders** van een werkpakket worden resources, toegewezen aan de rondes.
-  - **Taken met een deadline** (niet gereed) komen als **mijlpalen** onder *Taken (deadlines)*, met de toegewezen persoon.
-  - Rondes zonder startdatum gaan niet mee; de dialoog noemt ze vooraf.
-- **Excel** – dezelfde regels als tabel (overzichtsnummer en -niveau, naam, begin- en einddatum, duur in werkdagen, % voltooid,
-  mijlpaal, resourcenamen, notities), voor de importwizard van Project of om zelf te bekijken.
+**Indeling**
 
-Filters: werk en inspecties of één van beide, met of zonder afgeronde rondes, met of zonder taken.
-Het is een export (eenrichtingsverkeer): wijzigingen in Project komen niet terug in de app.
+- **Eén regel per ronde** (standaard): elke ronde is een regel met de **begin- en einddatum van die ronde**, op startdatum gesorteerd. De naam is
+  *rondecode + rondenaam · werkpakket* (bijv. *WP-001-R2 Maaironde 2 · Groenonderhoud Park Zuid*); het werkpakket staat ook in de notitie en in
+  de Excel-kolom *Werkpakket*. Taken met een deadline staan ertussen als **mijlpaal** (*Taak: …*).
+- **Per werkpakket, rondes eronder**: elk werkpakket een samenvattingstaak met de rondes eronder; taken onder *Taken (deadlines)*.
+
+Elke ronde krijgt **% voltooid** = de voortgang uit de app, de duur in werkdagen (ma–vr) en de uitvoerders van het werkpakket als resources.
+De regels zijn **handmatig gepland**, zodat Project de datums niet verschuift. Een ronde zonder eigen datums krijgt de **periode van het
+werkpakket** (dat staat in de notitie); een ronde zonder einddatum telt als één week. Rondes zonder enige datum gaan niet mee; het venster noemt ze.
+
+**Filters**
+
+- **Wat**: rondes en taken, alleen rondes, of alleen taken (met een deadline).
+- **Soort**: werk en inspecties, alleen werkzaamheden of alleen inspecties.
+- **Periode**: alles, dit jaar, volgend jaar, dit kwartaal, komende 3 maanden of een eigen periode. Rondes die (deels) in de periode vallen,
+  taken met een deadline in de periode. De periode staat in de bestandsnaam.
+- **Werkpakketten**: alle, of een eigen keuze (taken tellen dan mee als ze bij een gekozen werkpakket horen).
+- **Ook afgeronde rondes en taken** aan of uit.
+
+Het venster toont vooraf hoeveel rondes en taken in het bestand komen.
+
+**Bestand**: **MS Project (XML)** openen via *Bestand → Openen*, bestandstype **XML-indeling** (Project 2010 en nieuwer), of **Excel** met
+dezelfde regels (overzichtsnummer en -niveau, naam, begin- en einddatum, duur, % voltooid, mijlpaal, resources, werkpakket, notities) voor de
+importwizard van Project. Het is een export (eenrichtingsverkeer): wijzigingen in Project komen niet terug in de app.
 
 ## Werk in delen: meerdere ploegen op hetzelfde vak
 

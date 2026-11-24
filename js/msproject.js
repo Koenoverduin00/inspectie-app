@@ -39,10 +39,13 @@ export function periodeVan(r) {
  *          rondes:{code?:string, naam:string, start?:string, eind?:string, percentage?:number, notitie?:string, status?:string}[]}[]} invoer.groepen
  * @param {{naam:string, datum:string, notitie?:string, uitvoerder?:string}[]} [invoer.mijlpalen]
  * @param {string} [invoer.auteur]
+ * @param {'werkpakketten'|'rondes'} [invoer.indeling]  werkpakketten = samenvattingstaak met de rondes eronder;
+ *   rondes = één regel per ronde (en per taak), op startdatum, met het werkpakket in de naam
  * @param {string} [invoer.nu] ISO-tijd van aanmaken
  * @returns {{ xml: string, taken: number, nietGepland: string[] }}
  */
-export function mspdi({ naam, groepen = [], mijlpalen = [], auteur = '', nu = new Date().toISOString() }) {
+export function mspdi({ naam, groepen = [], mijlpalen = [], auteur = '', nu = new Date().toISOString(), indeling = 'werkpakketten' }) {
+  const plat = indeling === 'rondes';
   const nietGepland = [];
   const resources = new Map(); // naam → UID
   const resource = (n) => {
@@ -51,10 +54,31 @@ export function mspdi({ naam, groepen = [], mijlpalen = [], auteur = '', nu = ne
     if (!resources.has(s)) resources.set(s, resources.size + 1);
     return resources.get(s);
   };
-  const taken = []; // { uid, naam, niveau, nummer, start, eind, samenvatting, mijlpaal, pct, notitie, resources }
+  const taken = []; // { uid, naam, niveau, nummer, start, eind, samenvatting, mijlpaal, pct, notitie, resources, werkpakket }
   let uid = 0;
   let nr1 = 0;
-  for (const g of groepen) {
+  if (plat) {
+    // Eén regel per ronde: alle rondes van alle werkpakketten op startdatum, daarna de taken met een deadline.
+    const regels = [];
+    for (const g of groepen) {
+      const wp = [g.code, g.naam].filter(Boolean).join(' ');
+      const res = (g.uitvoerders ?? []).map(resource).filter(Boolean);
+      for (const r of g.rondes ?? []) {
+        const p = periodeVan(r);
+        const titel = [r.code, r.naam].filter(Boolean).join(' ');
+        if (!p) { nietGepland.push(`${wp} – ${titel}`); continue; }
+        regels.push({ naam: `${titel} · ${g.naam ?? ''}`.replace(/ · $/, ''), start: p.start, eind: p.eind, werkpakket: wp,
+          pct: Math.max(0, Math.min(100, Math.round(Number(r.percentage) || 0))),
+          notitie: [`Werkpakket: ${wp}`, r.notitie, p.open ? 'Geen einddatum in de app: als één week ingepland.' : ''].filter(Boolean).join('\n'), resources: res });
+      }
+    }
+    for (const m of mijlpalen.filter((x) => isDatum(x.datum))) {
+      regels.push({ naam: `Taak: ${m.naam}`, start: m.datum, eind: m.datum, mijlpaal: true, werkpakket: m.werkpakket ?? '', notitie: m.notitie ?? '', resources: [resource(m.uitvoerder)].filter(Boolean) });
+    }
+    regels.sort((a, b) => a.start.localeCompare(b.start) || a.eind.localeCompare(b.eind) || a.naam.localeCompare(b.naam, 'nl', { numeric: true }));
+    regels.forEach((t) => { nr1 += 1; taken.push({ ...t, uid: ++uid, niveau: 1, nummer: `${nr1}` }); });
+  }
+  for (const g of plat ? [] : groepen) {
     const kinderen = [];
     for (const r of g.rondes ?? []) {
       const p = periodeVan(r);
@@ -65,17 +89,17 @@ export function mspdi({ naam, groepen = [], mijlpalen = [], auteur = '', nu = ne
     if (!kinderen.length) continue;
     nr1 += 1;
     const res = (g.uitvoerders ?? []).map(resource).filter(Boolean);
-    const groep = { uid: ++uid, naam: [g.code, g.naam].filter(Boolean).join(' '), niveau: 1, nummer: `${nr1}`, samenvatting: true, notitie: g.notitie ?? '',
+    const groep = { uid: ++uid, naam: [g.code, g.naam].filter(Boolean).join(' '), niveau: 1, nummer: `${nr1}`, samenvatting: true, notitie: g.notitie ?? '', werkpakket: [g.code, g.naam].filter(Boolean).join(' '),
       start: kinderen.reduce((m, k) => (k.p.start < m ? k.p.start : m), kinderen[0].p.start),
       eind: kinderen.reduce((m, k) => (k.p.eind > m ? k.p.eind : m), kinderen[0].p.eind), resources: [] };
     taken.push(groep);
     kinderen.sort((a, b) => a.p.start.localeCompare(b.p.start)).forEach((k, i) => {
-      taken.push({ uid: ++uid, naam: k.titel, niveau: 2, nummer: `${nr1}.${i + 1}`, start: k.p.start, eind: k.p.eind,
+      taken.push({ uid: ++uid, naam: k.titel, niveau: 2, nummer: `${nr1}.${i + 1}`, start: k.p.start, eind: k.p.eind, werkpakket: groep.naam,
         pct: Math.max(0, Math.min(100, Math.round(Number(k.r.percentage) || 0))),
         notitie: [k.r.notitie, k.p.open ? 'Geen einddatum in de app: als één week ingepland.' : ''].filter(Boolean).join('\n'), resources: res });
     });
   }
-  const mp = mijlpalen.filter((m) => isDatum(m.datum)).sort((a, b) => a.datum.localeCompare(b.datum));
+  const mp = plat ? [] : mijlpalen.filter((m) => isDatum(m.datum)).sort((a, b) => a.datum.localeCompare(b.datum));
   if (mp.length) {
     nr1 += 1;
     taken.push({ uid: ++uid, naam: 'Taken (deadlines)', niveau: 1, nummer: `${nr1}`, samenvatting: true, start: mp[0].datum, eind: mp.at(-1).datum, resources: [] });
@@ -124,8 +148,14 @@ ${toewijzingen.map((a, i) => `<Assignment><UID>${i + 1}</UID><TaskUID>${a.taak.u
 }
 
 /** Kolommen voor een Excel-tabel die de importwizard van MS Project kan inlezen (velden koppelen per kolom). */
-export const EXCEL_KOLOMMEN = ['Overzichtsnummer', 'Overzichtsniveau', 'Naam', 'Begindatum', 'Einddatum', 'Duur (werkdagen)', '% voltooid', 'Mijlpaal', 'Resourcenamen', 'Notities'];
+export const EXCEL_KOLOMMEN = ['Overzichtsnummer', 'Overzichtsniveau', 'Naam', 'Begindatum', 'Einddatum', 'Duur (werkdagen)', '% voltooid', 'Mijlpaal', 'Resourcenamen', 'Werkpakket', 'Notities'];
 export function excelRegels(regels) {
   return regels.map((t) => [t.nummer, t.niveau, t.naam, t.start, t.eind, t.mijlpaal ? 0 : werkdagen(t.start, t.eind),
-    t.samenvatting ? '' : (t.pct ?? 0), t.mijlpaal ? 'Ja' : 'Nee', t.resources.join(';'), t.notitie ?? '']);
+    t.samenvatting ? '' : (t.pct ?? 0), t.mijlpaal ? 'Ja' : 'Nee', t.resources.join(';'), t.werkpakket ?? '', t.notitie ?? '']);
+}
+
+/** Overlapt de periode van een ronde (of de datum van een taak) met [van, tot]? Leeg = open grens. */
+export function inPeriode(start, eind, van = '', tot = '') {
+  if (!isDatum(start)) return false;
+  return (!tot || start <= tot) && (!van || (isDatum(eind) ? eind : start) >= van);
 }

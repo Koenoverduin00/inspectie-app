@@ -9361,55 +9361,112 @@ async function exporteerMsProject() {
   const g = await pakketGegevens();
   const taken = await inProject('taken');
   const naamVan = (e) => project.ledenInfo?.[e]?.naam || e;
+  const pakketLijst = g.pakketten.filter((p) => !p.verwijderd).sort((x, y) => metCode(x).localeCompare(metCode(y), 'nl', { numeric: true }));
+  const nu = vandaag();
+  const jaar = Number(nu.slice(0, 4));
+  const kwartaal = Math.floor((Number(nu.slice(5, 7)) - 1) / 3);
+  const iso = (j, m, dag) => `${j}-${String(m).padStart(2, '0')}-${String(dag).padStart(2, '0')}`;
+  const plus = (dagen) => new Date(Date.parse(`${nu}T00:00:00Z`) + dagen * 864e5).toISOString().slice(0, 10);
+  const PERIODES = {
+    alles: ['Alles', '', ''],
+    jaar: [`Dit jaar (${jaar})`, iso(jaar, 1, 1), iso(jaar, 12, 31)],
+    volgend: [`Volgend jaar (${jaar + 1})`, iso(jaar + 1, 1, 1), iso(jaar + 1, 12, 31)],
+    kwartaal: [`Dit kwartaal (Q${kwartaal + 1})`, iso(jaar, kwartaal * 3 + 1, 1), new Date(Date.UTC(jaar, kwartaal * 3 + 3, 0)).toISOString().slice(0, 10)],
+    komend: ['Komende 3 maanden', nu, plus(91)],
+    eigen: ['Eigen periode…', '', ''],
+  };
   const d = document.createElement('dialog');
-  d.className = 'dialoog';
+  d.className = 'dialoog breed';
   d.innerHTML = `<form method="dialog" novalidate>
     <h2>Planning naar MS Project</h2>
-    <p><small>Elk werkpakket wordt een samenvattingstaak met de rondes eronder, met begin- en einddatum, % voltooid (de voortgang uit de app)
-      en de uitvoerders als resources. De rondes zijn handmatig gepland, zodat de datums precies blijven zoals in de app.</small></p>
+    <p><small>Elke ronde wordt een regel met de begin- en einddatum van die ronde, het % voltooid uit de app en de uitvoerders als resources.
+      De regels zijn handmatig gepland, zodat Project de datums precies houdt zoals in de app.</small></p>
+    <div class="veld"><label>Indeling</label>
+      ${segment('mp-indeling', 'rondes', [['rondes', 'Eén regel per ronde'], ['werkpakketten', 'Per werkpakket, rondes eronder']])}</div>
+    <div class="mp-filters">
+      <div class="veld"><label for="mp-wat">Wat</label><select id="mp-wat">
+        <option value="beide">Rondes en taken</option><option value="rondes">Alleen rondes</option><option value="taken">Alleen taken (met deadline)</option></select></div>
+      <div class="veld"><label for="mp-soort">Soort</label><select id="mp-soort">
+        <option value="">Werk en inspecties</option><option value="werk">Alleen werkzaamheden</option><option value="inspectie">Alleen inspecties</option></select></div>
+      <div class="veld"><label for="mp-periode">Periode</label><select id="mp-periode">${Object.entries(PERIODES).map(([k, [l]]) => optie(k, l, 'alles')).join('')}</select>
+        <span id="mp-eigen" hidden><input type="date" id="mp-van" aria-label="Van"> t/m <input type="date" id="mp-tot" aria-label="Tot en met"></span>
+        <small>Rondes die (deels) in de periode vallen; taken met een deadline in de periode.</small></div>
+    </div>
+    <details class="mp-pakketten"><summary>Werkpakketten: <strong id="mp-pk-tekst">alle ${pakketLijst.length}</strong></summary>
+      <div class="knoppen"><button type="button" class="knop klein" data-mp-alle="1">Alle</button><button type="button" class="knop klein" data-mp-alle="0">Geen</button></div>
+      <div class="kieslijst">${pakketLijst.map((p) => `<label class="vink"><input type="checkbox" data-mp-pk value="${esc(p.id)}" checked><span>${esc(metCode(p))}<small>${rondesVan(p).length} ronde${rondesVan(p).length === 1 ? '' : 's'}${p.status ? ` · ${esc(p.status)}` : ''}</small></span></label>`).join('')}</div></details>
+    <label class="vink"><input type="checkbox" id="mp-afgerond" checked><span>Ook afgeronde rondes en taken</span></label>
     <div class="veld"><label>Bestand</label>
-      <label class="vink"><input type="radio" name="mp-formaat" value="xml" checked><span>MS Project (XML)<small>Openen in Project: Bestand → Openen → kies bij bestandstype <em>XML-indeling</em>. Werkt in Project 2010 en nieuwer en in Project Online desktop.</small></span></label>
-      <label class="vink"><input type="radio" name="mp-formaat" value="xlsx"><span>Excel<small>Tabel met overzichtsniveau, naam, datums, duur, % voltooid en resources: voor de importwizard van Project, of om te bekijken.</small></span></label></div>
-    <div class="veld"><label for="mp-soort">Welke rondes</label><select id="mp-soort">
-      <option value="">Werk en inspecties</option><option value="werk">Alleen werkzaamheden</option><option value="inspectie">Alleen inspecties</option></select></div>
-    <label class="vink"><input type="checkbox" id="mp-afgerond" checked><span>Ook afgeronde rondes</span></label>
-    <label class="vink"><input type="checkbox" id="mp-taken" checked><span>Taken met een deadline als mijlpalen</span></label>
+      <label class="vink"><input type="radio" name="mp-formaat" value="xml" checked><span>MS Project (XML)<small>Openen in Project: Bestand → Openen → kies bij bestandstype <em>XML-indeling</em>. Werkt in Project 2010 en nieuwer.</small></span></label>
+      <label class="vink"><input type="radio" name="mp-formaat" value="xlsx"><span>Excel<small>Dezelfde regels als tabel (met werkpakket), voor de importwizard van Project of om te bekijken.</small></span></label></div>
     <p id="mp-info"><small></small></p>
     <div class="formvoet"><button class="knop" type="button" data-weg>Annuleren</button><button class="knop primair" type="submit">Downloaden</button></div></form>`;
   document.body.append(d);
   const sluit = () => { d.close(); d.remove(); };
   d.querySelector('[data-weg]').onclick = sluit;
   d.addEventListener('cancel', (e) => { e.preventDefault(); sluit(); });
+  d.querySelectorAll('[data-mp-alle]').forEach((k) => k.addEventListener('click', () => {
+    d.querySelectorAll('[data-mp-pk]').forEach((c) => { c.checked = k.dataset.mpAlle === '1'; });
+    info();
+  }));
+  const periode = () => {
+    const k = d.querySelector('#mp-periode').value;
+    d.querySelector('#mp-eigen').hidden = k !== 'eigen';
+    if (k === 'eigen') {
+      let van = d.querySelector('#mp-van').value; let tot = d.querySelector('#mp-tot').value;
+      if (van && tot && van > tot) [van, tot] = [tot, van];
+      return { van, tot, label: van || tot ? `${van ? datumNL(van) : '…'} t/m ${tot ? datumNL(tot) : '…'}` : 'Alles', sleutel: `${van || 'begin'}_${tot || 'eind'}` };
+    }
+    const [label, van, tot] = PERIODES[k];
+    return { van, tot, label, sleutel: k === 'alles' ? '' : (van.slice(0, 4) === tot.slice(0, 4) && k !== 'kwartaal' && k !== 'komend' ? van.slice(0, 4) : `${van}_${tot}`) };
+  };
   const maak = () => {
     const soort = d.querySelector('#mp-soort').value;
+    const wat = d.querySelector('#mp-wat').value;
     const metAfgerond = d.querySelector('#mp-afgerond').checked;
-    const groepen = g.pakketten.filter((p) => !p.verwijderd).map((p) => ({
+    const { van, tot } = periode();
+    const gekozen = new Set([...d.querySelectorAll('[data-mp-pk]:checked')].map((c) => c.value));
+    const alleGekozen = gekozen.size === pakketLijst.length;
+    const groepen = wat === 'taken' ? [] : pakketLijst.filter((p) => gekozen.has(p.id)).map((p) => ({
       code: p.code ?? '', naam: p.naam ?? '', uitvoerders: (p.toegewezen ?? []).map(naamVan),
       notitie: [p.omschrijving, `${(p.objecten ?? []).length} objecten`].filter(Boolean).join('\n'),
       rondes: rondesVan(p).filter((r) => (!soort || (r.soort ?? 'werk') === soort) && (metAfgerond || r.status !== 'afgerond')).map((r) => {
+        // Ronde zonder eigen datums: de periode van het werkpakket.
+        const eigen = Boolean(r.start);
+        const start = eigen ? r.start : (p.start ?? '');
+        const eind = eigen ? r.eind : (p.eind ?? '');
+        return { r, start, eind, eigen };
+      }).filter(({ start, eind }) => (!van && !tot) || MP.inPeriode(start, MP.periodeVan({ start, eind })?.eind ?? eind, van, tot)).map(({ r, start, eind, eigen }) => {
         const vg = g.rondeVoortgang.get(`${p.id}:${r.id}`);
         return { code: rondeCode(p, r), naam: r.naam && r.naam !== p.naam ? r.naam : (r.soort === 'inspectie' ? r.inspectiesoort || 'Inspectie' : r.werksoort || 'Werkzaamheden'),
-          start: r.start, eind: r.eind, percentage: vg?.percentage ?? (r.status === 'afgerond' ? 100 : 0),
+          start, eind, percentage: vg?.percentage ?? (r.status === 'afgerond' ? 100 : 0),
           notitie: [r.soort === 'inspectie' ? `Inspectie${r.inspectiesoort ? `: ${r.inspectiesoort}` : ''}` : `Werk${r.werksoort ? `: ${r.werksoort}` : ''}`,
-            vg ? `${vg.gedaan?.size ?? 0} van ${vg.totaal ?? 0} objecten gedaan` : '', `Status in de app: ${r.status ?? 'gepland'}`].filter(Boolean).join('\n') };
+            vg ? `${vg.gedaan?.size ?? 0} van ${vg.totaal ?? 0} objecten gedaan` : '', `Status in de app: ${r.status ?? 'gepland'}`,
+            !eigen && start ? 'Periode van het werkpakket (de ronde heeft geen eigen datums).' : ''].filter(Boolean).join('\n') };
       }),
     }));
-    const mijlpalen = d.querySelector('#mp-taken').checked ? taken.filter((t) => t.deadline && t.status !== 'gereed' && !t.verwijderd && (!soort || t.soort === soort))
-      .map((t) => ({ naam: t.titel || (t.soort === 'werk' ? 'Werkzaamheid' : 'Inspectie'), datum: t.deadline, uitvoerder: t.toegewezenAan ? naamVan(t.toegewezenAan) : '', notitie: t.omschrijving ?? '' })) : [];
-    return MP.mspdi({ naam: project.naam ?? 'Planning', groepen, mijlpalen, auteur: instelling.lees('organisatie') || '' });
+    const pkNaam = new Map(pakketLijst.map((p) => [p.id, metCode(p)]));
+    const mijlpalen = wat === 'rondes' ? [] : taken.filter((t) => t.deadline && !t.verwijderd && (metAfgerond || t.status !== 'gereed') && (!soort || t.soort === soort)
+      && (alleGekozen || gekozen.has(t.werkpakketId)) && MP.inPeriode(t.deadline, t.deadline, van, tot))
+      .map((t) => ({ naam: t.titel || (t.soort === 'werk' ? 'Werkzaamheid' : 'Inspectie'), datum: t.deadline, uitvoerder: t.toegewezenAan ? naamVan(t.toegewezenAan) : '',
+        notitie: [t.omschrijving, t.status === 'gereed' ? 'Gereed' : ''].filter(Boolean).join('\n'), werkpakket: pkNaam.get(t.werkpakketId) ?? '' }));
+    const indeling = d.querySelector('input[name=mp-indeling]:checked')?.value ?? 'rondes';
+    return { ...MP.mspdi({ naam: project.naam ?? 'Planning', groepen, mijlpalen, auteur: instelling.lees('organisatie') || '', indeling }),
+      aantalRondes: groepen.reduce((n, x) => n + x.rondes.filter((r) => r.start).length, 0), aantalTaken: mijlpalen.length, gekozen: gekozen.size };
   };
   const info = () => {
     const r = maak();
-    d.querySelector('#mp-info small').textContent = `${r.taken} ${r.taken === 1 ? 'taak' : 'taken'} in het bestand.${r.nietGepland.length
-      ? ` ${r.nietGepland.length} ronde${r.nietGepland.length === 1 ? ' heeft' : 's hebben'} nog geen startdatum en ${r.nietGepland.length === 1 ? 'gaat' : 'gaan'} niet mee: ${r.nietGepland.slice(0, 3).join('; ')}${r.nietGepland.length > 3 ? ' …' : ''}` : ''}`;
+    d.querySelector('#mp-pk-tekst').textContent = r.gekozen === pakketLijst.length ? `alle ${pakketLijst.length}` : `${r.gekozen} van ${pakketLijst.length}`;
+    d.querySelector('#mp-info small').textContent = `In het bestand: ${r.aantalRondes} ronde${r.aantalRondes === 1 ? '' : 's'} en ${r.aantalTaken} ta${r.aantalTaken === 1 ? 'ak' : 'ken'} (${periode().label.toLowerCase()}).${r.nietGepland.length
+      ? ` ${r.nietGepland.length} ronde${r.nietGepland.length === 1 ? ' heeft' : 's hebben'} geen datums (ook niet via het werkpakket) en ${r.nietGepland.length === 1 ? 'gaat' : 'gaan'} niet mee: ${r.nietGepland.slice(0, 3).join('; ')}${r.nietGepland.length > 3 ? ' …' : ''}` : ''}`;
   };
   d.querySelectorAll('select, input').forEach((x) => x.addEventListener('change', info));
   info();
   d.querySelector('form').onsubmit = async (e) => {
     e.preventDefault();
     const r = maak();
-    if (!r.taken) return melding('Er staat niets met een datum in de planning.', 'fout');
-    const naam = `${String(project.naam ?? 'planning').replace(/[^\w-]+/g, '_')}-planning-${vandaag()}`;
+    if (!r.taken) return melding('Er is niets om te exporteren met deze keuze (geen rondes of taken met een datum).', 'fout');
+    const naam = `${String(project.naam ?? 'planning').replace(/[^\w-]+/g, '_')}-planning${periode().sleutel ? `-${periode().sleutel}` : ''}-${vandaag()}`;
     if (d.querySelector('[name=mp-formaat]:checked').value === 'xml') {
       download(`${naam}.xml`, r.xml, 'application/xml');
     } else {
@@ -9417,17 +9474,18 @@ async function exporteerMsProject() {
       const wb = new ExcelJS.Workbook();
       const ws = wb.addWorksheet('Planning');
       ws.addRow(MP.EXCEL_KOLOMMEN).font = { bold: true };
-      for (const rij of MP.excelRegels(r.regels)) {
+      MP.excelRegels(r.regels).forEach((rij, n) => {
         const x = ws.addRow(rij.map((v, i) => ([3, 4].includes(i) && v ? new Date(`${v}T00:00:00Z`) : v)));
-        if (rij[1] === 1) x.font = { bold: true };
+        if (r.regels[n].samenvatting) x.font = { bold: true };
         x.getCell(3).alignment = { indent: (rij[1] - 1) * 2 };
-      }
+      });
       [4, 5].forEach((c) => { ws.getColumn(c).numFmt = 'dd-mm-yyyy'; });
-      ws.columns.forEach((c, i) => { c.width = [16, 10, 48, 12, 12, 10, 10, 9, 28, 50][i] ?? 14; });
+      ws.columns.forEach((c, i) => { c.width = [16, 10, 52, 12, 12, 10, 10, 9, 28, 32, 50][i] ?? 14; });
       ws.views = [{ state: 'frozen', ySplit: 1 }];
+      ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: MP.EXCEL_KOLOMMEN.length } };
       download(`${naam}.xlsx`, await wb.xlsx.writeBuffer(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     }
-    melding(`Planning gedownload: ${r.taken} ${r.taken === 1 ? 'taak' : 'taken'}`);
+    melding(`Planning gedownload: ${r.aantalRondes} ronde${r.aantalRondes === 1 ? '' : 's'} en ${r.aantalTaken} ta${r.aantalTaken === 1 ? 'ak' : 'ken'}`);
     sluit();
   };
   d.showModal();
