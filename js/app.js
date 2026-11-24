@@ -10383,7 +10383,7 @@ async function takenPagina(_, q = new URLSearchParams()) {
   app.innerHTML = `
     <div class="paginakop">
       <div><h1>Planning</h1><p>Plan de rondes van de werkpakketten in de tijd${magBeheren() ? ': sleep een balk om te verplaatsen, sleep de randen om korter of langer te maken, of trek in een lege rij de periode' : ''}. Daaronder alle taken.</p></div>
-      <div class="knoppen"><a class="knop" href="#/planning/overzicht">${I.bestand} Voortgangsoverzicht</a><button type="button" class="knop" data-msproject title="Planning downloaden voor Microsoft Project">${I.exporteer} MS Project</button>${magBeheren() ? '<a class="knop" href="#/werkpakketten/nieuw">+ Werkpakket</a>' : ''}<a class="knop" href="#/taken/nieuw">+ Taak plannen</a></div>
+      <div class="knoppen"><a class="knop" href="#/planning/overzicht" title="Agenda en notulen voor het planningsoverleg">${I.bestand} Planningsoverleg</a><button type="button" class="knop" data-msproject title="Planning downloaden voor Microsoft Project">${I.exporteer} MS Project</button>${magBeheren() ? '<a class="knop" href="#/werkpakketten/nieuw">+ Werkpakket</a>' : ''}<a class="knop" href="#/taken/nieuw">+ Taak plannen</a></div>
     </div>
     <section class="kaart bordkaart"><div id="planningsbord"><p class="leeg">Planning laden…</p></div></section>
     <details class="takenblok" id="takenblok">
@@ -10443,6 +10443,8 @@ async function voortgangsOverzicht(q) {
   const nu = vandaag();
   const ind = VO.indelen({ rondes, taken, vandaag: nu, weken });
   const naamVan = (e) => project.ledenInfo?.[e]?.naam || e;
+  const kanOpslaan = magBeheren();
+  const conceptSleutel = `overlegConcept:${project.id}`;
   const fmt = {
     naam: (p) => metCode(p),
     soort: (r) => (r.soort === 'inspectie' ? r.inspectiesoort || 'Schouw / inspectie' : r.werksoort || 'Werkzaamheid'),
@@ -10450,77 +10452,272 @@ async function voortgangsOverzicht(q) {
     hoeveelheden: (vg) => (vg?.hoeveelheden ?? []).map((h) => `${h.post.omschrijving}: ${hoeveelheidTekst(h)}`).join('; '),
     object: (id) => g.objectMap.get(id),
   };
-  const organisatie = instelling.lees('organisatie');
-  const door = naamVan(ikEmail()) || instelling.lees('inspecteur') || '';
-  const vooruit = `${weken} ${weken === 1 ? 'week' : 'weken'} (t/m ${datumNL(ind.tot)})`;
   const standKlasse = (r) => (r.dagenTeLaat != null || r.signaal === 'flinke achterstand' ? 'verlopen' : r.signaal === 'achter' ? 'binnenkort' : r.signaal === 'op schema' ? 'afgerond' : '');
-  const regel = (r) => {
-    if (r.soort === 'taak') {
-      const o = g.objectMap.get(r.taak.objectId);
-      return `<tr><td><small>Taak</small></td><td><a href="#/taken/${esc(r.taak.id)}/bewerken"><strong>${esc(r.taak.titel || 'Taak')}</strong></a>${o ? `<br><small>${objectNaam(o)}</small>` : ''}${r.taak.omschrijving ? `<br><small class="zacht">${esc(r.taak.omschrijving)}</small>` : ''}</td>
-        <td><small>${r.eind ? `uiterlijk ${datumNL(r.eind)}` : '–'}</small></td><td>–</td>
-        <td><span class="label-status ${standKlasse(r)}">${esc(VO.standTekst(r))}</span></td><td><small>${esc(r.taak.toegewezenAan ? naamVan(r.taak.toegewezenAan) : 'iedereen')}</small></td><td class="vo-notitie"></td></tr>`;
-    }
-    const vg = r.vg ?? {};
-    const v = g.views.get(`${r.pakket.id}:${r.ronde.id}`);
-    return `<tr><td><span class="wpcode">${esc(r.code)}</span></td>
-      <td><a href="${pakketPagina(v, false)}"><strong>${esc(metCode(r.pakket))}</strong></a>${r.pakket.rondes?.length && r.ronde.naam ? `<br><small>R${esc(r.ronde.nummer)} ${esc(r.ronde.naam)}</small>` : ''}
-        <br><small class="zacht">${esc(fmt.soort(r.ronde))}</small>${r.ronde.opmerking ? `<br><small>💬 ${esc(r.ronde.opmerking)}</small>` : ''}</td>
-      <td><small>${datumNL(r.start)} –<br>${datumNL(r.eind)}</small></td>
-      <td class="vo-voortgang"><div class="balkje" role="progressbar" aria-valuenow="${r.werkelijk}" aria-valuemin="0" aria-valuemax="100" aria-label="Voortgang ${r.werkelijk}%"><i style="width:${r.werkelijk}%;background:${PAKKET_KLEUR.gedaan}"></i>${r.verwacht != null && r.dagenTeLaat == null && r.startOver == null ? `<b style="left:${r.verwacht}%" title="Verwacht ${r.verwacht}%"></b>` : ''}</div>
-        <strong>${r.werkelijk}%</strong> <small>${vg.totaal ? `${(vg.gedaan?.size ?? 0) + (vg.overgeslagen?.size ?? 0)}/${vg.totaal} obj.` : ''}</small>
-        ${fmt.hoeveelheden(vg) ? `<br><small>${esc(fmt.hoeveelheden(vg))}</small>` : ''}</td>
-      <td><span class="label-status ${standKlasse(r)}">${esc(VO.standTekst(r))}</span></td>
-      <td><small>${esc(fmt.uitvoerders(r.pakket))}</small></td><td class="vo-notitie"></td></tr>`;
-  };
-  const tabel = (lijst) => `<div class="tabelhouder"><table class="dossiertabel vo-tabel">
-    <thead><tr><th>Code</th><th>Werkpakket / ronde</th><th>Periode</th><th>Voortgang</th><th>Stand</th><th>Uitvoerders</th><th class="vo-notitie">Bespreekpunt / actie</th></tr></thead>
-    <tbody>${lijst.map(regel).join('')}</tbody></table></div>`;
-  const leegTekst = { achterstallig: 'Niets achterstallig.', lopend: 'Er loopt op dit moment niets.', komend: `Niets dat binnen ${weken} ${weken === 1 ? 'week' : 'weken'} start.` };
-  const KLASSE = { achterstallig: 'slecht', lopend: '', komend: '' };
-
-  app.innerHTML = `
-    <div class="paginakop geen-print dossierbalk">
-      <div><p><a href="#/planning">← Planning</a></p><h1>Voortgangsoverzicht</h1>
-        <p>Voor het bespreken van de voortgang in het projectteam of met de opdrachtgever.</p></div>
-      <form class="filters" id="vo-filter">
-        <label>Start binnen <select id="vo-weken">${WEKEN.map((w) => optie(String(w), `${w} ${w === 1 ? 'week' : 'weken'}`, String(weken))).join('')}</select></label>
-        <select id="vo-soort" aria-label="Soort">${optie('', 'Werk en inspecties', soort)}${optie('werk', 'Werkzaamheden', soort)}${optie('inspectie', 'Inspecties', soort)}</select>
-        <label class="vink"><input type="checkbox" id="vo-taken" ${metTaken ? 'checked' : ''}> Losse taken meenemen</label>
-      </form>
-      <div class="knoppen"><button class="knop primair" onclick="window.print()">${I.bestand} Afdrukken / opslaan als PDF</button>
-        <button class="knop" id="vo-excel">${I.excel} Excel</button></div>
-    </div>
-    <article class="rapport dossier voortgangsoverzicht">
-      <div class="rapport-kop">
-        <div>${organisatie ? `<small>${esc(organisatie)}</small>` : ''}
-          <h1 style="margin:.25rem 0">Voortgangsoverzicht</h1>
-          <div>${esc(project.naam)}${project.opdrachtgever ? ` · opdrachtgever ${esc(project.opdrachtgever)}` : ''}</div></div>
-        <div style="text-align:right"><small>Peildatum</small><br><strong>${datumNL(nu)}</strong><br><small>Vooruit: ${esc(vooruit)}${soort ? ` · alleen ${soort === 'werk' ? 'werkzaamheden' : 'inspecties'}` : ''}</small>
-          ${door ? `<br><small>Opgesteld door ${esc(door)}</small>` : ''}</div>
-      </div>
-      <div class="tegels klein">${VO.GROEPEN.map(([k, l]) => `<a class="tegel ${ind[k].length ? KLASSE[k] : ''}" href="#vo-${k}"><strong>${ind[k].length}</strong><span>${esc(l.toLowerCase())}</span></a>`).join('')}
-        ${ind.nietIngepland ? `<span class="tegel let"><strong>${ind.nietIngepland}</strong><span>nog niet ingepland</span></span>` : ''}</div>
-      ${VO.GROEPEN.map(([k, l, uitleg], n) => `<section class="vo-groep" id="vo-${k}"><h2>${n + 1}. ${esc(l)} <small>(${ind[k].length})</small></h2>
-        <p class="zacht">${k === 'komend' ? `Begint tussen morgen en ${datumNL(ind.tot)}.` : esc(uitleg)}</p>
-        ${ind[k].length ? tabel(ind[k]) : `<p>${leegTekst[k]}</p>`}</section>`).join('')}
-      ${ind.nietIngepland ? `<p class="zacht">${ind.nietIngepland === 1 ? '1 ronde is nog niet ingepland en staat' : `${ind.nietIngepland} rondes zijn nog niet ingepland en staan`} niet in dit overzicht.</p>` : ''}
-    </article>`;
-
-  const naar = () => {
-    const p = new URLSearchParams({ weken: app.querySelector('#vo-weken').value });
-    if (app.querySelector('#vo-soort').value) p.set('soort', app.querySelector('#vo-soort').value);
-    if (!app.querySelector('#vo-taken').checked) p.set('taken', '0');
-    location.hash = `#/planning/overzicht?${p}`;
-  };
-  app.querySelector('#vo-filter').addEventListener('change', naar);
-  app.querySelector('#vo-excel').addEventListener('click', async () => {
-    const ExcelJS = await PX.laadExcelJS();
-    const wb = VO.maakWerkboek(ExcelJS, ind, { project: project.naam ?? '', peildatum: datumNL(nu), vooruit }, fmt);
-    const buf = await wb.xlsx.writeBuffer();
-    download(`voortgangsoverzicht-${String(project.naam ?? 'project').replace(/[^\w-]+/g, '_')}-${nu}.xlsx`, buf, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    melding('Voortgangsoverzicht geëxporteerd');
+  // De planning van vandaag als regels voor de notulen (bij een vastgesteld overleg: de momentopname van toen).
+  const live = VO.momentopname(ind, {
+    titel: (r) => (r.soort === 'taak' ? (r.taak.titel || 'Taak') : metCode(r.pakket)),
+    sub: (r) => {
+      if (r.soort === 'taak') {
+        const o = g.objectMap.get(r.taak.objectId);
+        return [o ? `${o.code ?? ''} ${o.naam ?? ''}`.trim() : '', r.taak.omschrijving ?? '', `Toegewezen: ${r.taak.toegewezenAan ? naamVan(r.taak.toegewezenAan) : 'iedereen'}`].filter(Boolean);
+      }
+      const vg = r.vg ?? {};
+      return [r.pakket.rondes?.length > 1 && r.ronde.naam ? `R${r.ronde.nummer} ${r.ronde.naam}` : '', fmt.soort(r.ronde),
+        vg.totaal ? `${(vg.gedaan?.size ?? 0) + (vg.overgeslagen?.size ?? 0)} van ${vg.totaal} objecten gedaan` : '', fmt.hoeveelheden(vg),
+        `Uitvoerders: ${fmt.uitvoerders(r.pakket)}`, r.ronde.opmerking ? `Opmerking: ${r.ronde.opmerking}` : ''].filter(Boolean);
+    },
+    periode: (r) => (r.soort === 'taak' ? (r.eind ? `uiterlijk ${datumNL(r.eind)}` : 'geen deadline') : `${datumNL(r.start)} – ${datumNL(r.eind)}`),
+    stand: standKlasse,
+    href: (r, plan) => (r.soort === 'taak' ? `#/taken/${encodeURIComponent(r.taak.id)}/bewerken`
+      : plan ? `#/planning?pakket=${encodeURIComponent(r.pakket.id)}`
+        : `#/werkpakketten/${encodeURIComponent(r.pakket.id)}${r.pakket.rondes?.length ? `?ronde=${encodeURIComponent(r.ronde.id)}` : ''}`),
   });
+
+  // Welk overleg: een opgeslagen overleg, of een nieuw (concept, eventueel lokaal bewaard).
+  const overleggen = () => (huidigProject?.id === project.id ? huidigProject : project).planningsoverleggen ?? [];
+  const gekozenId = q?.get('overleg') ?? '';
+  let overleg = overleggen().find((o) => o.id === gekozenId);
+  overleg = overleg ? structuredClone(overleg) : null;
+  if (!overleg) {
+    let concept = null;
+    try { concept = JSON.parse(instelling.lees(conceptSleutel, 'null')); } catch { concept = null; }
+    overleg = concept && !overleggen().some((o) => o.id === concept.id) ? concept : VO.nieuwOverleg({ id: nieuwId(), vandaag: nu, overleggen: overleggen() });
+  }
+  overleg.punten ??= {}; overleg.acties ??= []; overleg.actieUpdates ??= {}; overleg.volgende ??= { datum: '', tijd: '', locatie: '' };
+  let opgeslagen = overleggen().some((o) => o.id === overleg.id);
+  const foto = () => (overleg.vastgesteld && overleg.foto ? overleg.foto : live);
+  const leden = [...new Set([...(project.leden ?? []).map(naamVan), ...overleggen().flatMap((o) => (o.acties ?? []).map((a) => a.wie))].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'nl'));
+
+  const tekstvak = (attr, waarde, ph = '', rijen = 2) => `<textarea class="vo-veld" ${attr} rows="${rijen}" placeholder="${esc(ph)}">${esc(waarde ?? '')}</textarea>`;
+  const invoer = (attr, waarde, type = 'text', ph = '') => `<input class="vo-veld" type="${type}" ${attr} value="${esc(waarde ?? '')}" placeholder="${esc(ph)}">`;
+  const regelHtml = (r) => `<tr data-sleutel="${esc(r.sleutel)}">
+      <td class="vo-code">${r.soort === 'taak' ? '<span class="wpcode taakcode">Taak</span>' : `<span class="wpcode">${esc(r.code)}</span>`}</td>
+      <td class="vo-wat"><a href="${esc(r.href)}"><strong>${esc(r.titel)}</strong></a>${(r.sub ?? []).map((x) => `<small>${esc(x)}</small>`).join('')}</td>
+      <td class="vo-periode"><small>${esc(r.periode)}</small></td>
+      <td class="vo-voortgang">${r.voortgang == null ? '<small class="zacht">–</small>' : `<div class="balkje" role="progressbar" aria-valuenow="${r.voortgang}" aria-valuemin="0" aria-valuemax="100" aria-label="Voortgang ${r.voortgang}%"><i style="width:${r.voortgang}%;background:${PAKKET_KLEUR.gedaan}"></i>${r.verwacht != null ? `<b style="left:${r.verwacht}%" title="Verwacht ${r.verwacht}%"></b>` : ''}</div><strong>${r.voortgang}%</strong>`}
+        <span class="label-status ${esc(r.klasse)}">${esc(r.stand)}</span></td>
+      <td class="vo-punt">${tekstvak(`data-punt="${esc(r.sleutel)}" aria-label="Bespreekpunt ${esc(r.titel)}"`, overleg.punten[r.sleutel], 'Bespreekpunt…')}
+        <button type="button" class="knop klein geen-print" data-actie-van="${esc(r.sleutel)}" title="Actiepunt maken bij deze regel">＋ Actie</button></td></tr>`;
+  const tabel = (lijst) => `<div class="tabelhouder"><table class="vo-tabel">
+    <colgroup><col class="c-code"><col class="c-wat"><col class="c-periode"><col class="c-voortgang"><col class="c-punt"></colgroup>
+    <thead><tr><th>Code</th><th>Werkpakket / taak</th><th>Periode</th><th>Voortgang en stand</th><th>Bespreekpunt</th></tr></thead>
+    <tbody>${lijst.map(regelHtml).join('')}</tbody></table></div>`;
+  const leegTekst = { achterstallig: 'Niets achterstallig.', lopend: 'Er loopt op dit moment niets.', komend: `Niets dat binnen ${weken} ${weken === 1 ? 'week' : 'weken'} start.` };
+  const AGENDA = [['opening', 'Opening en vaststellen agenda'], ['acties', 'Actiepunten vorige overleggen'], ['achterstallig', 'Had al af moeten zijn'],
+    ['lopend', 'Lopend werk'], ['komend', 'Start binnenkort'], ['nietingepland', 'Nog niet ingepland'], ['besluiten', 'Besluiten'],
+    ['nieuweacties', 'Nieuwe actiepunten'], ['rondvraag', 'Rondvraag'], ['volgende', 'Volgend overleg en sluiting']];
+  const nr = Object.fromEntries(AGENDA.map(([k], i) => [k, i + 1]));
+  const kopje = (k, extra = '') => `<h2>${nr[k]}. ${esc(AGENDA[nr[k] - 1][1])}${extra}</h2>`;
+
+  const actiesVorig = () => VO.openActies(overleggen(), overleg);
+  const actieRijVorig = (x, i) => {
+    const telaat = x.status === 'open' && x.actie.gereed && x.actie.gereed < overleg.datum;
+    return `<tr><td>${i + 1}</td><td><strong>${esc(x.actie.tekst || '–')}</strong>${x.actie.onderwerp ? `<small>${esc(x.actie.onderwerp)}</small>` : ''}</td>
+      <td><small>${esc(x.actie.wie || '–')}</small></td><td><small class="${telaat ? 'fouttekst' : ''}">${x.actie.gereed ? datumNL(x.actie.gereed) : '–'}${telaat ? ' · te laat' : ''}</small></td>
+      <td><small>#${esc(x.overleg.nummer ?? '')} · ${datumNL(x.overleg.datum)}</small></td>
+      <td><select class="vo-veld" data-upd="${esc(x.actie.id)}" data-k="status" aria-label="Status">${Object.entries(VO.ACTIE_STATUS).map(([k, l]) => optie(k, l, x.status)).join('')}</select></td>
+      <td>${tekstvak(`data-upd="${esc(x.actie.id)}" data-k="toelichting" aria-label="Toelichting"`, x.toelichting, 'Toelichting…', 1)}</td></tr>`;
+  };
+  const actieRijNieuw = (a, i) => `<tr data-actie="${esc(a.id)}"><td>${i + 1}</td>
+      <td>${tekstvak(`data-actie-id="${esc(a.id)}" data-k="tekst" aria-label="Actie"`, a.tekst, 'Wat moet er gebeuren?', 1)}${a.onderwerp ? `<small>${esc(a.onderwerp)}</small>` : ''}</td>
+      <td>${invoer(`data-actie-id="${esc(a.id)}" data-k="wie" list="vo-leden" aria-label="Actiehouder"`, a.wie, 'text', 'Actiehouder')}</td>
+      <td>${invoer(`data-actie-id="${esc(a.id)}" data-k="gereed" aria-label="Gereed vóór"`, a.gereed, 'date')}</td>
+      <td class="geen-print"><button type="button" class="knop klein gevaar" data-actie-weg="${esc(a.id)}" aria-label="Actiepunt verwijderen">${I.verwijder}</button></td></tr>`;
+
+  const teken = () => {
+    const f = foto();
+    const vorig = actiesVorig();
+    const lijst = overleggen().slice().sort((a, b) => String(b.datum).localeCompare(String(a.datum)) || (b.nummer ?? 0) - (a.nummer ?? 0));
+    const scroll = window.scrollY;
+    app.innerHTML = `
+    <div class="paginakop geen-print dossierbalk">
+      <div><p><a href="#/planning">← Planning</a></p><h1>Planningsoverleg</h1>
+        <p>Agenda en notulen voor het bespreken van de planning in het projectteam of met de opdrachtgever. Vul tijdens het overleg de
+          bespreekpunten en actiepunten in; ${kanOpslaan ? 'alles wordt direct opgeslagen in het project' : 'alleen een beheerder kan de notulen in het project opslaan (jouw invoer blijft op dit apparaat)'}.</p></div>
+      <div class="vo-balk">
+        <label>Overleg <select id="vo-kies">${optie('', `${opgeslagen ? '＋ Nieuw overleg' : `Nieuw overleg #${overleg.nummer} (${datumNL(overleg.datum)})`}`, opgeslagen ? '-' : '')}
+          ${lijst.map((o) => optie(o.id, `#${o.nummer ?? ''} · ${datumNL(o.datum)}${o.vastgesteld ? ' · vastgesteld' : ' · concept'}`, opgeslagen ? overleg.id : '-')).join('')}</select></label>
+        ${overleg.vastgesteld ? `<span class="label-status afgerond">Vastgesteld ${overleg.vastgesteldOp ? datumNL(overleg.vastgesteldOp.slice(0, 10)) : ''}</span>`
+    : `<form class="filters" id="vo-filter">
+          <label>Start binnen <select id="vo-weken">${WEKEN.map((w) => optie(String(w), `${w} ${w === 1 ? 'week' : 'weken'}`, String(weken))).join('')}</select></label>
+          <select id="vo-soort" aria-label="Soort">${optie('', 'Werk en inspecties', soort)}${optie('werk', 'Werkzaamheden', soort)}${optie('inspectie', 'Inspecties', soort)}</select>
+          <label class="vink"><input type="checkbox" id="vo-taken" ${metTaken ? 'checked' : ''}> Losse taken</label></form>`}
+      </div>
+      <div class="knoppen">
+        <span class="vo-status" id="vo-status" aria-live="polite">${opgeslagen ? `Opgeslagen${overleg.gewijzigd ? ` ${new Date(overleg.gewijzigd).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}` : ''}` : 'Nog niet opgeslagen'}</span>
+        ${kanOpslaan ? (overleg.vastgesteld ? '<button class="knop" id="vo-heropen">Heropenen</button>'
+    : `<button class="knop" id="vo-opslaan">${I.vink} Opslaan</button><button class="knop" id="vo-vaststellen" title="De notulen en de planning zoals besproken worden vastgelegd">${I.slot} Notulen vaststellen</button>`) : ''}
+        <button class="knop primair" id="vo-print">${I.bestand} Afdrukken / PDF</button>
+        <button class="knop" id="vo-excel">${I.excel} Excel</button>
+        ${kanOpslaan && opgeslagen ? `<button class="knop gevaar" id="vo-weg" aria-label="Overleg verwijderen">${I.verwijder}</button>` : ''}</div>
+    </div>
+    <datalist id="vo-leden">${leden.map((l) => `<option value="${esc(l)}">`).join('')}</datalist>
+    <article class="rapport dossier voortgangsoverzicht planningsoverleg">
+      <div class="rapport-kop">
+        <div>${instelling.lees('organisatie') ? `<small>${esc(instelling.lees('organisatie'))}</small>` : ''}
+          <h1 style="margin:.25rem 0">Planningsoverleg #${esc(overleg.nummer ?? '')}</h1>
+          <div>${esc(project.naam)}${project.opdrachtgever ? ` · opdrachtgever ${esc(project.opdrachtgever)}` : ''}</div></div>
+        <div class="vo-kopdatum"><small>${overleg.vastgesteld ? 'Vastgestelde notulen' : 'Concept'}</small><br><strong>${datumNL(overleg.datum)}${overleg.tijd ? ` · ${esc(overleg.tijd)}` : ''}</strong>
+          ${overleg.locatie ? `<br><small>${esc(overleg.locatie)}</small>` : ''}<br><small>Planning per ${datumNL(overleg.vastgesteld && overleg.foto ? (overleg.fotoDatum ?? overleg.datum) : nu)} · vooruit t/m ${datumNL(f.tot ?? ind.tot)}</small></div>
+      </div>
+      <section class="vo-gegevens">
+        <label><span>Datum</span>${invoer('data-o="datum"', overleg.datum, 'date')}</label>
+        <label><span>Tijd</span>${invoer('data-o="tijd"', overleg.tijd, 'time')}</label>
+        <label><span>Locatie</span>${invoer('data-o="locatie"', overleg.locatie, 'text', 'bijv. bouwkeet, Teams')}</label>
+        <label><span>Voorzitter</span>${invoer('data-o="voorzitter" list="vo-leden"', overleg.voorzitter)}</label>
+        <label><span>Notulist</span>${invoer('data-o="notulist" list="vo-leden"', overleg.notulist)}</label>
+        <label class="breed"><span>Aanwezig</span>${tekstvak('data-o="aanwezig"', overleg.aanwezig, 'Namen en organisatie', 1)}</label>
+        <label class="breed"><span>Afwezig (met bericht)</span>${tekstvak('data-o="afwezig"', overleg.afwezig, '', 1)}</label>
+      </section>
+      <nav class="vo-agenda" aria-label="Agenda"><h2>Agenda</h2><ol>${AGENDA.map(([k, l]) => {
+    const n = { acties: vorig.length, achterstallig: f.achterstallig.length, lopend: f.lopend.length, komend: f.komend.length, nietingepland: f.nietIngepland?.length ?? 0, nieuweacties: overleg.acties.length }[k];
+    return `<li><button type="button" class="linkknop" data-ga="vo-${k}">${esc(l)}</button>${n != null ? ` <small class="${k === 'achterstallig' && n ? 'fouttekst' : 'zacht'}">(${n})</small>` : ''}</li>`;
+  }).join('')}</ol></nav>
+      <div class="tegels klein geen-print">${VO.GROEPEN.map(([k, l]) => `<button type="button" class="tegel ${k === 'achterstallig' && f[k].length ? 'slecht' : ''}" data-ga="vo-${k}"><strong>${f[k].length}</strong><span>${esc(l.toLowerCase())}</span></button>`).join('')}
+        <button type="button" class="tegel ${vorig.some((x) => x.status === 'open') ? 'let' : ''}" data-ga="vo-acties"><strong>${vorig.filter((x) => x.status === 'open').length}</strong><span>open actiepunten</span></button></div>
+
+      <section class="vo-groep" id="vo-opening">${kopje('opening')}${tekstvak('data-o="opening"', overleg.opening, 'Opening, mededelingen, vaststellen agenda…')}</section>
+      <section class="vo-groep" id="vo-acties">${kopje('acties', ` <small>(${vorig.length})</small>`)}
+        ${vorig.length ? `<div class="tabelhouder"><table class="vo-acties"><thead><tr><th>#</th><th>Actie</th><th>Actiehouder</th><th>Gereed vóór</th><th>Uit overleg</th><th>Status</th><th>Toelichting</th></tr></thead>
+          <tbody>${vorig.map(actieRijVorig).join('')}</tbody></table></div>` : '<p class="zacht">Geen openstaande actiepunten uit vorige overleggen.</p>'}</section>
+      ${VO.GROEPEN.map(([k, , uitleg]) => `<section class="vo-groep" id="vo-${k}">${kopje(k, ` <small>(${f[k].length})</small>`)}
+        <p class="zacht">${k === 'komend' ? `Begint tussen morgen en ${datumNL(f.tot ?? ind.tot)}.` : esc(uitleg)}</p>
+        ${f[k].length ? tabel(f[k]) : `<p>${leegTekst[k]}</p>`}</section>`).join('')}
+      <section class="vo-groep" id="vo-nietingepland">${kopje('nietingepland', ` <small>(${f.nietIngepland?.length ?? 0})</small>`)}
+        ${f.nietIngepland?.length ? `<p class="zacht">Rondes zonder datums: plan ze in via de planning (klik op de ronde).</p>
+          <ul class="vo-lijst">${f.nietIngepland.map((r) => `<li data-sleutel="${esc(r.sleutel)}"><span class="wpcode">${esc(r.code)}</span> <a href="${esc(r.href)}">${esc(r.titel)}</a>${(r.sub ?? []).slice(0, 2).map((x) => ` <small class="zacht">· ${esc(x)}</small>`).join('')}
+            ${tekstvak(`data-punt="${esc(r.sleutel)}" aria-label="Bespreekpunt ${esc(r.titel)}"`, overleg.punten[r.sleutel], 'Wanneer inplannen?', 1)}</li>`).join('')}</ul>` : '<p>Alle rondes zijn ingepland.</p>'}</section>
+      <section class="vo-groep" id="vo-besluiten">${kopje('besluiten')}${tekstvak('data-o="besluiten"', overleg.besluiten, 'Genomen besluiten, één per regel…', 3)}</section>
+      <section class="vo-groep" id="vo-nieuweacties">${kopje('nieuweacties', ` <small>(${overleg.acties.length})</small>`)}
+        ${overleg.acties.length ? `<div class="tabelhouder"><table class="vo-acties"><thead><tr><th>#</th><th>Actie</th><th>Actiehouder</th><th>Gereed vóór</th><th class="geen-print"></th></tr></thead>
+          <tbody>${overleg.acties.map(actieRijNieuw).join('')}</tbody></table></div>` : '<p class="zacht">Nog geen actiepunten. Maak er een met de knop hieronder of met ＋ Actie bij een regel.</p>'}
+        <button type="button" class="knop geen-print" id="vo-actie-erbij">＋ Actiepunt</button></section>
+      <section class="vo-groep" id="vo-rondvraag">${kopje('rondvraag')}${tekstvak('data-o="rondvraag"', overleg.rondvraag, 'Rondvraag…', 2)}</section>
+      <section class="vo-groep" id="vo-volgende">${kopje('volgende')}
+        <div class="vo-gegevens"><label><span>Datum</span>${invoer('data-o="volgende.datum"', overleg.volgende.datum, 'date')}</label>
+          <label><span>Tijd</span>${invoer('data-o="volgende.tijd"', overleg.volgende.tijd, 'time')}</label>
+          <label><span>Locatie</span>${invoer('data-o="volgende.locatie"', overleg.volgende.locatie)}</label></div></section>
+      <div class="raster-2 dossier-handtekening"><div>Voorzitter:<br><br><br>_____________________________<br>${esc(overleg.voorzitter || '')}</div>
+        <div>Notulist:<br><br><br>_____________________________<br>${esc(overleg.notulist || '')}</div></div>
+    </article>`;
+    app.querySelectorAll('textarea.vo-veld').forEach(groei);
+    if (overleg.vastgesteld) app.querySelectorAll('.planningsoverleg .vo-veld').forEach((x) => { x.disabled = true; });
+    window.scrollTo(0, scroll);
+    koppel();
+  };
+
+  // Tekstvakken groeien mee met de inhoud (ook nodig voor de afdruk).
+  function groei(t) { t.style.height = 'auto'; t.style.height = `${t.scrollHeight + 2}px`; }
+  let timer = null;
+  const status = (t) => { const el = app.querySelector('#vo-status'); if (el) el.textContent = t; };
+  const bewaar = async ({ stil = false } = {}) => {
+    clearTimeout(timer);
+    overleg.gewijzigd = new Date().toISOString();
+    overleg.instellingen = { weken, soort, taken: metTaken };
+    if (!overleg.vastgesteld) { overleg.foto = live; overleg.fotoDatum = nu; }
+    if (!kanOpslaan) {
+      instelling.schrijf(conceptSleutel, JSON.stringify(overleg));
+      status('Op dit apparaat bewaard');
+      return;
+    }
+    await bewaarActiefProject((p) => {
+      const lijst = [...(p.planningsoverleggen ?? [])];
+      const i = lijst.findIndex((o) => o.id === overleg.id);
+      if (i >= 0) lijst[i] = structuredClone(overleg); else lijst.push(structuredClone(overleg));
+      return { planningsoverleggen: lijst };
+    });
+    if (!opgeslagen) {
+      opgeslagen = true;
+      instelling.schrijf(conceptSleutel, '');
+      history.replaceState(null, '', `#/planning/overzicht?${new URLSearchParams({ overleg: overleg.id, weken, ...(soort ? { soort } : {}), ...(metTaken ? {} : { taken: '0' }) })}`);
+    }
+    status(`Opgeslagen ${new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}`);
+    if (!stil) melding('Overleg opgeslagen');
+  };
+  const later = () => { status('Wijzigingen…'); clearTimeout(timer); timer = setTimeout(() => bewaar({ stil: true }), 1200); };
+  const zet = (pad, waarde) => {
+    const [a, b] = pad.split('.');
+    if (b) overleg[a] = { ...(overleg[a] ?? {}), [b]: waarde }; else overleg[a] = waarde;
+  };
+  const nieuweActie = (sleutel = '') => {
+    const r = sleutel ? [...VO.GROEPEN.map(([k]) => k), 'nietIngepland'].flatMap((k) => foto()[k] ?? []).find((x) => x.sleutel === sleutel) : null;
+    // Onderwerp: rondecode + naam van het werkpakket (zonder de werkpakketcode nog eens), of "Taak: …".
+    const zonderCode = (t) => { const [eerste, ...rest] = String(t ?? '').split(' '); return r?.code && rest.length && r.code.startsWith(eerste) ? rest.join(' ') : t; };
+    const onderwerp = !r ? '' : r.soort === 'taak' ? `Taak: ${r.titel}` : `${r.code} · ${zonderCode(r.titel)}`;
+    const a = { id: nieuwId(), tekst: '', wie: '', gereed: '', onderwerp, sleutel, status: 'open' };
+    overleg.acties.push(a);
+    teken();
+    later();
+    const el = app.querySelector(`[data-actie-id="${CSS.escape(a.id)}"][data-k="tekst"]`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el?.focus();
+  };
+  function koppel() {
+    const art = app.querySelector('.planningsoverleg');
+    art.addEventListener('input', (e) => {
+      const t = e.target;
+      if (t.tagName === 'TEXTAREA') groei(t);
+      if (t.dataset.o) zet(t.dataset.o, t.value);
+      else if (t.dataset.punt) { if (t.value.trim()) overleg.punten[t.dataset.punt] = t.value; else delete overleg.punten[t.dataset.punt]; }
+      else if (t.dataset.actieId) { const a = overleg.acties.find((x) => x.id === t.dataset.actieId); if (a) a[t.dataset.k] = t.value; }
+      else if (t.dataset.upd) overleg.actieUpdates[t.dataset.upd] = { ...(overleg.actieUpdates[t.dataset.upd] ?? {}), [t.dataset.k]: t.value };
+      else return;
+      later();
+    });
+    art.addEventListener('change', (e) => {
+      if (e.target.dataset.o === 'datum' || e.target.dataset.upd) { teken(); later(); }
+    });
+    art.addEventListener('click', (e) => {
+      const ga = e.target.closest('[data-ga]');
+      if (ga) { app.querySelector(`#${CSS.escape(ga.dataset.ga)}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+      const van = e.target.closest('[data-actie-van]');
+      if (van) { nieuweActie(van.dataset.actieVan); return; }
+      const weg = e.target.closest('[data-actie-weg]');
+      if (weg) { overleg.acties = overleg.acties.filter((a) => a.id !== weg.dataset.actieWeg); teken(); later(); }
+    });
+    app.querySelectorAll('.tegels [data-ga]').forEach((k) => k.addEventListener('click', () => app.querySelector(`#${CSS.escape(k.dataset.ga)}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })));
+    app.querySelector('#vo-actie-erbij')?.addEventListener('click', () => nieuweActie());
+    app.querySelector('#vo-filter')?.addEventListener('change', async () => {
+      const p = new URLSearchParams({ weken: app.querySelector('#vo-weken').value });
+      if (app.querySelector('#vo-soort').value) p.set('soort', app.querySelector('#vo-soort').value);
+      if (!app.querySelector('#vo-taken').checked) p.set('taken', '0');
+      if (opgeslagen) { await bewaar({ stil: true }); p.set('overleg', overleg.id); } else instelling.schrijf(conceptSleutel, JSON.stringify(overleg));
+      location.hash = `#/planning/overzicht?${p}`;
+    });
+    app.querySelector('#vo-kies').addEventListener('change', async (e) => {
+      if (opgeslagen) await bewaar({ stil: true });
+      else instelling.schrijf(conceptSleutel, '');
+      location.hash = e.target.value ? `#/planning/overzicht?overleg=${encodeURIComponent(e.target.value)}` : '#/planning/overzicht';
+    });
+    app.querySelector('#vo-opslaan')?.addEventListener('click', () => bewaar());
+    app.querySelector('#vo-vaststellen')?.addEventListener('click', async () => {
+      if (!confirm('Notulen vaststellen? De planning zoals nu besproken wordt vastgelegd; het overleg kan daarna alleen nog worden heropend door een beheerder.')) return;
+      overleg.foto = live; overleg.fotoDatum = nu; overleg.vastgesteld = true; overleg.vastgesteldOp = new Date().toISOString(); overleg.vastgesteldDoor = ikEmail() || '';
+      await bewaar({ stil: true });
+      melding('Notulen vastgesteld');
+      teken();
+    });
+    app.querySelector('#vo-heropen')?.addEventListener('click', async () => {
+      if (!confirm('Overleg heropenen? Bij opslaan wordt de planning van vandaag gebruikt in plaats van de vastgelegde planning.')) return;
+      overleg.vastgesteld = false;
+      await bewaar({ stil: true });
+      teken();
+    });
+    app.querySelector('#vo-weg')?.addEventListener('click', async () => {
+      if (!confirm(`Overleg #${overleg.nummer} van ${datumNL(overleg.datum)} verwijderen? Actiepunten uit dit overleg verdwijnen ook.`)) return;
+      await bewaarActiefProject((p) => ({ planningsoverleggen: (p.planningsoverleggen ?? []).filter((o) => o.id !== overleg.id) }));
+      melding('Overleg verwijderd');
+      location.hash = '#/planning/overzicht';
+    });
+    app.querySelector('#vo-print').addEventListener('click', async () => { if (opgeslagen || kanOpslaan) await bewaar({ stil: true }); window.print(); });
+    app.querySelector('#vo-excel').addEventListener('click', async () => {
+      const ExcelJS = await PX.laadExcelJS();
+      const wb = VO.maakNotulenWerkboek(ExcelJS, { overleg, foto: foto(), vorige: actiesVorig(), meta: { project: project.naam ?? '', opdrachtgever: project.opdrachtgever, datumTekst: datumNL } });
+      download(`planningsoverleg-${String(project.naam ?? 'project').replace(/[^\w-]+/g, '_')}-${overleg.datum}.xlsx`, await wb.xlsx.writeBuffer(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      melding('Notulen geëxporteerd naar Excel');
+    });
+  }
+  teken();
 }
 
 async function taakFormulier(id, q = new URLSearchParams()) {

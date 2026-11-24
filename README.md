@@ -305,16 +305,40 @@ Naast een frequentie kan een werkpakket voorgeschreven hoeveelheden hebben, bijv
 - **Pakketpagina**: per post een balk, bijvoorbeeld *120 / 300 m² (40%)*, met een waarschuwing als er meer is gedaan dan voorgeschreven.
 - **Export uitkomsten**: per post een extra kolom, bijvoorbeeld *Zetsteen herstel (m²)*.
 
-## Voortgangsoverzicht voor overleg (planning → export)
+## Planningsoverleg: agenda en notulen (planning → Planningsoverleg)
 
-Planning → **Voortgangsoverzicht**: een overzicht om de voortgang te bespreken in het projectteam of met de opdrachtgever.
+Planning → **Planningsoverleg**: agenda en notulen voor het bespreken van de planning in het projectteam of met de opdrachtgever.
+Je vult het tijdens het overleg in; een beheerder slaat het direct op in het project (andere gebruikers: alleen op het eigen apparaat).
 
-- **1. Had al af moeten zijn**: rondes waarvan de einddatum verstreken is en die nog niet af zijn (met het aantal dagen te laat), plus losse taken over hun deadline.
-- **2. Lopend**: rondes die nu in uitvoering zijn, met voortgang, verwachte voortgang volgens de planning (streepje in de balk) en "op schema" / "achter"; plus open losse taken.
-- **3. Start binnenkort**: rondes die binnen het gekozen aantal weken vanaf vandaag beginnen (1, 2, 3, 4, 6, 8, 12 of 26 weken; standaard 4).
-- Per regel: code (bijv. WP-001-R2), werkpakket en ronde, periode, voortgang (objecten en eventuele hoeveelheden), stand, uitvoerders en een lege kolom **Bespreekpunt / actie** om tijdens het overleg in te vullen.
-- Filters: soort (werk / inspecties) en wel of geen losse taken. Afgeronde rondes en rondes zonder startdatum staan er niet in (het aantal niet-ingeplande rondes staat onderaan).
-- **Afdrukken / opslaan als PDF** (A4 liggend) of **Excel** (blad Overzicht met de tellingen en blad Voortgang met alle regels, met filters).
+**Kop en gegevens**: overlegnummer (#1, #2, …), datum, tijd, locatie, voorzitter, notulist, aanwezig en afwezig met bericht. Een nieuw overleg
+neemt de deelnemers en de afgesproken datum van het vorige overleg over.
+
+**Vaste agenda** (bovenaan als inhoudsopgave met aantallen; klikken springt naar het punt, ook via de tegels):
+
+1. **Opening en vaststellen agenda**
+2. **Actiepunten vorige overleggen**: alle nog open acties met actiehouder, gereed vóór (rood als te laat) en het overleg waar ze vandaan komen;
+   per actie de status (*Open / Gereed / Vervallen*) en een toelichting. Gereed of vervallen gemelde acties komen niet meer terug.
+3. **Had al af moeten zijn**: rondes over hun einddatum en taken over hun deadline.
+4. **Lopend werk**: rondes in uitvoering, met voortgang, verwachte voortgang (streepje in de balk) en stand; plus open taken.
+5. **Start binnenkort**: rondes die binnen het gekozen aantal weken beginnen (1–26 weken).
+6. **Nog niet ingepland**: rondes zonder datums, elk met een link naar de planning en een veld *Wanneer inplannen?*.
+7. **Besluiten**
+8. **Nieuwe actiepunten**: actie, actiehouder (keuze uit de projectleden of vrij), gereed vóór. **＋ Actie** bij een regel maakt een actiepunt met
+   die regel als onderwerp (bijv. *WP-001-R1 · Groenonderhoud*).
+9. **Rondvraag**
+10. **Volgend overleg en sluiting**: datum, tijd en locatie, met een handtekeningblok voor voorzitter en notulist.
+
+Per regel (punten 3–5): code, werkpakket of taak (klikbaar: werkpakket met de juiste ronde, of de taak), ronde, soort, objecten gedaan,
+hoeveelheden, uitvoerders, periode, voortgang en stand, en een vak **Bespreekpunt**.
+
+**Opslaan en vaststellen**: wijzigingen worden automatisch opgeslagen (status rechtsboven). Kies een eerder overleg in de keuzelijst *Overleg*.
+**Notulen vaststellen** legt de notulen vast én de planning zoals die in het overleg is besproken, zodat oude notulen kloppen als de planning
+later verandert; een beheerder kan een vastgesteld overleg heropenen of verwijderen.
+
+**Afdrukken / PDF** (de invulvelden worden gewone tekst) en **Excel** met de bladen *Overleg* (gegevens, aantallen, besluiten, rondvraag, volgend
+overleg), *Planning* (alle besproken regels met bespreekpunt) en *Actiepunten* (uit vorige overleggen met status, en nieuw).
+
+Filters (zolang het overleg niet is vastgesteld): start binnen 1–26 weken, soort (werk / inspecties) en wel of geen losse taken.
 
 ## Planning naar MS Project
 

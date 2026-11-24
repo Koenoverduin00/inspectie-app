@@ -1946,8 +1946,7 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
 }
 @media screen and (max-width: 700px) { .vo-tabel .vo-notitie { display: none; } }
 .vo-tabel { table-layout: fixed; width: 100%; }
-.vo-tabel th:nth-child(1) { width: 11%; } .vo-tabel th:nth-child(2) { width: 25%; } .vo-tabel th:nth-child(3) { width: 10%; }
-.vo-tabel th:nth-child(4) { width: 12%; } .vo-tabel th:nth-child(5) { width: 16%; } .vo-tabel th:nth-child(6) { width: 10%; } .vo-tabel th:nth-child(7) { width: 16%; }
+
 .vo-tabel td { overflow-wrap: anywhere; }
 @media screen and (max-width: 700px) { .vo-tabel { table-layout: auto; } }
 @media print { .voortgangsoverzicht .tegels { grid-template-columns: repeat(4, 1fr); } }
@@ -2101,3 +2100,45 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
 .mp-pakketten { margin: .5rem 0; }
 .mp-pakketten summary { cursor: pointer; }
 .mp-pakketten .kieslijst { max-height: 30vh; overflow: auto; }
+
+/* Planningsoverleg (agenda en notulen) */
+.vo-balk { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; }
+.vo-balk > label { display: flex; gap: .4rem; align-items: center; }
+.vo-status { font-size: .82rem; color: var(--tekst-zacht); align-self: center; margin-right: .25rem; }
+.vo-kopdatum { text-align: right; }
+.vo-tabel col.c-code { width: 13%; } .vo-tabel col.c-wat { width: 30%; } .vo-tabel col.c-periode { width: 13%; }
+.vo-tabel col.c-voortgang { width: 17%; } .vo-tabel col.c-punt { width: 27%; }
+.vo-tabel td { vertical-align: top; }
+.vo-tabel .wpcode { white-space: normal; overflow-wrap: anywhere; }
+.vo-tabel .wpcode.taakcode { background: #eef1f4; }
+.vo-tabel .vo-wat small, .vo-acties td small { display: block; color: var(--tekst-zacht); line-height: 1.35; margin-top: .1rem; }
+.vo-tabel .vo-voortgang .label-status, .planningsoverleg .label-status { white-space: normal; display: inline-block; line-height: 1.3; margin-top: .3rem; max-width: 100%; }
+.vo-tabel .vo-punt .knop { margin-top: .3rem; }
+.planningsoverleg .vo-veld { width: 100%; font: inherit; font-size: .9rem; padding: .35rem .5rem; border: 1px solid var(--rand); border-radius: 6px; background: var(--kaart, #fff); color: var(--tekst); box-sizing: border-box; }
+.planningsoverleg textarea.vo-veld { resize: vertical; min-height: 2.1rem; overflow: hidden; line-height: 1.4; }
+.planningsoverleg .vo-veld:disabled { background: transparent; border-color: transparent; color: var(--tekst); opacity: 1; padding-left: 0; }
+.vo-gegevens { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: .5rem .75rem; margin: 1rem 0; }
+.vo-gegevens label { display: flex; flex-direction: column; gap: .2rem; font-size: .8rem; color: var(--tekst-zacht); }
+.vo-gegevens label.breed { grid-column: 1 / -1; }
+.vo-agenda { border: 1px solid var(--rand); border-radius: var(--radius); padding: .6rem 1rem; margin: 1rem 0; }
+.vo-agenda h2 { margin: 0 0 .3rem; font-size: 1rem; }
+.vo-agenda ol { margin: 0; padding-left: 1.3rem; columns: 2; column-gap: 2rem; }
+.vo-agenda li { break-inside: avoid; padding: .1rem 0; }
+.voortgangsoverzicht .tegels button.tegel { font: inherit; text-align: left; cursor: pointer; color: inherit; background: var(--kaart, #fff); }
+.vo-acties { width: 100%; border-collapse: collapse; }
+.vo-acties th, .vo-acties td { text-align: left; vertical-align: top; padding: .4rem .45rem; border-bottom: 1px solid var(--rand); }
+.vo-acties th { font-size: .75rem; text-transform: uppercase; letter-spacing: .03em; color: var(--tekst-zacht); }
+.vo-acties td:first-child { width: 2rem; color: var(--tekst-zacht); }
+.vo-lijst { list-style: none; padding: 0; margin: .5rem 0 0; display: grid; gap: .5rem; }
+.vo-lijst li { border-bottom: 1px solid var(--rand); padding-bottom: .5rem; }
+.vo-lijst li .vo-veld { margin-top: .3rem; }
+@media (max-width: 700px) { .vo-agenda ol { columns: 1; } .vo-kopdatum { text-align: left; } }
+@media print {
+  .planningsoverleg .vo-veld, .planningsoverleg textarea.vo-veld { border: 0; padding: 0; background: transparent; resize: none; min-height: 0; }
+  .planningsoverleg .vo-veld::-webkit-calendar-picker-indicator { display: none; }
+  .planningsoverleg .vo-agenda button.linkknop { text-decoration: none; color: inherit; }
+  .planningsoverleg .vo-veld::placeholder { color: transparent; }
+  .planningsoverleg select.vo-veld { appearance: none; -webkit-appearance: none; }
+  .vo-agenda { break-inside: avoid; }
+  .vo-acties tr, .vo-lijst li { break-inside: avoid; }
+}

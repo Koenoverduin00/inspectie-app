@@ -20,12 +20,15 @@ export const GROEPEN = [
 export function indelen({ rondes = [], taken = [], vandaag, weken = 4 }) {
   const t = dagNr(vandaag);
   const horizon = t + Math.max(0, Math.round(Number(weken) || 0)) * 7;
-  const uit = { achterstallig: [], lopend: [], komend: [], nietIngepland: 0, tot: isoVan(horizon) };
+  const uit = { achterstallig: [], lopend: [], komend: [], nietIngepland: 0, nietIngeplandLijst: [], tot: isoVan(horizon) };
   for (const { pakket, ronde, vg, code } of rondes) {
     const klaar = ronde.status === 'afgerond' || (vg?.totaal > 0 && vg.percentage >= 100);
     if (klaar) continue;
     const p = periode(ronde);
-    if (!p) { if (pakket.planning !== 'afroep') uit.nietIngepland += 1; continue; }
+    if (!p) {
+      if (pakket.planning !== 'afroep') { uit.nietIngepland += 1; uit.nietIngeplandLijst.push({ soort: 'ronde', code, pakket, ronde, vg }); }
+      continue;
+    }
     const s = schema(ronde, vg, vandaag);
     const regel = {
       soort: 'ronde', code, pakket, ronde, vg, start: ronde.start, eind: ronde.eind || isoVan(p.eind),
@@ -121,5 +124,129 @@ export function maakWerkboek(ExcelJS, ind, meta, fmt) {
     if (soort === 'getal') ws.getColumn(n + 1).numFmt = '0';
   });
   ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1 + lijst.length, column: KOLOMMEN.length } };
+  return wb;
+}
+
+// ---------------------------------------------------------------------------
+// Planningsoverleg (notulen): sleutels, actiepunten en momentopname
+// ---------------------------------------------------------------------------
+/** Vaste sleutel van een regel, om bespreekpunten en acties aan te koppelen. */
+export const regelSleutel = (r) => (r.soort === 'taak' ? `t:${r.taak.id}` : `r:${r.pakket.id}:${r.ronde.id}`);
+
+export const ACTIE_STATUS = { open: 'Open', gereed: 'Gereed', vervallen: 'Vervallen' };
+
+/**
+ * Nieuw overleg: volgnummer, peildatum en (uit het vorige overleg) de vaste deelnemers en de afgesproken datum.
+ * @param {object[]} overleggen  eerdere overleggen van het project
+ */
+export function nieuwOverleg({ id, vandaag, overleggen = [] }) {
+  const vorige = [...overleggen].sort((a, b) => String(b.datum).localeCompare(String(a.datum)))[0];
+  const gepland = vorige?.volgende?.datum && vorige.volgende.datum >= vandaag ? vorige.volgende : null;
+  return {
+    id, nummer: Math.max(0, ...overleggen.map((o) => Number(o.nummer) || 0)) + 1,
+    datum: gepland?.datum ?? vandaag, tijd: gepland?.tijd ?? vorige?.tijd ?? '', locatie: gepland?.locatie ?? vorige?.locatie ?? '',
+    voorzitter: vorige?.voorzitter ?? '', notulist: vorige?.notulist ?? '', aanwezig: vorige?.aanwezig ?? '', afwezig: '',
+    punten: {}, acties: [], actieUpdates: {}, besluiten: '', rondvraag: '', volgende: { datum: '', tijd: vorige?.volgende?.tijd ?? vorige?.tijd ?? '', locatie: '' },
+  };
+}
+
+/**
+ * Actiepunten uit eerdere overleggen (vóór dit overleg) die nog openstonden, met de stand zoals in dit overleg bijgewerkt.
+ * Een actie die in een eerder overleg al gereed of vervallen is gemeld, komt niet meer terug.
+ * @returns {{ actie: object, overleg: object, status: string, toelichting: string }[]}
+ */
+export function openActies(overleggen, huidig) {
+  const eerder = (overleggen ?? []).filter((o) => o.id !== huidig?.id && (String(o.datum) < String(huidig?.datum) || (o.datum === huidig?.datum && (o.nummer ?? 0) < (huidig?.nummer ?? 0))))
+    .sort((a, b) => String(a.datum).localeCompare(String(b.datum)) || (a.nummer ?? 0) - (b.nummer ?? 0));
+  const stand = new Map(); // actie-id → laatste status uit een eerder overleg
+  for (const o of eerder) {
+    for (const a of o.acties ?? []) if (!stand.has(a.id)) stand.set(a.id, { actie: a, overleg: o, status: a.status ?? 'open', toelichting: '' });
+    for (const [id, u] of Object.entries(o.actieUpdates ?? {})) {
+      const x = stand.get(id);
+      if (x) stand.set(id, { ...x, status: u.status ?? x.status, toelichting: u.toelichting ?? x.toelichting });
+    }
+  }
+  return [...stand.values()].filter((x) => x.status === 'open').map((x) => {
+    const u = huidig?.actieUpdates?.[x.actie.id];
+    return { ...x, status: u?.status ?? 'open', toelichting: u?.toelichting ?? '' };
+  }).sort((a, b) => String(a.actie.gereed || '9999').localeCompare(String(b.actie.gereed || '9999')));
+}
+
+/**
+ * Momentopname van de planning voor de notulen: wat er in het overleg op tafel lag, zodat oude notulen kloppen
+ * ook als de planning daarna verandert.
+ */
+export function momentopname(ind, { titel, sub, periode, voortgang, stand, href }) {
+  const uit = {};
+  for (const [groep] of GROEPEN) {
+    uit[groep] = ind[groep].map((r) => ({ sleutel: regelSleutel(r), soort: r.soort, code: r.code ?? '', titel: titel(r), sub: sub(r), periode: periode(r),
+      voortgang: r.soort === 'taak' ? null : r.werkelijk, verwacht: r.verwacht ?? null, stand: standTekst(r), klasse: stand(r), href: href(r) }));
+  }
+  uit.nietIngepland = (ind.nietIngeplandLijst ?? []).map((r) => ({ sleutel: regelSleutel(r), soort: 'ronde', code: r.code, titel: titel(r), sub: sub(r), href: href(r, true) }));
+  uit.tot = ind.tot;
+  return uit;
+}
+
+/**
+ * Notulen van het planningsoverleg als Excel: Overleg (gegevens, besluiten, rondvraag), Planning (alle besproken regels
+ * met bespreekpunt) en Actiepunten (uit vorige overleggen en nieuw).
+ * @param {object} a
+ * @param {object} a.overleg      het overleg (gegevens, punten, acties, besluiten, …)
+ * @param {object} a.foto         momentopname van de planning (zie momentopname)
+ * @param {object[]} a.vorige     open acties uit eerdere overleggen (zie openActies)
+ * @param {{ project: string, opdrachtgever?: string, datumTekst: (iso: string) => string }} a.meta
+ */
+export function maakNotulenWerkboek(ExcelJS, { overleg: o, foto, vorige = [], meta }) {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Inspectie & Registratie';
+  wb.created = new Date();
+  const kop = { font: { bold: true, color: { argb: 'FFFFFFFF' } }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0B4F6C' } }, alignment: { vertical: 'middle', wrapText: true } };
+  const dt = (iso) => (/^\d{4}-\d{2}-\d{2}$/.test(iso ?? '') ? meta.datumTekst(iso) : '');
+  const s = wb.addWorksheet('Overleg', { properties: { tabColor: { argb: 'FF0B4F6C' } } });
+  s.columns = [{ width: 26 }, { width: 90 }];
+  s.addRow([`Planningsoverleg ${o.nummer ? `#${o.nummer}` : ''}`.trim()]).font = { bold: true, size: 14 };
+  const veld = (k, v) => { const r = s.addRow([k, v ?? '']); r.getCell(1).font = { bold: true }; r.alignment = { vertical: 'top', wrapText: true }; };
+  veld('Project', meta.project);
+  if (meta.opdrachtgever) veld('Opdrachtgever', meta.opdrachtgever);
+  veld('Datum', `${dt(o.datum)}${o.tijd ? ` om ${o.tijd}` : ''}`);
+  veld('Locatie', o.locatie);
+  veld('Voorzitter', o.voorzitter);
+  veld('Notulist', o.notulist);
+  veld('Aanwezig', o.aanwezig);
+  veld('Afwezig (met bericht)', o.afwezig);
+  s.addRow([]);
+  for (const [groep, label] of GROEPEN) veld(label, `${foto[groep]?.length ?? 0} regel(s)`);
+  if (foto.nietIngepland?.length) veld('Nog niet ingepland', `${foto.nietIngepland.length} ronde(s)`);
+  s.addRow([]);
+  veld('Besluiten', o.besluiten);
+  veld('Rondvraag', o.rondvraag);
+  veld('Volgend overleg', o.volgende?.datum ? `${dt(o.volgende.datum)}${o.volgende.tijd ? ` om ${o.volgende.tijd}` : ''}${o.volgende.locatie ? `, ${o.volgende.locatie}` : ''}` : '');
+
+  const p = wb.addWorksheet('Planning', { views: [{ state: 'frozen', ySplit: 1 }], pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 } });
+  p.columns = [['Agendapunt', 22], ['Code', 16], ['Werkpakket / taak', 40], ['Periode', 24], ['Voortgang (%)', 12], ['Stand', 30], ['Bespreekpunt', 60]].map(([header, width]) => ({ header, width }));
+  p.getRow(1).eachCell((c) => { c.style = kop; });
+  const KL = { achterstallig: 'FFB42318', lopend: 'FF0B4F6C', komend: 'FF6B7785', nietIngepland: 'FFE8710A' };
+  for (const [groep, label] of [...GROEPEN, ['nietIngepland', 'Nog niet ingepland']]) {
+    for (const r of foto[groep] ?? []) {
+      const row = p.addRow([label, r.code, [r.titel, ...(r.sub ?? [])].filter(Boolean).join('\n'), r.periode ?? '', r.voortgang ?? '', r.stand ?? '', o.punten?.[r.sleutel] ?? '']);
+      row.alignment = { vertical: 'top', wrapText: true };
+      row.getCell(1).font = { bold: true, color: { argb: KL[groep] } };
+    }
+  }
+  p.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 7 } };
+
+  const a = wb.addWorksheet('Actiepunten', { views: [{ state: 'frozen', ySplit: 1 }] });
+  a.columns = [['Nr', 6], ['Actie', 60], ['Actiehouder', 22], ['Gereed vóór', 13], ['Onderwerp', 26], ['Uit overleg', 14], ['Status', 11], ['Toelichting', 40]].map(([header, width]) => ({ header, width }));
+  a.getRow(1).eachCell((c) => { c.style = kop; });
+  let nr = 0;
+  const regel = (x, uit, status, toel) => {
+    nr += 1;
+    const row = a.addRow([nr, x.tekst ?? '', x.wie ?? '', /^\d{4}-\d{2}-\d{2}$/.test(x.gereed ?? '') ? new Date(`${x.gereed}T00:00:00Z`) : '', x.onderwerp ?? '', uit, ACTIE_STATUS[status] ?? status, toel ?? '']);
+    row.alignment = { vertical: 'top', wrapText: true };
+    if (status === 'gereed') row.getCell(7).font = { color: { argb: 'FF1A7F37' }, bold: true };
+  };
+  for (const v of vorige) regel(v.actie, v.overleg?.datum ? dt(v.overleg.datum) : '', v.status, v.toelichting);
+  for (const x of o.acties ?? []) regel(x, dt(o.datum), x.status ?? 'open', '');
+  a.getColumn(4).numFmt = 'dd-mm-yyyy';
   return wb;
 }
