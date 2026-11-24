@@ -1139,6 +1139,13 @@ naar een **eisvraag** die in de formulieren komt, gekoppeld aan het **eisnummer*
   ondertekeningsblok. Optioneel met foto's als bewijs. *Afdrukken / opslaan als PDF* geeft het dossier; *Excel* geeft
   dezelfde inhoud in de bladen Samenvatting, Eisen, Bewijs en Afwijkingen.
 
+## Volgorde op de kaart: vlakken onder, lijnen erboven, punten bovenop
+
+Op alle kaarten met objecten (Kaart & GIS, objecten- en inspectiekaart, dashboard, planning en rondevenster, werkpakketkaart en de
+mobiele kaart) liggen **vlakken onderop, lijnen daarboven en punten bovenop**, ongeacht de volgorde in het GIS-bestand of de laag. Zo dekt
+een vlak nooit een lijn of punt af en is alles aan te klikken. Binnen dezelfde soort ligt *te doen* boven *klaar*. Lijnen en punten hebben
+bovendien een klikmarge van 6 pixels, zodat je een dunne lijn ook op een telefoon raakt.
+
 ## Achtergrondkaart kiezen
 
 Op elke kaart staat rechtsboven één knop (lagen-icoon). Die opent een paneel met voorbeeldtegels:

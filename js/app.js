@@ -8910,7 +8910,7 @@ async function toonImportVoorstel(kandidaten, fouten, { doel = null } = {}) {
     if (!L || !vak.isConnected) return;
     voorbeeld?.remove();
     vak.innerHTML = '';
-    voorbeeld = L.map(vak, { preferCanvas: true, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
+    voorbeeld = L.map(vak, { preferCanvas: true, renderer: L.canvas({ tolerance: 6 }), zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
     voegAchtergrondToe(L, voorbeeld);
     const lagenOpKaart = voorstel.filter((v) => v.actie !== 'overslaan' && v.laag.features.length).map((v) => L.geoJSON(
       { type: 'FeatureCollection', features: v.laag.features.slice(0, 20000).map((f) => ({ type: 'Feature', geometry: f.geometry, properties: {} })) },
@@ -9721,7 +9721,7 @@ async function tekenGisKaart(el, { groepen, kleur, groepVan }) {
   }
   if (!el.isConnected) return null; // inmiddels naar een andere pagina
   el.innerHTML = '';
-  const map = L.map(el, { preferCanvas: true, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
+  const map = L.map(el, { preferCanvas: true, renderer: L.canvas({ tolerance: 6 }), zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
   el.leafletKaart = map; // voor tests en debuggen
   voegAchtergrondToe(L, map);
 
@@ -9741,7 +9741,7 @@ async function tekenGisKaart(el, { groepen, kleur, groepVan }) {
   const grenzen = [];
   for (const g of groepen) {
     const objectMap = new Map(g.objecten.map((o) => [o.id, o]));
-    const fc = { type: 'FeatureCollection', features: g.objecten.map((o) => ({ type: 'Feature', geometry: objectGeometrie(o), properties: { id: o.id } })) };
+    const fc = { type: 'FeatureCollection', features: opStapelvolgorde(g.objecten.map((o) => ({ type: 'Feature', geometry: objectGeometrie(o), properties: { id: o.id } }))) };
     const laag = L.geoJSON(fc, {
       style: (f) => stijl(objectMap.get(f.properties.id)),
       pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 7, weight: 2 }),
@@ -9759,11 +9759,14 @@ async function tekenGisKaart(el, { groepen, kleur, groepVan }) {
   // Eerst het kaartbeeld, dan de lagen toevoegen.
   map.fitBounds(totaal, { padding: [30, 30], maxZoom: 17, animate: false });
   kaartlagen.forEach((l) => l.addTo(map));
+  // Over alle GIS-lagen heen: vlakken onder, lijnen erboven, punten bovenop.
+  const stapelGis = () => stapelLagen([...kaartlagen.values()].filter((g) => map.hasLayer(g)).flatMap((g) => g.getLayers()));
+  stapelGis();
   app.querySelectorAll('[data-laag]').forEach((c) => {
     c.onchange = () => {
       const l = kaartlagen.get(c.dataset.laag);
       if (!l) return;
-      if (c.checked) l.addTo(map); else l.remove();
+      if (c.checked) { l.addTo(map); stapelGis(); } else l.remove();
     };
   });
   return {
@@ -9795,7 +9798,7 @@ async function tekenObjectenKaart(el, { objecten, kleurVan, statusVan = null, po
   }
   if (!el.isConnected) return null;
   el.innerHTML = '';
-  const map = L.map(el, { preferCanvas: true, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
+  const map = L.map(el, { preferCanvas: true, renderer: L.canvas({ tolerance: 6 }), zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
   el.leafletKaart = map; // voor tests en debuggen
   voegAchtergrondToe(L, map);
   const groep = L.featureGroup().addTo(map);
@@ -9807,9 +9810,10 @@ async function tekenObjectenKaart(el, { objecten, kleurVan, statusVan = null, po
     if (st) return statusStijl(st, punt, k);
     return punt ? { radius: 8, color: '#fff', weight: 2, opacity: 1, fillColor: k, fillOpacity: 1, dashArray: null } : { color: k, weight: 2.5, opacity: 1, fillColor: k, fillOpacity: 0.4, dashArray: null };
   };
-  const bovenop = () => { if (statusVan) lagen.forEach((l) => { if (isTeDoen(statusVan(l.object)) && groep.hasLayer(l)) l.bringToFront(); }); };
-  // Te doen als laatste tekenen, zodat het bovenop ligt.
-  const volgorde = statusVan ? [...objecten].sort((a, b) => (isTeDoen(statusVan(a))) - (isTeDoen(statusVan(b)))) : objecten;
+  // Vlakken onder, lijnen erboven, punten bovenop; binnen een soort 'te doen' boven.
+  const bovenop = () => stapelLagen(lagen.values(), { geomVan: (l) => objectGeometrie(l.object), teDoen: (l) => statusVan && isTeDoen(statusVan(l.object)), opKaart: (l) => groep.hasLayer(l) });
+  const volgorde = [...objecten].sort((a, b) => geomRang(objectGeometrie(a)) - geomRang(objectGeometrie(b))
+    || (statusVan ? Number(isTeDoen(statusVan(a))) - Number(isTeDoen(statusVan(b))) : 0));
   for (const o of volgorde) {
     const geom = objectGeometrie(o);
     if (!geom) continue;
@@ -12038,6 +12042,19 @@ const statusStip = (st) => `<i class="opmaakstip" style="${KO.legendaCss(KAART_O
 const opmaakKnop = () => `<button type="button" class="opmaakknop" data-kaartopmaak title="Opmaak van te doen, gedaan en overgeslagen aanpassen">${I.instellingen} Opmaak</button>`;
 
 /** Te-doen-objecten bovenop leggen (anders kunnen ze onder een gedaan vlak verdwijnen). */
+/**
+ * Stapelvolgorde op de kaart: vlakken onderop, lijnen daarboven en punten bovenop, zodat alles aanklikbaar blijft
+ * (een vlak bovenop zou de lijnen en punten eronder afdekken). Binnen dezelfde soort ligt 'te doen' boven 'klaar'.
+ */
+const geomRang = (geom) => (/Point/.test(geom?.type ?? '') ? 2 : /LineString/.test(geom?.type ?? '') ? 1 : 0);
+function stapelLagen(lagen, { geomVan = (l) => l.feature?.geometry, teDoen = () => false, opKaart = () => true } = {}) {
+  [...lagen].filter(opKaart)
+    .sort((a, b) => geomRang(geomVan(a)) - geomRang(geomVan(b)) || Number(Boolean(teDoen(a))) - Number(Boolean(teDoen(b))))
+    .forEach((l) => { try { l.bringToFront(); } catch { /* nog niet op de kaart */ } });
+}
+/** Features in tekenvolgorde: vlakken eerst, punten laatst (bij het toevoegen aan de kaart). */
+const opStapelvolgorde = (features) => [...features].sort((a, b) => geomRang(a.geometry) - geomRang(b.geometry));
+
 function teDoenBovenop(lagen, statusVan) {
   lagen.forEach((l) => { if (isTeDoen(statusVan(l)) && l.bringToFront) try { l.bringToFront(); } catch { /* nog niet op de kaart */ } });
 }
@@ -12319,10 +12336,11 @@ async function tekenPakketKaart(el, { pakket, objecten, statusVan, positie = nul
   if (!el.isConnected) return null;
   el.innerHTML = '';
   // Zonder animaties: die lopen anders door nadat je de pagina al hebt verlaten.
-  const map = L.map(el, { preferCanvas: true, zoomControl: !mobiel, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
+  const map = L.map(el, { preferCanvas: true, renderer: L.canvas({ tolerance: 6 }), zoomControl: !mobiel, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
+  el.leafletKaart = map; // voor tests en debuggen
   voegAchtergrondToe(L, map);
   const metGeo = objecten.filter((o) => objectGeometrie(o));
-  const fc = { type: 'FeatureCollection', features: metGeo.map((o) => ({ type: 'Feature', geometry: objectGeometrie(o), properties: { id: o.id } })) };
+  const fc = { type: 'FeatureCollection', features: opStapelvolgorde(metGeo.map((o) => ({ type: 'Feature', geometry: objectGeometrie(o), properties: { id: o.id } }))) };
   const objectMap = new Map(metGeo.map((o) => [o.id, o]));
   const popup = (o) => {
     const st = statusVan(o.id);
@@ -12353,7 +12371,7 @@ async function tekenPakketKaart(el, { pakket, objecten, statusVan, positie = nul
   zetPositie(positie);
   const perId = new Map();
   laag.eachLayer((l) => perId.set(l.feature.properties.id, l));
-  const bovenop = () => perId.forEach((l, id) => { if (isTeDoen(statusVan(id)) && laag.hasLayer(l)) l.bringToFront(); });
+  const bovenop = () => stapelLagen(perId.values(), { teDoen: (l) => isTeDoen(statusVan(l.feature.properties.id)), opKaart: (l) => laag.hasLayer(l) });
   bovenop();
   return {
     map,
