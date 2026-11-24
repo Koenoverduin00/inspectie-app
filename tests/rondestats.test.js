@@ -55,3 +55,10 @@ test('objectregels met status en details; oordelen', () => {
   const s = RS.rondeStatistiek({ ronde: {}, vg, registraties: regs, vandaag: '2026-11-16', oordeelVan: (r) => (r.status === 'vervolg' ? { label: 'Slecht' } : { label: 'Goed' }) });
   assert.deepEqual(s.oordelen.map((o) => [o.label, o.aantal]), [['Goed', 1], ['Slecht', 1]]);
 });
+
+test('rondeweergave: blokken per soort en standaard', () => {
+  assert.ok(RS.beschikbareBlokken('inspectie').includes('oordelen'));
+  assert.ok(!RS.beschikbareBlokken('inspectie').includes('vervolg'));
+  assert.ok(RS.beschikbareBlokken('werk').includes('vervolg'));
+  assert.ok(RS.STANDAARD_WEERGAVE.every((b) => RS.RONDE_BLOKKEN[b.id]));
+});

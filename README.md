@@ -305,33 +305,40 @@ Naast een frequentie kan een werkpakket voorgeschreven hoeveelheden hebben, bijv
 - **Pakketpagina**: per post een balk, bijvoorbeeld *120 / 300 m² (40%)*, met een waarschuwing als er meer is gedaan dan voorgeschreven.
 - **Export uitkomsten**: per post een extra kolom, bijvoorbeeld *Zetsteen herstel (m²)*.
 
-## Ronde openen in de planning: stand, objecten en kerncijfers
+## Ronde openen in de planning: eigen weergave met stand, objecten en kerncijfers
 
-Klik in de planning op een ronde. Het venster heeft drie tabbladen:
+Klik in de planning op een ronde. Het venster bestaat uit **blokken** die iedereen zelf kiest, net als het eigen dashboard.
 
-**Stand**: tegels met % uitgevoerd, gedaan, gedeeltelijk, nog niet gestart en overgeslagen (klik op een tegel voor die objecten), de
-voortgangsbalk, het kaartje met elk object in de kleur van zijn status, en de **kerncijfers**, gekozen om te zien of de ronde op koers ligt:
+**Blokken**
 
-| Kerncijfer | Wat je ziet |
+| Blok | Inhoud |
 |---|---|
-| **Periode** | start – einde, aantal werkdagen (ma–vr), hoeveel er nog resteren, en de fase: niet ingepland, nog niet gestart, loopt, einddatum verstreken of klaar |
-| **Op schema?** | werkelijk % klaar tegenover het % dat volgens de verstreken tijd verwacht wordt, en hoeveel objecten de ronde daarmee voor of achter ligt |
-| **Tempo** | afgehandelde objecten per werkdag tot nu toe, tegenover het tempo dat nodig is om op de einddatum klaar te zijn (*te laag* als het niet haalbaar is) |
-| **Prognose** | wanneer de ronde bij het huidige tempo klaar is, en hoeveel werkdagen vóór of na de einddatum |
-| **Laatste activiteit** | datum en wie, hoeveel dagen geleden, aantal registraties en op hoeveel dagen (*stil* na 14 dagen zonder registratie) |
-| **Uren** | geregistreerde manuren (uit de inzet of de uren), gemiddeld per object en een schatting voor de rest |
+| **Tegels** | % uitgevoerd, gedaan, gedeeltelijk, nog niet gestart en overgeslagen; klik op een tegel voor die objecten in het blok Objecten |
+| **Voortgangsbalk** | gedaan en overgeslagen, en de hoeveelheden per bestekpost |
+| **Periode** | start – einde, werkdagen totaal en resterend, fase (niet ingepland, nog niet gestart, loopt, einddatum verstreken, klaar) |
+| **Op schema?** | werkelijk % klaar tegenover het % dat volgens de tijd verwacht wordt, en hoeveel objecten voor of achter |
+| **Tempo** | objecten per werkdag tot nu toe tegenover het nodige tempo (*te laag*) |
+| **Prognose** | wanneer de ronde bij dit tempo klaar is, en hoeveel werkdagen vóór of na de einddatum |
+| **Laatste activiteit** | datum en wie, hoe lang geleden, aantal registraties (*stil* na 14 dagen) |
+| **Uren** | geregistreerde manuren, per object en een schatting voor de rest |
 | **Uitvoerders** | wie hoeveel objecten heeft afgemeld |
-| **Oordelen** (inspecties) | verdeling van de oordelen of condities van de geïnspecteerde objecten |
-| **Vervolg nodig** (werk) | aantal objecten waar "vervolg nodig" is gemeld |
-| **Overgeslagen** | de redenen, met aantallen |
+| **Oordelen** (inspecties) | verdeling van de oordelen of condities |
+| **Vervolg nodig** (werk) | objecten waar vervolg nodig is gemeld |
+| **Redenen overslaan** | waarom objecten zijn overgeslagen |
+| **Kaart** | de objecten in de kleur van hun status; optie **Alleen objecten die nog te doen zijn** |
+| **Objecten** | alle objecten met status en details (gedaan: datum, wie, oordeel; gedeeltelijk: hoe vaak, laatste keer; overgeslagen: reden), filters (nog te doen, nog niet gestart, gedeeltelijk, gedaan, overgeslagen, niet meer nodig, alles), zoeken, 📍 op de kaart, **Registratie**, **Uitvoeren** / **Inspecteren** en **Lijst** (CSV); optie: welk filter standaard |
+| **Planning** | start, gereed uiterlijk en status (wijzigen) |
+| **Opmerkingen** | opmerkingen over de ronde |
 
-**Objecten**: alle objecten van de ronde met hun status en details: *gedaan* (datum, wie, oordeel of vervolg nodig), *gedeeltelijk* (hoe vaak,
-laatste keer, wie), *overgeslagen* (reden en toelichting), *niet meer nodig* (hoeveelheden bereikt) of *nog niet gestart*. Filter op **Nog te doen**
-(standaard: nog niet gestart + gedeeltelijk), nog niet gestart, gedeeltelijk, gedaan, overgeslagen of alles, en zoek op code, naam of uitvoerder.
-Per object: 📍 op de kaart tonen, **Registratie** openen, en bij werk dat nog moet **Uitvoeren** / **Inspecteren** (opent het formulier voor dat
-object in deze ronde). **Lijst** downloadt de zichtbare objecten als CSV.
+**Weergave aanpassen** (knop rechtsboven in het venster): volgorde met ↑ ↓, **breed** of **smal**, standaard **ingeklapt** of **open**,
+blokken weghalen (✕) of toevoegen, en de opties van de kaart en de objectenlijst. Elk blok is ook tijdens het kijken in en uit te klappen.
 
-**Planning wijzigen**: start, gereed uiterlijk, status en opmerkingen over de ronde (zoals voorheen), met Opslaan of Uit planning halen.
+- **Je eigen weergave** wordt meteen bewaard en geldt voor jou in dit project (op dit apparaat). Zo kan iemand alleen *Planning* en
+  *Opmerkingen* tonen, of alleen de *Kaart* met wat nog te doen is.
+- **Als standaard voor dit project** (alleen beheerders): iedereen in het project start met deze weergave; wie al een eigen weergave
+  heeft, houdt die.
+- **Standaard herstellen**: terug naar de standaard van het project (of, als die er niet is, die van de app).
+- Opslaan werkt ook als het blok Planning of Opmerkingen niet in de weergave staat: wat niet in beeld is, blijft ongewijzigd.
 
 ## Planningsoverleg: agenda en notulen (planning → Planningsoverleg)
 

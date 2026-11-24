@@ -147,3 +147,37 @@ export function objectRegels(ids, vg, { objectVan = () => null, wieVan = (r) => 
     return { id, o, status: 'open' };
   });
 }
+
+// ---------------------------------------------------------------------------
+// Indeling van het rondevenster (zoals het eigen dashboard): welke blokken, in welke volgorde, breed of smal, ingeklapt
+// ---------------------------------------------------------------------------
+/** Alle blokken van het rondevenster. `alleen`: alleen bij werk of alleen bij inspecties. */
+export const RONDE_BLOKKEN = {
+  tegels: { titel: 'Tegels', uitleg: '% uitgevoerd, gedaan, gedeeltelijk, nog niet gestart en overgeslagen (klikbaar).' },
+  balk: { titel: 'Voortgangsbalk', uitleg: 'Balk met gedaan en overgeslagen, en de hoeveelheden per bestekpost.' },
+  periode: { titel: 'Periode', uitleg: 'Start en einde, werkdagen totaal en resterend, en de fase.' },
+  schema: { titel: 'Op schema?', uitleg: 'Werkelijke voortgang tegenover de verwachte volgens de tijd.' },
+  tempo: { titel: 'Tempo', uitleg: 'Objecten per werkdag tot nu toe, tegenover het nodige tempo.' },
+  prognose: { titel: 'Prognose', uitleg: 'Wanneer de ronde bij dit tempo klaar is.' },
+  activiteit: { titel: 'Laatste activiteit', uitleg: 'Laatste registratie, door wie en hoe lang geleden.' },
+  uren: { titel: 'Uren', uitleg: 'Geregistreerde manuren, per object en schatting voor de rest.' },
+  uitvoerders: { titel: 'Uitvoerders', uitleg: 'Wie hoeveel objecten heeft afgemeld.' },
+  oordelen: { titel: 'Oordelen', uitleg: 'Verdeling van de oordelen of condities.', alleen: 'inspectie' },
+  vervolg: { titel: 'Vervolg nodig', uitleg: 'Objecten waar vervolg nodig is gemeld.', alleen: 'werk' },
+  redenen: { titel: 'Redenen overslaan', uitleg: 'Waarom objecten zijn overgeslagen.' },
+  kaart: { titel: 'Kaart', uitleg: 'De objecten op de kaart in de kleur van hun status; desgewenst alleen wat nog te doen is.' },
+  objecten: { titel: 'Objecten', uitleg: 'Lijst van de objecten met status, details en knoppen; met filters en zoeken.' },
+  planning: { titel: 'Planning', uitleg: 'Start, gereed uiterlijk en status van de ronde (wijzigen).' },
+  opmerking: { titel: 'Opmerkingen', uitleg: 'Opmerkingen over deze ronde, bijv. voor het planningsoverleg.' },
+};
+
+/** Standaardindeling van het rondevenster. */
+export const STANDAARD_WEERGAVE = [
+  { id: 'tegels', breed: true }, { id: 'balk', breed: true },
+  { id: 'periode' }, { id: 'schema' }, { id: 'tempo' }, { id: 'prognose' }, { id: 'activiteit' }, { id: 'uren' },
+  { id: 'kaart', breed: true }, { id: 'objecten', breed: true, opties: { filter: 'tedoen' } },
+  { id: 'planning' }, { id: 'opmerking' },
+];
+
+/** Blokken die bij deze soort ronde horen. */
+export const beschikbareBlokken = (soort) => Object.keys(RONDE_BLOKKEN).filter((id) => !RONDE_BLOKKEN[id].alleen || RONDE_BLOKKEN[id].alleen === soort);

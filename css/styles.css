@@ -2170,3 +2170,27 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
 .rondedialoog .rd-paneel { min-height: min(470px, 60vh); }
 .rondedialoog .rd-tabs .tab { border-bottom: 3px solid transparent; padding: .45rem .75rem; color: var(--tekst-zacht); }
 .rondedialoog .rd-tabs .tab.actief { border-bottom-color: var(--primair); color: var(--primair); font-weight: 600; }
+
+/* Rondevenster als eigen indeling van blokken (zoals het dashboard) */
+.rondedialoog .rd-kop { align-items: center; }
+.rd-raster2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; align-items: start; }
+.rd-blok { min-width: 0; border: 1px solid var(--rand); border-radius: var(--radius); padding: .55rem .75rem; background: var(--kaart, #fff); }
+.rd-blok.breed { grid-column: 1 / -1; }
+.rd-raster2.bewerken .rd-blok { outline: 2px dashed var(--rand); outline-offset: 2px; }
+.rd-blokinhoud > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: .35rem; }
+.rd-blokinhoud > summary::-webkit-details-marker { display: none; }
+.rd-blokinhoud > summary::before { content: '▸'; color: var(--tekst-zacht); transition: transform .15s; }
+.rd-blokinhoud[open] > summary::before { transform: rotate(90deg); }
+.rd-blokinhoud > summary h3 { margin: 0; font-size: .82rem; text-transform: uppercase; letter-spacing: .03em; color: var(--tekst-zacht); }
+.rd-blokinhoud[open] > summary { margin-bottom: .45rem; }
+.rd-kerncijfer { display: flex; justify-content: space-between; align-items: flex-start; gap: .5rem; font-size: .92rem; line-height: 1.4; }
+.rd-kerncijfer small { color: var(--tekst-zacht); }
+.rd-kerncijfer .label-status { white-space: nowrap; }
+.rd-blok .rd-tegels { margin: 0; }
+.rd-blok .rd-kaartvlak { height: 380px; border-radius: 10px; overflow: hidden; border: 1px solid var(--rand); }
+.rd-blok:not(.breed) .rd-kaartvlak { height: 300px; }
+.rd-blok .mlegenda { margin-top: .4rem; }
+.rd-blok textarea { width: 100%; }
+.rd-optie { display: flex; align-items: center; gap: .4rem; font-size: .82rem; margin: .2rem 0 .4rem; }
+.rd-bewerk { margin-bottom: .75rem; }
+@media (max-width: 760px) { .rd-raster2 { grid-template-columns: minmax(0, 1fr); } .rd-blok .rd-kaartvlak { height: 260px; } }
