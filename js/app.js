@@ -4673,7 +4673,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
       gebreken: await Promise.all((bestaand.gebreken ?? []).map(async (g) => ({ ...g, id: g.id ?? nieuwId(), fotos: await laadFotos(g.fotoIds) }))),
     }
     : {
-      objectId: objectId ?? '', datum: vandaag(), inspecteur: instelling.lees('inspecteur'), werkpakketId: pakketId ?? '', rondeId: rondeId ?? '',
+      objectId: objectId ?? '', datum: vandaag(), inspecteur: accountNaam(), werkpakketId: pakketId ?? '', rondeId: rondeId ?? '',
       soort: standaardInspectiesoort(),
       weer: '', status: 'concept', samenvatting: '', fotos: [], gebreken: [],
     };
@@ -4740,8 +4740,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
   const veldSoort = `<div class="veld"><label for="f-soort">Soort</label>
       <select id="f-soort" name="soort">${(losseCalamiteit && !bestaand ? [CALAMITEIT] : [...new Set([...inspectieSoorten(), ...(bestaand?.soort ? [bestaand.soort] : [])])].filter((s) => s !== BV.BVC_SOORT && (pakket || bestaand || s !== ST.STOWA_SOORT))).map((s) => optie(s, s, staat.soort)).join('')}</select>
       </div>`;
-  const veldInspecteur = `<div class="veld"><label for="f-inspecteur">Inspecteur</label>
-      <input id="f-inspecteur" name="inspecteur" value="${esc(staat.inspecteur)}" maxlength="100"></div>`;
+  const veldInspecteur = persoonVeld('inspecteur', 'Inspecteur', staat.inspecteur);
   const veldWeer = `<div class="veld"><label for="f-weer">Weersomstandigheden</label>
       <select id="f-weer" name="weer"><option value="">–</option>${WEER.map((w) => optie(w, w, staat.weer)).join('')}</select></div>`;
   const veldSamenvatting = `<div class="veld breed"><label for="f-samenvatting">${mobiel ? 'Algemene bevindingen' : 'Samenvatting / algemene bevindingen'}</label>
@@ -5282,7 +5281,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     };
     if (await ingediendGeblokkeerd(inspectie.id)) return;
     await db.bewaar('inspecties', inspectie);
-    if (data.inspecteur) instelling.schrijf('inspecteur', data.inspecteur);
+    if (data.inspecteur && !sync.profiel()?.naam && !instelling.lees('inspecteur')) instelling.schrijf('inspecteur', data.inspecteur);
     formulierGewijzigd = false;
     if (status === 'afgerond') gedaan('Inspectie afgerond en vastgelegd', { object: objecten.find((o) => o.id === inspectie.objectId), beoordeling: true });
     else melding('Concept opgeslagen – nog niet ingediend');
@@ -6858,7 +6857,7 @@ async function werkzaamhedenLijst() {
 
   app.querySelector('#export').onclick = async () => {
     const extraDefs = ((await actiefProject())?.velden ?? []).filter((d) => d.formulier === 'werk' && d.type !== 'foto' && velden.isInvoer(d));
-    const rijen = [['Datum', 'Objectcode', 'Object', 'Soort', 'Uitvoerder', 'Uren', 'Omschrijving', 'Materiaal', 'Status', 'Vervolg', 'Afgehandelde maatregelen', 'Foto\'s',
+    const rijen = [['Startdatum', 'Objectcode', 'Object', 'Soort', 'Uitvoerder', 'Uren', 'Omschrijving', 'Materiaal', 'Status', 'Vervolg', 'Afgehandelde maatregelen', 'Foto\'s vóór', 'Foto\'s ná', 'Einddatum',
       ...extraDefs.map((d) => (d.type === 'getal' && d.eenheid ? `${d.label} (${d.eenheid})` : d.label))]];
     for (const w of zichtbaar) {
       const o = objectMap.get(w.objectId);
@@ -6873,7 +6872,7 @@ async function werkzaamhedenLijst() {
         return v ?? '';
       });
       rijen.push([w.datum, o?.code, o?.naam, w.soort, w.uitvoerder, w.uren, w.omschrijving, w.materiaal,
-        w.gereed === false ? `Gedeeltelijk${w.deel ? ` (${w.deel})` : ''}` : WERKSTATUS[w.status] ?? 'Gereed', w.vervolg, w.maatregelen?.length ?? 0, w.fotoIds?.length ?? 0, ...extraKolommen]);
+        w.gereed === false ? `Gedeeltelijk${w.deel ? ` (${w.deel})` : ''}` : WERKSTATUS[w.status] ?? 'Gereed', w.vervolg, w.maatregelen?.length ?? 0, (w.fotoIdsVoor ?? []).length, (w.fotoIds?.length ?? 0) - (w.fotoIdsVoor ?? []).length, w.eindDatum || w.datum, ...extraKolommen]);
     }
     // Uren uitgezet in dit project: kolom 'Uren' (index 5) niet exporteren.
     download(`werkzaamheden-${vandaag()}.csv`, csv(toonUren() ? rijen : rijen.map((r) => r.filter((_, k) => k !== 5))), 'text/csv;charset=utf-8');
@@ -6911,7 +6910,8 @@ async function werkDetail(id) {
         <h2>Gegevens</h2>
         <dl class="gegevens">
           <dt>Status</dt><dd>${werkStatusLabel(w.status)}</dd>
-          <dt>Datum</dt><dd>${datumNL(w.datum)}</dd>
+          <dt>Startdatum</dt><dd>${datumNL(w.datum)}</dd>
+          <dt>Einddatum</dt><dd>${datumNL(w.eindDatum || w.datum)}</dd>
           <dt>Uitvoerder</dt><dd>${esc(w.uitvoerder || '–')}</dd>
           ${toonUren() ? `<dt>Uren</dt><dd>${urenTekst(w.uren)}</dd>` : ''}
           ${w.materiaal ? `<dt>Materiaal</dt><dd style="white-space:pre-wrap">${esc(w.materiaal)}</dd>` : ''}
@@ -6925,7 +6925,12 @@ async function werkDetail(id) {
       </section>
     </div>
     ${await extraDetailHtml(w, 'werk')}
-    ${w.fotoIds?.length ? `<section class="kaart"><h2>Foto's</h2>${await fotosHtml(w.fotoIds)}</section>` : ''}
+    ${await (async () => {
+    const voor = new Set(w.fotoIdsVoor ?? []);
+    const v = (w.fotoIds ?? []).filter((x) => voor.has(x));
+    const n = (w.fotoIds ?? []).filter((x) => !voor.has(x));
+    return `${v.length ? `<section class="kaart"><h2>Foto's vóór</h2>${await fotosHtml(v)}</section>` : ''}${n.length ? `<section class="kaart"><h2>${v.length ? "Foto's ná" : "Foto's"}</h2>${await fotosHtml(n)}</section>` : ''}`;
+  })()}
     ${gekoppeld.length ? `<section class="kaart"><h2>Afgehandelde maatregelen</h2><ul>
       ${gekoppeld.map(({ gebrek: g, inspectie: i }) => `<li><a href="#/inspecties/${esc(i.id)}">${esc(g.bouwdeel)} – ${esc(g.gebrek)}</a>: ${esc(g.maatregel || '–')}</li>`).join('')}
     </ul></section>` : ''}`;
@@ -7050,7 +7055,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
   }
   const isStoring = storing || Boolean(bestaand?.storing);
   const w = bestaand ?? {
-    objectId: objectId ?? '', datum: vandaag(), soort: isStoring ? STORING_SOORT : '', uitvoerder: instelling.lees('inspecteur'), uren: '', werkpakketId: isStoring ? '' : pakketId ?? '', rondeId: isStoring ? '' : rondeId ?? '',
+    objectId: objectId ?? '', datum: vandaag(), soort: isStoring ? STORING_SOORT : '', uitvoerder: accountNaam(), uren: '', werkpakketId: isStoring ? '' : pakketId ?? '', rondeId: isStoring ? '' : rondeId ?? '',
     omschrijving: '', materiaal: '', status: 'gereed', vervolg: '', maatregelen: [], fotoIds: [],
     ...(isStoring ? { storing: { type: maatregel ? 'Gebrek' : 'Storing', melding: '', gemeldOp: nuLokaal(), opgelostOp: nuLokaal(), resultaat: 'opgelost' } } : {}),
   };
@@ -7064,6 +7069,9 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     w.storing = { ...w.storing, type: bron.type || w.storing.type, melding: bron.melding || '', referentie: bron.referentie || '', gemeldOp: bron.gemeldOp || w.storing.gemeldOp };
   }
   const fotos = await laadFotos(w.fotoIds);
+  // Foto's vóór en ná het werk apart; oude registraties zonder indeling tellen als 'na'.
+  const voorIds = new Set(w.fotoIdsVoor ?? []);
+  for (const f of fotos) f.fase = voorIds.has(f.id) ? 'voor' : 'na';
   const origineleFotoIds = new Set(w.fotoIds ?? []);
   const origineleKoppelingen = new Set((w.maatregelen ?? []).map((m) => `${m.inspectieId}:${m.gebrekId}`));
   const object = objecten.find((o) => o.id === w.objectId);
@@ -7155,17 +7163,23 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     <div class="veld${mobiel ? ' breed' : ''}"><label for="f-referentie">Referentie</label><input id="f-referentie" name="referentie" maxlength="80" autocomplete="off" value="${esc(st.referentie ?? '')}" placeholder="bijv. meldingsnummer of ticket van de opdrachtgever"></div>
     <div class="veld breed"><label for="f-melding" class="vereist">Wat was er aan de hand?</label>
       <textarea id="f-melding" name="melding" maxlength="2000" style="min-height:70px" placeholder="bijv. slagboom gaat niet open, lantaarnpaal brandt niet, boom over het fietspad">${esc(st.melding ?? '')}</textarea></div>` : '';
+  // Per werkpakket instelbaar; standaard zijn start- en einddatum gelijk.
+  const datumsGelijk = pakket ? pakket.datumsGelijk !== false : true;
+  let eindHandmatig = Boolean(bestaand?.eindDatum && bestaand.eindDatum !== bestaand.datum);
   const velden = `
     ${objectVeld}
     ${storingVelden}
     <div class="veld breed"><label for="f-soort" class="vereist">Soort werkzaamheid</label>
       <select id="f-soort" name="soort" required><option value="">– kies –</option>${[...new Set([...(isStoring ? [STORING_SOORT] : []), ...WERKSOORTEN, ...(w.soort ? [w.soort] : [])])].map((s) => optie(s, s, w.soort)).join('')}</select></div>
-    <div class="veld"><label for="f-datum" class="vereist">Datum</label><input id="f-datum" name="datum" type="date" required value="${esc(w.datum)}"></div>
+    <div class="veld"><label for="f-datum" class="vereist">Startdatum</label><input id="f-datum" name="datum" type="date" required value="${esc(w.datum)}"></div>
+    <div class="veld"><label for="f-eind" class="vereist">Einddatum</label><input id="f-eind" name="eindDatum" type="date" required value="${esc(w.eindDatum || (datumsGelijk ? w.datum : ''))}" min="${esc(w.datum)}">
+      ${datumsGelijk ? '<small class="zacht">Gaat standaard mee met de startdatum.</small>' : ''}</div>
     ${toonUren() && !isStoring ? `<div class="veld"><label for="f-uren">Uren</label><input id="f-uren" name="uren" type="number" min="0" max="1000" step="0.25" inputmode="decimal" value="${esc(w.uren)}"></div>` : ''}
     <div class="veld breed"><label for="f-omschrijving" ${isStoring ? 'class="vereist"' : ''}>${isStoring ? 'Wat heb je gedaan om het op te lossen?' : 'Wat is er gedaan?'}</label>
       <textarea id="f-omschrijving" name="omschrijving" maxlength="4000" placeholder="${isStoring ? 'bijv. zekering vervangen, tak verwijderd en weg vrijgemaakt' : 'Korte omschrijving van het uitgevoerde werk'}">${esc(w.omschrijving)}</textarea></div>
-    <div class="veld breed"><label>Foto's (voor / na)</label><div id="fotos"></div></div>
-    <div class="veld"><label for="f-uitvoerder">Uitvoerder</label><input id="f-uitvoerder" name="uitvoerder" maxlength="100" value="${esc(w.uitvoerder)}"></div>
+    <div class="veld breed"><label>Foto's vóór het werk</label><div id="fotos-voor"></div></div>
+    <div class="veld breed"><label>Foto's ná het werk</label><div id="fotos-na"></div></div>
+    ${persoonVeld('uitvoerder', 'Uitvoerder', w.uitvoerder)}
     ${isStoring ? `<div class="veld${mobiel ? ' breed' : ''}"><label for="f-opgelost">Opgelost / gestopt om</label><input id="f-opgelost" name="opgelostOp" type="datetime-local" value="${esc(st.opgelostOp ?? '')}"></div>
     <div class="veld breed"><label class="vereist">Resultaat</label>${segment('resultaat', st.resultaat ?? 'opgelost', Object.entries(STORING_RESULTAAT).map(([k, x]) => [k, x.label]))}</div>
     <div class="veld breed inzetveld"><label class="vereist">Bestede uren</label>
@@ -7226,10 +7240,12 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
   if (maatregel) gekozen.add(maatregel);
 
   const toonFotos = () => {
-    app.querySelector('#fotos').innerHTML = `<div class="fotos">
-      ${fotos.map((f, n) => `<div class="foto"><img src="${esc(f.data)}" alt="Foto ${n + 1}" data-lichtbak>
-        <button type="button" data-foto-weg="${n}" aria-label="Foto verwijderen">×</button>${fotoOnderschrift(f.info ?? FOTO_INFO.get(f.id), { kort: true })}</div>`).join('')}
-      <label class="knop fotoknop">${I.camera} Foto<input type="file" accept="image/*" capture="environment" multiple id="foto-input"></label></div>`;
+    for (const fase of ['voor', 'na']) {
+      app.querySelector(`#fotos-${fase}`).innerHTML = `<div class="fotos">
+      ${fotos.map((f, n) => (f.fase !== fase ? '' : `<div class="foto"><img src="${esc(f.data)}" alt="Foto ${fase}" data-lichtbak>
+        <button type="button" data-foto-weg="${n}" aria-label="Foto verwijderen">×</button>${fotoOnderschrift(f.info ?? FOTO_INFO.get(f.id), { kort: true })}</div>`)).join('')}
+      <label class="knop fotoknop">${I.camera} Foto ${fase === 'voor' ? 'vóór' : 'ná'}<input type="file" accept="image/*" capture="environment" multiple class="foto-input" data-fase="${fase}" id="foto-input-${fase}"></label></div>`;
+    }
   };
 
   // Openstaande maatregelen van het gekozen object die met dit werk kunnen worden afgehandeld.
@@ -7255,6 +7271,12 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
 
   form.addEventListener('input', (e) => {
     formulierGewijzigd = true;
+    if (e.target.name === 'eindDatum') eindHandmatig = e.target.value !== form.elements.datum.value;
+    if (e.target.name === 'datum') {
+      const eind = form.elements.eindDatum;
+      eind.min = e.target.value;
+      if ((datumsGelijk && !eindHandmatig) || !eind.value || eind.value < e.target.value) eind.value = e.target.value;
+    }
     if (e.target.name === 'status') app.querySelector('#vervolg-veld').hidden = e.target.value !== 'vervolg';
     if (e.target.name === 'volledig') {
       const nee = e.target.value === 'nee';
@@ -7278,10 +7300,11 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     }
   });
   form.addEventListener('change', async (e) => {
-    if (e.target.id !== 'foto-input' || !e.target.files?.length) return;
+    if (!e.target.classList?.contains('foto-input') || !e.target.files?.length) return;
+    const fase = e.target.dataset.fase === 'voor' ? 'voor' : 'na';
     melding(`${e.target.files.length} foto('s) verwerken…`);
     try {
-      for (const bestand of [...e.target.files]) fotos.push(await nieuweFoto(bestand));
+      for (const bestand of [...e.target.files]) fotos.push({ ...(await nieuweFoto(bestand)), fase });
       formulierGewijzigd = true;
     } catch (fout) {
       melding(fout.message, 'fout');
@@ -7353,7 +7376,9 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     const data = formulierData(form);
     if (!data.objectId) return melding('Kies een object.', 'fout');
     if (!data.soort) return melding('Kies de soort werkzaamheid.', 'fout');
-    if (!data.datum) return melding('Vul de datum in.', 'fout');
+    if (!data.datum) return melding('Vul de startdatum in.', 'fout');
+    if (!data.eindDatum) data.eindDatum = data.datum;
+    if (data.eindDatum < data.datum) { form.elements.eindDatum.focus(); return melding('De einddatum ligt vóór de startdatum.', 'fout'); }
     if (isStoring && !String(data.melding ?? '').trim()) return melding('Beschrijf wat er aan de hand was.', 'fout');
     if (isStoring && !String(data.omschrijving ?? '').trim()) return melding('Beschrijf wat je hebt gedaan.', 'fout');
     if (isStoring) {
@@ -7376,7 +7401,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     }
     // Bij een gedeeltelijke afmelding horen foto's van het gedane deel.
     if (metDelen && data.volledig === 'nee' && !fotos.length) {
-      app.querySelector('#fotos')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      app.querySelector('#fotos-na')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return melding("Maak minstens één foto van het deel dat je hebt gedaan.", 'fout');
     }
     const fouten = extraB.fouten();
@@ -7402,11 +7427,12 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
       projectId: w.projectId ?? projectId(),
       objectId: data.objectId,
       datum: data.datum,
+      eindDatum: data.eindDatum,
       soort: data.soort,
       omschrijving: data.omschrijving,
       // Uren uitgezet in dit project: niet gevraagd, een eerder ingevulde waarde blijft staan.
       uren: !toonUren() || data.uren === undefined ? (bestaand?.uren ?? '') : data.uren === '' ? '' : Number(data.uren),
-      uitvoerder: data.uitvoerder,
+      uitvoerder: String(data.uitvoerder ?? '').trim() || (bestaand?.uitvoerder ?? accountNaam()),
       status: data.status || 'gereed',
       vervolg: data.status === 'vervolg' ? data.vervolg : '',
       ...(metDelen ? { gereed: data.volledig !== 'nee', deel: data.volledig === 'nee' ? String(data.deel ?? '').trim() : '' } : {}),
@@ -7422,6 +7448,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
         return { inspectieId, gebrekId };
       }),
       fotoIds: fotos.map((f) => f.id),
+      fotoIdsVoor: fotos.filter((f) => f.fase === 'voor').map((f) => f.id),
       extra: extraB.waarden(),
       extraLabels: extraB.labels(),
       extraFotoIds,
@@ -7429,7 +7456,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
       aangemaakt: bestaand?.aangemaakt ?? nu,
       gewijzigd: nu,
     });
-    if (data.uitvoerder) instelling.schrijf('inspecteur', data.uitvoerder);
+    if (data.uitvoerder && !sync.profiel()?.naam && !instelling.lees('inspecteur')) instelling.schrijf('inspecteur', data.uitvoerder);
     formulierGewijzigd = false;
     const alsDeel = metDelen && data.volledig === 'nee';
     gedaan(isStoring ? (data.resultaat === 'opgelost' ? 'Storing / gebrek opgelost' : 'Storing / gebrek vastgelegd') : alsDeel ? 'Gedeeltelijk afgemeld' : bestaand ? 'Werkzaamheid bijgewerkt' : 'Werkzaamheid vastgelegd',
@@ -7553,6 +7580,15 @@ const duurTekst = (van, tot) => {
 const toonUren = () => huidigProject?.urenTonen !== false;
 
 const ikEmail = () => String(sync.sessie()?.gebruiker?.email ?? '').toLowerCase();
+// Wie het formulier invult: de naam uit het account (profiel), anders de ingestelde naam, anders het e-mailadres.
+const accountNaam = () => String(sync.profiel()?.naam || instelling.lees('inspecteur') || ikEmail() || '').trim();
+// Uitvoerder/inspecteur wordt niet gevraagd maar afgeleid uit het account. Alleen zonder account en naam een invulveld.
+function persoonVeld(naam, label, waarde, { vereist = false } = {}) {
+  const v = String(waarde ?? '').trim();
+  if (v) return `<input type="hidden" name="${naam}" id="f-${naam}" value="${esc(v)}">
+    <div class="veld persoonveld"><span class="label">${esc(label)}</span><p class="zacht" style="margin:.2rem 0">${I.gebruiker ?? ''} ${esc(v)}<br><small>Uit je account</small></p></div>`;
+  return `<div class="veld"><label for="f-${naam}"${vereist ? ' class="vereist"' : ''}>${esc(label)}</label><input id="f-${naam}" name="${naam}" maxlength="100" value=""></div>`;
+}
 /** Toegangsregels gelden voor ingelogde projectleden; beheerders en lokaal gebruik zien alles. */
 const toegangActief = () => Boolean(ikEmail()) && !magBeheren();
 
@@ -12804,6 +12840,8 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
             <small>Niets aangevinkt = iedereen in het project.</small>` : '<small>Voeg projectleden toe bij het project om uitvoerders te kunnen kiezen. Nu: iedereen in het project.</small>'}</div>
           <div class="veld breed"><label class="vink"><input type="checkbox" name="vrijgaveVereist" ${p.vrijgaveVereist ? 'checked' : ''}>
             <span><strong>Flora- en fauna-vrijgave vereist</strong><small>Uitvoerders zien per object of er een geldige ecologische vrijgave is.</small></span></label></div>
+          <div class="veld breed"><label class="vink"><input type="checkbox" name="datumsGelijk" ${p.datumsGelijk !== false ? 'checked' : ''}>
+            <span><strong>Start- en einddatum standaard gelijk</strong><small>In het werkformulier gaat de einddatum mee met de startdatum (werk op één dag). Uitzetten voor werk dat meerdere dagen duurt; de uitvoerder vult dan zelf de einddatum in.</small></span></label></div>
           <div class="veld breed"><label class="vink"><input type="checkbox" name="deelsAfmelden" ${p.deelsAfmelden ? 'checked' : ''}>
             <span><strong>Gedeeltelijk afmelden per object toestaan</strong><small>Voor werk met meerdere ploegen op hetzelfde vak (bijv. vanaf het land en vanaf het water).
               Uitvoerders krijgen dan de knop <em>Deels gedaan</em> en de vraag <em>Is het vak volledig klaar?</em>; een vak is pas gereed na "volledig klaar". Alleen voor werkzaamheden.</small></span></label></div>
@@ -13257,6 +13295,7 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
       toegewezen: [...form.querySelectorAll('input[name=toegewezen]:checked')].map((c) => c.value),
       vrijgaveVereist: form.elements.vrijgaveVereist.checked,
       deelsAfmelden: form.elements.deelsAfmelden.checked,
+      datumsGelijk: form.elements.datumsGelijk.checked,
       posten: posten.filter((x) => Number(String(x.hoeveelheid).replace(',', '.')) > 0).map((x) => ({ id: x.id, omschrijving: String(x.omschrijving ?? '').trim(), hoeveelheid: Number(String(x.hoeveelheid).replace(',', '.')), eenheid: x.eenheid || 'm2' })),
       voortgangOp: form.elements.voortgangOp.value === 'hoeveelheid' ? 'hoeveelheid' : 'objecten',
       // Welke definitieve decompositieversie gold bij het samenstellen.
@@ -14164,7 +14203,7 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
   const s0 = bestaand?.stowa ?? {};
   const staat = {
     datum: bestaand?.datum ?? vandaag(),
-    inspecteur: bestaand?.inspecteur ?? instelling.lees('inspecteur'),
+    inspecteur: bestaand?.inspecteur ?? accountNaam(),
     weer: bestaand?.weer ?? '',
     samenvatting: bestaand?.samenvatting ?? '',
     werkpakketId: bestaand?.werkpakketId ?? pakketId ?? '',
@@ -14193,7 +14232,7 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
         <h2>Inspectie</h2>
         <div class="velden">
           <div class="veld"><label for="f-datum" class="vereist">Datum</label><input id="f-datum" name="datum" type="date" value="${esc(staat.datum)}"></div>
-          <div class="veld"><label for="f-inspecteur" class="vereist">Inspecteur</label><input id="f-inspecteur" name="inspecteur" value="${esc(staat.inspecteur)}" maxlength="100"></div>
+          ${persoonVeld('inspecteur', 'Inspecteur', staat.inspecteur, { vereist: true })}
           <div class="veld"><label for="f-moment" class="vereist">Soort inspectie</label><select id="f-moment" data-s="moment">
             ${[...ST.INSPECTIEMOMENTEN, ...(staat.moment && !ST.INSPECTIEMOMENTEN.includes(staat.moment) ? [staat.moment] : [])].map((m) => optie(m, m, staat.moment)).join('')}</select></div>
           <div class="veld"><label for="f-weer">Weer</label><select id="f-weer" data-s="weer"><option value="">–</option>${WEER.map((w) => optie(w, w, staat.weer)).join('')}</select></div>
@@ -14482,7 +14521,7 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
       }
       await rondTaakAf(taakId, inspectieId);
     }
-    instelling.schrijf('inspecteur', inspecteur);
+    if (!sync.profiel()?.naam && !instelling.lees('inspecteur')) instelling.schrijf('inspecteur', inspecteur);
     instelling.schrijf('stowaKering', staat.kering);
     instelling.schrijf('stowaMoment', staat.moment);
     formulierGewijzigd = false;
@@ -14660,7 +14699,7 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
   const eigenaarVooraf = bvcInst.eigenaar || object.beheerder || projectBvc?.opdrachtgever || '';
   const staat = {
     datum: bestaand?.datum ?? vandaag(),
-    inspecteur: bestaand?.inspecteur ?? naam,
+    inspecteur: bestaand?.inspecteur ?? accountNaam(),
     status: bestaand?.status ?? 'concept',
     werkpakketId: bestaand?.werkpakketId ?? pakketId ?? '',
     rondeId: bestaand?.rondeId ?? rondeId ?? '',
@@ -14705,7 +14744,7 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
         <h2>Controle</h2>
         <div class="velden">
           <div class="veld"><label for="f-datum" class="vereist">Datum (DATUM)</label><input id="f-datum" name="datum" type="date" value="${esc(staat.datum)}"></div>
-          <div class="veld"><label for="f-inspecteur" class="vereist">Controleur (INSP)</label><input id="f-inspecteur" name="inspecteur" value="${esc(staat.inspecteur)}"></div>
+          ${persoonVeld('inspecteur', 'Controleur (INSP)', staat.inspecteur, { vereist: true })}
           <div class="veld"><label for="b-kwal" class="vereist">Kwalificatie</label><select id="b-kwal" data-b="kwalificatie"><option value="">– kies –</option>
             ${BV.KWALIFICATIES.map((k) => optie(k, k, b.kwalificatie)).join('')}</select></div>
           <div class="veld"><label for="b-cert">Certificaatnummer</label><input id="b-cert" data-b="certificaat" value="${esc(b.certificaat)}"></div>
@@ -14932,7 +14971,7 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
       });
       await rondTaakAf(taakId, inspectieId);
     }
-    instelling.schrijf('inspecteur', inspecteur);
+    if (!sync.profiel()?.naam && !instelling.lees('inspecteur')) instelling.schrijf('inspecteur', inspecteur);
     instelling.schrijf('bvcKwalificatie', b.kwalificatie);
     instelling.schrijf('bvcCertificaat', b.certificaat);
     instelling.schrijf('bvcMethode', b.methode);

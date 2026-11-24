@@ -135,6 +135,7 @@ form .velden { display: grid; gap: .9rem; grid-template-columns: repeat(auto-fit
 .veld { display: flex; flex-direction: column; gap: .25rem; }
 .veld.breed { grid-column: 1 / -1; }
 .veld label { font-weight: 600; font-size: .9rem; }
+.persoonveld .label { font-weight: 600; font-size: .9rem; }
 .veld small { color: var(--tekst-zacht); }
 input, select, textarea {
   font: inherit; color: var(--tekst); background: var(--vlak);

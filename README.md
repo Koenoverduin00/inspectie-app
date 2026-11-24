@@ -1139,6 +1139,21 @@ naar een **eisvraag** die in de formulieren komt, gekoppeld aan het **eisnummer*
   ondertekeningsblok. Optioneel met foto's als bewijs. *Afdrukken / opslaan als PDF* geeft het dossier; *Excel* geeft
   dezelfde inhoud in de bladen Samenvatting, Eisen, Bewijs en Afwijkingen.
 
+## Werkformulier: uitvoerder uit het account, foto's vóór/ná, start- en einddatum
+
+- **Uitvoerder / inspecteur wordt niet meer gevraagd.** Het werkformulier, het inspectieformulier, BVC en STOWA vullen de
+  naam automatisch in vanuit het account dat is ingelogd (naam uit het profiel, anders de ingestelde naam, anders het
+  e-mailadres). Het formulier toont "Uit je account". Bij het bewerken blijft de oorspronkelijke naam staan. Alleen zonder
+  account en zonder ingestelde naam verschijnt een invulveld.
+- **Foto's vóór en ná het werk** hebben elk een eigen regel met een eigen fotoknop. Ze worden opgeslagen als `fotoIds`
+  (alle foto's) plus `fotoIdsVoor`. Oudere registraties zonder indeling tellen als "ná". De detailpagina toont beide
+  groepen apart, en de CSV-export heeft de kolommen *Foto's vóór* en *Foto's ná*.
+- **Startdatum en einddatum.** `datum` is de startdatum; daarnaast is er `eindDatum`. Een einddatum vóór de startdatum
+  wordt geweigerd. De detailpagina en de CSV-export tonen beide datums.
+- **Per werkpakket: "Start- en einddatum standaard gelijk"** (`datumsGelijk`, staat standaard aan). Met de instelling
+  aan gaat de einddatum mee met de startdatum (werk op één dag), tenzij de uitvoerder de einddatum zelf aanpast. Met de
+  instelling uit blijft een ingevulde einddatum staan; dat is bedoeld voor werk van meerdere dagen.
+
 ## Volgorde op de kaart: vlakken onder, lijnen erboven, punten bovenop
 
 Op alle kaarten met objecten (Kaart & GIS, objecten- en inspectiekaart, dashboard, planning en rondevenster, werkpakketkaart en de
