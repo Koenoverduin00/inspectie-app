@@ -2245,3 +2245,26 @@ html.vooraf-inlog .kop, html.vooraf-inlog .onderbalk, html.vooraf-inlog .statusr
 .fflijst .ffstatus { justify-self: start; }
 .mvoet { z-index: 1100; }
 .ff-kaart { height: 52vh; }
+
+/* Meerdere objecten selecteren op de kaart (telefoon) */
+.mkiesknop { white-space: nowrap; }
+.mkiesknop.actief { background: #0b57d0; color: #fff; border-color: #0b57d0; }
+.ff-kaartbalk { display: flex; justify-content: flex-end; margin-bottom: .5rem; }
+.kaart-kiezen { outline: 3px solid #0b57d0; outline-offset: -3px; }
+.kiesbalk {
+  gap: .4rem !important; padding: .55rem .65rem !important;
+  position: fixed; left: 8px; right: 8px; bottom: calc(70px + env(safe-area-inset-bottom)); z-index: 1200;
+  display: grid; gap: .5rem; padding: .75rem; border-radius: 16px; background: var(--vlak); color: var(--tekst);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .28); border: 2px solid #0b57d0; max-width: 560px; margin: 0 auto;
+}
+.kiesbalk-kop { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.kiesbalk-kop small { display: block; color: var(--tekst-zacht); }
+.kiesbalk-rij { display: flex; gap: .4rem; align-items: stretch; }
+.kiesbalk-rij .knop.klein { min-height: 46px; padding: 0 .6rem; }
+.kiesbalk-actie { flex: 1; min-height: 46px; font-size: 1rem; justify-content: center; white-space: nowrap; }
+.kiesbalk-actie[aria-disabled="true"] { opacity: .55; }
+body.kiesmodus .mvoet, body.kiesmodus .mkaartlegenda { visibility: hidden; }
+.mlijstknop { display: flex; align-items: center; gap: .75rem; width: 100%; padding: .8rem .9rem; min-height: 60px; background: none; border: 0; text-align: left; color: var(--tekst); font: inherit; cursor: pointer; }
+.mlijstknop > span:not(.micoon) { flex: 1; min-width: 0; display: grid; }
+@media (min-width: 761px) { .kiesbalk { bottom: 16px; } }
+body.kiesmodus .mfilterchips, body.kiesmodus .mtedoenseg, body.kiesmodus .ff-filters { display: none; }

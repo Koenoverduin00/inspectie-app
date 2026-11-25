@@ -1154,6 +1154,33 @@ naar een **eisvraag** die in de formulieren komt, gekoppeld aan het **eisnummer*
   ondertekeningsblok. Optioneel met foto's als bewijs. *Afdrukken / opslaan als PDF* geeft het dossier; *Excel* geeft
   dezelfde inhoud in de bladen Samenvatting, Eisen, Bewijs en Afwijkingen.
 
+## Meerdere objecten tegelijk selecteren op de kaart (telefoon)
+
+Alleen voor **werkzaamheden** (werkpakketten) en de **flora & fauna**-kaart, niet voor inspecties en schouw.
+
+**Veldkaart (Kaart).**
+- De knop **Meerdere** staat naast Filter. Zijn er meerdere werkpakketten met werk te doen, dan kies je er eerst één.
+  Inspectie- en schouwrondes staan niet in die lijst.
+- **Selecteren.**
+  - Tik objecten aan om ze toe te voegen; nogmaals tikken haalt ze weg. Er gaat geen popup open.
+  - Gekozen objecten worden blauw. Objecten die niet bij het werkpakket horen of al klaar zijn, vallen weg (vervaagd);
+    tikken daarop geeft een korte melding.
+  - De filterknoppen verdwijnen zolang je selecteert, en de kaart zoomt zo in dat alle te doen objecten boven de balk
+    staan.
+- **De balk onderaan.**
+  - **Alle in beeld**: kiest alle te doen objecten die in beeld zijn.
+  - **Wissen**, en een kruisje om te stoppen.
+  - **Gereed melden (n)** opent één werkformulier voor de n objecten (`#/m/werk/nieuw?pakket=…&ronde=…&objecten=a,b,c`).
+- **Opslaan.** Er komt per object een eigen registratie, met dezelfde antwoorden en een **eigen kopie van de foto's**.
+  Het veld `batch` legt vast dat ze samen zijn ingevoerd.
+  - Bestekhoeveelheden vul je als **totaal** voor de selectie in; ze staan bij de eerste registratie, zodat de
+    voortgang niet dubbel telt.
+  - Gedeeltelijk afmelden en het koppelen van maatregelen doe je per object.
+
+**Flora & fauna-kaart.**
+- In de kaartweergave staat de knop **Meerdere selecteren**. Bij *alle werkpakketten* kies je eerst een werkpakket.
+- **Vrijgave aanvragen (n)** opent één vrijgave voor alle gekozen objecten (`#/m/vrijgave/nieuw?pakket=…&objecten=…`).
+
 ## Flora & fauna in het veld: lijst en kaart per werkpakket
 
 Op de telefoon opent de tegel **Flora & fauna vrijgave** op *Vandaag* het overzicht `#/m/vrijgaven`. Nieuw aanvragen

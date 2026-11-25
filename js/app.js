@@ -67,7 +67,7 @@ const instelling = {
 const ROUTES = [
   [/^\/$/, 'dashboard', () => (isMobiel() && !isOpdrachtgever() ? mobielStart() : dashboard())],
   [/^\/m\/werk$/, 'm-werk', () => werkpakketKiezer(null, { mobiel: true })],
-  [/^\/m\/werk\/nieuw$/, 'm-werk', (_, q) => werkFormulier(null, q.get('object'), { mobiel: true, taakId: q.get('taak'), maatregel: q.get('maatregel'), pakketId: q.get('pakket'), rondeId: q.get('ronde'), deel: q.get('deel') === '1' })],
+  [/^\/m\/werk\/nieuw$/, 'm-werk', (_, q) => werkFormulier(null, q.get('object') ?? q.get('objecten')?.split(',')[0], { mobiel: true, taakId: q.get('taak'), maatregel: q.get('maatregel'), pakketId: q.get('pakket'), rondeId: q.get('ronde'), deel: q.get('deel') === '1', objectIds: q.get('objecten')?.split(',').filter(Boolean) ?? null })],
   [/^\/m\/werk\/([^/]+)$/, 'm-werk', (id) => werkFormulier(id, null, { mobiel: true })],
   [/^\/m\/storing$/, 'm-werk', (_, q) => werkFormulier(null, q.get('object'), { mobiel: true, storing: true, maatregel: q.get('maatregel'), zaak: q.get('zaak') })],
   [/^\/m\/storingen$/, 'm-werk', () => storingenPagina(null, null, { mobiel: true })],
@@ -191,6 +191,7 @@ async function toonRoute() {
   const query = new URLSearchParams(zoek);
   const route = ROUTES.find(([re]) => re.test(pad));
   formulierGewijzigd = false;
+  document.body.classList.remove('kiesmodus');
   paginaAbort.abort();
   paginaAbort = new AbortController();
   const mobiel = isMobiel();
@@ -6080,6 +6081,7 @@ async function mobielKaart() {
     <div class="mkaartbalk">
       <div class="mkaarttitel"><h1>Kaart</h1><small id="mtelling"></small></div>
       <button class="knop mfilterknop" id="mfilter" type="button" aria-haspopup="dialog">${I.filter} Filter<span class="teller" id="mfilterteller" ${aantalFilters() ? '' : 'hidden'}>${aantalFilters()}</span></button>
+      ${rondes.some(({ pakket: v }) => v.soort !== 'inspectie') ? `<button class="knop mkiesknop" id="mkies" type="button" title="Meerdere objecten van één werkpakket tegelijk gereed melden">${I.vink} Meerdere</button>` : ''}
       ${rondes.length ? `<button class="knop micoonknop" id="mijnlocatie" type="button" aria-label="Mijn locatie" title="Mijn locatie">${I.locatie}</button>` : ''}
     </div>
     <div class="mfilterchips" id="mfilterchips">
@@ -6268,6 +6270,74 @@ async function mobielKaart() {
   });
   if (!kaart) return;
   const L = window.L;
+  // --- Meerdere objecten selecteren (alleen werkzaamheden, niet bij inspecties en schouw) ---
+  const kiesKnop = app.querySelector('#mkies');
+  const werkKeuzes = () => rondes.filter(({ pakket: v, voortgang: vg }) => v.soort !== 'inspectie' && (!eff || eff.has(v.id))
+    && (v.objecten ?? []).some((oid) => isTeDoen(rondeStatusVan(vg, oid))));
+  const stopKiezen = () => { kaart.stopSelectie(); app.querySelector('#kiesbalk')?.remove(); document.body.classList.remove('kiesmodus'); kiesKnop?.classList.remove('actief'); };
+  const startKiezen = ({ pakket: v, voortgang: vg }) => {
+    const kiesbaar = (o) => (v.objecten ?? []).includes(o.id) && isTeDoen(rondeStatusVan(vg, o.id));
+    document.body.classList.add('kiesmodus');
+    kiesKnop?.classList.add('actief');
+    app.querySelector('#kiesbalk')?.remove();
+    app.insertAdjacentHTML('beforeend', `<div class="kiesbalk" id="kiesbalk" role="region" aria-label="Objecten selecteren">
+      <div class="kiesbalk-kop"><span><strong>${esc(metCode(v))}</strong><small>Tik objecten aan om ze toe te voegen of weg te halen</small></span>
+        <button type="button" class="knop micoonknop" data-kies="stop" aria-label="Stoppen met selecteren">${I.kruis}</button></div>
+      <div class="kiesbalk-rij"><button type="button" class="knop klein" data-kies="alle" title="Alle te doen objecten die nu in beeld zijn">Alle in beeld</button><button type="button" class="knop klein" data-kies="wis">Wissen</button>
+        <a class="knop primair kiesbalk-actie" data-kies="gereed" aria-disabled="true">${I.vink} Kies objecten</a></div></div>`);
+    // Kaart vrijmaken: filters even weg, kaart bovenaan, en alle te doen objecten boven de balk in beeld.
+    const kaartEl = app.querySelector('#veldkaart');
+    window.scrollTo({ top: Math.max(0, kaartEl.getBoundingClientRect().top + window.scrollY - 8), behavior: 'instant' });
+    requestAnimationFrame(() => {
+      kaart.map.invalidateSize();
+      const lagen = (v.objecten ?? []).filter((oid) => isTeDoen(rondeStatusVan(vg, oid))).map((oid) => g.objectMap.get(oid)).filter((o) => o && objectGeometrie(o));
+      if (lagen.length) {
+        const bb = window.L.geoJSON({ type: 'FeatureCollection', features: lagen.map((o) => ({ type: 'Feature', geometry: objectGeometrie(o), properties: {} })) }).getBounds();
+        const bedekt = Math.max(0, kaartEl.getBoundingClientRect().bottom - (app.querySelector('#kiesbalk')?.getBoundingClientRect().top ?? window.innerHeight));
+        if (bb.isValid()) kaart.map.fitBounds(bb, { paddingTopLeft: [24, 24], paddingBottomRight: [24, bedekt + 24], maxZoom: 18, animate: false });
+      }
+    });
+    const balk = app.querySelector('#kiesbalk');
+    let gekozen = new Set();
+    const bij = (set) => {
+      gekozen = set;
+      const a = balk.querySelector('[data-kies=gereed]');
+      const ids = [...gekozen];
+      a.innerHTML = ids.length ? `${I.vink} Gereed melden (${ids.length})` : `${I.vink} Kies objecten`;
+      a.setAttribute('aria-disabled', String(!ids.length));
+      a.href = ids.length === 1 ? pakketHref(v, ids[0], true)
+        : ids.length ? `#/m/werk/nieuw?${new URLSearchParams({ pakket: v.id, ...(v.rondeId ? { ronde: v.rondeId } : {}), objecten: ids.join(',') })}` : '#';
+    };
+    balk.addEventListener('click', (e) => {
+      const k = e.target.closest('[data-kies]')?.dataset.kies;
+      if (k === 'stop') stopKiezen();
+      else if (k === 'wis') kaart.zetSelectie([]);
+      else if (k === 'alle') {
+        const vak = kaart.map.getBounds();
+        kaart.zetSelectie([...kaart.zichtbareIds()].filter((id) => { const o = g.objectMap.get(id); const geom = o && objectGeometrie(o); if (!geom) return false; const [lng, lat] = geom.type === 'Point' ? geom.coordinates : gis.middelpunt(geom); return vak.contains([lat, lng]); }));
+      } else if (k === 'gereed' && !gekozen.size) { e.preventDefault(); melding('Tik eerst op de objecten op de kaart.'); }
+    });
+    kaart.selecteer({ kiesbaar, opWijzig: bij, opNiet: (o) => melding(`${o.code} hoort niet bij dit werkpakket of is al klaar.`) });
+  };
+  kiesKnop?.addEventListener('click', () => {
+    if (document.body.classList.contains('kiesmodus')) { stopKiezen(); return; }
+    const keuzes = werkKeuzes();
+    if (!keuzes.length) { melding('Er zijn geen werkzaamheden te doen in deze kaart.'); return; }
+    if (keuzes.length === 1) { startKiezen(keuzes[0]); return; }
+    // Eerst het werkpakket (de ronde) kiezen: je selecteert altijd binnen één werkpakket.
+    const d = document.createElement('dialog');
+    d.className = 'dialoog mfilterblad';
+    d.innerHTML = `<h2>Welk werkpakket?</h2><p><small>Je selecteert meerdere objecten binnen één werkpakket. Inspecties en schouw staan hier niet bij.</small></p>
+      <ul class="mlijst">${keuzes.map((x, n) => `<li><button type="button" class="mlijstknop" data-k="${n}"><span class="micoon klein">${I.werk}</span>
+        <span><strong>${wpNaam(x.pakket)}</strong><small>${(x.pakket.objecten ?? []).filter((oid) => isTeDoen(rondeStatusVan(x.voortgang, oid))).length} objecten te doen${periodeTekst(x.pakket) ? ` · ${periodeTekst(x.pakket)}` : ''}</small></span></button></li>`).join('')}</ul>
+      <div class="formvoet"><button type="button" class="knop" data-weg>Annuleren</button></div>`;
+    document.body.append(d);
+    d.showModal();
+    const sluit = () => { d.close(); d.remove(); };
+    d.querySelector('[data-weg]').onclick = sluit;
+    d.addEventListener('cancel', (e) => { e.preventDefault(); sluit(); });
+    d.addEventListener('click', (e) => { const b = e.target.closest('[data-k]'); if (b) { sluit(); startKiezen(keuzes[Number(b.dataset.k)]); } });
+  });
   // Per werkpakket: kaart filteren, bouwdeelnamen als label en een lijst met de koppeling met de decompositie.
   const labelLaag = L.layerGroup().addTo(kaart.map);
   const inBeeld = inPk;
@@ -6759,6 +6829,7 @@ async function mobielVrijgaven(_, q = new URLSearchParams()) {
   const bewaar = () => instelling.schrijf(sleutel, JSON.stringify(keuze));
   const datum = vandaag();
   let kaart = null;
+  let kiesNaTekenen = false;
 
   app.innerHTML = `
     <div class="mkop"><a href="#/" class="mterug" aria-label="Terug">←</a>
@@ -6775,6 +6846,7 @@ async function mobielVrijgaven(_, q = new URLSearchParams()) {
     <div class="mvoet"><a class="knop primair" id="ff-nieuw" href="#/m/vrijgave">${I.blad} Nieuwe vrijgave</a></div>`;
 
   const teken = async () => {
+    document.body.classList.remove('kiesmodus');
     const pakket = keuze.pakket ? g.pakketten.find((p) => p.id === keuze.pakket) : null;
     const ov = eco.overzicht({ objecten, vrijgaven, pakketten: g.pakketten.filter((p) => p.status !== 'afgerond'), pakket, datum, status: keuze.status });
     const t = ov.telling;
@@ -6786,7 +6858,7 @@ async function mobielVrijgaven(_, q = new URLSearchParams()) {
     const href = (x) => (x.vrijgave ? `#/m/vrijgave/${encodeURIComponent(x.vrijgave.id)}` : `#/m/vrijgave/nieuw?object=${encodeURIComponent(x.object.id)}${pakket ? `&pakket=${encodeURIComponent(pakket.id)}` : ''}`);
     const statusChip = (x) => `<span class="ffstatus" style="--k:${eco.OBJECT_STATUS[x.status].kleur}">${esc(eco.OBJECT_STATUS[x.status].label)}${x.vrijgave?.geldigTot && ['geldig', 'voorwaarden'].includes(x.status) ? ` t/m ${datumNL(x.vrijgave.geldigTot)}` : ''}</span>`;
     if (!ov.totaal) {
-      inhoud.innerHTML = `<p class="mleeg">${pakket ? 'Dit werkpakket heeft geen objecten.' : 'Er zijn nog geen vrijgaven en geen werkpakketten met “vrijgave vereist”.'}</p>`;
+      inhoud.innerHTML = `<p class="mleeg">${pakket ? 'Dit werkpakket heeft geen objecten.' : 'Er zijn nog geen vrijgaven en geen werkpakketten met “vrijgave vereist”. Kies hierboven een werkpakket om de objecten te zien en een vrijgave aan te vragen.'}</p>`;
       return;
     }
     if (keuze.weergave === 'lijst') {
@@ -6798,7 +6870,8 @@ async function mobielVrijgaven(_, q = new URLSearchParams()) {
         : '<p class="mleeg">Geen objecten met deze status.</p>';
       return;
     }
-    inhoud.innerHTML = `<div id="ff-kaart" class="ff-kaart"><p class="leeg">Kaart laden…</p></div>
+    inhoud.innerHTML = `<div class="ff-kaartbalk"><button type="button" class="knop mkiesknop" id="ff-kies">${I.vink} Meerdere selecteren</button></div>
+      <div id="ff-kaart" class="ff-kaart"><p class="leeg">Kaart laden…</p></div>
       <div class="mlegenda">${Object.entries(eco.OBJECT_STATUS).filter(([k]) => t[k]).map(([k, s]) => `<span><i class="ffstip" style="background:${s.kleur}"></i>${esc(s.label)} (${t[k]})</span>`).join('')}</div>`;
     let L;
     try { L = await laadLeaflet(); } catch (fout) { inhoud.querySelector('#ff-kaart').innerHTML = `<p class="leeg">${esc(fout.message)}</p>`; return; }
@@ -6824,6 +6897,93 @@ async function mobielVrijgaven(_, q = new URLSearchParams()) {
     if (b.isValid()) map.fitBounds(b, { padding: [24, 24], maxZoom: 18, animate: false });
     else map.setView(laatstePositie ? [laatstePositie[1], laatstePositie[0]] : [52.1, 5.1], laatstePositie ? 16 : 8, { animate: false });
     laag.addTo(map);
+    // --- Meerdere objecten selecteren binnen één werkpakket: één vrijgave voor alle gekozen objecten ---
+    const lagenPerId = new Map();
+    laag.eachLayer((l) => lagenPerId.set(l.feature.properties.id, l));
+    let gekozen = null;
+    const kiesStijl = (id) => { const x = perId.get(id); const l = lagenPerId.get(id); const punt = Boolean(l.getLatLng); const b = stijl(x, punt);
+      l.setStyle(gekozen?.has(id) ? (punt ? { ...b, radius: 12, color: '#0b57d0', weight: 4, fillColor: '#0b57d0', fillOpacity: 1 } : { ...b, color: '#0b57d0', weight: 6, fillColor: '#0b57d0', fillOpacity: 0.45 }) : b); };
+    const stop = () => {
+      gekozen = null;
+      lagenPerId.forEach((l, id) => { kiesStijl(id); l.bindPopup(l._ffPopup); });
+      inhoud.querySelector('#ff-kiesbalk')?.remove();
+      document.body.classList.remove('kiesmodus');
+      inhoud.querySelector('#ff-kies')?.classList.remove('actief');
+    };
+    const start = () => {
+      map.closePopup();
+      gekozen = new Set();
+      lagenPerId.forEach((l) => { l._ffPopup = l._ffPopup ?? l.getPopup()?._content; l.unbindPopup(); });
+      document.body.classList.add('kiesmodus');
+      inhoud.querySelector('#ff-kies')?.classList.add('actief');
+      inhoud.insertAdjacentHTML('beforeend', `<div class="kiesbalk" id="ff-kiesbalk" role="region" aria-label="Objecten selecteren">
+        <div class="kiesbalk-kop"><span><strong>${esc(metCode(pakket))}</strong><small>Tik op de objecten voor één vrijgave</small></span>
+          <button type="button" class="knop micoonknop" data-kies="stop" aria-label="Stoppen met selecteren">${I.kruis}</button></div>
+        <div class="kiesbalk-rij"><button type="button" class="knop klein" data-kies="alle">Alle in beeld</button><button type="button" class="knop klein" data-kies="wis">Wissen</button>
+          <a class="knop primair kiesbalk-actie" data-kies="aanvragen" aria-disabled="true">${I.blad} Kies objecten</a></div></div>`);
+      const kaartEl = inhoud.querySelector('#ff-kaart');
+      window.scrollTo({ top: Math.max(0, kaartEl.getBoundingClientRect().top + window.scrollY - 8), behavior: 'instant' });
+      requestAnimationFrame(() => {
+        map.invalidateSize();
+        const balk = inhoud.querySelector('#ff-kiesbalk');
+        const bedekt = Math.max(0, kaartEl.getBoundingClientRect().bottom - (balk?.getBoundingClientRect().top ?? window.innerHeight));
+        const bb = laag.getBounds();
+        if (bb.isValid()) map.fitBounds(bb, { paddingTopLeft: [24, 24], paddingBottomRight: [24, bedekt + 24], maxZoom: 18, animate: false });
+      });
+      const balk = inhoud.querySelector('#ff-kiesbalk');
+      const bij = () => {
+        const ids = [...gekozen];
+        const a = balk.querySelector('[data-kies=aanvragen]');
+        a.innerHTML = ids.length ? `${I.blad} Vrijgave aanvragen (${ids.length})` : `${I.blad} Kies objecten`;
+        a.setAttribute('aria-disabled', String(!ids.length));
+        a.href = ids.length ? `#/m/vrijgave/nieuw?${new URLSearchParams({ pakket: pakket.id, objecten: ids.join(',') })}` : '#';
+        lagenPerId.forEach((l, id) => kiesStijl(id));
+      };
+      balk.addEventListener('click', (e) => {
+        const k = e.target.closest('[data-kies]')?.dataset.kies;
+        if (k === 'stop') stop();
+        else if (k === 'wis') { gekozen.clear(); bij(); }
+        else if (k === 'alle') { const vak = map.getBounds(); lagenPerId.forEach((l, id) => { const c = l.getLatLng ? l.getLatLng() : l.getBounds().getCenter(); if (vak.contains(c)) gekozen.add(id); }); bij(); }
+        else if (k === 'aanvragen' && !gekozen.size) { e.preventDefault(); melding('Tik eerst op de objecten op de kaart.'); }
+      });
+      bij();
+      start.bij = bij;
+    };
+    lagenPerId.forEach((l, id) => l.on('click', (e) => {
+      if (!gekozen) return;
+      L.DomEvent.stop(e);
+      if (gekozen.has(id)) gekozen.delete(id); else gekozen.add(id);
+      start.bij();
+    }));
+    inhoud.querySelector('#ff-kies').onclick = () => {
+      if (gekozen) { stop(); return; }
+      if (pakket) { start(); return; }
+      // Selecteren gaat binnen één werkpakket: eerst kiezen welk.
+      const metObjecten = pakketten.filter((p) => (p.objecten ?? []).length);
+      if (!metObjecten.length) { melding('Er zijn geen werkpakketten met objecten.'); return; }
+      const d = document.createElement('dialog');
+      d.className = 'dialoog mfilterblad';
+      d.innerHTML = `<h2>Welk werkpakket?</h2><p><small>Je kiest meerdere objecten binnen één werkpakket.</small></p>
+        <ul class="mlijst">${metObjecten.map((p) => `<li><button type="button" class="mlijstknop" data-p="${esc(p.id)}"><span class="micoon klein">${I.pakket}</span>
+          <span><strong>${wpNaam(p)}</strong><small>${(p.objecten ?? []).length} objecten${p.vrijgaveVereist ? ' · vrijgave vereist' : ''}</small></span></button></li>`).join('')}</ul>
+        <div class="formvoet"><button type="button" class="knop" data-weg>Annuleren</button></div>`;
+      document.body.append(d);
+      d.showModal();
+      const sluit = () => { d.close(); d.remove(); };
+      d.querySelector('[data-weg]').onclick = sluit;
+      d.addEventListener('cancel', (e) => { e.preventDefault(); sluit(); });
+      d.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-p]');
+        if (!b) return;
+        sluit();
+        keuze.pakket = b.dataset.p;
+        app.querySelector('#ff-pakket').value = keuze.pakket;
+        bewaar();
+        kiesNaTekenen = true;
+        teken();
+      });
+    };
+    if (kiesNaTekenen && pakket) { kiesNaTekenen = false; start(); }
     if (metGeo.length < ov.lijst.length) inhoud.insertAdjacentHTML('beforeend', `<p class="mleeg"><small>${ov.lijst.length - metGeo.length} object(en) zonder locatie staan alleen in de lijst.</small></p>`);
   };
   app.querySelector('#ff-pakket').onchange = (e) => { keuze.pakket = e.target.value; bewaar(); teken(); };
@@ -7200,7 +7360,7 @@ async function werkpakketKiezer(objectId, { mobiel = false, taakId = null, maatr
         <a class="knop" href="#/planning">Naar de planning</a></div>` : ''}</div>`}`;
 }
 
-async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maatregel = null, pakketId = null, rondeId = null, storing = false, deel = false, zaak = null } = {}) {
+async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maatregel = null, pakketId = null, rondeId = null, storing = false, deel = false, zaak = null, objectIds = null } = {}) {
   if (!id && storing && !mag('storing')) return geenRecht('storing');
   if (!id && !storing && !mag('werk')) return geenRecht('werk');
   if (!id && !pakketId && !storing) return werkpakketKiezer(objectId, { mobiel, taakId, maatregel });
@@ -7257,6 +7417,10 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
     for (let n = objecten.length - 1; n >= 0; n--) if (!inRonde.has(objecten[n].id)) objecten.splice(n, 1);
   }
   if (pakket && !bestaand && pakket.werksoort) w.soort = pakket.werksoort;
+  // Meerdere objecten tegelijk (gekozen op de kaart): één formulier, per object een registratie. Alleen werk binnen één werkpakket.
+  const batch = !bestaand && !isStoring && pakket && objectIds?.length > 1
+    ? [...new Set(objectIds)].filter((oid) => objecten.some((o) => o.id === oid)) : null;
+  if (batch && batch.length < 2) { app.innerHTML = leegKaart('Deze objecten horen niet (meer) bij dit werkpakket.', `<a class="knop" href="${mobiel ? '#/m/kaart' : '#/werkpakketten'}">Terug</a>`); return; }
   const pakketTerug = pakket ? pakketPagina(pakket, mobiel) : null;
   // Bestekposten: per post de uitgevoerde hoeveelheid; ernaast wat er in deze ronde al is gedaan.
   const postenW = pakket && !isStoring ? postenVan(pakket) : [];
@@ -7269,7 +7433,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
   }
   // Werk in delen: eerdere gedeeltelijke afmeldingen van dit object in deze ronde (andere ploegen).
   // Werk in delen alleen als het werkpakket dat toestaat (of als deze registratie al een gedeeltelijke afmelding is).
-  const metDelen = Boolean(pakket) && !isStoring && (Boolean(pakket.deelsAfmelden) || isDeels(bestaand));
+  const metDelen = Boolean(pakket) && !isStoring && !batch && (Boolean(pakket.deelsAfmelden) || isDeels(bestaand));
   const werkInRonde = metDelen ? (await inProject('werkzaamheden')).filter((x) => x.werkpakketId === pakket.id && (x.rondeId || STANDAARD_RONDE) === (pakket.rondeId || STANDAARD_RONDE) && x.id !== bestaand?.id) : [];
   const eerdereDelen = (oid) => werkInRonde.filter((x) => x.objectId === oid && isDeels(x)).sort((a, b) => String(a.datum).localeCompare(String(b.datum)));
   const deelsHtml = (oid) => {
@@ -7307,9 +7471,14 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
         ${taak?.omschrijving ? `<br><small>${esc(taak.omschrijving)}</small>` : ''}
         ${maatregelInfo ? `<br><small>${esc(maatregelInfo.bouwdeel || '')} – ${esc(maatregelInfo.gebrek || '')}; wordt bij opslaan op uitgevoerd gezet.</small>` : ''}</div>` : '';
 
-  const objectVeld = mobiel && object && !isStoring
-    ? `<input type="hidden" name="objectId" value="${esc(object.id)}">`
-    : objectKeuzeVeld(objecten, w.objectId);
+  const objectVeld = batch
+    ? `<input type="hidden" name="objectId" value="${esc(batch[0])}">
+      <div class="veld breed batchobjecten"><label>${batch.length} objecten</label>
+        <div class="chips">${batch.map((oid) => { const o = objecten.find((x) => x.id === oid); return `<span class="chip"><span>${esc(o?.code ?? '?')}</span></span>`; }).join('')}</div>
+        <small class="zacht">Dit formulier geldt voor alle gekozen objecten: per object wordt een registratie vastgelegd (met dezelfde foto's en antwoorden).</small></div>`
+    : mobiel && object && !isStoring
+      ? `<input type="hidden" name="objectId" value="${esc(object.id)}">`
+      : objectKeuzeVeld(objecten, w.objectId);
   const storingBanner = zaakMelding || zaakEerder
     ? `<div class="kaart storingbanner zaakbanner">${I.lijst} <strong>${zaakMelding ? 'Klaargezet in het storingenregister' : 'Vervolg op een eerdere registratie'}</strong>
       ${zaakMelding?.urgentie ? ` <span class="label-status ${zaakMelding.urgentie === 'direct' ? 'verlopen' : 'binnenkort'}">${esc(SR.URGENTIE_LABEL[zaakMelding.urgentie] ?? '')}</span>` : ''}
@@ -7359,7 +7528,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
         <label for="hv-${esc(x.id)}">${esc(x.omschrijving)}</label>
         <span class="hvinvoer"><input id="hv-${esc(x.id)}" name="hv-${esc(x.id)}" type="number" min="0" step="any" inputmode="decimal" value="${esc(bestaand?.hoeveelheden?.[x.id] ?? '')}" placeholder="0"><span>${esc(EENHEID_KORT[x.eenheid])}</span></span>
         <small class="zacht">In deze ronde al ${nl(al)} van ${nl(x.hoeveelheid)} ${esc(EENHEID_KORT[x.eenheid])}${al >= x.hoeveelheid ? ' – <b>hoeveelheid bereikt</b>' : ` · nog ${nl(Math.round((x.hoeveelheid - al) * 100) / 100)}`}</small></div>`; }).join('')}
-      <small class="zacht">Vul in hoeveel je hier hebt gedaan; 0 als het hier niet van toepassing was.</small></div>` : ''}
+      <small class="zacht">${batch ? `Vul de <strong>totale</strong> hoeveelheid voor de ${batch.length} objecten samen in; 0 als het niet van toepassing was.` : 'Vul in hoeveel je hier hebt gedaan; 0 als het hier niet van toepassing was.'}</small></div>` : ''}
     ${metDelen ? `<div class="veld breed volledigveld"><label class="vereist">Is het vak volledig klaar?</label>
       ${segment('volledig', volledigStart, [['ja', 'Ja, volledig klaar'], ['nee', 'Nee, gedeeltelijk']])}
       <small class="zacht">Kies <strong>Nee</strong> als een andere ploeg nog een deel doet (bijv. vanaf het water). Het vak blijft dan op de kaart als te doen staan.</small>
@@ -7375,7 +7544,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
   app.innerHTML = mobiel ? `
     <div class="mkop"><a href="${pakketTerug ?? '#/'}" class="mterug" aria-label="Terug">←</a>
       <div><small>${isStoring ? (bestaand ? 'Storing / gebrek bewerken' : 'Storing of gebrek oplossen') : bestaand ? 'Werkzaamheid bewerken' : 'Registratie werkzaamheden'}</small>
-      <h1>${object ? `${esc(object.code)} – ${esc(object.naam)}` : 'Kies een object'}</h1></div></div>
+      <h1>${batch ? `${batch.length} objecten` : object ? `${esc(object.code)} – ${esc(object.naam)}` : 'Kies een object'}</h1></div></div>
     <form id="form" novalidate class="mform">
       ${taakBanner}${pakketBanner}${isStoring ? storingBanner : ''}<div id="vrijgave-banner">${vrijgaveBanner(w.objectId)}</div>
       <section class="kaart"><div class="velden">${velden}</div></section>
@@ -7419,6 +7588,8 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
 
   // Openstaande maatregelen van het gekozen object die met dit werk kunnen worden afgehandeld.
   const toonMaatregelen = () => {
+    // Meerdere objecten tegelijk: maatregelen per object kies je in het formulier van één object.
+    if (batch) { app.querySelector('#maatregelen-blok').hidden = true; return; }
     const oid = form.elements.objectId.value;
     const lijst = alleMaatregelen(inspecties.filter((i) => i.objectId === oid), new Map())
       .filter(({ gebrek: g, inspectie: i }) => g.maatregelStatus !== 'uitgevoerd' || gekozen.has(`${i.id}:${g.id}`));
@@ -7626,13 +7797,30 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
       aangemaakt: bestaand?.aangemaakt ?? nu,
       gewijzigd: nu,
     });
+    if (batch) {
+      // De andere objecten: dezelfde registratie, met eigen id en eigen kopie van de foto's.
+      // De hoeveelheden zijn het totaal en staan bij de eerste registratie (anders telt de voortgang dubbel).
+      const eerste = await db.haal('werkzaamheden', werkId);
+      const fotoBron = new Map((await laadFotos([...(eerste.fotoIds ?? []), ...(eerste.extraFotoIds ?? [])])).map((f) => [f.id, f]));
+      for (const oid of batch.filter((x) => x !== data.objectId)) {
+        const nieuwId_ = nieuwId();
+        const kopie = new Map();
+        const kopieer = (ids) => (ids ?? []).map((fid) => { if (!kopie.has(fid)) kopie.set(fid, nieuwId()); return kopie.get(fid); });
+        const rec = { ...eerste, id: nieuwId_, objectId: oid, fotoIds: kopieer(eerste.fotoIds), fotoIdsVoor: kopieer(eerste.fotoIdsVoor), extraFotoIds: kopieer(eerste.extraFotoIds),
+          ...(eerste.hoeveelheden ? { hoeveelheden: Object.fromEntries(Object.keys(eerste.hoeveelheden).map((k) => [k, 0])) } : {}),
+          maatregelen: [], batch: { met: batch.length, eerste: werkId } };
+        await db.bewaarVeel('fotos', [...kopie].filter(([oud]) => fotoBron.has(oud)).map(([oud, nw]) => ({ id: nw, data: fotoBron.get(oud).data, werkzaamheidId: nieuwId_, projectId: rec.projectId, datum: nu })));
+        await db.bewaar('werkzaamheden', rec);
+      }
+      await db.bewaar('werkzaamheden', { ...eerste, batch: { met: batch.length, eerste: werkId } });
+    }
     if (data.uitvoerder && !sync.profiel()?.naam && !instelling.lees('inspecteur')) instelling.schrijf('inspecteur', data.uitvoerder);
     formulierGewijzigd = false;
     const alsDeel = metDelen && data.volledig === 'nee';
-    gedaan(isStoring ? (data.resultaat === 'opgelost' ? 'Storing / gebrek opgelost' : 'Storing / gebrek vastgelegd') : alsDeel ? 'Gedeeltelijk afgemeld' : bestaand ? 'Werkzaamheid bijgewerkt' : 'Werkzaamheid vastgelegd',
-      { object: objecten.find((o) => o.id === data.objectId), beoordeling: true,
-        extra: isStoring && data.resultaat !== 'opgelost' ? STORING_RESULTAAT[data.resultaat].label : alsDeel ? `Alleen dit deel: ${String(data.deel).trim()}. Het vak blijft te doen tot een ploeg volledig klaar meldt.` : '' });
-    if (mobiel) onthoudOpslag(alsDeel ? `Deels: ${String(data.deel).trim()}` : 'Werkzaamheid opgeslagen', data.objectId);
+    gedaan(isStoring ? (data.resultaat === 'opgelost' ? 'Storing / gebrek opgelost' : 'Storing / gebrek vastgelegd') : alsDeel ? 'Gedeeltelijk afgemeld' : bestaand ? 'Werkzaamheid bijgewerkt' : batch ? `Werkzaamheid vastgelegd voor ${batch.length} objecten` : 'Werkzaamheid vastgelegd',
+      { object: batch ? null : objecten.find((o) => o.id === data.objectId), beoordeling: true,
+        extra: batch ? batch.map((oid) => objecten.find((o) => o.id === oid)?.code).filter(Boolean).join(', ') : isStoring && data.resultaat !== 'opgelost' ? STORING_RESULTAAT[data.resultaat].label : alsDeel ? `Alleen dit deel: ${String(data.deel).trim()}. Het vak blijft te doen tot een ploeg volledig klaar meldt.` : '' });
+    if (mobiel) onthoudOpslag(alsDeel ? `Deels: ${String(data.deel).trim()}` : batch ? `Werkzaamheid opgeslagen (${batch.length} objecten)` : 'Werkzaamheid opgeslagen', data.objectId);
     await rondTaakAf(taakId, werkId);
     ga(pakketTerug ?? (mobiel ? '#/' : `#/werkzaamheden/${werkId}`));
   };
@@ -10056,11 +10244,21 @@ async function tekenObjectenKaart(el, { objecten, kleurVan, statusVan = null, po
   const groep = L.featureGroup().addTo(map);
   const lagen = new Map();
   const kanAanwijzen = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-  const stijl = (o, punt) => {
+  // Meerdere objecten selecteren: tikken voegt toe of haalt weg (geen popup); niet te kiezen objecten vallen weg.
+  let kies = null;
+  const basisStijl = (o, punt) => {
     const k = kleurVan(o);
     const st = statusVan?.(o);
     if (st) return statusStijl(st, punt, k);
     return punt ? { radius: 8, color: '#fff', weight: 2, opacity: 1, fillColor: k, fillOpacity: 1, dashArray: null } : { color: k, weight: 2.5, opacity: 1, fillColor: k, fillOpacity: 0.4, dashArray: null };
+  };
+  const stijl = (o, punt) => {
+    const b = basisStijl(o, punt);
+    if (!kies) return b;
+    if (!kies.kiesbaar(o)) return { ...b, opacity: 0.2, fillOpacity: Math.min(b.fillOpacity ?? 0.2, 0.08) };
+    if (kies.set.has(o.id)) return punt ? { ...b, radius: 12, color: '#0b57d0', weight: 4, opacity: 1, fillColor: '#0b57d0', fillOpacity: 1, dashArray: null }
+      : { ...b, color: '#0b57d0', weight: 6, opacity: 1, fillColor: '#0b57d0', fillOpacity: 0.45, dashArray: null };
+    return b;
   };
   // Vlakken onder, lijnen erboven, punten bovenop; binnen een soort 'te doen' boven.
   const bovenop = () => stapelLagen(lagen.values(), { geomVan: (l) => objectGeometrie(l.object), teDoen: (l) => statusVan && isTeDoen(statusVan(l.object)), opKaart: (l) => groep.hasLayer(l) });
@@ -10084,6 +10282,14 @@ async function tekenObjectenKaart(el, { objecten, kleurVan, statusVan = null, po
       laag.on('popupopen', () => { laag.closeTooltip(); opOpen?.(o); });
     }
     if (opKlik) laag.on('click', () => opKlik(o));
+    laag.on('click', (e) => {
+      if (!kies) return;
+      L.DomEvent.stop(e);
+      if (!kies.kiesbaar(o)) { kies.opNiet?.(o); return; }
+      if (kies.set.has(o.id)) kies.set.delete(o.id); else kies.set.add(o.id);
+      laag.setStyle(stijl(o, punt));
+      kies.opWijzig(new Set(kies.set));
+    });
     lagen.set(o.id, laag);
     groep.addLayer(laag);
   }
@@ -10112,6 +10318,30 @@ async function tekenObjectenKaart(el, { objecten, kleurVan, statusVan = null, po
       lagen.forEach((laag) => laag.setStyle(stijl(laag.object, laag.punt)));
       bovenop();
     },
+    /** Selectiemodus aan: kiesbaar(o) bepaalt welke objecten mogen; opWijzig(set) na elke tik. */
+    selecteer({ kiesbaar, opWijzig, opNiet = null, begin = [] }) {
+      map.closePopup();
+      kies = { set: new Set(begin), kiesbaar, opWijzig, opNiet };
+      if (popup) lagen.forEach((laag) => laag.unbindPopup());
+      map.getContainer().classList.add('kaart-kiezen');
+      lagen.forEach((laag) => laag.setStyle(stijl(laag.object, laag.punt)));
+      opWijzig(new Set(kies.set));
+    },
+    /** Alle (zichtbare) kiesbare objecten selecteren, of niets. */
+    zetSelectie(ids) {
+      if (!kies) return;
+      kies.set = new Set([...ids].filter((id) => lagen.has(id) && kies.kiesbaar(lagen.get(id).object)));
+      lagen.forEach((laag) => laag.setStyle(stijl(laag.object, laag.punt)));
+      kies.opWijzig(new Set(kies.set));
+    },
+    stopSelectie() {
+      kies = null;
+      if (popup) lagen.forEach((laag) => { laag.bindPopup(() => popup(laag.object), { maxWidth: 320 }); });
+      map.getContainer().classList.remove('kaart-kiezen');
+      lagen.forEach((laag) => laag.setStyle(stijl(laag.object, laag.punt)));
+      bovenop();
+    },
+    zichtbareIds: () => new Set(zichtbaar),
     zoomNaar(id) {
       const laag = lagen.get(id);
       if (!laag) return false;
@@ -15867,7 +16097,7 @@ async function vrijgaveFormulier(id, q = new URLSearchParams(), { mobiel = false
   }
   const pakketId = bestaand?.werkpakketId ?? q.get('pakket');
   const pakket = pakketId ? await db.haal('werkpakketten', pakketId) : null;
-  const beginObjecten = bestaand?.objectIds ?? (q.get('object') ? [q.get('object')] : pakket ? [...(pakket.objecten ?? [])] : []);
+  const beginObjecten = bestaand?.objectIds ?? (q.get('objecten') ? q.get('objecten').split(',').filter(Boolean) : q.get('object') ? [q.get('object')] : pakket ? [...(pakket.objecten ?? [])] : []);
   const v = bestaand ? structuredClone(bestaand) : {
     objectIds: beginObjecten.filter((x) => objectMap.has(x)), werkpakketId: pakketId ?? '',
     werkzaamheid: pakket?.werksoort ?? '', activiteit: '', routeGedragscode: true, ewpKenmerk: '', ewpDatum: '', ewpGeaccepteerd: false, ewpOpLocatie: false,
