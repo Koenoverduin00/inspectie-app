@@ -5707,6 +5707,13 @@ const ZONDER_LOGIN = 'inspectie-app:zonderLogin';
 const OOG = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
 const OOG_DICHT = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6C3.8 8.4 2 12 2 12s3.6 7 10 7a9.6 9.6 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
 
+/** Na uitloggen: niet op dezelfde pagina blijven, maar naar het inlogscherm. */
+function naarInlogscherm() {
+  try { sessionStorage.removeItem(ZONDER_LOGIN); } catch { /* geen opslag */ }
+  formulierGewijzigd = false;
+  if (location.hash && location.hash !== '#/') location.hash = '#/'; else router();
+}
+
 function zonderLoginGekozen() {
   try { return sessionStorage.getItem(ZONDER_LOGIN) === '1'; } catch { return false; }
 }
@@ -8593,7 +8600,7 @@ async function profielScherm() {
     <div class="formvoet"><a class="knop" href="#/m/account" id="pf-uit">Uitloggen</a><button class="knop primair" type="submit">${I.vink} Vastleggen</button></div></form>
     <p><small class="zacht">Ingelogd als ${esc(ikEmail())}</small></p></section>`;
   const form = app.querySelector('#profiel');
-  app.querySelector('#pf-uit').onclick = async (e) => { e.preventDefault(); await sync.uitloggen(); location.hash = '#/'; location.reload(); };
+  app.querySelector('#pf-uit').onclick = async (e) => { e.preventDefault(); await sync.uitloggen(); naarInlogscherm(); };
   form.onsubmit = async (e) => {
     e.preventDefault();
     const d = formulierData(form);
@@ -16296,7 +16303,7 @@ function toonAccount(el) {
     const wachtend = await db.sync.aantalInWachtrij();
     if (wachtend && !confirm(`Er zijn nog ${wachtend} wijziging(en) niet verstuurd. Ze blijven op dit apparaat en worden verstuurd bij de volgende keer inloggen. Toch uitloggen?`)) return;
     await sync.uitloggen();
-    toonAccount(el);
+    naarInlogscherm();
   };
   stopAccountStatus = sync.opStatus((st) => {
     if (!el.isConnected) { stopAccountStatus(); return; }
@@ -16434,11 +16441,11 @@ sync.start({
     if (!/\/(nieuw|bewerken)/.test(location.hash) && !formulierGewijzigd) router();
   },
 });
-// Uitgelogd (zelf of omdat de sessie is verlopen): op de telefoon terug naar het inlogscherm.
+// Uitgelogd (zelf of omdat de sessie is verlopen): op pc en telefoon terug naar het inlogscherm.
 let wasIngelogd = Boolean(sync.sessie());
 sync.opStatus(() => {
   const nu = Boolean(sync.sessie());
-  if (wasIngelogd && !nu && isMobiel()) router();
+  if (wasIngelogd && !nu) naarInlogscherm();
   wasIngelogd = nu;
 });
 // Een oud tabblad van de app houdt de bijgewerkte opslag tegen: vragen het te sluiten.
