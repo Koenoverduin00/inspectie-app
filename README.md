@@ -1173,8 +1173,8 @@ Alleen voor **werkzaamheden** (werkpakketten) en de **flora & fauna**-kaart, nie
   - Tik objecten aan om ze toe te voegen; nogmaals tikken haalt ze weg. Er gaat geen popup open.
   - Gekozen objecten worden blauw. Objecten die niet bij het werkpakket horen of al klaar zijn, vallen weg (vervaagd);
     tikken daarop geeft een korte melding.
-  - De filterknoppen verdwijnen zolang je selecteert, en de kaart zoomt zo in dat alle te doen objecten boven de balk
-    staan.
+  - De filterknoppen verdwijnen zolang je selecteert. **Zoomniveau en kaartuitsnede blijven zoals ze waren**; zoom zelf
+    in als objecten klein zijn of dicht op elkaar liggen.
 - **De balk onderaan.**
   - **Alle in beeld**: kiest alle te doen objecten die in beeld zijn.
   - **Wissen**, en een kruisje om te stoppen.

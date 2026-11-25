@@ -6285,18 +6285,12 @@ async function mobielKaart() {
         <button type="button" class="knop micoonknop" data-kies="stop" aria-label="Stoppen met selecteren">${I.kruis}</button></div>
       <div class="kiesbalk-rij"><button type="button" class="knop klein" data-kies="alle" title="Alle te doen objecten die nu in beeld zijn">Alle in beeld</button><button type="button" class="knop klein" data-kies="wis">Wissen</button>
         <a class="knop primair kiesbalk-actie" data-kies="gereed" aria-disabled="true">${I.vink} Kies objecten</a></div></div>`);
-    // Kaart vrijmaken: filters even weg, kaart bovenaan, en alle te doen objecten boven de balk in beeld.
+    // Kaart vrijmaken: filters even weg en de kaart bovenaan in beeld. Zoom en kaartuitsnede blijven zoals ze waren.
     const kaartEl = app.querySelector('#veldkaart');
+    const midden = kaart.map.getCenter();
+    const zoom = kaart.map.getZoom();
     window.scrollTo({ top: Math.max(0, kaartEl.getBoundingClientRect().top + window.scrollY - 8), behavior: 'instant' });
-    requestAnimationFrame(() => {
-      kaart.map.invalidateSize();
-      const lagen = (v.objecten ?? []).filter((oid) => isTeDoen(rondeStatusVan(vg, oid))).map((oid) => g.objectMap.get(oid)).filter((o) => o && objectGeometrie(o));
-      if (lagen.length) {
-        const bb = window.L.geoJSON({ type: 'FeatureCollection', features: lagen.map((o) => ({ type: 'Feature', geometry: objectGeometrie(o), properties: {} })) }).getBounds();
-        const bedekt = Math.max(0, kaartEl.getBoundingClientRect().bottom - (app.querySelector('#kiesbalk')?.getBoundingClientRect().top ?? window.innerHeight));
-        if (bb.isValid()) kaart.map.fitBounds(bb, { paddingTopLeft: [24, 24], paddingBottomRight: [24, bedekt + 24], maxZoom: 18, animate: false });
-      }
-    });
+    requestAnimationFrame(() => { kaart.map.invalidateSize(); if (kaart.map.getZoom() !== zoom) kaart.map.setView(midden, zoom, { animate: false }); });
     const balk = app.querySelector('#kiesbalk');
     let gekozen = new Set();
     const bij = (set) => {
@@ -6924,15 +6918,12 @@ async function mobielVrijgaven(_, q = new URLSearchParams()) {
           <button type="button" class="knop micoonknop" data-kies="stop" aria-label="Stoppen met selecteren">${I.kruis}</button></div>
         <div class="kiesbalk-rij"><button type="button" class="knop klein" data-kies="alle">Alle in beeld</button><button type="button" class="knop klein" data-kies="wis">Wissen</button>
           <a class="knop primair kiesbalk-actie" data-kies="aanvragen" aria-disabled="true">${I.blad} Kies objecten</a></div></div>`);
+      // Zoom en kaartuitsnede blijven zoals ze waren.
       const kaartEl = inhoud.querySelector('#ff-kaart');
+      const midden = map.getCenter();
+      const zoom = map.getZoom();
       window.scrollTo({ top: Math.max(0, kaartEl.getBoundingClientRect().top + window.scrollY - 8), behavior: 'instant' });
-      requestAnimationFrame(() => {
-        map.invalidateSize();
-        const balk = inhoud.querySelector('#ff-kiesbalk');
-        const bedekt = Math.max(0, kaartEl.getBoundingClientRect().bottom - (balk?.getBoundingClientRect().top ?? window.innerHeight));
-        const bb = laag.getBounds();
-        if (bb.isValid()) map.fitBounds(bb, { paddingTopLeft: [24, 24], paddingBottomRight: [24, bedekt + 24], maxZoom: 18, animate: false });
-      });
+      requestAnimationFrame(() => { map.invalidateSize(); if (map.getZoom() !== zoom) map.setView(midden, zoom, { animate: false }); });
       const balk = inhoud.querySelector('#ff-kiesbalk');
       const bij = () => {
         const ids = [...gekozen];
