@@ -5720,7 +5720,7 @@ function inlogScherm(modus = 'in', bericht = '') {
   if (modus !== 'vergeten') modus = 'in';
   const email = instelling.lees('laatsteEmail');
   const teksten = {
-    in: { titel: 'Inloggen', sub: 'Log in met je werkaccount', knop: 'Inloggen' },
+    in: { titel: 'Inloggen', sub: '', knop: 'Inloggen' },
     vergeten: { titel: 'Wachtwoord vergeten', sub: 'Vul je e-mailadres in. Je ontvangt een link om een nieuw wachtwoord in te stellen.', knop: 'Herstellink versturen' },
   };
   const t = teksten[modus];
@@ -5729,13 +5729,13 @@ function inlogScherm(modus = 'in', bericht = '') {
   app.innerHTML = `<div class="inlog">
     <div class="inlog-kaart">
       <div class="inlog-merk">
-        <img src="icons/icon.svg" alt="" width="40" height="40">
-        <div><h1>BaasOverBuiten</h1><p>Werkzaamheden, inspecties en planning</p></div>
+        <img src="icons/icon.svg" alt="" width="52" height="52">
+        <h1>BaasOverBuiten</h1>
       </div>
     ${bericht === 'verzonden' ? berichtKaart('Check je mail', `Als er een account bestaat voor <strong>${esc(email)}</strong>, ontvang je zo een link om een nieuw wachtwoord in te stellen. Kijk ook in je map met ongewenste e-mail.`)
     : `<form id="inlog" novalidate>
       <h2>${t.titel}</h2>
-      <p class="inlog-sub">${t.sub}</p>
+      ${t.sub ? `<p class="inlog-sub">${t.sub}</p>` : ''}
       <label class="inlog-veld"><span>E-mailadres</span>
         <input id="i-email" name="email" type="email" inputmode="email" autocomplete="username" autocapitalize="off" spellcheck="false"
           value="${esc(email)}" placeholder="naam@bedrijf.nl" required></label>
@@ -5841,7 +5841,7 @@ function wachtwoordPagina(welkom = false) {
   document.body.classList.add('inlogscherm');
   app.innerHTML = `<div class="inlog">
     <form class="inlog-kaart" id="nieuwww" novalidate>
-      <div class="inlog-merk"><img src="icons/icon.svg" alt="" width="40" height="40"><div><h1>BaasOverBuiten</h1><p>Werkzaamheden, inspecties en planning</p></div></div>
+      <div class="inlog-merk"><img src="icons/icon.svg" alt="" width="52" height="52"><h1>BaasOverBuiten</h1></div>
       <h2>${welkom && sync.sessie() ? 'Welkom!' : 'Nieuw wachtwoord'}</h2>
       <p class="inlog-sub">${sync.sessie() ? (welkom
     ? `Je bent uitgenodigd en ingelogd als <strong>${esc(sync.sessie().gebruiker?.email ?? '')}</strong>. Stel een wachtwoord in, dan kun je voortaan ook zonder e-mail inloggen.`

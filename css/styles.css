@@ -828,9 +828,10 @@ body.inlogscherm main#app { padding: 0; max-width: none; margin: 0; }
 }
 .inlog-merk { display: flex; align-items: center; gap: .75rem; padding-bottom: 1.1rem; margin-bottom: 1.25rem; border-bottom: 1px solid var(--rand); }
 .inlog-merk img { flex: none; }
-.inlog-merk h1 { margin: 0; font-size: 1.25rem; letter-spacing: -.01em; color: var(--primair); line-height: 1.2; }
+.inlog-merk h1 { margin: 0; font-size: 1.4rem; letter-spacing: -.01em; color: var(--primair); line-height: 1.2; }
 .inlog-merk p { margin: .1rem 0 0; font-size: .85rem; color: var(--tekst-zacht); }
-.inlog-kaart h2 { margin: 0; font-size: 1.15rem; }
+.inlog-kaart h2 { margin: 0 0 1.1rem; font-size: 1.15rem; text-align: center; }
+.inlog-kaart h2 + .inlog-sub { margin-top: -.85rem; text-align: center; }
 .inlog-sub { margin: .2rem 0 1.1rem; color: var(--tekst-zacht); font-size: .92rem; }
 .inlog-veld { display: block; margin-bottom: 1rem; }
 .inlog-veld > span:first-child, .inlog-labelregel label { display: block; font-size: .85rem; font-weight: 600; margin-bottom: .35rem; }
