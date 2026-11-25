@@ -39,9 +39,12 @@ export function rondeStatistiek({ ronde, vg, registraties = [], vandaag, manuren
   const deels = vg?.deels?.size ?? 0;
   const overgeslagen = vg?.overgeslagen?.size ?? 0;
   const nietNodig = vg?.nietNodig?.size ?? 0;
+  // Afgekeurd = opnieuw te doen (telt bij open); wacht op beoordeling = niet open en (nog) niet gedaan.
+  const afgekeurd = vg?.afgekeurd?.size ?? 0;
+  const wacht = vg?.wacht?.size ?? 0;
   const afgehandeld = gedaan + overgeslagen + nietNodig;
-  const open = Math.max(0, totaal - afgehandeld);
-  const aantallen = { totaal, gedaan, deels, overgeslagen, nietNodig, open, nietGestart: Math.max(0, open - deels) };
+  const open = Math.max(0, totaal - afgehandeld - wacht);
+  const aantallen = { totaal, gedaan, deels, overgeslagen, nietNodig, open, afgekeurd, wacht, nietGestart: Math.max(0, open - deels - afgekeurd) };
   const percentage = vg?.percentage ?? (totaal ? Math.round((afgehandeld / totaal) * 100) : 0);
 
   // Tijd
@@ -137,6 +140,14 @@ export function objectRegels(ids, vg, { objectVan = () => null, wieVan = (r) => 
     if (vg?.overgeslagen?.has(id)) {
       const x = vg.overgeslagen.get(id);
       return { id, o, status: 'overgeslagen', datum: String(x.op ?? '').slice(0, 10), wie: x.door ?? '', reden: x.reden ?? '', toelichting: x.toelichting ?? '' };
+    }
+    if (vg?.wacht?.has(id)) {
+      const x = vg.wacht.get(id);
+      return { id, o, status: 'ingediend', datum: String(x.datum ?? '').slice(0, 10), wie: wieVan(x), registratie: x };
+    }
+    if (vg?.afgekeurd?.has(id)) {
+      const x = vg.afgekeurd.get(id);
+      return { id, o, status: 'afgekeurd', datum: String(x.datum ?? '').slice(0, 10), wie: wieVan(x), registratie: x, reden: x.beoordeling?.opmerking ?? '', door: x.beoordeling?.door ?? '' };
     }
     if (vg?.deels?.has(id)) {
       const lijst = vg.deels.get(id);

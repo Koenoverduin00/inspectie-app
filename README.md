@@ -1154,6 +1154,33 @@ naar een **eisvraag** die in de formulieren komt, gekoppeld aan het **eisnummer*
   ondertekeningsblok. Optioneel met foto's als bewijs. *Afdrukken / opslaan als PDF* geeft het dossier; *Excel* geeft
   dezelfde inhoud in de bladen Samenvatting, Eisen, Bewijs en Afwijkingen.
 
+## Voortgang en goedkeuring: wanneer telt een registratie mee?
+
+Per project in te stellen (Projectinstellingen → **Voortgang en goedkeuring**). Logica in `voortgang()` en
+`voortgangRegel()` in `js/pakketten.js`. Kaarten, percentages, dashboard, planning, rondedialoog en exports volgen
+dezelfde regel.
+
+| Instelling | Keuzes (standaard eerst) |
+|---|---|
+| Afgekeurde registratie | **Telt niet: object weer te doen** · telt toch als gedaan |
+| Weergave van afgekeurd | **Eigen kleur (rood): "Afgekeurd – opnieuw doen"** · gewoon als "te doen" |
+| Ingediende registratie (nog niet beoordeeld) | **Telt meteen als gedaan** · telt pas na goedkeuring (paars: "Wacht op beoordeling") |
+
+- **Afgekeurd.**
+  - Het object staat weer op *te doen*. Op de kaart is het rood, en het telt mee bij "nog te doen".
+  - Op de telefoon (locatiepagina) staan de reden van afkeuren en de knop **Registratie aanpassen en opnieuw
+    indienen**. Op de pc staat de knop **Aanpassen**, in de objectenlijst van het werkpakket, in de kaartpopup en in de
+    rondedialoog.
+  - Na opslaan is de registratie weer *ingediend*. Volgens de regel telt die dan meteen, of pas na goedkeuring.
+- **Wacht op beoordeling.** Het object is niet meer te doen voor de uitvoerder, maar telt ook nog niet als gedaan.
+- **Regels per object:**
+  - Een registratie zonder beoordeling (oude gegevens) telt als goedgekeurd.
+  - Een nieuwere ingediende registratie gaat vóór een oudere afgekeurde.
+  - Een goedgekeurde of meetellende registratie maakt het object gedaan.
+- **Opdrachtgever.** Ziet altijd alleen goedgekeurd werk, ongeacht deze instelling.
+- **Opmaak.** De kleuren van *afgekeurd* en *wacht op beoordeling* zijn net als de andere statussen aan te passen via
+  **Opmaak** bij de kaart.
+
 ## Planning vastzetten met versienummers en wie de planning bewerkt
 
 Per project in te stellen (Projectinstellingen → **Planning**). Logica in `js/planningversie.js` (getest in

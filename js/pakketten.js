@@ -86,10 +86,38 @@ export function pakketStatus(p) {
 const zelfdeRonde = (a, b) => (a || STANDAARD_RONDE) === (b || STANDAARD_RONDE);
 
 /**
+ * Wanneer telt een registratie mee voor de voortgang (per project in te stellen).
+ * - afgekeurd: 'teDoen' (standaard: telt niet, object weer te doen) of 'telt' (telt gewoon als gedaan)
+ * - afgekeurdKleur: true (standaard: eigen kleur 'afgekeurd' op de kaart) of false (gewoon 'te doen')
+ * - ingediend: 'telt' (standaard: telt meteen) of 'wacht' (telt pas na goedkeuring; eigen kleur 'wacht op beoordeling')
+ */
+export const VOORTGANG_STANDAARD = { afgekeurd: 'teDoen', afgekeurdKleur: true, ingediend: 'telt' };
+export const voortgangRegel = (project) => {
+  const v = project?.voortgangRegel ?? {};
+  return {
+    afgekeurd: v.afgekeurd === 'telt' ? 'telt' : 'teDoen',
+    afgekeurdKleur: v.afgekeurdKleur !== false,
+    ingediend: v.ingediend === 'wacht' ? 'wacht' : 'telt',
+  };
+};
+/** Beoordeling van een registratie; zonder beoordeling = goedgekeurd (oude registraties). */
+const beoordelingVan = (r) => r?.beoordeling?.status ?? 'goedgekeurd';
+
+/**
  * Voortgang van een pakket.
  * @returns {{ totaal: number, gedaan: Map<string, object>, overgeslagen: Map<string, object>, open: string[], percentage: number }}
  */
-export function voortgang(pakket, { werkzaamheden = [], inspecties = [], overgeslagen = [], objectIds = null } = {}) {
+export function voortgang(pakket, { werkzaamheden = [], inspecties = [], overgeslagen = [], objectIds = null, regel = VOORTGANG_STANDAARD } = {}) {
+  const rg = { ...VOORTGANG_STANDAARD, ...regel };
+  // Telt deze registratie mee? Zo niet: waarom (afgekeurd of wacht op beoordeling).
+  const beoordeeld = (r) => {
+    const b = beoordelingVan(r);
+    if (b === 'afgekeurd' && rg.afgekeurd !== 'telt') return 'afgekeurd';
+    if (b === 'ingediend' && rg.ingediend === 'wacht') return 'ingediend';
+    return '';
+  };
+  const afgekeurd = new Map();
+  const wacht = new Map();
   const bestaand = objectIds ? new Set(objectIds) : null;
   const ids = (pakket.objecten ?? []).filter((id) => !bestaand || bestaand.has(id));
   const inPakket = new Set(ids);
@@ -105,6 +133,13 @@ export function voortgang(pakket, { werkzaamheden = [], inspecties = [], overges
     : werkzaamheden;
   for (const r of registraties) {
     if (r.werkpakketId !== pakket.id || !zelfdeRonde(r.rondeId, pakket.rondeId) || !inPakket.has(r.objectId)) continue;
+    const niet = beoordeeld(r);
+    if (niet) {
+      const m = niet === 'afgekeurd' ? afgekeurd : wacht;
+      const eerder = m.get(r.objectId);
+      if (!eerder || String(r.datum) > String(eerder.datum)) m.set(r.objectId, r);
+      continue;
+    }
     for (const [pid, n] of Object.entries(r.hoeveelheden ?? {})) if (opgeteld.has(pid) && Number(n) > 0) opgeteld.set(pid, opgeteld.get(pid) + Number(n));
     if (pakket.soort !== 'inspectie' && isDeels(r)) {
       deels.set(r.objectId, [...(deels.get(r.objectId) ?? []), r].sort((a, b) => String(a.datum).localeCompare(String(b.datum))));
@@ -113,7 +148,10 @@ export function voortgang(pakket, { werkzaamheden = [], inspecties = [], overges
     const eerder = gedaan.get(r.objectId);
     if (!eerder || String(r.datum) > String(eerder.datum)) gedaan.set(r.objectId, r);
   }
-  for (const id of gedaan.keys()) deels.delete(id);
+  for (const id of gedaan.keys()) { deels.delete(id); afgekeurd.delete(id); wacht.delete(id); }
+  // Een nieuwere registratie wacht op beoordeling: dan is het object niet (meer) afgekeurd maar opnieuw ingediend.
+  for (const [id, r] of wacht) { const a = afgekeurd.get(id); if (a && String(r.datum) >= String(a.datum)) afgekeurd.delete(id); }
+  for (const [id, r] of afgekeurd) { const w = wacht.get(id); if (w && String(r.datum) > String(w.datum)) wacht.delete(id); }
   const over = new Map();
   for (const o of overgeslagen) {
     if (o.pakketId === pakket.id && zelfdeRonde(o.rondeId, pakket.rondeId) && inPakket.has(o.objectId) && !gedaan.has(o.objectId)) over.set(o.objectId, o);
@@ -126,14 +164,16 @@ export function voortgang(pakket, { werkzaamheden = [], inspecties = [], overges
   // Voortgang op hoeveelheid: niet elk gekoppeld object hoeft aan de beurt; klaar zodra de hoeveelheden zijn bereikt.
   const opHoeveelheid = pakket.soort !== 'inspectie' && pakket.voortgangOp === 'hoeveelheid' && hoeveelheden.length > 0;
   const bereikt = opHoeveelheid && hoeveelheden.every((h) => h.gedaan >= h.post.hoeveelheid);
-  const rest = ids.filter((id) => !gedaan.has(id) && !over.has(id));
+  for (const id of over.keys()) { afgekeurd.delete(id); wacht.delete(id); }
+  // Wacht op beoordeling: niet gedaan, maar ook niet meer te doen voor de uitvoerder.
+  const rest = ids.filter((id) => !gedaan.has(id) && !over.has(id) && !wacht.has(id));
   const open = bereikt ? rest.filter((id) => deels.has(id)) : rest;
   const nietNodig = new Set(bereikt ? rest.filter((id) => !deels.has(id)) : []);
   const totaal = ids.length;
   const percentage = opHoeveelheid
     ? Math.round(hoeveelheden.reduce((t, h) => t + h.pct, 0) / hoeveelheden.length)
     : totaal ? Math.round(((gedaan.size + over.size) / totaal) * 100) : 0;
-  return { totaal, gedaan, overgeslagen: over, open, deels, nietNodig, hoeveelheden, modus: opHoeveelheid ? 'hoeveelheid' : 'objecten', percentage };
+  return { totaal, gedaan, overgeslagen: over, open, deels, nietNodig, afgekeurd, wacht, afgekeurdKleur: rg.afgekeurdKleur, hoeveelheden, modus: opHoeveelheid ? 'hoeveelheid' : 'objecten', percentage };
 }
 
 export const EENHEDEN = [['m2', 'm²'], ['m1', 'm¹ (strekkende meter)'], ['m3', 'm³'], ['ton', 'ton'], ['kg', 'kg'], ['st', 'stuks'], ['uur', 'uur']];
@@ -153,12 +193,14 @@ export const isDeels = (r) => r?.gereed === false;
 export function objectStatus(vg, objectId) {
   if (vg?.gedaan?.has(objectId)) return 'gedaan';
   if (vg?.overgeslagen?.has(objectId)) return 'overgeslagen';
+  if (vg?.wacht?.has(objectId)) return 'ingediend';
+  if (vg?.afgekeurd?.has(objectId)) return vg.afgekeurdKleur === false ? 'open' : 'afgekeurd';
   if (vg?.deels?.has(objectId)) return 'deels';
   if (vg?.nietNodig?.has(objectId)) return 'nietnodig';
   return 'open';
 }
-/** Nog werk te doen: open of gedeeltelijk. */
-export const teDoen = (st) => st === 'open' || st === 'deels';
+/** Nog werk te doen: open, gedeeltelijk of afgekeurd (opnieuw doen). */
+export const teDoen = (st) => st === 'open' || st === 'deels' || st === 'afgekeurd';
 
 /** Totaal over alle rondes (voor de voortgangsbalk van een pakket). */
 export function totaalVoortgang(lijst) {

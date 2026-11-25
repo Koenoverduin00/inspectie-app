@@ -23,7 +23,7 @@ test('werkdagen en plus werkdagen', () => {
 
 test('statistiek van een lopende ronde: stand, tijd, schema, tempo, prognose, uren, uitvoerders', () => {
   const s = RS.rondeStatistiek({ ronde: { start: '2026-11-02', eind: '2026-11-30', status: 'actief' }, vg, registraties: regs, vandaag: '2026-11-16' });
-  assert.deepEqual(s.aantallen, { totaal: 10, gedaan: 2, deels: 1, overgeslagen: 1, nietNodig: 0, open: 7, nietGestart: 6 });
+  assert.deepEqual(s.aantallen, { totaal: 10, gedaan: 2, deels: 1, overgeslagen: 1, nietNodig: 0, open: 7, afgekeurd: 0, wacht: 0, nietGestart: 6 });
   assert.deepEqual([s.tijd.fase, s.tijd.werkdagen, s.tijd.verstreken, s.tijd.resterend, s.tijd.pctTijd], ['loopt', 21, 11, 11, 52]);
   assert.deepEqual([s.schema.verwachtPct, s.schema.verschilPct, s.schema.objectenAchter], [52, -22, 2]);
   assert.equal(s.tempo.gerealiseerd, 0.3); // 3 afgehandeld in 11 werkdagen

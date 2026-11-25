@@ -18,7 +18,7 @@ import * as BV from './bvc.js';
 import * as FI from './fotoinfo.js';
 import * as EI from './eisen.js';
 import {
-  PAKKETSTATUS, OVERSLAAN_REDENEN, overslaanId, voortgang as pakketVoortgang, voorMij as pakketVoorMijBasis, filterObjecten,
+  PAKKETSTATUS, OVERSLAAN_REDENEN, overslaanId, voortgang as pakketVoortgang, voortgangRegel, VOORTGANG_STANDAARD, voorMij as pakketVoorMijBasis, filterObjecten,
   rondesVan, rondeCode, rondeView, rondeVanId, pakketStatus, metCode, objectStatus as rondeStatusVan, teDoen as isTeDoen, isDeels, EENHEDEN, EENHEID_KORT, postenVan, hoeveelheidTekst, totaalVoortgang, STANDAARD_RONDE, PLANNINGSWIJZEN, isAfroep, AFROEP_REDENEN, onderscheid as rondeOnderscheid,
 } from './pakketten.js';
 import * as PX from './pakketexcel.js';
@@ -3318,7 +3318,7 @@ async function dashboard() {
         const rv = rondeVgs(p);
         const so = DB.objectStatusInPakketten(o.id, rv.map((x) => x.vg));
         const ronde = rv.length === 1 && rondesVan(p).length > 1 ? ` <small>(${esc(rv[0].r.naam)}${periodeTekst(rv[0].v) ? `, ${periodeTekst(rv[0].v)}` : ''})</small>` : '';
-        return `<li><i class="kpstip" style="background:${PAKKET_KLEUR[so] ?? '#8a96a3'}"></i>${wpNaam(p)}${ronde}: ${so === 'open' ? 'te doen' : so ?? (rv.length ? '–' : 'geen ronde in deze periode')}</li>`;
+        return `<li><i class="kpstip" style="background:${PAKKET_KLEUR[so] ?? '#8a96a3'}"></i>${wpNaam(p)}${ronde}: ${({ open: 'te doen', afgekeurd: 'afgekeurd – opnieuw doen', ingediend: 'wacht op beoordeling' })[so] ?? so ?? (rv.length ? '–' : 'geen ronde in deze periode')}</li>`;
       });
       const rl = st.reg ? (regs.get(o.id) ?? []) : [];
       const regHtml = rl.length ? `<ul class="kppopup">${rl.slice(0, 4).map((x) => `<li><i class="kpstip" style="background:${esc(x.kleur)}"></i>
@@ -6061,7 +6061,7 @@ async function mobielKaart() {
     const mp = new Map();
     for (const { v, st: s } of perObject.get(oid)?.rondes ?? []) {
       const x = mp.get(v.id) ?? { pk: pakketten.get(v.id), st: s };
-      const rang = { open: 3, deels: 2, gedaan: 1, overgeslagen: 0, nietnodig: 0 };
+      const rang = { afgekeurd: 4, open: 3, deels: 2, ingediend: 1.5, gedaan: 1, overgeslagen: 0, nietnodig: 0 };
       if (rang[s] > rang[x.st]) x.st = s;
       mp.set(v.id, x);
     }
@@ -6091,7 +6091,7 @@ async function mobielKaart() {
       <label><input type="radio" name="mtd" value="" ${st.teDoen ? '' : 'checked'}><span>Alles <b id="mtdalles"></b></span></label>
       <label><input type="radio" name="mtd" value="1" ${st.teDoen ? 'checked' : ''}><span>${statusStip('open')}Alleen te doen <b id="mtdopen"></b></span></label></div>
     <div id="veldkaart" class="veldkaart"><p class="leeg">Kaart laden…</p></div>
-    <div class="mlegenda mkaartlegenda"><span>${statusStip('open')}Te doen</span>${[...perObject.keys()].some((id) => statusVan(id) === 'deels') ? `<span>${statusStip('deels')}Gedeeltelijk</span>` : ''}<span>${statusStip('gedaan')}Gereed</span><span>${statusStip('overgeslagen')}Overgeslagen</span>${opmaakKnop()}</div>`
+    <div class="mlegenda mkaartlegenda"><span>${statusStip('open')}Te doen</span>${[...perObject.keys()].some((id) => statusVan(id) === 'deels') ? `<span>${statusStip('deels')}Gedeeltelijk</span>` : ''}${[...perObject.keys()].some((id) => statusVan(id) === 'afgekeurd') ? `<span>${statusStip('afgekeurd')}Afgekeurd</span>` : ''}${[...perObject.keys()].some((id) => statusVan(id) === 'ingediend') ? `<span>${statusStip('ingediend')}Wacht op beoordeling</span>` : ''}<span>${statusStip('gedaan')}Gereed</span><span>${statusStip('overgeslagen')}Overgeslagen</span>${opmaakKnop()}</div>`
     : st.bereik === 'mij' && alleActueel.length
       ? `<div class="kaart leeg"><p>Er is op dit moment geen werkpakket aan jou toegewezen.</p><p><button class="knop" type="button" data-open="bereik">Alle ${telPakketten(alleActueel)} actuele werkpakketten tonen</button></p></div>`
       : `<div class="kaart leeg"><p>Er loopt ${st.periode === PL.PERIODE_STANDAARD ? 'op dit moment' : `in ${esc(periodeLabel(st.periode).toLowerCase())}`} geen werkpakket.</p><p><small>Zodra de beheerder een ronde actief zet, zie je de objecten hier. Of kies via <strong>Filter</strong> een andere periode.</small></p></div>`}
@@ -6258,9 +6258,9 @@ async function mobielKaart() {
       return `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br><small>${esc(o.type || '')}</small>${dv?.html(o) ?? ''}
         ${uitTeVoeren.length ? `<div class="veldmelding">${I.let} <strong>Uit te voeren: ${uitTeVoeren.length} werkpakket${uitTeVoeren.length === 1 ? '' : 'ten'}</strong></div>
         <ul class="veldrondes">${uitTeVoeren.map(({ pk, st: so }) => `<li><a href="${locatiePagina(o.id)}"><span class="stip ${so}"></span>
-          <span><span class="rondenaam">${wpNaam(pk)}</span><small class="rondekenmerken">${[so === 'deels' ? '<b>gedeeltelijk gedaan</b>' : '', actueleRondeTekst(pk), nietVanMij(pk) ? 'niet aan jou toegewezen' : ''].filter(Boolean).join(' · ')}</small></span></a></li>`).join('')}</ul>`
+          <span><span class="rondenaam">${wpNaam(pk)}</span><small class="rondekenmerken">${[so === 'deels' ? '<b>gedeeltelijk gedaan</b>' : '', so === 'afgekeurd' ? '<b class="afgekeurdtekst">afgekeurd – opnieuw doen</b>' : '', actueleRondeTekst(pk), nietVanMij(pk) ? 'niet aan jou toegewezen' : ''].filter(Boolean).join(' · ')}</small></span></a></li>`).join('')}</ul>`
     : `<div class="veldklaar">${I.gereed} Op dit object is niets meer uit te voeren.</div>`}
-        ${klaar.length ? `<p class="veldafgemeld"><small>${klaar.map(({ pk, st }) => `<span class="stip ${st}"></span> ${wpNaam(pk)}${actueleRondeTekst(pk) ? ` (${actueleRondeTekst(pk)})` : ''} ${st === 'gedaan' ? 'gereed' : st === 'nietnodig' ? 'niet nodig' : 'overgeslagen'}`).join(' · ')}</small></p>` : ''}
+        ${klaar.length ? `<p class="veldafgemeld"><small>${klaar.map(({ pk, st }) => `<span class="stip ${st}"></span> ${wpNaam(pk)}${actueleRondeTekst(pk) ? ` (${actueleRondeTekst(pk)})` : ''} ${st === 'gedaan' ? 'gereed' : st === 'nietnodig' ? 'niet nodig' : st === 'ingediend' ? 'wacht op beoordeling' : 'overgeslagen'}`).join(' · ')}</small></p>` : ''}
         <div class="popupknoppen"><a class="knop klein primair" href="${locatiePagina(o.id)}">${uitTeVoeren.length ? `${I.start} Afmelden op deze locatie` : 'Bekijken'}</a>
         <a class="knop klein" href="${navigeer(o)}" target="_blank" rel="noopener">${I.navigeer} Navigeer</a></div>`;
     },
@@ -6399,6 +6399,11 @@ function rondesOpObject(g, objectId, ik) {
 }
 
 const locatiePagina = (objectId) => `#/m/locatie/${encodeURIComponent(objectId)}`;
+/** Een afgekeurde registratie aanpassen en opnieuw indienen. */
+const aanpasHref = (reg, isInsp, mobiel) => (isInsp ? inspectieHref(reg, mobiel) : mobiel ? `#/m/werk/${encodeURIComponent(reg.id)}` : `#/werkzaamheden/${encodeURIComponent(reg.id)}/bewerken`);
+const afkeurTekst = (reg) => `${esc(reg?.beoordeling?.opmerking || 'geen reden opgegeven')}${reg?.beoordeling?.door ? ` <span class="zacht">(${esc(reg.beoordeling.door)})</span>` : ''}`;
+const STATUS_LABEL = { open: 'Open', deels: 'Gedeeltelijk', gedaan: 'Gedaan', overgeslagen: 'Overgeslagen', nietnodig: 'Niet nodig', afgekeurd: 'Afgekeurd – opnieuw doen', ingediend: 'Wacht op beoordeling' };
+const STATUS_KLASSE = { gedaan: 'afgerond', open: 'binnenkort', deels: 'deels', afgekeurd: 'verlopen', ingediend: 'ingediend' };
 const VAN_LOCATIE = 'inspectie-app:vanLocatie';
 
 /** Werk in delen: veelgebruikte omschrijvingen van het gedane deel. */
@@ -6437,10 +6442,14 @@ async function mobielLocatie(objectId) {
       ${x.st === 'deels' ? `<div class="locregel-deels"><span class="label-status deels">${I.werk} Gedeeltelijk gedaan</span>
           <small>${(x.vg.deels.get(objectId) ?? []).map((r) => `<a href="#/m/werk/${esc(r.id)}">${datumNL(r.datum)}${r.uitvoerder ? ` · ${esc(r.uitvoerder)}` : ''}</a>${r.deel ? `: ${esc(r.deel)}` : ''}`).join('<br>')}</small>
           <small class="zacht">Nog niet volledig klaar: blijft te doen tot iemand <strong>Volledig klaar</strong> meldt.</small></div>` : ''}
+      ${x.vg.afgekeurd?.has(objectId) && isTeDoen(x.st) && x.st !== 'deels' ? `<div class="locregel-afgekeurd"><span class="label-status verlopen">${I.let} Afgekeurd – opnieuw doen</span>
+          <small><strong>Reden:</strong> ${afkeurTekst(x.vg.afgekeurd.get(objectId))}</small>
+          <a class="knop primair" href="${aanpasHref(x.vg.afgekeurd.get(objectId), x.v.soort === 'inspectie', true)}">${I.werk} Registratie aanpassen en opnieuw indienen</a></div>` : ''}
       ${isTeDoen(x.st) ? `<div class="locregel-knoppen">
-          <a class="knop primair" href="${pakketHref(x.v, objectId, true)}" title="Gereed melden gaat altijd via het formulier van dit werkpakket">${x.v.soort === 'inspectie' ? `${I.start} Inspecteren` : `${I.vink} ${x.st === 'deels' ? 'Volledig klaar melden' : 'Gereed melden'}`}</a>
+          <a class="knop ${x.st === 'afgekeurd' ? '' : 'primair'}" href="${pakketHref(x.v, objectId, true)}" title="Gereed melden gaat altijd via het formulier van dit werkpakket">${x.v.soort === 'inspectie' ? `${I.start} Inspecteren` : `${I.vink} ${x.st === 'deels' ? 'Volledig klaar melden' : 'Gereed melden'}`}</a>
           ${x.v.soort === 'werk' && x.v.deelsAfmelden ? `<a class="knop" href="${pakketHref(x.v, objectId, true)}&deel=1" title="Een deel is gedaan; het vak is nog niet helemaal klaar (bijv. een andere ploeg doet de rest). Je vult het formulier in met foto's.">${I.werk} Deels gedaan</a>` : ''}
           <button class="knop" type="button" data-overslaan="${esc(sleutel)}">${I.overslaan} Overslaan</button></div>`
+    : x.st === 'ingediend' ? `<div class="locregel-status"><span class="label-status ingediend">${I.wacht} Wacht op beoordeling</span> <a href="${x.v.soort === 'inspectie' ? esc(inspectieHref(x.vg.wacht.get(objectId))) : `#/m/werk/${esc(x.vg.wacht.get(objectId).id)}`}">${datumNL(x.vg.wacht.get(objectId).datum)}</a></div>`
     : x.st === 'gedaan' ? `<div class="locregel-status"><span class="label-status afgerond">${I.vink} Gedaan</span> <a href="${regHref(x)}">${datumNL(r.datum)}${r.uitvoerder || r.inspecteur ? ` · ${esc(r.uitvoerder || r.inspecteur)}` : ''}</a></div>`
       : `<div class="locregel-status"><span class="label-status">${I.overslaan} Overgeslagen</span> <small>${esc(ov?.reden ?? '')}</small>
           <button class="knop klein" type="button" data-terug="${esc(sleutel)}">Terugzetten</button></div>`}
@@ -8734,6 +8743,7 @@ async function projectFormulier(id) {
     return;
   }
   const p = bestaand ?? { naam: '', opdrachtgever: '', omschrijving: '', status: 'actief', leden: [] };
+  const vgRegel = voortgangRegel(p);
   app.innerHTML = `
     <div class="paginakop"><div><p><a href="#/projecten">← Projecten</a></p>
       <h1>${bestaand ? `Project bewerken: ${esc(p.naam)}` : 'Nieuw project'}</h1></div></div>
@@ -8756,6 +8766,17 @@ async function projectFormulier(id) {
           <label class="vink"><input type="checkbox" name="urenTonen" ${p.urenTonen === false ? '' : 'checked'}>
             <span><strong>Uren registreren</strong><small>Veld Uren bij werkzaamheden en uren op het dashboard, in overzichten en exports.</small></span></label></div>
           <small>Loopt dit bij jullie via een ander proces (bijv. het ERP- of urensysteem)? Zet het uit: dan wordt het niet gevraagd en nergens getoond. Al ingevulde waarden blijven bewaard.</small></div>
+        <div class="veld breed"><label>Voortgang en goedkeuring</label>
+          <small>Wanneer telt een registratie mee voor de voortgang (kaarten, percentages, dashboard, planning en exports)?</small>
+          <div class="velden" style="margin-top:.4rem">
+            <div class="veld"><label for="f-vg-afgekeurd">Afgekeurde registratie</label><select id="f-vg-afgekeurd" name="vgAfgekeurd">
+              ${optie('teDoen', 'Telt niet: object weer te doen (aanbevolen)', vgRegel.afgekeurd)}${optie('telt', 'Telt toch als gedaan', vgRegel.afgekeurd)}</select></div>
+            <div class="veld"><label for="f-vg-kleur">Weergave van afgekeurd</label><select id="f-vg-kleur" name="vgKleur">
+              ${optie('ja', 'Eigen kleur: rood, “afgekeurd – opnieuw doen”', vgRegel.afgekeurdKleur ? 'ja' : 'nee')}${optie('nee', 'Gewoon als “te doen”', vgRegel.afgekeurdKleur ? 'ja' : 'nee')}</select></div>
+            <div class="veld breed"><label for="f-vg-ingediend">Ingediende registratie (nog niet beoordeeld)</label><select id="f-vg-ingediend" name="vgIngediend">
+              ${optie('telt', 'Telt meteen als gedaan (standaard)', vgRegel.ingediend)}${optie('wacht', 'Telt pas na goedkeuring: eigen kleur “wacht op beoordeling”', vgRegel.ingediend)}</select></div>
+          </div>
+          <small>Gaat het om de opdrachtgever: die ziet altijd alleen goedgekeurd werk, ongeacht deze instelling.</small></div>
         <div class="veld breed"><label>Planning</label><div class="vinkjes-onder">
           <label class="vink"><input type="checkbox" name="planningAlleenBeheer" ${p.planningAlleenBeheer === false ? '' : 'checked'}>
             <span><strong>Alleen beheerders mogen de planning bewerken</strong><small>Uit: ook projectleden met het recht <em>Planning bewerken</em> (in te stellen bij Toewijzen) kunnen rondes inplannen en verschuiven.</small></span></label>
@@ -8793,7 +8814,7 @@ async function projectFormulier(id) {
     const opslaan = {
       ...p, id: bestaand?.id ?? nieuwId(), naam: d.naam, opdrachtgever: d.opdrachtgever, omschrijving: d.omschrijving,
       ...(bestaand ? {} : { aangemaaktDoor: ikEmail() || '' }),
-      status: d.status, planningswijze: d.planningswijze || 'gepland', kostenTonen: form.elements.kostenTonen.checked, urenTonen: form.elements.urenTonen.checked, locatieMaatregel: form.elements.locatieMaatregel.value || 'vlaklijn', planningAlleenBeheer: form.elements.planningAlleenBeheer.checked, planningVastzetten: form.elements.planningVastzetten.checked, leden, bevindingenAlsTaak: form.elements.bevindingenAlsTaak.checked, aangemaakt: p.aangemaakt ?? nu, gewijzigd: nu,
+      status: d.status, planningswijze: d.planningswijze || 'gepland', kostenTonen: form.elements.kostenTonen.checked, urenTonen: form.elements.urenTonen.checked, locatieMaatregel: form.elements.locatieMaatregel.value || 'vlaklijn', planningAlleenBeheer: form.elements.planningAlleenBeheer.checked, planningVastzetten: form.elements.planningVastzetten.checked, voortgangRegel: { afgekeurd: form.elements.vgAfgekeurd.value, afgekeurdKleur: form.elements.vgKleur.value === 'ja', ingediend: form.elements.vgIngediend.value }, leden, bevindingenAlsTaak: form.elements.bevindingenAlsTaak.checked, aangemaakt: p.aangemaakt ?? nu, gewijzigd: nu,
     };
     await db.bewaar('projecten', opslaan);
     formulierGewijzigd = false;
@@ -10513,8 +10534,9 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
     const wieVan = (x) => naamVanEmail(x.uitvoerder || x.inspecteur || x.beoordeling?.ingediendDoor || '');
     const st = vg ? RS.rondeStatistiek({ ronde: r, vg, registraties: regs, vandaag: vandaag(), manurenVan, wieVan, oordeelVan }) : null;
     const lijst = vg ? RS.objectRegels(v.objecten ?? [], vg, { objectVan: (oid) => gR.objectMap.get(oid), wieVan, oordeelVan }) : [];
-    const STATUS = { open: ['Nog niet gestart', 'open'], deels: ['Gedeeltelijk', 'deels'], gedaan: ['Gedaan', 'gedaan'], overgeslagen: ['Overgeslagen', 'overgeslagen'], nietnodig: ['Niet meer nodig', 'overgeslagen'] };
-    const nTeDoen = lijst.filter((x) => x.status === 'open' || x.status === 'deels').length;
+    const STATUS = { open: ['Nog niet gestart', 'open'], deels: ['Gedeeltelijk', 'deels'], gedaan: ['Gedaan', 'gedaan'], overgeslagen: ['Overgeslagen', 'overgeslagen'], nietnodig: ['Niet meer nodig', 'overgeslagen'],
+      afgekeurd: ['Afgekeurd – opnieuw doen', 'afgekeurd'], ingediend: ['Wacht op beoordeling', 'ingediend'] };
+    const nTeDoen = lijst.filter((x) => isTeDoen(x.status)).length;
     const dg = (n) => `${n} ${n === 1 ? 'dag' : 'dagen'}`;
     const wd = (n) => `${n} werkdag${n === 1 ? '' : 'en'}`;
     const getal = (x) => String(x).replace('.', ',');
@@ -10545,15 +10567,18 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
       const detail = x.status === 'gedaan' ? `${datumNL(x.datum)}${x.wie ? ` · ${esc(x.wie)}` : ''}${x.oordeel?.label ? ` · <span class="schaalchip" style="--k:${esc(x.oordeel.kleur || '#6b7785')}">${esc(x.oordeel.label)}</span>` : ''}${x.vervolg ? ' · <strong>vervolg nodig</strong>' : ''}`
         : x.status === 'deels' ? `${x.keer}× gedeeltelijk · laatst ${datumNL(x.datum)}${x.wie ? ` · ${esc(x.wie)}` : ''}`
           : x.status === 'overgeslagen' ? `${esc(x.reden || 'overgeslagen')}${x.toelichting ? `: ${esc(x.toelichting)}` : ''} · ${datumNL(x.datum)}${x.wie ? ` · ${esc(x.wie)}` : ''}`
-            : x.status === 'nietnodig' ? 'Hoeveelheden bereikt' : 'Nog niet bezocht';
+            : x.status === 'nietnodig' ? 'Hoeveelheden bereikt'
+              : x.status === 'afgekeurd' ? `${datumNL(x.datum)}${x.wie ? ` · ${esc(x.wie)}` : ''} · <strong>reden:</strong> ${esc(x.reden || 'geen reden opgegeven')}`
+                : x.status === 'ingediend' ? `${datumNL(x.datum)}${x.wie ? ` · ${esc(x.wie)}` : ''} · ingediend, nog niet beoordeeld` : 'Nog niet bezocht';
       return `<tr data-st="${x.status}" data-oid="${esc(x.id)}" data-zoek="${esc(`${x.o?.code ?? ''} ${x.o?.naam ?? ''} ${x.wie ?? ''} ${x.reden ?? ''}`.toLowerCase())}">
         <td><a href="#/objecten/${encodeURIComponent(x.id)}"><strong>${esc(x.o?.code ?? '')}</strong> ${esc(x.o?.naam ?? '(object verwijderd)')}</a>${x.o?.type ? `<small>${esc(x.o.type)}</small>` : ''}</td>
         <td><span class="rd-stip">${statusStip(kl)}</span>${label}</td><td><small>${detail}</small></td>
         <td class="rd-acties">${objectGeometrie(x.o ?? {}) ? `<button type="button" class="knop klein" data-rd-kaart="${esc(x.id)}" title="Op de kaart tonen" aria-label="Op de kaart">${I.locatie}</button>` : ''}
           ${objHref(x) ? `<a class="knop klein" href="${objHref(x)}">Registratie</a>` : ''}
-          ${(x.status === 'open' || x.status === 'deels') && r.status !== 'afgerond' ? `<a class="knop klein" href="${pakketHref(v, x.id, false)}">${isInsp ? 'Inspecteren' : 'Uitvoeren'}</a>` : ''}</td></tr>`;
+          ${x.status === 'afgekeurd' && x.registratie ? `<a class="knop klein" href="${aanpasHref(x.registratie, isInsp, false)}">Aanpassen</a>`
+    : (x.status === 'open' || x.status === 'deels') && r.status !== 'afgerond' ? `<a class="knop klein" href="${pakketHref(v, x.id, false)}">${isInsp ? 'Inspecteren' : 'Uitvoeren'}</a>` : ''}</td></tr>`;
     };
-    const FILTERS = [['tedoen', 'Nog te doen', nTeDoen], ['open', 'Nog niet gestart', st?.aantallen.nietGestart ?? 0], ['deels', 'Gedeeltelijk', st?.aantallen.deels ?? 0],
+    const FILTERS = [['tedoen', 'Nog te doen', nTeDoen], ['open', 'Nog niet gestart', st?.aantallen.nietGestart ?? 0], ['deels', 'Gedeeltelijk', st?.aantallen.deels ?? 0], ...(st?.aantallen.afgekeurd ? [['afgekeurd', 'Afgekeurd', st.aantallen.afgekeurd]] : []), ...(st?.aantallen.wacht ? [['ingediend', 'Wacht op beoordeling', st.aantallen.wacht]] : []),
       ['gedaan', 'Gedaan', st?.aantallen.gedaan ?? 0], ['overgeslagen', 'Overgeslagen', st?.aantallen.overgeslagen ?? 0], ['nietnodig', 'Niet meer nodig', st?.aantallen.nietNodig ?? 0], ['alles', 'Alles', lijst.length]];
 
     // Indeling: eigen (dit apparaat) ← standaard van het project (beheerder) ← standaard van de app.
@@ -12390,6 +12415,8 @@ async function pakketGegevens() {
     inProject('werkpakketten'), inProject('objecten'), inProject('werkzaamheden'), inProject('inspecties'), inProject('overgeslagen'),
   ]);
   const objectIds = objecten.map((o) => o.id);
+  // Wanneer telt een registratie mee (afgekeurd / wacht op beoordeling): per project instelbaar.
+  const regel = voortgangRegel(await actiefProject());
   const volgorde = { actief: 0, gepland: 1, afgerond: 2 };
   for (const p of pakketten) p.status = pakketStatus(p);
   pakketten.sort((a, b) => (volgorde[a.status] ?? 3) - (volgorde[b.status] ?? 3) || String(a.naam).localeCompare(String(b.naam), 'nl', { numeric: true }));
@@ -12402,7 +12429,7 @@ async function pakketGegevens() {
       const v = rondeView(p, r);
       const sleutel = `${p.id}:${r.id}`;
       views.set(sleutel, v);
-      const vg = pakketVoortgang(v, { werkzaamheden, inspecties, overgeslagen, objectIds });
+      const vg = pakketVoortgang(v, { werkzaamheden, inspecties, overgeslagen, objectIds, regel });
       rondeVoortgang.set(sleutel, vg);
       return vg;
     });
@@ -12549,7 +12576,7 @@ function pakketHref(p, objectId, mobiel) {
 }
 
 // --- Kaart met de objecten van een pakket ------------------------------------
-async function tekenPakketKaart(el, { pakket, objecten, statusVan, positie = null, mobiel = false, gebreken = [] }) {
+async function tekenPakketKaart(el, { pakket, objecten, statusVan, positie = null, mobiel = false, gebreken = [], afgekeurdVan = () => null }) {
   let L;
   try {
     L = await laadLeaflet();
@@ -12568,10 +12595,13 @@ async function tekenPakketKaart(el, { pakket, objecten, statusVan, positie = nul
   const objectMap = new Map(metGeo.map((o) => [o.id, o]));
   const popup = (o) => {
     const st = statusVan(o.id);
-    const knoppen = isTeDoen(st)
-      ? `<div class="popupknoppen"><a class="knop klein primair" href="${pakketHref(pakket, o.id, mobiel)}">Uitvoeren</a>
+    const afg = st === 'afgekeurd' ? afgekeurdVan(o.id) : null;
+    const knoppen = st === 'afgekeurd' && afg
+      ? `<small class="afgekeurdtekst">${I.let} Afgekeurd: ${afkeurTekst(afg)}</small><div class="popupknoppen"><a class="knop klein primair" href="${aanpasHref(afg, pakket.soort === 'inspectie', mobiel)}">Aanpassen en opnieuw indienen</a></div>`
+      : isTeDoen(st)
+        ? `<div class="popupknoppen"><a class="knop klein primair" href="${pakketHref(pakket, o.id, mobiel)}">Uitvoeren</a>
          <button class="knop klein" data-overslaan="${esc(o.id)}">Overslaan</button></div>`
-      : `<small>${st === 'gedaan' ? I.vink + ' Gedaan' : I.overslaan + ' Overgeslagen'}</small>`;
+        : `<small>${st === 'gedaan' ? I.vink + ' Gedaan' : st === 'ingediend' ? `${I.wacht} Wacht op beoordeling` : I.overslaan + ' Overgeslagen'}</small>`;
     return `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br>${knoppen}${mobiel ? '' : `<br><a href="#/objecten/${esc(o.id)}">Object openen</a>`}`;
   };
   const laag = L.geoJSON(fc, {
@@ -13722,7 +13752,9 @@ async function pakketDetail(id, q = new URLSearchParams()) {
     <div class="kaartindeling">
       <div id="pakketkaart" class="kaart"><p class="leeg">Kaart laden…</p></div>
       <aside class="kaart lagenpaneel"><h2>Legenda</h2><div class="legenda">
-        <span>${statusStip('open')}Nog te doen (${v.open.length - (v.deels?.size ?? 0)})</span>
+        <span>${statusStip('open')}Nog te doen (${objecten.filter((o) => statusVan(o.id) === 'open').length})</span>
+        ${objecten.some((o) => statusVan(o.id) === 'afgekeurd') ? `<span>${statusStip('afgekeurd')}Afgekeurd – opnieuw doen (${objecten.filter((o) => statusVan(o.id) === 'afgekeurd').length})</span>` : ''}
+        ${v.wacht?.size ? `<span>${statusStip('ingediend')}Wacht op beoordeling (${v.wacht.size})</span>` : ''}
         ${v.deels?.size ? `<span>${statusStip('deels')}Gedeeltelijk gedaan (${v.deels.size})</span>` : ''}
         ${v.nietNodig?.size ? `<span>${statusStip('overgeslagen')}Niet nodig – hoeveelheid bereikt (${v.nietNodig.size})</span>` : ''}
         <span>${statusStip('gedaan')}Gedaan (${v.gedaan.size})</span>
@@ -13732,25 +13764,25 @@ async function pakketDetail(id, q = new URLSearchParams()) {
     </div>
     <div class="filters objectzoek">
       <input type="search" id="o-zoek" placeholder="Zoek object op code, naam, type of kenmerk…" aria-label="Objecten zoeken">
-      <select id="o-status" aria-label="Status"><option value="">Alle statussen</option>${optie('open', `Open (${v.open.length})`)}${optie('gedaan', `Gedaan (${v.gedaan.size})`)}${optie('overgeslagen', `Overgeslagen (${v.overgeslagen.size})`)}</select>
+      <select id="o-status" aria-label="Status"><option value="">Alle statussen</option>${optie('open', `Open (${objecten.filter((o) => statusVan(o.id) === 'open').length})`)}${objecten.some((o) => statusVan(o.id) === 'afgekeurd') ? optie('afgekeurd', `Afgekeurd (${objecten.filter((o) => statusVan(o.id) === 'afgekeurd').length})`) : ''}${v.wacht?.size ? optie('ingediend', `Wacht op beoordeling (${v.wacht.size})`) : ''}${optie('gedaan', `Gedaan (${v.gedaan.size})`)}${optie('overgeslagen', `Overgeslagen (${v.overgeslagen.size})`)}</select>
       <span id="o-teller" class="objectzoek-teller"></span>
     </div>
     <section class="kaart" style="padding:0"><div class="tabelhouder"><table>
       <thead><tr><th>Code</th><th>Naam</th><th>Status</th><th>Wanneer / door</th><th class="verberg-mobiel">Toelichting</th><th></th></tr></thead>
       <tbody id="o-rijen">${objecten.map((o) => {
     const st = statusVan(o.id);
-    const r = v.gedaan.get(o.id);
+    const r = v.gedaan.get(o.id) ?? v.wacht?.get(o.id) ?? v.afgekeurd?.get(o.id);
     const ov = v.overgeslagen.get(o.id);
     return `<tr data-id="${esc(o.id)}" data-status="${st}">
           <td><a href="#/objecten/${esc(o.id)}"><strong>${esc(o.code)}</strong></a>${objectGeometrie(o) ? ` <button type="button" class="kaartpin" data-opkaart="${esc(o.id)}" title="Toon op de kaart" aria-label="${esc(o.code)} op de kaart tonen">${I.locatie}</button>` : ''}</td><td>${esc(o.naam)}${p.vrijgaveVereist ? `<br>${vrijgaveLabel(eco.vrijgaveVoorObject(vrijgavenProject, o.id, vandaag()))}` : ''}</td>
-          <td><span class="label-status ${st === 'gedaan' ? 'afgerond' : st === 'open' ? 'binnenkort' : st === 'deels' ? 'deels' : ''}">${{ open: 'Open', deels: 'Gedeeltelijk', gedaan: 'Gedaan', overgeslagen: 'Overgeslagen', nietnodig: 'Niet nodig' }[st]}</span>${st === 'deels' ? `<br><small>${(v.deels.get(o.id) ?? []).map((x) => `${datumNL(x.datum)}${x.deel ? `: ${esc(x.deel)}` : ''}`).join('<br>')}</small>` : ''}</td>
+          <td><span class="label-status ${STATUS_KLASSE[st] ?? ''}">${STATUS_LABEL[st]}</span>${st === 'afgekeurd' ? `<br><small>${afkeurTekst(v.afgekeurd.get(o.id))}</small>` : ''}${st === 'deels' ? `<br><small>${(v.deels.get(o.id) ?? []).map((x) => `${datumNL(x.datum)}${x.deel ? `: ${esc(x.deel)}` : ''}`).join('<br>')}</small>` : ''}</td>
           <td>${r ? `<a href="${regHref(r)}">${datumNL(r.datum)}</a> · ${esc(r.uitvoerder || r.inspecteur || '')}` : ov ? `${datumNL(ov.op)} · ${esc(ov.door)}` : '–'}</td>
           <td class="verberg-mobiel">${ov ? `${esc(ov.reden)}${ov.toelichting ? `: ${esc(ov.toelichting)}` : ''}` : r ? esc(r.omschrijving || r.samenvatting || '') : ''}</td>
-          <td>${isTeDoen(st) ? `<a class="knop klein" href="${pakketHref(p, o.id, false)}">${st === 'deels' ? 'Afmaken' : 'Uitvoeren'}</a>`
+          <td>${v.afgekeurd?.has(o.id) && !v.gedaan.has(o.id) ? `<a class="knop klein" href="${aanpasHref(v.afgekeurd.get(o.id), p.soort === 'inspectie', false)}">Aanpassen</a>` : isTeDoen(st) ? `<a class="knop klein" href="${pakketHref(p, o.id, false)}">${st === 'deels' ? 'Afmaken' : 'Uitvoeren'}</a>`
     : ov ? `<button class="knop klein" data-terug="${esc(o.id)}">Terugzetten</button>` : ''}</td></tr>`;
   }).join('')}<tr id="o-leeg" hidden><td colspan="6" class="leeg">Geen objecten gevonden.</td></tr></tbody></table></div></section>`;
 
-  const kaartKlaar = tekenPakketKaart(app.querySelector('#pakketkaart'), { pakket: p, objecten, statusVan, gebreken: herstelPunten(p, g.inspecties, g.objectMap) });
+  const kaartKlaar = tekenPakketKaart(app.querySelector('#pakketkaart'), { pakket: p, objecten, statusVan, gebreken: herstelPunten(p, g.inspecties, g.objectMap), afgekeurdVan: (oid) => v.afgekeurd?.get(oid) });
   koppelObjectZoek({ objecten, statusVan, kaartKlaar });
   app.querySelector('#pakketkaart').addEventListener('click', async (e) => {
     const over = e.target.closest('[data-overslaan]');
@@ -14556,7 +14588,7 @@ async function mobielPakket(id, q = new URLSearchParams()) {
   };
   let gesorteerd = tekenLijst();
   // De kaart wordt één keer getekend; een nieuwe locatie verplaatst alleen de stip.
-  const kaart = tekenPakketKaart(app.querySelector('#pakketkaart'), { pakket: p, objecten, statusVan, positie: laatstePositie, mobiel: true, gebreken: herstelPunten(p, g.inspecties, g.objectMap) });
+  const kaart = tekenPakketKaart(app.querySelector('#pakketkaart'), { pakket: p, objecten, statusVan, positie: laatstePositie, mobiel: true, afgekeurdVan: (oid) => v.afgekeurd?.get(oid), gebreken: herstelPunten(p, g.inspecties, g.objectMap) });
   const metLocatie = (stil) => bepaalPositie(async () => {
     gesorteerd = tekenLijst();
     (await kaart)?.zetPositie(laatstePositie);

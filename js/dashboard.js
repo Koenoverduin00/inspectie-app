@@ -120,12 +120,19 @@ export function objectStatusInPakketten(objectId, voortgangen) {
   let over = false;
   let gedaan = false;
   let deels = false;
+  let afgekeurd = false;
+  let wacht = false;
   for (const vg of voortgangen) {
+    // Afgekeurd (met eigen kleur) gaat voor: dat moet opnieuw.
+    if (vg.afgekeurd?.has(objectId) && !vg.gedaan.has(objectId)) { if (vg.afgekeurdKleur === false) return 'open'; afgekeurd = true; continue; }
     if (vg.open.includes(objectId) && !vg.deels?.has(objectId)) return 'open';
     if (vg.deels?.has(objectId)) { deels = true; continue; }
+    if (vg.wacht?.has(objectId)) { wacht = true; continue; }
     if (vg.overgeslagen.has(objectId)) { in_ = true; over = true; } else if (vg.gedaan.has(objectId)) { in_ = true; gedaan = true; }
   }
+  if (afgekeurd) return 'afgekeurd';
   if (deels) return 'deels';
+  if (wacht) return 'ingediend';
   if (!in_) return null;
   return over ? 'overgeslagen' : gedaan ? 'gedaan' : null;
 }

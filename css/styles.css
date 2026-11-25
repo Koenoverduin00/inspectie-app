@@ -2216,3 +2216,11 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
 /* Vóór het laden van de app, als je niet bent ingelogd: geen menu's of "Laden…" tonen (voorkomt dat de site eerst even verschijnt). */
 html.vooraf-inlog body { background: #0b4f6c; }
 html.vooraf-inlog .kop, html.vooraf-inlog .onderbalk, html.vooraf-inlog .statusregel, html.vooraf-inlog main#app > .laden { display: none; }
+
+/* Afgekeurd (opnieuw doen) en wacht op beoordeling */
+.label-status.ingediend { background: color-mix(in srgb, #6f42c1 14%, transparent); color: #5a32a3; }
+.stip.afgekeurd { background: #d1242f; }
+.stip.ingediend { background: #6f42c1; }
+.afgekeurdtekst { color: var(--gevaar, #d1242f); }
+.locregel-afgekeurd { display: grid; gap: .35rem; margin: .5rem 0; padding: .6rem .7rem; border-radius: 10px; border: 1px solid color-mix(in srgb, #d1242f 35%, transparent); background: color-mix(in srgb, #d1242f 7%, transparent); }
+.locregel.afgekeurd { border-left-color: #d1242f; }

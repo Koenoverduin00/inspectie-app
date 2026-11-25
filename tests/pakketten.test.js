@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  voortgang, voorMij, filterObjecten, rondesVan, rondeView, pakketStatus, overslaanId, totaalVoortgang,
+  voortgang, voorMij, filterObjecten, rondesVan, rondeView, pakketStatus, overslaanId, totaalVoortgang, objectStatus, teDoen, voortgangRegel,
 } from '../js/pakketten.js';
 import { takenLijst } from '../js/taken.js';
 
@@ -136,4 +136,49 @@ test('rondes op één locatie van elkaar onderscheiden', async () => {
   assert.equal(o.get('WP-4:WP-4r0').ronde, 'R1');
   const p = { id: 'x', naam: 'Maaien', objecten: [], rondes: [{ id: 'r', nummer: 2, naam: 'Maaironde 2' }, { id: 's', nummer: 1, naam: 'Maaien' }] };
   assert.equal(P.rondeView(p, p.rondes[0]).naam, 'Maaien – Maaironde 2');
+});
+
+test('voortgangsregel: afgekeurd telt niet, ingediend telt (standaard)', () => {
+  const p = { id: 'p', soort: 'werk', objecten: ['a', 'b', 'c', 'd'], rondeId: 'standaard' };
+  const w = [
+    { id: 1, werkpakketId: 'p', objectId: 'a', datum: '2026-11-01', beoordeling: { status: 'goedgekeurd' } },
+    { id: 2, werkpakketId: 'p', objectId: 'b', datum: '2026-11-01', beoordeling: { status: 'afgekeurd' } },
+    { id: 3, werkpakketId: 'p', objectId: 'c', datum: '2026-11-02', beoordeling: { status: 'ingediend' } },
+    { id: 4, werkpakketId: 'p', objectId: 'd', datum: '2026-11-02' },
+  ];
+  const vg = voortgang(p, { werkzaamheden: w });
+  assert.deepEqual([...vg.gedaan.keys()].sort(), ['a', 'c', 'd']);
+  assert.equal(objectStatus(vg, 'b'), 'afgekeurd');
+  assert.equal(teDoen(objectStatus(vg, 'b')), true);
+  assert.deepEqual(vg.open, ['b']);
+  assert.equal(vg.percentage, 75);
+  // aparte kleur uit: gewoon te doen
+  assert.equal(objectStatus(voortgang(p, { werkzaamheden: w, regel: { afgekeurdKleur: false } }), 'b'), 'open');
+  // oude manier: afgekeurd telt als gedaan
+  assert.equal(voortgang(p, { werkzaamheden: w, regel: { afgekeurd: 'telt' } }).percentage, 100);
+});
+
+test('voortgangsregel: alleen goedgekeurd telt (ingediend wacht)', () => {
+  const p = { id: 'p', soort: 'werk', objecten: ['a', 'b', 'c'], rondeId: 'standaard' };
+  const w = [
+    { id: 1, werkpakketId: 'p', objectId: 'a', datum: '2026-11-01', beoordeling: { status: 'goedgekeurd' } },
+    { id: 2, werkpakketId: 'p', objectId: 'b', datum: '2026-11-01', beoordeling: { status: 'ingediend' } },
+    // c: eerst afgekeurd, daarna opnieuw ingediend
+    { id: 3, werkpakketId: 'p', objectId: 'c', datum: '2026-11-01', beoordeling: { status: 'afgekeurd' } },
+    { id: 4, werkpakketId: 'p', objectId: 'c', datum: '2026-11-03', beoordeling: { status: 'ingediend' } },
+  ];
+  const vg = voortgang(p, { werkzaamheden: w, regel: { ingediend: 'wacht' } });
+  assert.deepEqual([...vg.gedaan.keys()], ['a']);
+  assert.equal(objectStatus(vg, 'b'), 'ingediend');
+  assert.equal(objectStatus(vg, 'c'), 'ingediend');
+  assert.equal(teDoen('ingediend'), false);
+  assert.deepEqual(vg.open, []);
+  assert.equal(vg.percentage, 33);
+  // standaardregel: opnieuw ingediend telt meteen
+  assert.equal(objectStatus(voortgang(p, { werkzaamheden: w }), 'c'), 'gedaan');
+});
+
+test('voortgangRegel uit het project', () => {
+  assert.deepEqual(voortgangRegel({}), { afgekeurd: 'teDoen', afgekeurdKleur: true, ingediend: 'telt' });
+  assert.deepEqual(voortgangRegel({ voortgangRegel: { afgekeurd: 'telt', afgekeurdKleur: false, ingediend: 'wacht' } }), { afgekeurd: 'telt', afgekeurdKleur: false, ingediend: 'wacht' });
 });
