@@ -2217,13 +2217,31 @@ async function bibliotheekPagina() {
 // ---------------------------------------------------------------------------
 const heeftGps = (x) => x?.lat !== '' && x?.lat != null && x?.lng !== '' && x?.lng != null && Number.isFinite(Number(x.lat));
 const gpsLink = (x) => `<a href="https://www.google.com/maps?q=${encodeURIComponent(x.lat)},${encodeURIComponent(x.lng)}" target="_blank" rel="noopener">${Number(x.lat).toFixed(6)}, ${Number(x.lng).toFixed(6)}</a>${x.locatieBron === 'kaart' ? ' <small>op kaart gekozen</small>' : x.nauwkeurigheid ? ` <small>GPS ±${esc(x.nauwkeurigheid)} m</small>` : ''}`;
-function gpsVeldHtml(x, sleutel) {
+// Het object van het formulier dat nu open is (voor de regel: bij een puntobject is de objectlocatie leidend).
+let gpsFormObject = () => null;
+/** Kenmerk met de geldende locatie van een gebrek (puntobject = objectlocatie, tenzij bewust aangepast). */
+function locatieKenmerk(g, o) {
+  const loc = HS.gebrekLocatie(g, o);
+  if (!loc) return '';
+  if (loc.bron !== 'object') return kenmerk('Locatie', gpsLink(g));
+  return kenmerk('Locatie', `<a href="https://www.google.com/maps?q=${loc.lat},${loc.lng}" target="_blank" rel="noopener">${loc.lat.toFixed(6)}, ${loc.lng.toFixed(6)}</a> <small>(objectlocatie)</small>`);
+}
+function gpsVeldHtml(x, sleutel, object = gpsFormObject()) {
+  const punt = HS.objectPunt(object);
+  if (punt && !(HS.locatieAangepast(x) && heeftGps(x)) && !x?.locatieAangepast) {
+    return `<div class="veld breed gpsveld" data-gpsveld="${esc(sleutel)}"><label>Locatie</label>
+    <div class="gpsregel">${I.locatie} <span>Locatie van het object <small class="zacht">${punt.lat.toFixed(6)}, ${punt.lng.toFixed(6)}</small></span>
+      <button type="button" class="knop klein" data-gpsaanpas="${esc(sleutel)}" title="Staat het object niet goed op de kaart? Leg dan de juiste plek van het gebrek vast.">${I.punaise} Locatie aanpassen</button></div>
+    <small class="zacht">Het gebrek zit op het puntobject; de locatie van het object is leidend.</small></div>`;
+  }
   const heeft = heeftGps(x);
-  return `<div class="veld breed gpsveld" data-gpsveld="${esc(sleutel)}"><label>Locatie (GPS)</label>
+  return `<div class="veld breed gpsveld" data-gpsveld="${esc(sleutel)}"><label>${punt ? 'Locatie (aangepast)' : 'Locatie (GPS)'}</label>
     <div class="gpsregel">${heeft ? `${I.locatie} ${gpsLink(x)}` : '<small>Nog niet vastgelegd</small>'}
       <button type="button" class="knop klein" data-gpsvast="${esc(sleutel)}" title="Je huidige positie gebruiken">${I.gps} ${heeft ? 'Mijn locatie opnieuw' : 'Mijn locatie'}</button>
       <button type="button" class="knop klein" data-gpskaart="${esc(sleutel)}" title="Achteraf invullen? Tik de plek aan op de kaart">${I.kaart} Op kaart kiezen</button>
-      ${heeft ? `<button type="button" class="knop klein" data-gpswis="${esc(sleutel)}" aria-label="Locatie wissen">${I.kruis}</button>` : ''}</div></div>`;
+      ${punt ? `<button type="button" class="knop klein" data-gpsobject="${esc(sleutel)}" title="Terug naar de locatie van het puntobject">↺ Objectlocatie</button>`
+    : heeft ? `<button type="button" class="knop klein" data-gpswis="${esc(sleutel)}" aria-label="Locatie wissen">${I.kruis}</button>` : ''}</div>
+    ${punt ? `<small class="zacht">${heeft ? 'Deze locatie wijkt bewust af van het puntobject.' : 'Leg de juiste plek vast; zonder locatie geldt het puntobject.'}</small>` : ''}</div>`;
 }
 /** Bepaalt de huidige positie en zet die op het doel; stil = geen foutmelding (automatisch vastleggen). */
 function bepaalGps(doel, klaar, { knop = null, stil = false } = {}) {
@@ -2303,16 +2321,31 @@ function koppelGpsVelden(root, vind, { objectId = () => '' } = {}) {
     if (el) el.outerHTML = gpsVeldHtml(vind(sleutel), sleutel);
   };
   root.addEventListener('click', (e) => {
-    const wis = e.target.closest('[data-gpswis]');
+    const wis = e.target.closest('[data-gpswis], [data-gpsobject]');
     if (wis) {
-      const d = vind(wis.dataset.gpswis);
+      const sleutel = wis.dataset.gpswis ?? wis.dataset.gpsobject;
+      const d = vind(sleutel);
       for (const k of ['lat', 'lng', 'nauwkeurigheid', 'locatieBron', 'locatieOp']) delete d[k];
+      d.locatieAangepast = false;
       formulierGewijzigd = true;
-      ververs(wis.dataset.gpswis);
+      ververs(sleutel);
+      return;
+    }
+    // Puntobject staat niet goed: de inspecteur legt bewust de plek van het gebrek vast (meteen GPS proberen).
+    const aanpas = e.target.closest('[data-gpsaanpas]');
+    if (aanpas) {
+      const sleutel = aanpas.dataset.gpsaanpas;
+      const d = vind(sleutel);
+      for (const k of ['lat', 'lng', 'nauwkeurigheid', 'locatieBron', 'locatieOp']) delete d[k];
+      d.locatieAangepast = true;
+      formulierGewijzigd = true;
+      ververs(sleutel);
+      const knop = root.querySelector(`[data-gpsvast="${CSS.escape(sleutel)}"]`);
+      bepaalGps(d, () => ververs(sleutel), { knop, stil: true });
       return;
     }
     const vast = e.target.closest('[data-gpsvast]');
-    if (vast) { bepaalGps(vind(vast.dataset.gpsvast), () => ververs(vast.dataset.gpsvast), { knop: vast }); return; }
+    if (vast) { const d = vind(vast.dataset.gpsvast); bepaalGps(d, () => { d.locatieAangepast = true; ververs(vast.dataset.gpsvast); }, { knop: vast }); return; }
     const kaartKnop = e.target.closest('[data-gpskaart]');
     if (kaartKnop) {
       const sleutel = kaartKnop.dataset.gpskaart;
@@ -2320,15 +2353,16 @@ function koppelGpsVelden(root, vind, { objectId = () => '' } = {}) {
       kiesOpKaart({ huidig: doel, objectId: objectId() }).then((ll) => {
         if (!ll) return;
         for (const k of ['nauwkeurigheid']) delete doel[k];
-        Object.assign(doel, { lat: ll.lat, lng: ll.lng, locatieBron: 'kaart', locatieOp: new Date().toISOString() });
+        Object.assign(doel, { lat: ll.lat, lng: ll.lng, locatieBron: 'kaart', locatieOp: new Date().toISOString(), locatieAangepast: true });
         formulierGewijzigd = true;
         ververs(sleutel);
       });
     }
   });
-  return { ververs, automatisch: (sleutel) => bepaalGps(vind(sleutel), () => ververs(sleutel), { stil: true }) };
+  // Automatisch vastleggen (telefoon) alleen bij vlakken en lijnen: bij een puntobject is het object de locatie.
+  return { ververs, automatisch: (sleutel) => { if (!HS.isPuntObject(gpsFormObject())) bepaalGps(vind(sleutel), () => ververs(sleutel), { stil: true }); } };
 }
-const GPS_VELDEN = ['lat', 'lng', 'nauwkeurigheid', 'locatieBron', 'locatieOp'];
+const GPS_VELDEN = ['lat', 'lng', 'nauwkeurigheid', 'locatieBron', 'locatieOp', 'locatieAangepast'];
 const gpsVan = (x) => Object.fromEntries(GPS_VELDEN.filter((k) => x?.[k] !== undefined && x?.[k] !== '').map((k) => [k, x[k]]));
 
 // ---------------------------------------------------------------------------
@@ -2622,7 +2656,7 @@ function bevAntwoordenHtml(g, i) {
 }
 
 /** Eén NEN 2767-gebrek als overzichtelijke kaart. */
-async function nenGebrekKaart(g, n, i = null) {
+async function nenGebrekKaart(g, n, i = null, o = null) {
   if (i && TY.methodiekVan(i) !== 'nen') {
     const o = TY.bevindingOordeel(i, g);
     return `<article class="gebrekkaart" data-bevinding="${esc(String(g.id ?? ''))}" style="--gk:${esc(o.kleur)}">
@@ -2633,7 +2667,7 @@ async function nenGebrekKaart(g, n, i = null) {
         ${g.urgentie ? kenmerk('Urgentie', urgentieLabel(g.urgentie)) : ''}
         ${toonKosten() && g.kostenraming !== '' && g.kostenraming != null ? kenmerk('Raming', euro(g.kostenraming)) : ''}
         ${g.maatregel || g.urgentie ? kenmerk('Maatregel', g.maatregelStatus === 'uitgevoerd' ? '<span class="label-status uitgevoerd">Uitgevoerd</span>' : '<span class="label-status binnenkort">Open</span>') : ''}
-        ${heeftGps(g) ? kenmerk('GPS', gpsLink(g)) : ''}</div>` : heeftGps(g) ? `<div class="kenmerken">${kenmerk('GPS', gpsLink(g))}</div>` : ''}
+        ${locatieKenmerk(g, o)}</div>` : HS.gebrekLocatie(g, o) ? `<div class="kenmerken">${locatieKenmerk(g, o)}</div>` : ''}
       ${g.toelichting || g.maatregel ? `<div class="gk-tekst">
         ${g.toelichting ? `<div><h4>Waarneming</h4><p>${esc(g.toelichting)}</p></div>` : ''}
         ${g.maatregel ? `<div><h4>Maatregel</h4><p>${esc(g.maatregel)}</p></div>` : ''}</div>` : ''}
@@ -2654,7 +2688,7 @@ async function nenGebrekKaart(g, n, i = null) {
       ${toonKosten() && g.kostenraming !== '' && g.kostenraming != null ? kenmerk('Raming', euro(g.kostenraming)) : ''}
       ${g.maatregel || g.urgentie ? kenmerk('Maatregel', g.maatregelStatus === 'uitgevoerd' ? '<span class="label-status uitgevoerd">Uitgevoerd</span>' : '<span class="label-status binnenkort">Open</span>') : ''}
       ${g.conditieHandmatig ? kenmerk('Conditie', 'handmatig') : ''}
-      ${heeftGps(g) ? kenmerk('GPS', gpsLink(g)) : ''}
+      ${locatieKenmerk(g, o)}
     </div>
     ${g.toelichting || g.maatregel ? `<div class="gk-tekst">
       ${g.toelichting ? `<div><h4>Waarneming</h4><p>${esc(g.toelichting)}</p></div>` : ''}
@@ -2665,11 +2699,11 @@ async function nenGebrekKaart(g, n, i = null) {
 }
 
 /** Eén boomgebrek (BVC) als kaart. */
-async function bvcGebrekKaart(g, n) {
+async function bvcGebrekKaart(g, n, o = null) {
   return `<article class="gebrekkaart" style="--gk:#d1452f">
     <header><span class="gk-nr">${n + 1}</span>
       <div class="gk-titel"><h3>${esc(g.omschrijving || 'Gebrek')}</h3><small>${esc(g.type || BV.gebrekType(g.omschrijving))}</small></div></header>
-    <div class="kenmerken">${kenmerk('Plaats', esc(g.plaats || '–'))}${kenmerk('Mogelijk gevolg', esc(g.gevolg || '–'))}${heeftGps(g) ? kenmerk('GPS', gpsLink(g)) : ''}</div>
+    <div class="kenmerken">${kenmerk('Plaats', esc(g.plaats || '–'))}${kenmerk('Mogelijk gevolg', esc(g.gevolg || '–'))}${locatieKenmerk(g, o)}</div>
     ${g.toelichting ? `<div class="gk-tekst"><div><h4>Toelichting</h4><p>${esc(g.toelichting)}</p></div></div>` : ''}
     ${await fotoGalerij(g.fotoIds, { titel: "Foto's" })}
   </article>`;
@@ -4704,6 +4738,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
   if (pakket && !bestaand && pakket.inspectiesoort) staat.soort = pakket.inspectiesoort;
   const pakketTerug = pakket ? pakketPagina(pakket, mobiel) : null;
   const openDetails = new Set(); // houdt opengeklapte onderdelen open bij hertekenen
+  gpsFormObject = () => objecten.find((o) => o.id === (app.querySelector('form input[name=objectId]')?.value || staat.objectId));
   // NEN 2767 met decompositie: de inspecteur scoort de bouwdelen die bij het (gekoppelde) GIS-object horen.
   const decompIdx = decompIndex();
   const scopeVan = (oid) => bouwdelenVanObject(objecten.find((o) => o.id === oid), decompIdx)
@@ -5281,6 +5316,9 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
       aangemaakt: bestaand?.aangemaakt ?? nu,
       gewijzigd: nu,
     };
+    // Puntobject: de locatie van het object is leidend (behalve als de inspecteur hem bewust heeft aangepast).
+    const objVoorLocatie = objecten.find((o) => o.id === data.objectId);
+    inspectie.gebreken = inspectie.gebreken.map((g) => HS.metGeldendeLocatie(g, objVoorLocatie));
     if (await ingediendGeblokkeerd(inspectie.id)) return;
     await db.bewaar('inspecties', inspectie);
     if (data.inspecteur && !sync.profiel()?.naam && !instelling.lees('inspecteur')) instelling.schrijf('inspecteur', data.inspecteur);
@@ -5314,7 +5352,7 @@ async function inspectieDetail(id) {
   const m = TY.methodiekVan(i);
   const typeOordeel = TY.oordeelVan(i);
   const pakket = i.werkpakketId ? await laadPakketView(i.werkpakketId, i.rondeId) : null;
-  const gebrekKaarten = await Promise.all(gebreken.map((g, n) => nenGebrekKaart(g, n, i)));
+  const gebrekKaarten = await Promise.all(gebreken.map((g, n) => nenGebrekKaart(g, n, i, o)));
   const kopTekst = m === 'checklist' ? 'Niet in orde' : m === 'oordeel' ? 'Bevindingen' : 'Gebreken';
 
   app.innerHTML = `
@@ -5390,7 +5428,7 @@ async function inspectieRapport(id) {
   const score = inspectieScore(i);
   const organisatie = instelling.lees('organisatie');
   const gebreken = i.gebreken ?? [];
-  const details = await Promise.all(gebreken.map((g, n) => nenGebrekKaart(g, n, i)));
+  const details = await Promise.all(gebreken.map((g, n) => nenGebrekKaart(g, n, i, o)));
   const m = TY.methodiekVan(i);
   const typeOordeel = TY.oordeelVan(i);
 
@@ -12412,8 +12450,8 @@ async function tekenPakketKaart(el, { pakket, objecten, statusVan, positie = nul
   // Herstelronde: de doorgezette gebreken op hun exacte locatie, bovenop de objecten.
   const gebrekLaag = L.layerGroup();
   for (const x of gebreken) {
-    if (!heeftGps(x.gebrek)) continue;
-    L.circleMarker([Number(x.gebrek.lat), Number(x.gebrek.lng)], { radius: 7, color: '#fff', weight: 2, fillOpacity: 0.95,
+    if (!x.loc) continue;
+    L.circleMarker([x.loc.lat, x.loc.lng], { radius: 7, color: '#fff', weight: 2, fillOpacity: 0.95,
       fillColor: x.uitgevoerd ? '#1a7f37' : x.gebrek.urgentie === 'direct' ? '#8b1a1a' : '#d1452f' })
       .bindPopup(`<strong>${esc(x.object?.code ?? '')}</strong> · ${esc(x.gebrek.bvcMaatregel || x.gebrek.maatregel || 'Gebrek')}${x.gebrek.plaatsOmschrijving ? `<br><small>${esc(x.gebrek.plaatsOmschrijving)}</small>` : ''}
         <br>${x.uitgevoerd ? `${I.vink} Hersteld` : `<a class="knop klein primair" href="${pakketHref(pakket, x.objectId, mobiel)}">Uitvoeren</a>`}`)
@@ -13699,7 +13737,8 @@ async function herstelLijst(pakketId, q = new URLSearchParams()) {
   if (!pr) { app.innerHTML = leegKaart('Werkpakket niet gevonden.', '<a class="knop" href="#/werkpakketten">Terug</a>'); return; }
   const ronde = rondeVanId(pr, q.get('ronde'));
   const objCode = (id) => g.objectMap.get(id)?.code ?? '';
-  const items = HS.rondeGebreken(g.inspecties, pr.id, ronde.id, { objectCode: objCode });
+  // Geldende locatie per gebrek: bij een puntobject het object, tenzij de inspecteur hem bewust heeft aangepast.
+  const items = HS.rondeGebreken(g.inspecties, pr.id, ronde.id, { objectCode: objCode }).map((x) => ({ ...x, loc: HS.gebrekLocatie(x.gebrek, g.objectMap.get(x.objectId)) }));
   const project = await actiefProject();
   let standaard = { ...(project?.herstelStandaard ?? {}) };
   let afronding = { ...(ronde.afronding ?? {}) };
@@ -13772,7 +13811,7 @@ async function herstelLijst(pakketId, q = new URLSearchParams()) {
         <td><strong>${gebrekTekst(gb)}</strong>${gebrekOmschrijving(gb) ? `<br><small>${gebrekOmschrijving(gb)}</small>` : ''}</td>
         <td>${urgentieLabel(gb.urgentie)}</td>
         <td>${gb.uitvoerenVoor ? datumNL(gb.uitvoerenVoor) : '–'}</td>
-        <td>${heeftGps(gb) ? `<button type="button" class="kaartpin" data-naar="${esc(x.sleutel)}" title="Toon op de kaart">${I.locatie}</button><small>${gb.plaatsOmschrijving ? esc(gb.plaatsOmschrijving) : gb.locatieBron === 'kaart' ? 'op kaart' : 'GPS'}</small>` : '<small class="zacht">object</small>'}</td>
+        <td>${x.loc ? `<button type="button" class="kaartpin" data-naar="${esc(x.sleutel)}" title="Toon op de kaart">${I.locatie}</button><small>${gb.plaatsOmschrijving ? esc(gb.plaatsOmschrijving) : { object: 'objectlocatie', kaart: 'op kaart' }[x.loc.bron] ?? 'GPS'}</small>` : '<small class="zacht">object</small>'}</td>
         <td><select data-besluit="${esc(x.sleutel)}" aria-label="Besluit" class="${eigen ? '' : 'zacht'}">${Object.entries(HS.BESLUITEN).map(([k, v]) => optie(k, v, b)).join('')}</select></td>
         <td>${gb.maatregelStatus === 'uitgevoerd' ? '<span class="label-status afgerond">Uitgevoerd</span>' : dz[x.sleutel] ? `<span class="label-status deels">Doorgezet</span><br><small>${doelNaam(dz[x.sleutel])}</small>` : '<span class="label-status binnenkort">Open</span>'}</td></tr>`;
     }).join('');
@@ -13799,8 +13838,8 @@ async function herstelLijst(pakketId, q = new URLSearchParams()) {
     const kleur = (u) => (u === 'direct' ? '#8b1a1a' : u === '3maanden' ? '#d1452f' : u === '1jaar' ? '#e07b00' : '#c9a400');
     const punten = L.layerGroup().addTo(map);
     for (const x of items) {
-      if (!heeftGps(x.gebrek)) continue;
-      const m = L.circleMarker([Number(x.gebrek.lat), Number(x.gebrek.lng)], { radius: 7 });
+      if (!x.loc) continue;
+      const m = L.circleMarker([x.loc.lat, x.loc.lng], { radius: 7 });
       m.bindPopup(() => `<strong>${esc(objCode(x.objectId))}</strong> · ${gebrekTekst(x.gebrek)}<br>${urgentieLabel(x.gebrek.urgentie)}${x.gebrek.plaatsOmschrijving ? `<br><small>${esc(x.gebrek.plaatsOmschrijving)}</small>` : ''}`);
       m.addTo(punten);
       perSleutel.set(x.sleutel, m);
@@ -13859,7 +13898,7 @@ async function herstelLijst(pakketId, q = new URLSearchParams()) {
       const gb = x.gebrek;
       const dz = afronding.doorgezet?.[x.sleutel];
       rijen.push([n + 1, objCode(x.objectId), g.objectMap.get(x.objectId)?.naam ?? '', gb.bvcMaatregel || gb.maatregel || '', [gb.bouwdeel, gb.gebrek || gb.omschrijving].filter(Boolean).join(' – '),
-        URGENTIES.find((u) => u.id === gb.urgentie)?.label ?? gb.urgentie ?? '', gb.uitvoerenVoor ?? '', heeftGps(gb) ? gb.lat : '', heeftGps(gb) ? gb.lng : '', gb.plaatsOmschrijving ?? '',
+        URGENTIES.find((u) => u.id === gb.urgentie)?.label ?? gb.urgentie ?? '', gb.uitvoerenVoor ?? '', x.loc?.lat ?? '', x.loc?.lng ?? '', gb.plaatsOmschrijving ?? '',
         HS.BESLUITEN[HS.besluitVan(x, besluiten, standaard)] ?? '', gb.maatregelStatus === 'uitgevoerd' ? 'Uitgevoerd' : dz ? 'Doorgezet' : 'Open',
         dz ? doelNaam(dz).replace(/<[^>]+>/g, '') : '', x.inspectie.datum ?? '']);
     });
@@ -13935,7 +13974,7 @@ async function herstelLijst(pakketId, q = new URLSearchParams()) {
 /** Gebreken van een herstelronde als punten (voor de pakketkaart en de telefoon). */
 function herstelPunten(view, inspecties, objectMap) {
   if (!view?.herstel) return [];
-  return HS.herstelItems(view, inspecties).filter((x) => x.gebrek).map((x) => ({ ...x, object: objectMap.get(x.objectId) }));
+  return HS.herstelItems(view, inspecties).filter((x) => x.gebrek).map((x) => ({ ...x, object: objectMap.get(x.objectId), loc: HS.gebrekLocatie(x.gebrek, objectMap.get(x.objectId)) }));
 }
 
 function herstelBlokHtml(punten) {
@@ -13944,7 +13983,7 @@ function herstelBlokHtml(punten) {
   return `<section class="kaart"><h2>Gebreken in deze ronde <small style="font-weight:400">· ${klaar} van ${punten.length} hersteld</small></h2>
     <div class="tabelhouder"><table><thead><tr><th>Object</th><th>Maatregel</th><th>Urgentie</th><th>Locatie</th><th>Status</th></tr></thead><tbody>
     ${punten.map((x) => `<tr><td><strong>${esc(x.object?.code ?? '?')}</strong></td><td>${gebrekTekst(x.gebrek)}${gebrekOmschrijving(x.gebrek) ? `<br><small>${gebrekOmschrijving(x.gebrek)}</small>` : ''}</td>
-      <td>${urgentieLabel(x.gebrek.urgentie)}</td><td>${heeftGps(x.gebrek) ? `${I.locatie} ${gpsLink(x.gebrek)}${x.gebrek.plaatsOmschrijving ? `<br><small>${esc(x.gebrek.plaatsOmschrijving)}</small>` : ''}` : '<small class="zacht">object</small>'}</td>
+      <td>${urgentieLabel(x.gebrek.urgentie)}</td><td>${x.loc ? `${I.locatie} ${x.loc.bron === 'object' ? '<small>objectlocatie</small>' : gpsLink(x.gebrek)}${x.gebrek.plaatsOmschrijving ? `<br><small>${esc(x.gebrek.plaatsOmschrijving)}</small>` : ''}` : '<small class="zacht">object</small>'}</td>
       <td>${x.uitgevoerd ? '<span class="label-status afgerond">Hersteld</span>' : '<span class="label-status binnenkort">Open</span>'}</td></tr>`).join('')}
     </tbody></table></div></section>`;
 }
@@ -14529,7 +14568,7 @@ function digigidsBlok(w, i) {
   </div>`;
 }
 
-const puntBron = (w) => (w.locatieBron === 'gps' ? `(GPS${w.nauwkeurigheid ? ` ± ${w.nauwkeurigheid} m` : ''})` : '(op de kaart gezet)');
+const puntBron = (w) => (w.locatieBron === 'object' ? '(locatie van het puntobject)' : w.locatieBron === 'gps' ? `(GPS${w.nauwkeurigheid ? ` ± ${w.nauwkeurigheid} m` : ''})` : '(op de kaart gezet)');
 
 const GROEP_ICOON = {
   Grasbekledingen: I.gras, Steenbekledingen: I.steen, Asfaltbekledingen: I.asfalt, 'Bijzondere constructies': I.constructie, 'Niet waterkerende elementen': I.kegel, Duinen: I.duin,
@@ -14620,6 +14659,10 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
   const form = app.querySelector('#form');
   const $ = (q) => app.querySelector(q);
   const W = staat.waarnemingen;
+  // Puntobject: de waarneming zit op het punt, tenzij de inspecteur de locatie bewust heeft aangepast.
+  const objPunt = HS.objectPunt(object);
+  const naarObject = (w) => (objPunt && !HS.locatieAangepast(w) ? Object.assign(w, { lat: objPunt.lat, lng: objPunt.lng, locatieBron: 'object', nauwkeurigheid: '', locatieAangepast: false }) : w);
+  W.forEach(naarObject);
   const fotoLijst = (k) => (k === 'alg' ? staat.fotos : W[Number(k.slice(1))].fotos);
   const nieuw = () => ({ id: nieuwId(), aard: 'schadebeeld', zone: W.at(-1)?.zone ?? '', sb: '', groepKeuze: W.at(-1)?.groepKeuze ?? '', elementKeuze: '', wijzer: '', kenmerken: {}, urgentieKleur: '', omschrijving: '', locatie: '', toelichting: '', maatregel: '', maatregelSoort: '', maatregelStatus: 'open', fotos: [] });
 
@@ -14677,13 +14720,15 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
       omtrek?.addTo(map);
       let punt = null;
       const zet = (lat, lng, bron) => {
-        Object.assign(w, { lat: Number(lat.toFixed(7)), lng: Number(lng.toFixed(7)), locatieBron: bron });
+        Object.assign(w, { lat: Number(lat.toFixed(7)), lng: Number(lng.toFixed(7)), locatieBron: bron, locatieAangepast: bron !== 'object' });
         if (bron === 'kaart') w.nauwkeurigheid = '';
         formulierGewijzigd = true;
         if (!punt) {
           punt = L.marker([w.lat, w.lng], { draggable: true, autoPan: true }).addTo(map);
           punt.on('dragend', () => { const p = punt.getLatLng(); zet(p.lat, p.lng, 'kaart'); });
         } else punt.setLatLng([w.lat, w.lng]);
+        const terugKnop = app.querySelector(`[data-w-object="${i}"]`);
+        if (terugKnop) terugKnop.hidden = bron === 'object';
         const t = app.querySelector(`[data-w-coord="${i}"]`);
         if (t) t.innerHTML = `${I.locatie} ${w.lat.toFixed(6)}, ${w.lng.toFixed(6)} ${puntBron(w)}`;
         vak.closest('.wkaartveld')?.classList.remove('ontbreekt');
@@ -14726,7 +14771,8 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
           <div class="veld breed wkaartveld ${w.lat ? '' : 'ontbreekt'}"><label class="vereist">Locatie (punt)</label>
             <div class="wkaart" data-w-kaart="${i}"></div>
             <div class="locatieveld">
-              <button type="button" class="knop" data-gps="${i}">${I.locatie} Mijn GPS-locatie</button>
+              <button type="button" class="knop" data-gps="${i}">${I.locatie} ${objPunt ? 'Locatie aanpassen (GPS)' : 'Mijn GPS-locatie'}</button>
+              ${objPunt ? `<button type="button" class="knop" data-w-object="${i}" title="Terug naar de locatie van het puntobject" ${w.locatieBron === 'object' ? 'hidden' : ''}>↺ Objectlocatie</button>` : ''}
               <input data-w="${i}" data-veld="locatie" value="${esc(w.locatie)}" maxlength="120" placeholder="Omschrijving, bijv. dijkpaal 12 + 40 m"></div>
             <small data-w-coord="${i}">${w.lat ? `${I.locatie} ${Number(w.lat).toFixed(6)}, ${Number(w.lng).toFixed(6)} ${puntBron(w)}` : 'Tik op de kaart waar het gebrek zit, of gebruik je GPS-locatie. Het punt is daarna te verslepen.'}</small></div>
           <div class="veld breed"><label class="vereist">Urgentie</label>
@@ -14814,6 +14860,14 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
       tekenW();
       return;
     }
+    const terugObj = e.target.closest('[data-w-object]');
+    if (terugObj) {
+      Object.assign(W[Number(terugObj.dataset.wObject)], { locatieAangepast: false });
+      naarObject(W[Number(terugObj.dataset.wObject)]);
+      formulierGewijzigd = true;
+      tekenW();
+      return;
+    }
     const gps = e.target.closest('[data-gps]');
     if (gps) {
       if (!navigator.geolocation) { melding('Locatiebepaling wordt niet ondersteund.', 'fout'); return; }
@@ -14826,7 +14880,7 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
           vak.zetPunt(pos.coords.latitude, pos.coords.longitude, 'gps');
           vak.kaart.setView([pos.coords.latitude, pos.coords.longitude], 19, { animate: false });
         } else {
-          Object.assign(W[i], { lat: Number(pos.coords.latitude.toFixed(7)), lng: Number(pos.coords.longitude.toFixed(7)), locatieBron: 'gps' });
+          Object.assign(W[i], { lat: Number(pos.coords.latitude.toFixed(7)), lng: Number(pos.coords.longitude.toFixed(7)), locatieBron: 'gps', locatieAangepast: true });
           tekenW();
         }
         gps.disabled = false;
@@ -14835,7 +14889,7 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
     }
   });
   $('#w-plus').onclick = () => {
-    W.push(nieuw());
+    W.push(naarObject(nieuw()));
     open.clear();
     open.add(W.length - 1);
     tekenW();
@@ -15182,6 +15236,9 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
   const form = app.querySelector('#form');
   const $ = (s) => app.querySelector(s);
   const fotoLijst = (k) => (k === 'alg' ? staat.fotos : b.gebreken[Number(k.slice(1))].fotos);
+  gpsFormObject = () => object;
+  // Een eigen locatie: bij een puntobject alleen als de inspecteur hem bewust heeft aangepast.
+  const eigenLoc = (x) => heeftGps(x) && (!HS.isPuntObject(object) || HS.locatieAangepast(x));
   const bvcGps = koppelGpsVelden(form, (k) => (k[0] === 'm' ? b.maatregelen : b.gebreken)[Number(k.slice(1))], { objectId: () => object?.id ?? '' });
   const locatieMoet = HS.locatieVerplicht(huidigProject?.locatieMaatregel, objectGeometrie(object)?.type);
 
@@ -15213,7 +15270,7 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
           <div class="veld breed"><small>Uiterlijk uitvoeren: <strong data-uiterlijk="${i}">${m.termijn ? datumNL(BV.uitvoerenVoor(m.termijn, $('#f-datum')?.value || staat.datum)) : '–'}</strong></small></div>
           ${gpsVeldHtml(m, `m${i}`).replace('<label>Locatie (GPS)</label>', `<label${locatieMoet ? ' class="vereist"' : ''}>Exacte locatie van de maatregel</label>`)}
           <div class="veld breed"><label>Plaatsomschrijving</label><input data-m="${i}" data-veld="plaatsOmschrijving" value="${esc(m.plaatsOmschrijving ?? '')}" maxlength="150" placeholder="bijv. 3e boom vanaf de kruising, oostzijde; boomnummer"></div>
-          ${b.gebreken.some((g) => heeftGps(g)) && !heeftGps(m) ? `<div class="veld breed"><small>Locatie overnemen van: ${b.gebreken.map((g, n) => (heeftGps(g) ? `<button type="button" class="knop klein" data-locatie-van="${n}" data-locatie-naar="${i}">Gebrek ${n + 1}</button>` : '')).join(' ')}</small></div>` : ''}
+          ${b.gebreken.some(eigenLoc) && !eigenLoc(m) ? `<div class="veld breed"><small>Locatie overnemen van: ${b.gebreken.map((g, n) => (eigenLoc(g) ? `<button type="button" class="knop klein" data-locatie-van="${n}" data-locatie-naar="${i}">Gebrek ${n + 1}</button>` : '')).join(' ')}</small></div>` : ''}
         </div></div>`).join('') : '<p class="mleeg">Geen maatregelen.</p>';
     $('#gemarkeerd-veld').hidden = !b.maatregelen.some((m) => m.bvcMaatregel === 'Boom verwijderen');
   };
@@ -15303,7 +15360,7 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
     if (status === 'afgerond') {
       const fouten = BV.controleer({ ...b, controleur: inspecteur });
       if (!b.niet && locatieMoet) {
-        const zonder = b.maatregelen.findIndex((m) => !heeftGps(m));
+        const zonder = b.maatregelen.findIndex((m) => !HS.gebrekLocatie(m, object));
         if (zonder >= 0) fouten.push(`Leg de exacte locatie vast van maatregel ${zonder + 1} (dit object is een ${/Line/.test(objectGeometrie(object)?.type) ? 'lijn' : 'vlak'}).`);
       }
       if (fouten.length) return melding(`${fouten[0]}${fouten.length > 1 ? ` (en ${fouten.length - 1} meer)` : ''}`, 'fout');
@@ -15317,13 +15374,13 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
     const bvcData = {
       ...b,
       controleur: inspecteur,
-      gebreken: b.gebreken.map(({ fotos, ...g }) => ({ ...g, type: BV.gebrekType(g.omschrijving), fotoIds: fotos.map((f) => f.id) })),
+      gebreken: b.gebreken.map(({ fotos, ...g }) => HS.metGeldendeLocatie({ ...g, type: BV.gebrekType(g.omschrijving), fotoIds: fotos.map((f) => f.id) }, object)),
       // Maatregelen zijn ook zichtbaar in het maatregelenoverzicht, de taken en bij werkzaamheden.
-      maatregelen: b.niet ? [] : b.maatregelen.map((m) => ({
+      maatregelen: b.niet ? [] : b.maatregelen.map((m) => HS.metGeldendeLocatie({
         ...m, bouwdeel: 'Boom', gebrek: eersteGebrek, maatregel: m.bvcMaatregel,
         urgentie: m.termijn === 'acuut' ? 'direct' : '3maanden', uitvoerenVoor: BV.uitvoerenVoor(m.termijn, datum),
         maatregelStatus: m.maatregelStatus ?? 'open',
-      })),
+      }, object)),
       frequentieJaren: jaren,
       volgendeControle: b.niet ? '' : volgendeInspectie(datum, jaren),
     };
@@ -15358,7 +15415,7 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
 
 async function bvcInhoud(i, o) {
   const b = i.bvc ?? {};
-  const gebreken = await Promise.all((b.gebreken ?? []).map((g, n) => bvcGebrekKaart(g, n)));
+  const gebreken = await Promise.all((b.gebreken ?? []).map((g, n) => bvcGebrekKaart(g, n, o)));
   const kleur = b.niet ? '#9aa5b1' : (BV.BVK[b.bvk]?.kleur ?? '#9aa5b1');
   return `
     <div class="raster-2 detailkop">
@@ -15392,7 +15449,7 @@ async function bvcInhoud(i, o) {
     <section class="kaart"><h2>Boomveiligheidsmaatregelen</h2>${(b.maatregelen ?? []).length ? `<div class="tabelhouder"><table>
       <thead><tr><th>Maatregel</th><th>Urgentie</th><th>Uiterlijk</th><th>Locatie</th><th>Status</th></tr></thead><tbody>
       ${b.maatregelen.map((m) => `<tr data-bevinding="${esc(String(m.id ?? ''))}"><td>${esc(m.bvcMaatregel)}</td><td>${esc(BV.URGENTIE[m.termijn]?.label ?? '')}</td><td>${datumNL(m.uitvoerenVoor)}</td>
-        <td>${heeftGps(m) ? `${I.locatie} ${gpsLink(m)}` : '<small class="zacht">object</small>'}${m.plaatsOmschrijving ? `<br><small>${esc(m.plaatsOmschrijving)}</small>` : ''}</td>
+        <td>${(() => { const loc = HS.gebrekLocatie(m, o); return !loc ? '<small class="zacht">object</small>' : loc.bron === 'object' ? `${I.locatie} <small>objectlocatie</small>` : `${I.locatie} ${gpsLink(m)}`; })()}${m.plaatsOmschrijving ? `<br><small>${esc(m.plaatsOmschrijving)}</small>` : ''}</td>
         <td>${m.maatregelStatus === 'uitgevoerd' ? '<span class="label-status uitgevoerd">Uitgevoerd</span>' : '<span class="label-status binnenkort">Open</span>'}</td></tr>`).join('')}
       </tbody></table></div>${b.maatregelen.some((m) => m.bvcMaatregel === 'Boom verwijderen') ? `<p><small>Gemarkeerd met oranje streep: ${b.gemarkeerd ? 'ja' : 'nee'}</small></p>` : ''}`
     : '<p class="leeg">Geen maatregelen.</p>'}</section>`}

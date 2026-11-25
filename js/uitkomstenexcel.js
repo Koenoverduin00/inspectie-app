@@ -184,7 +184,7 @@ export function uitkomstRijen({ registraties, extra = () => [], bevindingExtra =
     for (const p of r.checklist ?? []) ant(p.punt, TY.CHECK[p.status] ?? 'Niet beantwoord');
     for (const [l, v] of ex) ant(l, v);
     bev.forEach((b, n) => {
-      const gps = b.punt ? puntCoord(b.punt) : ['', '', '', ''];
+      const gps = b.punt ? puntCoord(b.punt, o) : ['', '', '', ''];
       // Antwoorden op de vragen per bevinding (bijv. een ingewonnen lijn of vlak).
       const bx = (b.punt ? bevindingExtra(r, b.punt) : null) ?? { tekst: '', wkt: '' };
       bevindingen.push({

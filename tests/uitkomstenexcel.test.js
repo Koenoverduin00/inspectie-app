@@ -28,7 +28,11 @@ test('registraties, antwoorden, bevindingen en vervolg', () => {
   assert.ok(r.antwoorden.some((a) => a.waarden[8] === 'Reflectie' && a.waarden[9] === 'Niet in orde'));
   assert.ok(r.antwoorden.some((a) => a.waarden[8] === 'Afvoer' && a.waarden[9] === 'Ja'));
   assert.equal(r.bevindingen.length, 1);
-  assert.equal(r.bevindingen[0].waarden.at(-2), 52.2);
+  // Puntobject: de locatie van het object is leidend (automatische GPS telt niet) ...
+  assert.equal(r.bevindingen[0].waarden.at(-2), 52.1);
+  // ... behalve als de inspecteur de locatie bewust heeft aangepast.
+  regs[1].r.gebreken[0].locatieAangepast = true;
+  assert.equal(uitkomstRijen({ registraties: regs, extra: () => [], beoordeling: () => 'ingediend' }).bevindingen[0].waarden.at(-2), 52.2);
   assert.deepEqual(r.vervolg.map((v) => v.waarden[3]), ['Bevinding uit inspectie', 'Vervolg op werkzaamheid', 'Overgeslagen – opnieuw inplannen']);
   const voor = r.vervolg[0].waarden[8];
   assert.equal(voor.toISOString().slice(0, 10), '2027-02-01');

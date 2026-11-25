@@ -9,6 +9,7 @@ import * as DG from './digigids.js';
 import * as D from './decompositie.js';
 import * as TY from './inspectietypen.js';
 import * as FI from './fotoinfo.js';
+import { gebrekLocatie } from './herstel.js';
 
 const STATUS_TEKST = { afgerond: 'Gedaan', concept: 'Concept (niet afgerond)', overgeslagen: 'Overgeslagen', open: 'Open' };
 
@@ -24,8 +25,9 @@ export function coordinaten(o) {
   return { lat: +lat.toFixed(7), lng: +lng.toFixed(7), x: +x.toFixed(2), y: +y.toFixed(2) };
 }
 
-/** RD en WGS84 van een puntlocatie (waarneming). */
-export function puntCoord(w) {
+/** RD en WGS84 van een puntlocatie (waarneming). Met object: de geldende locatie (puntobject is leidend). */
+export function puntCoord(w, o = null) {
+  if (o) w = gebrekLocatie(w, o) ?? {};
   const lat = Number(w?.lat); const lng = Number(w?.lng);
   if (!w?.lat || !Number.isFinite(lat) || !Number.isFinite(lng)) return ['', '', '', ''];
   const [x, y] = BV.wgs84NaarRd(lng, lat);
@@ -146,7 +148,7 @@ export function resultaatRijen({ lijst, laagNaam = new Map(), extra = () => [] }
             ST.schadebeeldNaam(w), wz ? `${ST.CATEGORIEEN[wz.categorie]} (wijzer ${wz.nr})` : (w.digigids ? 'Digigids' : ''), w.digigidsKlasse ? `Digigids: ${w.digigidsKlasse}` : '',
             '', '', '', ST.URGENTIE[w.urgentieKleur]?.label ?? '', [kenm, w.toelichting].filter(Boolean).join(' — '), w.maatregel ?? '',
             [w.maatregelSoort, w.urgentie ? URGENTIES.find((u) => u.id === w.urgentie)?.label : ''].filter(Boolean).join(' · '), (w.fotoIds ?? []).length || '',
-            ...puntCoord(w)],
+            ...puntCoord(w, o)],
           kleur: ST.URGENTIE[w.urgentieKleur]?.kleur ?? '',
         });
         if (w.maatregel || w.urgentie) {
@@ -156,7 +158,7 @@ export function resultaatRijen({ lijst, laagNaam = new Map(), extra = () => [] }
       });
     } else if (b) {
       (b.gebreken ?? []).forEach((g, n) => {
-        gebreken.push({ waarden: [o.code, o.naam, datum(i.datum), n + 1, g.plaats ?? '', g.omschrijving ?? '', g.type || BV.gebrekType(g.omschrijving), g.gevolg ?? '', '', '', '', '', g.toelichting ?? '', '', '', (g.fotoIds ?? []).length || '', ...puntCoord(g)], kleur: '' });
+        gebreken.push({ waarden: [o.code, o.naam, datum(i.datum), n + 1, g.plaats ?? '', g.omschrijving ?? '', g.type || BV.gebrekType(g.omschrijving), g.gevolg ?? '', '', '', '', '', g.toelichting ?? '', '', '', (g.fotoIds ?? []).length || '', ...puntCoord(g, o)], kleur: '' });
         for (const fid of g.fotoIds ?? []) fotos.push({ objectcode: o.code, onderwerp: `Gebrek ${n + 1}: ${g.omschrijving ?? ''}`, fotoId: fid, info: i.fotoInfo?.[fid] ?? null });
       });
       for (const m of bvcMaatregelen) {
@@ -175,7 +177,7 @@ export function resultaatRijen({ lijst, laagNaam = new Map(), extra = () => [] }
           const bo = TY.bevindingOordeel(i, g);
           gebreken.push({
             waarden: [o.code, o.naam, datum(i.datum), n + 1, g.locatie ? `${g.bouwdeel ?? ''} (${g.locatie})` : g.bouwdeel ?? '', g.checkpunt ? TY.CHECK.nok : g.gebrek ?? '', i.type?.naam ?? '', '',
-              '', '', '', bo.label, g.toelichting ?? '', g.maatregel ?? '', URGENTIES.find((u) => u.id === g.urgentie)?.label ?? '', (g.fotoIds ?? []).length || '', ...puntCoord(g)],
+              '', '', '', bo.label, g.toelichting ?? '', g.maatregel ?? '', URGENTIES.find((u) => u.id === g.urgentie)?.label ?? '', (g.fotoIds ?? []).length || '', ...puntCoord(g, o)],
             kleur: bo.kleur,
           });
           if (g.maatregel || g.urgentie) {
@@ -190,7 +192,7 @@ export function resultaatRijen({ lijst, laagNaam = new Map(), extra = () => [] }
         gebreken.push({
           waarden: [o.code, o.naam, datum(i.datum), n + 1, g.locatie ? `${g.bouwdeel ?? ''} (${g.locatie})` : g.bouwdeel ?? '', g.gebrek ?? '', '', '',
             ERNST[g.ernst]?.label ?? '', INTENSITEIT[g.intensiteit] ?? '', getal(g.omvang), s || '', g.toelichting ?? '', g.maatregel ?? '',
-            URGENTIES.find((u) => u.id === g.urgentie)?.label ?? '', (g.fotoIds ?? []).length || '', ...puntCoord(g)],
+            URGENTIES.find((u) => u.id === g.urgentie)?.label ?? '', (g.fotoIds ?? []).length || '', ...puntCoord(g, o)],
           kleur: s ? CONDITIES[s].kleur : '',
         });
         if (g.maatregel || g.urgentie) {

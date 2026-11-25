@@ -140,3 +140,42 @@ export function locatieVerplicht(instelling, geometrieType) {
   if (instelling === 'altijd') return true;
   return /Polygon|LineString/.test(String(geometrieType ?? ''));
 }
+
+// --- Locatie van een gebrek ---------------------------------------------------------
+// Bij een puntobject zit het gebrek op het punt: de locatie van het object is leidend.
+// Alleen als de inspecteur de locatie bewust aanpast (locatieAangepast) telt de eigen locatie van het gebrek.
+// Bij vlakken en lijnen telt de eigen locatie van het gebrek (GPS of op de kaart).
+
+const getal = (v) => (v === '' || v == null ? NaN : Number(v));
+const geldig = (lat, lng) => Number.isFinite(getal(lat)) && Number.isFinite(getal(lng));
+
+/** Coördinaten van een puntobject ({ lat, lng }), of null als het object geen punt is. */
+export function objectPunt(o) {
+  const t = o?.geometrie?.type;
+  if (t && t !== 'Point') return null;
+  if (t === 'Point') {
+    const [lng, lat] = o.geometrie.coordinates ?? [];
+    return geldig(lat, lng) ? { lat: Number(lat), lng: Number(lng) } : null;
+  }
+  return geldig(o?.lat, o?.lng) ? { lat: Number(o.lat), lng: Number(o.lng) } : null;
+}
+export const isPuntObject = (o) => Boolean(objectPunt(o));
+
+/** Bewust aangepast door de inspecteur. Oude registraties: een op de kaart gezet punt telt als bewust gekozen, automatische GPS niet. */
+export const locatieAangepast = (g) => g?.locatieAangepast === true || (g?.locatieAangepast === undefined && g?.locatieBron === 'kaart');
+
+/** De locatie die geldt voor een gebrek: { lat, lng, bron } of null. */
+export function gebrekLocatie(g, o) {
+  const punt = objectPunt(o);
+  const eigen = geldig(g?.lat, g?.lng) ? { lat: Number(g.lat), lng: Number(g.lng), bron: g.locatieBron || 'gps', ...(g.nauwkeurigheid ? { nauwkeurigheid: g.nauwkeurigheid } : {}) } : null;
+  if (punt && !(locatieAangepast(g) && eigen)) return { ...punt, bron: 'object' };
+  return eigen;
+}
+
+/** Het gebrek met de geldende locatie ingevuld (voor opslag en exports); laat de rest ongemoeid. */
+export function metGeldendeLocatie(g, o) {
+  const loc = gebrekLocatie(g, o);
+  if (!loc || loc.bron !== 'object') return g;
+  const { nauwkeurigheid, ...rest } = g;
+  return { ...rest, lat: loc.lat, lng: loc.lng, locatieBron: 'object', locatieAangepast: false };
+}

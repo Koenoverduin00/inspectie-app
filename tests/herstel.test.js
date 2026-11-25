@@ -70,3 +70,27 @@ test('locatieVerplicht', () => {
   assert.equal(HS.locatieVerplicht('altijd', 'Point'), true);
   assert.equal(HS.locatieVerplicht('nooit', 'Polygon'), false);
 });
+
+test('gebrekLocatie: puntobject is leidend, tenzij bewust aangepast', () => {
+  const punt = { lat: 52.1, lng: 5.1 };
+  const geoPunt = { geometrie: { type: 'Point', coordinates: [5.2, 52.2] } };
+  const vlak = { geometrie: { type: 'Polygon', coordinates: [[[5, 52], [5.1, 52], [5.1, 52.1], [5, 52]]] } };
+  assert.deepEqual(HS.gebrekLocatie({}, punt), { lat: 52.1, lng: 5.1, bron: 'object' });
+  assert.deepEqual(HS.gebrekLocatie({}, geoPunt), { lat: 52.2, lng: 5.2, bron: 'object' });
+  // automatische GPS op een punt telt niet
+  assert.equal(HS.gebrekLocatie({ lat: 52.3, lng: 5.3, locatieBron: 'gps' }, punt).bron, 'object');
+  // bewust aangepast wel
+  assert.deepEqual(HS.gebrekLocatie({ lat: 52.3, lng: 5.3, locatieBron: 'gps', locatieAangepast: true }, punt), { lat: 52.3, lng: 5.3, bron: 'gps' });
+  // oude registratie, op de kaart gezet = bewust
+  assert.equal(HS.gebrekLocatie({ lat: 52.3, lng: 5.3, locatieBron: 'kaart' }, punt).bron, 'kaart');
+  // aangepast zonder coördinaten: toch het object
+  assert.equal(HS.gebrekLocatie({ locatieAangepast: true }, punt).bron, 'object');
+  // terug naar object
+  assert.equal(HS.gebrekLocatie({ lat: 52.3, lng: 5.3, locatieBron: 'kaart', locatieAangepast: false }, punt).bron, 'object');
+  // vlak: eigen locatie of niets
+  assert.equal(HS.gebrekLocatie({}, vlak), null);
+  assert.equal(HS.gebrekLocatie({ lat: 52.05, lng: 5.05, locatieBron: 'gps' }, vlak).bron, 'gps');
+  assert.equal(HS.isPuntObject(vlak), false);
+  assert.deepEqual(HS.metGeldendeLocatie({ id: 'a', lat: 1, lng: 2, nauwkeurigheid: 9, locatieBron: 'gps' }, punt), { id: 'a', lat: 52.1, lng: 5.1, locatieBron: 'object', locatieAangepast: false });
+  assert.deepEqual(HS.metGeldendeLocatie({ id: 'a' }, vlak), { id: 'a' });
+});

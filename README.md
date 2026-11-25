@@ -1139,6 +1139,26 @@ naar een **eisvraag** die in de formulieren komt, gekoppeld aan het **eisnummer*
   ondertekeningsblok. Optioneel met foto's als bewijs. *Afdrukken / opslaan als PDF* geeft het dossier; *Excel* geeft
   dezelfde inhoud in de bladen Samenvatting, Eisen, Bewijs en Afwijkingen.
 
+## Locatie van een gebrek: het puntobject is leidend
+
+Bij **alle inspecties en schouwen** geldt: bij een **puntobject** (bijv. een boom, bord of put) zit het gebrek op het
+punt. De locatie van het object is dan de locatie van het gebrek. Dit geldt voor:
+- gewone inspecties en schouwen (NEN 2767, oordeel, checklist);
+- BVC-gebreken en BVC-maatregelen;
+- STOWA-waarnemingen.
+
+- In het formulier staat **"Locatie van het object"** met de coördinaten van het punt. Op de telefoon wordt bij een
+  puntobject geen GPS meer automatisch vastgelegd.
+- **Uitzondering:** staat het puntobject niet goed op de kaart, dan kiest de inspecteur **Locatie aanpassen**. De app
+  probeert meteen de GPS-positie; *Op kaart kiezen* kan ook. Het gebrek krijgt dan `locatieAangepast: true` en die
+  locatie telt. Met **↺ Objectlocatie** ga je terug naar het punt.
+- Bij **vlakken en lijnen** telt de eigen locatie van het gebrek (GPS of op de kaart), zoals voorheen.
+- Bij het opslaan krijgt een gebrek op een puntobject de coördinaten van het object (`locatieBron: 'object'`).
+- **Oudere registraties:** een eerder automatisch vastgelegde GPS-positie op een puntobject telt niet meer; de
+  objectlocatie geldt. Een punt dat met de hand *op de kaart* is gezet telt wel als bewust aangepast.
+- De regel staat in één functie (`gebrekLocatie` in `js/herstel.js`). Die wordt gebruikt door de formulieren, de
+  detailpagina's en rapporten, de herstellijst en herstelkaart, en de Excel-exports (resultaten en uitkomsten).
+
 ## Ronde afronden, herstellijst en herstelronde
 
 Uitgangspunt: **niets gaat automatisch**. De bediener bepaalt zelf welke gebreken worden uitgevoerd: alle, geen, de
