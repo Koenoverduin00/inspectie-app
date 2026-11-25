@@ -437,7 +437,8 @@ body.modus-mobiel .toast { bottom: auto; top: calc(64px + env(safe-area-inset-to
 .samensteller select, .samensteller input { flex: 1 1 160px; }
 tr.gekozen td { background: color-mix(in srgb, var(--ok) 9%, transparent); }
 td input[type=checkbox] { width: 20px; height: 20px; min-height: 0; }
-#pakketkaart { height: 55vh; min-height: 320px; margin: 0; padding: 0; }
+#pakketkaart, #herstelkaart { height: 55vh; min-height: 320px; margin: 0; padding: 0; }
+#herstelkaart { height: 45vh; }
 .popupknoppen { display: flex; gap: .4rem; margin-top: .4rem; }
 .popupknoppen .knop { min-height: 34px; }
 .leaflet-popup-content a.knop.primair { color: #fff; }
@@ -2195,3 +2196,15 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
 .rd-optie { display: flex; align-items: center; gap: .4rem; font-size: .82rem; margin: .2rem 0 .4rem; }
 .rd-bewerk { margin-bottom: .75rem; }
 @media (max-width: 760px) { .rd-raster2 { grid-template-columns: minmax(0, 1fr); } .rd-blok .rd-kaartvlak { height: 260px; } }
+
+/* Herstellijst en ronde afronden */
+.herstelselectie { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.herstelselectie .inline { display: inline-flex; align-items: center; gap: .35rem; white-space: nowrap; }
+.herstelselectie select { width: auto; max-width: 14rem; }
+.herstellijst tr.gekozen td { background: color-mix(in srgb, var(--primair, #0b4f6c) 8%, transparent); }
+.herstellijst select { min-width: 9.5rem; }
+.herstelvoet { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; justify-content: flex-end; margin-top: 1rem; }
+.herstelvoet select { width: auto; max-width: 16rem; }
+.rondeknoppen { white-space: normal; }
+.rondeknoppen .knop { margin: .1rem 0; }
+.afronddialoog .waarschuwingskaart, .afronddialoog .mhier { margin: .5rem 0; }

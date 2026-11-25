@@ -1139,6 +1139,50 @@ naar een **eisvraag** die in de formulieren komt, gekoppeld aan het **eisnummer*
   ondertekeningsblok. Optioneel met foto's als bewijs. *Afdrukken / opslaan als PDF* geeft het dossier; *Excel* geeft
   dezelfde inhoud in de bladen Samenvatting, Eisen, Bewijs en Afwijkingen.
 
+## Ronde afronden, herstellijst en herstelronde
+
+Uitgangspunt: **niets gaat automatisch**. De bediener bepaalt zelf welke gebreken worden uitgevoerd: alle, geen, de
+eerste N, een selectie op urgentie of besluit, of helemaal niets. Logica in `js/herstel.js` (getest in
+`tests/herstel.test.js`).
+
+- **Exacte locatie bij BVC-maatregelen.** Elke maatregel heeft een eigen locatie: via GPS (*Mijn locatie*) of door te
+  tikken op de kaart, waarop de omtrek van het object staat. Er is ook een *Plaatsomschrijving* (bijv. "3e boom vanaf
+  de kruising") en een knop om de locatie van een gebrek over te nemen. Op de telefoon wordt de positie bij een nieuwe
+  maatregel automatisch vastgelegd. De projectinstelling **Exacte locatie bij maatregelen** bepaalt of de locatie
+  verplicht is bij het afronden:
+  - verplicht bij vlakken en lijnen (standaard);
+  - altijd verplicht;
+  - niet verplicht.
+- **Ronde afronden (pc).** De knop *Afronden* in de rondetabel van het werkpakket opent eerst een controle: welke
+  objecten nog open zijn, welke inspecties nog concept zijn en wat nog op beoordeling wacht. Voor de open objecten kies
+  je:
+  - **open laten staan**;
+  - **markeren als niet uitgevoerd**: worden overgeslagen met de reden "Niet uitgevoerd bij afronding";
+  - **meenemen naar een nieuwe ronde**: een ronde "Restant Rn" met alleen die objecten.
+
+  De afronding wordt vastgelegd op de ronde (`afronding`: wie, wanneer, open objecten, keuze). *Heropenen* zet de ronde
+  weer op actief; de historie blijft bewaard.
+- **Herstellijst** (`#/werkpakketten/<id>/herstel?ronde=<id>`, ook via de knop *Gebreken (n)* in de rondetabel).
+  - Toont alle gebreken met een maatregel uit de afgeronde inspecties van die ronde, met de urgentste eerst.
+  - Alleen hier staan alle gebreken als punten op de kaart: de kleur geeft de urgentie, een dikke rand betekent
+    gekozen.
+  - Per gebrek leg je een **besluit** vast: binnen onderhoud, meerwerk, nader onderzoek of niet uitvoeren.
+  - Onder **Standaard per maatregel** stel je de projectstandaard in (`project.herstelStandaard`). Die geldt voor elk
+    gebrek waar je niet apart iets kiest.
+  - De lijst is te exporteren naar CSV.
+- **Doorzetten.** Je zet de gekozen gebreken door naar:
+  - een **nieuwe herstelronde in hetzelfde werkpakket** ("Gebreken uit Rn");
+  - een **bestaande herstelronde**;
+  - een **nieuwe ronde in een ander werkpakket**, bijvoorbeeld meerwerk. Ontbrekende objecten worden aan dat pakket
+    toegevoegd.
+
+  De herstelronde verwijst naar de gebreken (`ronde.herstel.items`); de gebreken zelf blijven in de inspectie staan.
+  Opnieuw doorzetten verplaatst een gebrek.
+- **Uitvoeren.** De pakketkaart van een herstelronde (pc en telefoon) toont de doorgezette gebreken op hun exacte
+  locatie, met een lijst *Gebreken in deze ronde* (x van y hersteld). In het werkformulier staan de gebreken van het
+  object vooraf aangevinkt (*Uit herstelronde*). Na het opslaan staat de maatregel op uitgevoerd; dat is ook terug te
+  zien in de herstellijst.
+
 ## Werkformulier: uitvoerder uit het account, foto's vóór/ná, start- en einddatum
 
 - **Uitvoerder / inspecteur wordt niet meer gevraagd.** Het werkformulier, het inspectieformulier, BVC en STOWA vullen de
