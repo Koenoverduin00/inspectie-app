@@ -291,12 +291,19 @@ as $$
   order by b.naam;
 $$;
 
--- Bedrijf aanmaken of hernoemen: alleen de platformbeheerder.
+-- Bedrijf aanmaken: alleen de platformbeheerder. Hernoemen: de platformbeheerder, of de beheerder van dat bedrijf.
 create or replace function public.bedrijf_opslaan(p_id text, p_naam text)
 returns void language plpgsql security definer set search_path = public
 as $$
 begin
-  if not public.is_platformbeheerder() then raise exception 'Alleen de platformbeheerder kan bedrijven beheren'; end if;
+  if not public.is_platformbeheerder() then
+    if public.is_bedrijfsbeheerder() and p_id = public.mijn_bedrijf() then
+      if coalesce(trim(p_naam), '') = '' then raise exception 'Vul de naam van het bedrijf in'; end if;
+      update public.bedrijven set naam = trim(p_naam) where id = p_id;
+      return;
+    end if;
+    raise exception 'Alleen de platformbeheerder kan bedrijven beheren';
+  end if;
   if coalesce(trim(p_naam), '') = '' then raise exception 'Vul de naam van het bedrijf in'; end if;
   insert into public.bedrijven (id, naam) values (p_id, trim(p_naam))
   on conflict (id) do update set naam = excluded.naam, verwijderd = false;

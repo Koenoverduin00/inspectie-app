@@ -67,6 +67,11 @@ select public.t_is('B-beheerder: persoon van A verwijderen geweigerd',
   public.t_fout($$select public.verwijder_bedrijfslid('inspecteur@a.nl')$$), 'Je kunt alleen personen van je eigen bedrijf beheren');
 select public.t_is('B-beheerder: zichzelf verwijderen geweigerd',
   public.t_fout($$select public.verwijder_bedrijfslid('beheer@b.nl')$$), 'Je kunt jezelf niet uit het bedrijf verwijderen');
+select public.t_is('B-beheerder: eigen bedrijf hernoemen mag', public.t_fout($$select public.bedrijf_opslaan('bedrijf-2', 'Bedrijf B bv')$$), 'GEEN FOUT');
+select public.t_is('B-beheerder: naam gewijzigd', (select naam from public.bedrijven_lijst() where id = 'bedrijf-2'), 'Bedrijf B bv');
+select public.t_is('B-beheerder: ander bedrijf hernoemen geweigerd', public.t_fout($$select public.bedrijf_opslaan('bedrijf-1', 'Gekaapt')$$), 'Alleen de platformbeheerder kan bedrijven beheren');
+reset role; select public.t_is('naam bedrijf A ongewijzigd', (select naam from public.bedrijven where id = 'bedrijf-1'), 'Mijn bedrijf');
+set role authenticated;
 select public.t_is('B-beheerder: geen bedrijven aanmaken',
   public.t_fout($$select public.bedrijf_opslaan('bedrijf-3', 'X')$$), 'Alleen de platformbeheerder kan bedrijven beheren');
 select public.t_is('B-beheerder: accountstatus alleen eigen bedrijf',

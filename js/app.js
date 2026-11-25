@@ -138,7 +138,7 @@ const ROUTES = [
   [/^\/kaart$/, 'kaart', kaart],
   [/^\/instellingen$/, 'instellingen', instellingen],
   [/^\/personen$/, 'personen', personenPagina],
-  [/^\/bedrijven$/, 'personen', bedrijvenPagina],
+  [/^\/bedrijven$/, 'bedrijven', bedrijvenPagina],
   [/^\/toewijzen$/, 'toewijzen', toewijzenPagina],
   [/^\/decompositie$/, 'decompositie', decompositiePagina],
   [/^\/inspectietypen$/, 'inspectietypen', inspectietypenPagina],
@@ -154,7 +154,7 @@ const ROUTES = [
 const NAV_GROEP = { inspecties: 'werkpakketten', werkzaamheden: 'werkpakketten', maatregelen: 'werkpakketten', taken: 'planning', kaart: 'instellingen', personen: 'instellingen', decompositie: 'instellingen', eisen: 'instellingen', inspectietypen: 'instellingen', bibliotheek: 'instellingen', toewijzen: 'werkpakketten' };
 const TABBLADEN = {
   werkpakketten: () => [['#/werkpakketten', I.pakket + ' Werkpakketten'], ['#/inspecties', I.inspectie + ' Inspecties'], ['#/werkzaamheden', I.werk + ' Werkzaamheden'], ['#/maatregelen', I.let + ' Maatregelen'], ...(magBeheren() ? [['#/toewijzen', I.personen + ' Toewijzen']] : [])],
-  instellingen: () => (magBeheren() ? [['#/instellingen', I.instellingen + ' Algemeen'], ...(isPlatform() ? [['#/bedrijven', I.personen + ' Bedrijven']] : []), ['#/personen', I.personen + ' Personen'], ['#/kaart', I.kaart + ' Kaart & GIS'], ['#/inspectietypen', I.inspectie + ' Inspectietypen'], ['#/bibliotheek', I.lijst + ' Bibliotheek'], ['#/decompositie', I.lagen + ' Decompositie'], ['#/eisen', I.taak + ' Eisen']] : []),
+  instellingen: () => (magBeheren() ? [['#/instellingen', I.instellingen + ' Algemeen'], ['#/personen', I.personen + ' Personen'], ['#/kaart', I.kaart + ' Kaart & GIS'], ['#/inspectietypen', I.inspectie + ' Inspectietypen'], ['#/bibliotheek', I.lijst + ' Bibliotheek'], ['#/decompositie', I.lagen + ' Decompositie'], ['#/eisen', I.taak + ' Eisen']] : []),
 };
 // Alleen de overzichtspagina's krijgen tabbladen (geen formulieren of details).
 const TAB_PAGINAS = /^\/(werkpakketten|inspecties|werkzaamheden|maatregelen|toewijzen|instellingen|personen|bedrijven|kaart|decompositie|inspectietypen|bibliotheek|eisen)$/;
@@ -9047,11 +9047,19 @@ async function werkProjectkopBij() {
   werkInboxBadgeBij();
   chip.textContent = p ? p.naam : 'Kies een project';
   // Platformbeheerder: in welk bedrijf werk je nu?
+  // Linksboven: het bedrijf. Beheerders klikken door naar de bedrijfsinstellingen (jij: alle bedrijven); anderen zien alleen de naam.
   let bchip = document.getElementById('bedrijfchip');
-  if (isPlatform()) {
-    if (!bchip) { chip.insertAdjacentHTML('beforebegin', '<a id="bedrijfchip" class="projectchip bedrijfchip" href="#/bedrijven" title="Ander bedrijf kiezen"></a>'); bchip = document.getElementById('bedrijfchip'); }
-    if (!bedrijfNamen.size) await laadBedrijven();
-    bchip.textContent = bedrijfNamen.get(huidigBedrijfId()) ?? 'Bedrijf';
+  if (bedrijvenAan()) {
+    const klik = magBeheren();
+    if (bchip && (bchip.tagName === 'A') !== klik) { bchip.remove(); bchip = null; }
+    if (!bchip) {
+      chip.insertAdjacentHTML('beforebegin', klik
+        ? `<a id="bedrijfchip" class="projectchip bedrijfchip" href="#/bedrijven" title="${isPlatform() ? 'Bedrijven en bedrijfsinstellingen' : 'Bedrijfsinstellingen'}"></a>`
+        : '<span id="bedrijfchip" class="projectchip bedrijfchip alleenlezen"></span>');
+      bchip = document.getElementById('bedrijfchip');
+    }
+    if (isPlatform() && !bedrijfNamen.size) await laadBedrijven();
+    bchip.textContent = (isPlatform() ? bedrijfNamen.get(huidigBedrijfId()) : sync.bedrijf()?.naam) ?? 'Bedrijf';
   } else bchip?.remove();
   // Maar één project: op de telefoon valt er niets te kiezen.
   const een = Boolean(p) && (await zichtbareProjecten()).length <= 1 && !magBeheren();
@@ -9093,19 +9101,22 @@ function bedrijfKeuzeHtml(lijst) {
 }
 
 async function bedrijvenPagina() {
-  if (!isPlatform()) {
-    app.innerHTML = leegKaart('Alleen de platformbeheerder kan bedrijven beheren.', '<a class="knop" href="#/projecten">Naar de projecten</a>');
+  if (!bedrijvenAan() || !magBeheren()) {
+    app.innerHTML = leegKaart('Alleen beheerders van het bedrijf kunnen de bedrijfsinstellingen openen.', '<a class="knop" href="#/projecten">Naar de projecten</a>');
     return;
   }
+  const platform = isPlatform();
   if (!navigator.onLine) {
     app.innerHTML = leegKaart('Bedrijven beheren kan alleen met internetverbinding.', '<a class="knop" href="#/projecten">Naar de projecten</a>');
     return;
   }
   const lijst = await laadBedrijven();
   app.innerHTML = `
-    <div class="paginakop"><div><h1>Bedrijven</h1>
-      <p>Elk bedrijf is een eigen omgeving met eigen projecten, personen, formulieren, inspectietypen en eisen. Een bedrijf ziet nooit de gegevens van een ander bedrijf; alleen jij (platformbeheerder) ziet alle bedrijven.</p></div></div>
-    <form class="kaart" id="bedrijf-nieuw" novalidate>
+    <div class="paginakop"><div><h1>${platform ? 'Bedrijven' : 'Bedrijfsinstellingen'}</h1>
+      <p>${platform ? 'Elk bedrijf is een eigen omgeving met eigen projecten, personen, formulieren, inspectietypen en eisen. Een bedrijf ziet nooit de gegevens van een ander bedrijf; alleen jij (platformbeheerder) ziet alle bedrijven.'
+    : 'De instellingen van je bedrijf: naam, beheerders en gebruikers, en de formulierenbibliotheek. Alleen beheerders van het bedrijf zien deze pagina.'}</p></div>
+      <div class="knoppen"><a class="knop" href="#/projecten">← Projecten</a></div></div>
+    ${platform ? `<form class="kaart" id="bedrijf-nieuw" novalidate>
       <h2>${I.personen} Nieuw bedrijf</h2>
       <div class="velden">
         <div class="veld"><label for="b-naam" class="vereist">Naam van het bedrijf</label><input id="b-naam" name="naam" maxlength="120" required autocomplete="off"></div>
@@ -9115,20 +9126,19 @@ async function bedrijvenPagina() {
           <small>De beheerder krijgt een mail met een inloglink en richt daarna zelf projecten en personen in. Een e-mailadres hoort bij één bedrijf.</small></span></label></div>
       </div>
       <div class="formvoet"><button class="knop primair" type="submit">＋ Bedrijf aanmaken</button></div>
-    </form>
+    </form>` : ''}
     <section class="kaart" style="padding:0"><div class="tabelhouder"><table class="bedrijventabel">
       <thead><tr><th>Bedrijf</th><th>Beheerders</th><th>Personen</th><th>Projecten</th><th></th></tr></thead>
       <tbody>${lijst.length ? lijst.map((b) => `<tr data-bedrijf="${esc(b.id)}" class="${b.id === huidigBedrijfId() ? 'gekozen' : ''}">
         <td><strong>${esc(b.naam)}</strong>${b.id === huidigBedrijfId() ? ' <span class="label-status afgerond">Hier werk je nu</span>' : ''}<br><small class="zacht">sinds ${datumNL(String(b.aangemaakt ?? '').slice(0, 10))}</small></td>
         <td>${b.beheerders ?? 0}</td><td>${b.leden ?? 0}</td><td>${b.projecten ?? 0}</td>
-        <td class="knoppen" style="flex-wrap:nowrap">
-          <button type="button" class="knop klein ${b.id === huidigBedrijfId() ? '' : 'primair'}" data-b="open">Openen</button>
-          <button type="button" class="knop klein" data-b="personen">Personen</button>
+        <td class="knoppen" style="flex-wrap:wrap">
+          ${platform ? `<button type="button" class="knop klein ${b.id === huidigBedrijfId() ? '' : 'primair'}" data-b="open">Openen</button>` : ''}
+          <button type="button" class="knop klein" data-b="personen">${I.personen} Beheerders en gebruikers</button>
+          <button type="button" class="knop klein" data-b="bibliotheek">${I.lijst} Formulierenbibliotheek</button>
           <button type="button" class="knop klein" data-b="naam">Naam wijzigen</button></td></tr>`).join('')
     : '<tr><td colspan="5" class="leeg">Nog geen bedrijven. Voer update 013 uit in Supabase.</td></tr>'}</tbody></table></div></section>`;
-  if (!isMobiel()) app.insertAdjacentHTML('afterbegin', tabbalk('/bedrijven', 'instellingen'));
-
-  app.querySelector('#bedrijf-nieuw').onsubmit = async (e) => {
+  app.querySelector('#bedrijf-nieuw')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = e.target;
     const naam = f.elements.naam.value.trim();
@@ -9148,17 +9158,18 @@ async function bedrijvenPagina() {
       melding(fout instanceof TypeError ? 'Geen verbinding met de server.' : fout.message, 'fout');
       knop.disabled = false;
     }
-  };
+  });
   app.querySelector('.bedrijventabel tbody').addEventListener('click', async (e) => {
     const k = e.target.closest('[data-b]');
     if (!k) return;
     const id = k.closest('tr').dataset.bedrijf;
     const b = lijst.find((x) => x.id === id);
     if (k.dataset.b === 'open') { await kiesBedrijf(id); ga('#/projecten'); return; }
+    if (k.dataset.b === 'bibliotheek') { if (platform && id !== huidigBedrijfId()) await kiesBedrijf(id); ga('#/bibliotheek'); return; }
     if (k.dataset.b === 'naam') {
       const nieuw = prompt('Nieuwe naam van het bedrijf', b.naam);
       if (!nieuw || !nieuw.trim()) return;
-      try { await sync.rpc('bedrijf_opslaan', { p_id: id, p_naam: nieuw.trim() }); melding('Naam gewijzigd'); bedrijvenPagina(); } catch (fout) { melding(fout.message, 'fout'); }
+      try { await sync.rpc('bedrijf_opslaan', { p_id: id, p_naam: nieuw.trim() }); if (!platform) await sync.haalBedrijfOp(); melding('Naam gewijzigd'); bedrijfNamen = new Map(); werkProjectkopBij(); bedrijvenPagina(); } catch (fout) { melding(fout.message, 'fout'); }
       return;
     }
     if (k.dataset.b === 'personen') bedrijfPersonenDialoog(b);
@@ -9181,9 +9192,9 @@ async function bedrijfPersonenDialoog(b) {
         <div class="veld"><button class="knop primair" type="submit">＋ Toevoegen</button></div>
       </form>
       <div class="tabelhouder" style="max-height:45vh"><table><thead><tr><th>E-mailadres</th><th>Rol</th><th></th></tr></thead><tbody>
-      ${leden.length ? leden.map((l) => `<tr data-email="${esc(l.email)}"><td>${esc(l.email)}</td>
-        <td><select data-rol>${optie('beheerder', 'Beheerder', l.rol)}${optie('lid', 'Gebruiker', l.rol)}</select></td>
-        <td><button type="button" class="knop klein gevaar" data-weg aria-label="${esc(l.email)} verwijderen">${I.verwijder}</button></td></tr>`).join('')
+      ${leden.length ? leden.map((l) => { const zelf = !isPlatform() && l.email === ikEmail(); return `<tr data-email="${esc(l.email)}"><td>${esc(l.email)}${zelf ? ' <small>(jij)</small>' : ''}</td>
+        <td><select data-rol ${zelf ? 'disabled title="Je eigen rol kun je niet wijzigen"' : ''}>${optie('beheerder', 'Beheerder', l.rol)}${optie('lid', 'Gebruiker', l.rol)}</select></td>
+        <td>${zelf ? '' : `<button type="button" class="knop klein gevaar" data-weg aria-label="${esc(l.email)} verwijderen">${I.verwijder}</button>`}</td></tr>`; }).join('')
     : '<tr><td colspan="3" class="leeg">Nog niemand gekoppeld.</td></tr>'}</tbody></table></div>
       <p><small>Een e-mailadres hoort bij één bedrijf. Projectleden voegt de beheerder van het bedrijf zelf toe via Personen.</small></p>
       <div class="formvoet"><button type="button" class="knop" data-sluit>Sluiten</button></div>`;

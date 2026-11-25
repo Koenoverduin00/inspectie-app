@@ -1176,12 +1176,19 @@ server: `supabase/013_bedrijven.sql`.
   melding. Werkt iemand voor twee bedrijven, dan krijgt hij een aparte uitnodiging met een ander e-mailadres.
 
 **In de app.**
-- **Platformbeheerder.**
-  - In de kop staat het bedrijf waarin je werkt; klik erop om te wisselen. Op de projectenpagina staat ook een
-    keuzelijst *Bedrijf*.
-  - **Instellingen → Bedrijven**: bedrijf aanmaken met de eerste beheerder (met uitnodiging), naam wijzigen, en per
-    bedrijf de personen (beheerder of gebruiker) toevoegen, wijzigen of verwijderen.
-  - Nieuwe projecten en bibliotheekformulieren komen in het gekozen bedrijf.
+- **Het bedrijf linksboven in de kop** is de ingang naar de bedrijfsinstellingen (`#/bedrijven`). Het staat niet
+  meer bij Instellingen.
+  - **Gebruikers** zien alleen de naam van hun bedrijf; ze kunnen er niet op klikken.
+  - **Bedrijfsbeheerders** klikken door naar *Bedrijfsinstellingen* van het eigen bedrijf:
+    - de naam wijzigen;
+    - beheerders en gebruikers beheren (hun eigen rol kunnen ze niet wijzigen, en zichzelf niet verwijderen);
+    - de formulierenbibliotheek openen.
+  - **Platformbeheerder (jij)** klikt door naar het overzicht van **alle bedrijven**:
+    - een bedrijf aanmaken met de eerste beheerder (met uitnodiging);
+    - per bedrijf: *Openen* (daarin werken), *Beheerders en gebruikers*, *Formulierenbibliotheek* en *Naam wijzigen*.
+
+    Op de projectenpagina staat ook een keuzelijst *Bedrijf*. Nieuwe projecten en bibliotheekformulieren komen in het
+    gekozen bedrijf.
 - **Bedrijfsbeheerder.** Op **Personen** staat de kolom *Rol in bedrijf* (gebruiker of beheerder) en een vinkje
   *Beheerder van het bedrijf* bij uitnodigen. Een beheerder hoeft niet aan projecten te worden gekoppeld; hij ziet alle
   projecten van het bedrijf. Verwijderen haalt iemand uit het bedrijf en uit alle projecten.

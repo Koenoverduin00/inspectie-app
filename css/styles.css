@@ -2275,3 +2275,5 @@ body.kiesmodus .mfilterchips, body.kiesmodus .mtedoenseg, body.kiesmodus .ff-fil
 .bedrijfkeuze label { font-weight: 700; display: flex; align-items: center; gap: .35rem; }
 .bedrijfkeuze select { width: auto; min-width: 14rem; }
 .bedrijventabel tr.gekozen td { background: color-mix(in srgb, var(--primair) 6%, transparent); }
+.bedrijfchip.alleenlezen { cursor: default; background: rgba(255, 255, 255, .12); }
+.bedrijfchip.alleenlezen::after { content: none; }
