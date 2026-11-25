@@ -5811,7 +5811,8 @@ function inlogScherm(modus = 'in', bericht = '') {
       await sync.inloggen(adres, ww.value);
       document.body.classList.remove('inlogscherm');
       melding('Ingelogd');
-      router();
+      // Na inloggen altijd eerst de projectenpagina.
+      if (location.hash !== '#/projecten') location.hash = '#/projecten'; else router();
     } catch (err) {
       toonFout(err instanceof TypeError ? 'Geen verbinding met de server. Probeer het zo opnieuw.' : err.message);
     } finally {
@@ -5859,7 +5860,7 @@ function wachtwoordPagina(welkom = false) {
         <button type="button" class="inlog-oog" aria-label="Wachtwoord tonen" aria-pressed="false">${OOG}</button></span></label>
       <p class="inlog-fout" role="alert" hidden></p>
       <button class="inlog-knop" type="submit"><span class="inlog-spinner" aria-hidden="true"></span><span>Wachtwoord opslaan</span></button>
-      ${welkom ? '<p class="inlog-wissel"><a href="#/" class="inlog-link" id="later">Later instellen</a></p>' : ''}`
+      ${welkom ? '<p class="inlog-wissel"><a href="#/projecten" class="inlog-link" id="later">Later instellen</a></p>' : ''}`
     : '<a class="inlog-knop" href="#/">Naar inloggen</a>'}
     </form></div>`;
   const form = app.querySelector('#nieuwww');
@@ -5881,7 +5882,7 @@ function wachtwoordPagina(welkom = false) {
       await sync.nieuwWachtwoord(ww.value);
       document.body.classList.remove('inlogscherm');
       melding('Wachtwoord gewijzigd');
-      location.hash = '#/';
+      location.hash = '#/projecten';
     } catch (err) {
       fout.textContent = err.message;
       fout.hidden = false;

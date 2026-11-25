@@ -261,6 +261,7 @@ volledige scherm, zonder menu's. Op het scherm staan alleen:
 Er is **geen** optie om een account of project aan te maken, en ook niet om zonder account te werken. Nieuwe
 gebruikers krijgen een uitnodiging van de beheerder (Personen → Uitnodigen); onderaan het scherm staat dat ook.
 Na uitloggen (vanaf elke pagina, pc en telefoon) of een verlopen sessie ga je meteen terug naar dit scherm.
+Na het inloggen kom je altijd eerst op de **projectenpagina**, ook als je via een andere link binnenkwam.
 De link uit de herstelmail opent het scherm *Nieuw wachtwoord*.
 
 > Zet in Supabase onder *Authentication → URL Configuration* de **Site URL** (en eventueel een Redirect URL) op het
