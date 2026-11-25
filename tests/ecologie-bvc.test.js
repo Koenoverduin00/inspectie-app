@@ -119,3 +119,27 @@ test('BVC: KEY van RWS uit het GIS, nader onderzoek alleen bij bijzondere bomen,
   assert.deepEqual(B.samenhang({ ork: 'Hoog', bvk: 'risico', bijzonder: true, maatregelen: [{ bvcMaatregel: 'Nader onderzoek' }] }), []);
   assert.match(B.samenhang({ ork: 'Hoog', bvk: 'attentie', gb: true })[0].tekst, /gesloten beplanting/);
 });
+
+test('flora & fauna: status per object en overzicht per werkpakket', async () => {
+  const eco = await import('../js/ecologie.js');
+  const objecten = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id, code: id.toUpperCase() }));
+  const vrijgaven = [
+    { id: 1, objectIds: ['a'], status: 'afgerond', besluit: 'vrij', datum: '2026-11-01', geldigTot: '2026-12-31' },
+    { id: 2, objectIds: ['b'], status: 'afgerond', besluit: 'voorwaarden', datum: '2026-11-01', geldigTot: '2026-12-31' },
+    { id: 3, objectIds: ['c'], status: 'afgerond', besluit: 'vrij', datum: '2026-01-01', geldigTot: '2026-06-30' },
+    { id: 4, objectIds: ['d'], status: 'concept', datum: '2026-11-20' },
+  ];
+  const d = '2026-11-25';
+  assert.equal(eco.objectVrijgave(vrijgaven, 'a', d).status, 'geldig');
+  assert.equal(eco.objectVrijgave(vrijgaven, 'b', d).status, 'voorwaarden');
+  assert.equal(eco.objectVrijgave(vrijgaven, 'c', d).status, 'verlopen');
+  assert.equal(eco.objectVrijgave(vrijgaven, 'd', d).status, 'concept');
+  assert.equal(eco.objectVrijgave(vrijgaven, 'e', d).status, 'geen');
+  const pakketten = [{ id: 'p', vrijgaveVereist: true, objecten: ['a', 'e'] }, { id: 'q', objecten: ['b', 'c'] }];
+  const alle = eco.overzicht({ objecten, vrijgaven, pakketten, datum: d });
+  assert.deepEqual(alle.lijst.map((x) => x.object.id), ['e', 'c', 'd', 'b', 'a']);
+  assert.equal(alle.telling.geldig, 1);
+  assert.deepEqual(eco.overzicht({ objecten, vrijgaven, pakket: pakketten[1], datum: d }).lijst.map((x) => x.status), ['verlopen', 'voorwaarden']);
+  assert.deepEqual(eco.overzicht({ objecten, vrijgaven, pakketten, datum: d, status: 'aandacht' }).lijst.map((x) => x.object.id), ['e', 'c', 'd']);
+  assert.deepEqual(eco.overzicht({ objecten, vrijgaven, pakketten, datum: d, status: 'vrij' }).lijst.map((x) => x.object.id), ['b', 'a']);
+});

@@ -122,3 +122,53 @@ export function controleer(v) {
   if (!v.verklaring) f.push('Bevestig de verklaring van de ecologisch deskundige.');
   return f;
 }
+
+// --- Overzicht per object (lijst en kaart in het veld) ---------------------------------
+/** Vrijgavestatus per object: geldig, voorwaarden, toekomst, verlopen, afgewezen, concept of geen. */
+export const OBJECT_STATUS = {
+  geen: { label: 'Geen vrijgave', kleur: '#d1452f', rang: 0 },
+  afgewezen: { label: 'Niet vrijgegeven', kleur: '#8b1a1a', rang: 1 },
+  verlopen: { label: 'Verlopen', kleur: '#d1452f', rang: 2 },
+  concept: { label: 'Concept (nog niet afgerond)', kleur: '#7d5ba6', rang: 3 },
+  toekomst: { label: 'Nog niet geldig', kleur: '#1f6feb', rang: 4 },
+  voorwaarden: { label: 'Vrijgegeven onder voorwaarden', kleur: '#c9a400', rang: 5 },
+  geldig: { label: 'Vrijgegeven', kleur: '#1a7f37', rang: 6 },
+};
+
+const objectenVan = (v) => v.objectIds ?? (v.objectId ? [v.objectId] : []);
+
+export function objectVrijgave(vrijgaven, objectId, datum) {
+  const v = vrijgaveVoorObject(vrijgaven, objectId, datum);
+  if (v) {
+    const g = geldigheid(v, datum);
+    return { status: g === 'geldig' && v.besluit === 'voorwaarden' ? 'voorwaarden' : g, vrijgave: v };
+  }
+  const concept = vrijgaven.filter((x) => objectenVan(x).includes(objectId) && x.status !== 'afgerond')
+    .sort((a, b) => String(b.gewijzigd ?? b.datum).localeCompare(String(a.gewijzigd ?? a.datum)))[0];
+  return concept ? { status: 'concept', vrijgave: concept } : { status: 'geen', vrijgave: null };
+}
+
+/**
+ * Overzicht voor het veld: welke objecten, met welke status.
+ * pakket: alleen de objecten van dat werkpakket (en vrijgaven van dat pakket); zonder pakket: alle objecten uit
+ * werkpakketten met "vrijgave vereist" plus alle objecten met een vrijgave.
+ * Volgorde: wat aandacht nodig heeft eerst (geen, afgewezen, verlopen, concept …), dan op code.
+ */
+export function overzicht({ objecten, vrijgaven, pakketten = [], pakket = null, datum, status = '' }) {
+  const ids = new Set();
+  if (pakket) for (const id of pakket.objecten ?? []) ids.add(id);
+  else {
+    for (const p of pakketten) if (p.vrijgaveVereist) for (const id of p.objecten ?? []) ids.add(id);
+    for (const v of vrijgaven) for (const id of objectenVan(v)) ids.add(id);
+  }
+  const perId = new Map(objecten.map((o) => [o.id, o]));
+  const lijst = [...ids].filter((id) => perId.has(id)).map((id) => ({ object: perId.get(id), ...objectVrijgave(vrijgaven, id, datum) }));
+  const telling = Object.fromEntries(Object.keys(OBJECT_STATUS).map((k) => [k, lijst.filter((x) => x.status === k).length]));
+  const gefilterd = !status ? lijst
+    : status === 'aandacht' ? lijst.filter((x) => ['geen', 'afgewezen', 'verlopen', 'concept'].includes(x.status))
+      : status === 'vrij' ? lijst.filter((x) => ['geldig', 'voorwaarden'].includes(x.status))
+        : lijst.filter((x) => x.status === status);
+  gefilterd.sort((a, b) => OBJECT_STATUS[a.status].rang - OBJECT_STATUS[b.status].rang
+    || String(a.object.code).localeCompare(String(b.object.code), 'nl', { numeric: true }));
+  return { lijst: gefilterd, telling, totaal: lijst.length };
+}

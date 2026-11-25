@@ -2224,3 +2224,24 @@ html.vooraf-inlog .kop, html.vooraf-inlog .onderbalk, html.vooraf-inlog .statusr
 .afgekeurdtekst { color: var(--gevaar, #d1242f); }
 .locregel-afgekeurd { display: grid; gap: .35rem; margin: .5rem 0; padding: .6rem .7rem; border-radius: 10px; border: 1px solid color-mix(in srgb, #d1242f 35%, transparent); background: color-mix(in srgb, #d1242f 7%, transparent); }
 .locregel.afgekeurd { border-left-color: #d1242f; }
+
+/* Flora & fauna (veld): lijst en kaart */
+.ff-filters { display: grid; gap: .6rem; margin: .5rem 0 .75rem; }
+.ff-veld { display: grid; gap: .25rem; font-size: .85rem; font-weight: 600; }
+.ff-veld select { font-weight: 400; }
+.ff-weergave { justify-self: start; }
+.ff-chips { display: flex; flex-wrap: wrap; gap: .35rem; }
+.ff-chips .gfchip.actief { background: var(--primair); color: #fff; border-color: var(--primair); }
+.ff-chips .gfchip b { margin-left: .2rem; }
+.ffstip { display: inline-block; width: 12px; height: 12px; border-radius: 50%; flex: none; margin-top: .3rem; box-shadow: 0 0 0 2px #fff, 0 0 0 3px rgba(0, 0, 0, .15); }
+.fflijst a { align-items: flex-start; }
+.ffstatus { display: inline-block; margin: .15rem 0; padding: .05rem .45rem; border-radius: 999px; font-size: .78rem; font-weight: 600;
+  color: var(--k); background: color-mix(in srgb, var(--k) 13%, transparent); }
+.ff-kaart { height: 60vh; min-height: 320px; border-radius: 12px; overflow: hidden; }
+.mlegenda .ffstip { margin: 0 .3rem 0 0; vertical-align: -1px; }
+.fflijst li a > i.ffstip { flex: 0 0 12px; width: 12px; height: 12px; margin: .35rem .15rem 0 .1rem; }
+.fflijst .fftekst { display: grid; gap: .1rem; min-width: 0; }
+.fflijst .fftekst strong { white-space: normal; overflow-wrap: anywhere; }
+.fflijst .ffstatus { justify-self: start; }
+.mvoet { z-index: 1100; }
+.ff-kaart { height: 52vh; }

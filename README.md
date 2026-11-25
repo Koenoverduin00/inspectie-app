@@ -1154,6 +1154,31 @@ naar een **eisvraag** die in de formulieren komt, gekoppeld aan het **eisnummer*
   ondertekeningsblok. Optioneel met foto's als bewijs. *Afdrukken / opslaan als PDF* geeft het dossier; *Excel* geeft
   dezelfde inhoud in de bladen Samenvatting, Eisen, Bewijs en Afwijkingen.
 
+## Flora & fauna in het veld: lijst en kaart per werkpakket
+
+Op de telefoon opent de tegel **Flora & fauna vrijgave** op *Vandaag* het overzicht `#/m/vrijgaven`. Nieuw aanvragen
+loopt via de knop *Nieuwe vrijgave*. De logica staat in `overzicht()` en `objectVrijgave()` in `js/ecologie.js`.
+
+- **Tegel op Vandaag.** Zichtbaar als je een lopend werkpakket met *vrijgave vereist* hebt, of als het project
+  vrijgaven heeft. Op de tegel staat met een teller hoeveel objecten in jouw werkpakketten nog **geen geldige
+  vrijgave** hebben.
+- **Filter op werkpakket.** Standaard *alle werkpakketten met vrijgave vereist* (plus objecten die al een vrijgave
+  hebben). Je kunt ook één lopend werkpakket kiezen; die met vrijgave vereist staan bovenaan.
+- **Filter op status.** Alles · Geen geldige vrijgave (geen, niet vrijgegeven, verlopen, concept) · Vrijgegeven ·
+  Concept, elk met het aantal.
+- **Lijst of kaart.**
+  - Per object de status, met een gekleurde stip en label:
+    - geldig: groen;
+    - onder voorwaarden: geel, met de voorwaarden erbij;
+    - nog niet geldig: blauw;
+    - concept: paars;
+    - verlopen of geen vrijgave: rood;
+    - niet vrijgegeven: donkerrood.
+  - Wat aandacht nodig heeft staat bovenaan.
+  - Tikken opent de vrijgave of start een aanvraag voor dat object (met het werkpakket erbij).
+  - De kaart kleurt de objecten op dezelfde manier; de popup heeft dezelfde knoppen.
+- De keuzes (werkpakket, status, lijst of kaart) worden per project op het apparaat onthouden.
+
 ## Voortgang en goedkeuring: wanneer telt een registratie mee?
 
 Per project in te stellen (Projectinstellingen → **Voortgang en goedkeuring**). Logica in `voortgang()` en

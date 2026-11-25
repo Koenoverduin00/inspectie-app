@@ -78,6 +78,7 @@ const ROUTES = [
   [/^\/m\/account$/, 'm-account', mobielAccount],
   [/^\/m\/kaart$/, 'm-kaart', mobielKaart],
   [/^\/m\/locatie\/([^/]+)$/, 'm-kaart', mobielLocatie],
+  [/^\/m\/vrijgaven$/, 'm-vrijgave', (_, q) => mobielVrijgaven(_, q)],
   [/^\/m\/vrijgave$/, 'm-vrijgave', () => objectKiezer('vrijgave')],
   [/^\/m\/vrijgave\/nieuw$/, 'm-vrijgave', (_, q) => vrijgaveFormulier(null, q, { mobiel: true })],
   [/^\/m\/vrijgave\/([^/]+)\/bewerken$/, 'm-vrijgave', (id, q) => vrijgaveFormulier(id, q, { mobiel: true })],
@@ -6685,8 +6686,12 @@ async function mobielStart() {
 
   const g = await pakketGegevens();
   const ik = sync.sessie()?.gebruiker?.email ?? '';
+  const alleVrijgaven = await inProject('vrijgaven');
   const vrijgaveNodig = actieveRondes(g).some(({ pakket }) => pakket.vrijgaveVereist && pakketVoorMij(pakket, ik))
-    || (await inProject('vrijgaven')).some((v) => v.status === 'concept');
+    || alleVrijgaven.length > 0;
+  // Aandacht: objecten in mijn lopende werkpakketten met "vrijgave vereist" zonder geldige vrijgave.
+  const ffPakketten = g.pakketten.filter((p) => p.status !== 'afgerond' && p.vrijgaveVereist && pakketVoorMij(p, ik));
+  const ffAandacht = ffPakketten.length ? eco.overzicht({ objecten, vrijgaven: alleVrijgaven, pakket: { objecten: [...new Set(ffPakketten.flatMap((p) => p.objecten ?? []))] }, datum: dag, status: 'aandacht' }).lijst.length : 0;
   const afgekeurd = await mijnAfgekeurd();
   const loginHint = sync.isIngesteld() && !sync.sessie()
     ? `<a class="kaart mhint" href="#/m/account">${I.inloggen} <span><strong>Log in</strong> zodat je werk ook op kantoor zichtbaar is.</span></a>` : '';
@@ -6719,9 +6724,10 @@ async function mobielStart() {
         <span class="micoon">${I.inspectie}</span>
         <span><strong>Schouw &amp; inspectie</strong></span>
       </a>
-      ${vrijgaveNodig ? `<a class="mtegel" href="#/m/vrijgave">
+      ${vrijgaveNodig ? `<a class="mtegel" href="#/m/vrijgaven">
         <span class="micoon">${I.blad}</span>
-        <span><strong>Flora &amp; fauna vrijgave</strong><small>Ecologische veldcheck vóór de werkzaamheden</small></span>
+        <span><strong>Flora &amp; fauna vrijgave</strong><small>${ffAandacht ? `<b>${ffAandacht} object${ffAandacht === 1 ? '' : 'en'} zonder geldige vrijgave</b> · ` : ''}Lijst en kaart per werkpakket</small></span>
+        ${ffAandacht ? `<span class="mteller">${ffAandacht}</span>` : ''}
       </a>` : ''}
       ${concepten.length ? `<h2>Verder gaan</h2><ul class="mlijst">${concepten.slice(0, 5).map((i) => regel({
     href: `#/m/inspectie/${i.id}`, icoon: I.concept, titel: `Concept ${i.soort.toLowerCase()} · ${datumNL(i.datum)}`, object: objectMap.get(i.objectId),
@@ -6734,6 +6740,100 @@ async function mobielStart() {
   toonMijnPakketten(app.querySelector('#mijnpakketten'));
   toonLogischNu(app.querySelector('#logisch'));
   koppelInstallKaart();
+}
+
+// ---------------------------------------------------------------------------
+// Mobiel: flora & fauna – overzicht per object als lijst of kaart, te filteren op werkpakket en status
+// ---------------------------------------------------------------------------
+async function mobielVrijgaven(_, q = new URLSearchParams()) {
+  const [objecten, vrijgaven, g] = await Promise.all([inProject('objecten'), inProject('vrijgaven'), pakketGegevens()]);
+  const ik = sync.sessie()?.gebruiker?.email ?? '';
+  // Werkpakketten om op te filteren: eerst die met "vrijgave vereist", dan de rest (alleen lopende, voor mij).
+  const pakketten = g.pakketten.filter((p) => p.status !== 'afgerond' && pakketVoorMij(p, ik))
+    .sort((a, b) => Number(Boolean(b.vrijgaveVereist)) - Number(Boolean(a.vrijgaveVereist)) || String(a.code || a.naam).localeCompare(String(b.code || b.naam), 'nl', { numeric: true }));
+  const sleutel = `ffFilter:${projectId()}`;
+  let keuze = { pakket: '', status: '', weergave: 'lijst' };
+  try { keuze = { ...keuze, ...JSON.parse(instelling.lees(sleutel, '') || '{}') }; } catch { /* standaard */ }
+  if (q.get('pakket')) keuze.pakket = q.get('pakket');
+  if (keuze.pakket && !pakketten.some((p) => p.id === keuze.pakket)) keuze.pakket = '';
+  const bewaar = () => instelling.schrijf(sleutel, JSON.stringify(keuze));
+  const datum = vandaag();
+  let kaart = null;
+
+  app.innerHTML = `
+    <div class="mkop"><a href="#/" class="mterug" aria-label="Terug">←</a>
+      <div><small>Ecologische veldcheck</small><h1>Flora &amp; fauna</h1></div></div>
+    <div class="ff-filters">
+      <label class="ff-veld"><span>Werkpakket</span><select id="ff-pakket">
+        <option value="">Alle werkpakketten${pakketten.some((p) => p.vrijgaveVereist) ? ' met vrijgave vereist' : ''}</option>
+        ${pakketten.map((p) => `<option value="${esc(p.id)}" ${p.id === keuze.pakket ? 'selected' : ''}>${esc(metCode(p))}${p.vrijgaveVereist ? ' · vrijgave vereist' : ''}</option>`).join('')}</select></label>
+      <div class="segment ff-weergave" role="radiogroup" aria-label="Weergave">
+        ${[['lijst', `${I.lijst} Lijst`], ['kaart', `${I.kaart} Kaart`]].map(([k, l]) => `<label><input type="radio" name="ff-weergave" value="${k}" ${keuze.weergave === k ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>
+      <div class="ff-chips" id="ff-chips"></div>
+    </div>
+    <div id="ff-inhoud"></div>
+    <div class="mvoet"><a class="knop primair" id="ff-nieuw" href="#/m/vrijgave">${I.blad} Nieuwe vrijgave</a></div>`;
+
+  const teken = async () => {
+    const pakket = keuze.pakket ? g.pakketten.find((p) => p.id === keuze.pakket) : null;
+    const ov = eco.overzicht({ objecten, vrijgaven, pakketten: g.pakketten.filter((p) => p.status !== 'afgerond'), pakket, datum, status: keuze.status });
+    const t = ov.telling;
+    const chips = [['', 'Alles', ov.totaal], ['aandacht', 'Geen geldige vrijgave', t.geen + t.afgewezen + t.verlopen + t.concept], ['vrij', 'Vrijgegeven', t.geldig + t.voorwaarden], ['concept', 'Concept', t.concept]];
+    app.querySelector('#ff-chips').innerHTML = chips.map(([k, l, n]) => `<button type="button" class="gfchip ${keuze.status === k ? 'actief' : ''}" data-ff-status="${k}">${l} <b>${n}</b></button>`).join('');
+    app.querySelector('#ff-nieuw').href = pakket ? `#/m/vrijgave/nieuw?pakket=${encodeURIComponent(pakket.id)}` : '#/m/vrijgave';
+    const inhoud = app.querySelector('#ff-inhoud');
+    kaart?.remove(); kaart = null;
+    const href = (x) => (x.vrijgave ? `#/m/vrijgave/${encodeURIComponent(x.vrijgave.id)}` : `#/m/vrijgave/nieuw?object=${encodeURIComponent(x.object.id)}${pakket ? `&pakket=${encodeURIComponent(pakket.id)}` : ''}`);
+    const statusChip = (x) => `<span class="ffstatus" style="--k:${eco.OBJECT_STATUS[x.status].kleur}">${esc(eco.OBJECT_STATUS[x.status].label)}${x.vrijgave?.geldigTot && ['geldig', 'voorwaarden'].includes(x.status) ? ` t/m ${datumNL(x.vrijgave.geldigTot)}` : ''}</span>`;
+    if (!ov.totaal) {
+      inhoud.innerHTML = `<p class="mleeg">${pakket ? 'Dit werkpakket heeft geen objecten.' : 'Er zijn nog geen vrijgaven en geen werkpakketten met “vrijgave vereist”.'}</p>`;
+      return;
+    }
+    if (keuze.weergave === 'lijst') {
+      inhoud.innerHTML = ov.lijst.length ? `<ul class="mlijst fflijst">${ov.lijst.map((x) => `<li><a href="${href(x)}">
+          <i class="ffstip" style="background:${eco.OBJECT_STATUS[x.status].kleur}"></i>
+          <span class="fftekst"><strong>${esc(x.object.code)} – ${esc(x.object.naam ?? '')}</strong>${statusChip(x)}
+          ${x.vrijgave?.voorwaarden && x.status === 'voorwaarden' ? `<small><strong>Voorwaarden:</strong> ${esc(x.vrijgave.voorwaarden)}</small>` : ''}
+          ${x.vrijgave ? `<small>${datumNL(x.vrijgave.datum)}${x.vrijgave.deskundige ? ` · ${esc(x.vrijgave.deskundige)}` : ''}${(x.vrijgave.waarnemingen ?? []).length ? ` · ${(x.vrijgave.waarnemingen ?? []).length} waarneming(en)` : ''}</small>` : '<small>Tik om een vrijgave aan te vragen</small>'}</span></a></li>`).join('')}</ul>`
+        : '<p class="mleeg">Geen objecten met deze status.</p>';
+      return;
+    }
+    inhoud.innerHTML = `<div id="ff-kaart" class="ff-kaart"><p class="leeg">Kaart laden…</p></div>
+      <div class="mlegenda">${Object.entries(eco.OBJECT_STATUS).filter(([k]) => t[k]).map(([k, s]) => `<span><i class="ffstip" style="background:${s.kleur}"></i>${esc(s.label)} (${t[k]})</span>`).join('')}</div>`;
+    let L;
+    try { L = await laadLeaflet(); } catch (fout) { inhoud.querySelector('#ff-kaart').innerHTML = `<p class="leeg">${esc(fout.message)}</p>`; return; }
+    const el = inhoud.querySelector('#ff-kaart');
+    if (!el?.isConnected) return;
+    el.innerHTML = '';
+    const map = L.map(el, { preferCanvas: true, renderer: L.canvas({ tolerance: 6 }), zoomAnimation: false, fadeAnimation: false });
+    kaart = map;
+    el.leafletKaart = map;
+    voegAchtergrondToe(L, map);
+    const metGeo = ov.lijst.filter((x) => objectGeometrie(x.object));
+    const perId = new Map(metGeo.map((x) => [x.object.id, x]));
+    const fc = { type: 'FeatureCollection', features: opStapelvolgorde(metGeo.map((x) => ({ type: 'Feature', geometry: objectGeometrie(x.object), properties: { id: x.object.id } }))) };
+    const stijl = (x, punt) => ({ color: punt ? '#fff' : eco.OBJECT_STATUS[x.status].kleur, weight: punt ? 2 : 3, fillColor: eco.OBJECT_STATUS[x.status].kleur, fillOpacity: punt ? 0.95 : 0.35, radius: 9 });
+    const laag = L.geoJSON(fc, {
+      style: (f) => stijl(perId.get(f.properties.id), false),
+      pointToLayer: (f, ll) => L.circleMarker(ll, stijl(perId.get(f.properties.id), true)),
+      onEachFeature: (f, l) => l.bindPopup(() => { const x = perId.get(f.properties.id); return `<strong>${esc(x.object.code)}</strong> – ${esc(x.object.naam ?? '')}<br>${statusChip(x)}
+        ${x.vrijgave?.voorwaarden && x.status === 'voorwaarden' ? `<br><small><strong>Voorwaarden:</strong> ${esc(x.vrijgave.voorwaarden)}</small>` : ''}
+        <div class="popupknoppen"><a class="knop klein primair" href="${href(x)}">${x.vrijgave ? 'Vrijgave bekijken' : 'Vrijgave aanvragen'}</a></div>`; }),
+    });
+    const b = laag.getBounds();
+    if (b.isValid()) map.fitBounds(b, { padding: [24, 24], maxZoom: 18, animate: false });
+    else map.setView(laatstePositie ? [laatstePositie[1], laatstePositie[0]] : [52.1, 5.1], laatstePositie ? 16 : 8, { animate: false });
+    laag.addTo(map);
+    if (metGeo.length < ov.lijst.length) inhoud.insertAdjacentHTML('beforeend', `<p class="mleeg"><small>${ov.lijst.length - metGeo.length} object(en) zonder locatie staan alleen in de lijst.</small></p>`);
+  };
+  app.querySelector('#ff-pakket').onchange = (e) => { keuze.pakket = e.target.value; bewaar(); teken(); };
+  app.querySelectorAll('input[name=ff-weergave]').forEach((i) => { i.onchange = () => { keuze.weergave = i.value; bewaar(); teken(); }; });
+  app.querySelector('#ff-chips').addEventListener('click', (e) => {
+    const c = e.target.closest('[data-ff-status]');
+    if (!c) return;
+    keuze.status = c.dataset.ffStatus; bewaar(); teken();
+  });
+  teken();
 }
 
 async function toonMijnPakketten(el) {
