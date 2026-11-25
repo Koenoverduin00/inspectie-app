@@ -209,6 +209,7 @@ async function toonRoute() {
   // Inloggen is verplicht (pc en telefoon) zodra de app met de server is verbonden.
   const inlog = moetInloggen(pad);
   document.body.classList.toggle('inlogscherm', inlog);
+  document.documentElement.classList.remove('vooraf-inlog');
   if (inlog) { inlogScherm(); return; }
   if (!route) {
     // Meestal: de pagina komt uit een nieuwere versie van de app die nog niet volledig geladen is.

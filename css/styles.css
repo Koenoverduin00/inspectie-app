@@ -2212,3 +2212,7 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
 .planversie-chip { font-size: .8rem; font-weight: 600; padding: .1rem .45rem; border-radius: 999px; background: color-mix(in srgb, var(--primair, #0b4f6c) 12%, transparent); vertical-align: middle; }
 .bord-basis { position: absolute; bottom: 2px; height: 4px; border-radius: 2px; background: repeating-linear-gradient(90deg, #5b6875 0 5px, transparent 5px 8px); opacity: .85; pointer-events: none; z-index: 1; }
 .bord-legenda i.basis { height: 4px; background: repeating-linear-gradient(90deg, #5b6875 0 5px, transparent 5px 8px); }
+
+/* Vóór het laden van de app, als je niet bent ingelogd: geen menu's of "Laden…" tonen (voorkomt dat de site eerst even verschijnt). */
+html.vooraf-inlog body { background: #0b4f6c; }
+html.vooraf-inlog .kop, html.vooraf-inlog .onderbalk, html.vooraf-inlog .statusregel, html.vooraf-inlog main#app > .laden { display: none; }
