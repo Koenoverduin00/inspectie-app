@@ -262,6 +262,13 @@ Er is **geen** optie om een account of project aan te maken, en ook niet om zond
 gebruikers krijgen een uitnodiging van de beheerder (Personen → Uitnodigen); onderaan het scherm staat dat ook.
 Na uitloggen (vanaf elke pagina, pc en telefoon) of een verlopen sessie ga je meteen terug naar dit scherm.
 Na het inloggen kom je altijd eerst op de **projectenpagina**, ook als je via een andere link binnenkwam.
+Open je daar een project, dan krijg je **geen introductie** als het project al is ingericht.
+- De balk *Project inrichten – volgende stap* verschijnt alleen zolang nog niet alle **verplichte** stappen zijn gedaan, en
+  het project nog niet in gebruik is (objecten, werkpakketten en registraties). Optionele stappen blijven te vinden in
+  het stappenplan.
+- Staat het project nog niet op dit apparaat, dan toont het dashboard eerst *Projectgegevens ophalen…*, in plaats van
+  *Project inrichten* bij een (nog) leeg project. Na het ophalen volgt meteen het dashboard; mislukt het ophalen, dan is
+  er een knop *Opnieuw proberen*.
 De link uit de herstelmail opent het scherm *Nieuw wachtwoord*.
 
 > Zet in Supabase onder *Authentication → URL Configuration* de **Site URL** (en eventueel een Redirect URL) op het

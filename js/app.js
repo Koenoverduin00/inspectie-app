@@ -2828,6 +2828,19 @@ async function dashboard() {
   const kop = `<div><h1>${esc(project.naam)}</h1><p>${project.opdrachtgever ? `${esc(project.opdrachtgever)} · ` : ''}${rol === 'opdrachtgever'
     ? 'Sturen op het contract: voortgang, achterstanden en bevindingen.'
     : 'Sturen op de uitvoering: wat loopt er, ligt het op schema en wat is er gedaan.'}</p></div>`;
+  // Net geopend en nog niet van de server opgehaald: niet de introductie tonen, maar wachten op de gegevens.
+  if (objecten.length === 0 && sync.sessie() && !projectOpgehaald(project.id)) {
+    const fout = laatsteSyncStatus?.fase === 'fout';
+    app.innerHTML = `
+      <div class="paginakop">${kop}</div>
+      <div class="kaart leeg" id="project-ophalen">
+        ${fout ? `<h2>Projectgegevens niet opgehaald</h2><p>${esc(laatsteSyncStatus.fout || 'Geen verbinding met de server.')}</p>
+          <div class="knoppen" style="justify-content:center"><button class="knop primair" id="opnieuw">${I.vernieuw} Opnieuw proberen</button></div>`
+    : '<p class="laden">Projectgegevens ophalen…</p><p><small>Dit project wordt voor het eerst op dit apparaat geladen.</small></p>'}
+      </div>`;
+    app.querySelector('#opnieuw')?.addEventListener('click', () => { sync.synchroniseer({ handmatig: true }); dashboard(); });
+    return;
+  }
   if (objecten.length === 0) {
     app.innerHTML = `
       <div class="paginakop">${kop}</div>
@@ -3555,15 +3568,20 @@ async function inrichtingStand(p) {
     const keuze = handmatig[s.id];
     return { ...s, auto, klaar: auto || keuze === 'klaar', overgeslagen: !auto && keuze === 'overgeslagen', tekst: s.status(ctx) };
   });
-  return { stappen, aantalKlaar: stappen.filter((s) => s.klaar || s.overgeslagen).length };
+  const gedaan = (s) => s.klaar || s.overgeslagen;
+  // Ingericht: alle verplichte stappen gedaan, of het project is al in gebruik (objecten, werkpakketten en registraties).
+  const ingericht = stappen.filter((s) => s.verplicht).every(gedaan)
+    || (objecten.length > 0 && pakketten.length > 0 && ctx.registraties > 0);
+  return { stappen, aantalKlaar: stappen.filter(gedaan).length, ingericht };
 }
 
 /** Voortgangsbalk op het dashboard zolang de inrichting niet af is. */
 async function inrichtingBanner() {
   const p = await actiefProject();
   if (!p || !magBeheren() || p.inrichting?.verborgen) return '';
-  const { stappen, aantalKlaar } = await inrichtingStand(p);
-  if (aantalKlaar === stappen.length) return '';
+  const { stappen, aantalKlaar, ingericht } = await inrichtingStand(p);
+  // Een ingericht project krijgt geen inrichtingsbalk meer (optionele stappen blijven in het stappenplan te vinden).
+  if (ingericht || aantalKlaar === stappen.length) return '';
   const volgende = stappen.find((s) => !s.klaar && !s.overgeslagen);
   return `<a class="kaart inrichtingbanner" href="#/inrichting?stap=${volgende.id}">
     <span class="ib-ring" style="--pct:${Math.round((aantalKlaar / stappen.length) * 100)}"><b>${aantalKlaar}/${stappen.length}</b></span>
@@ -7546,6 +7564,21 @@ function syncReden(p, k = syncKeuze()) {
   return '';
 }
 /** Project-id's die dit apparaat ophaalt, of null voor alle (niet ingelogd, of "alle projecten"). */
+// Welke projecten zijn op dit apparaat al eens volledig van de server opgehaald (per account)?
+const opgehaaldSleutel = () => `opgehaald:${ikEmail()}`;
+function projectOpgehaald(pid) {
+  let l = [];
+  try { l = JSON.parse(instelling.lees(opgehaaldSleutel(), '') || '[]'); } catch { /* leeg */ }
+  return l.includes('*') || l.includes(pid);
+}
+async function markeerOpgehaald() {
+  if (!ikEmail()) return;
+  const set = await syncProjecten();
+  let l = [];
+  try { l = JSON.parse(instelling.lees(opgehaaldSleutel(), '') || '[]'); } catch { /* leeg */ }
+  instelling.schrijf(opgehaaldSleutel(), JSON.stringify(set === null ? ['*'] : [...new Set([...l.filter((x) => x !== '*'), ...set])]));
+}
+
 async function syncProjecten() {
   if (!ikEmail()) return null;
   let k = syncKeuze();
@@ -16427,7 +16460,17 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !isN
 
 sync.opStatus(syncIndicator);
 let laatsteSyncStatus = null;
-sync.opStatus((st) => { laatsteSyncStatus = { ...st }; statusregel(st); });
+let vorigeFase = '';
+sync.opStatus((st) => {
+  laatsteSyncStatus = { ...st };
+  statusregel(st);
+  // Ophalen klaar: vastleggen welke projecten nu op dit apparaat staan; wacht het dashboard daarop, dan opnieuw tekenen.
+  if (st.fase !== vorigeFase && (st.fase === 'ok' || st.fase === 'fout')) {
+    const wachtte = Boolean(document.getElementById('project-ophalen'));
+    (st.fase === 'ok' ? markeerOpgehaald() : Promise.resolve()).then(() => { if (wachtte && document.getElementById('project-ophalen')) router(); });
+  }
+  vorigeFase = st.fase;
+});
 ['online', 'offline'].forEach((ev) => window.addEventListener(ev, () => laatsteSyncStatus && statusregel(laatsteSyncStatus)));
 sync.start({
   syncProjecten,
