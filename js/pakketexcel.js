@@ -55,7 +55,7 @@ const isoNaarDatum = (iso) => (/^\d{4}-\d{2}-\d{2}$/.test(iso ?? '') ? new Date(
  */
 export function maakWerkboek(ExcelJS, { project, objecten, lagen, leden, werksoorten, inspectiesoorten, pakketten = [] }) {
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'Inspectie & Registratie';
+  wb.creator = 'BaasOverBuiten';
   wb.created = new Date();
   wb.calcProperties = { fullCalcOnLoad: true };
   const laagNaam = new Map(lagen.map((l) => [l.id, l.naam]));

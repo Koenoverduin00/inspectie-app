@@ -30,7 +30,7 @@ export function bewijsRegel(x, eis, { info, tekst, gewenst = () => '' }) {
  */
 export function maakDossierWerkboek(ExcelJS, d, meta, fmt) {
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'Inspectie & Registratie';
+  wb.creator = 'BaasOverBuiten';
   wb.created = new Date();
   const kop = { font: { bold: true, color: { argb: 'FFFFFFFF' } }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0B4F6C' } }, alignment: { vertical: 'middle', wrapText: true } };
   const kleurCel = (c, hex) => { c.font = { bold: true, color: { argb: `FF${hex}` } }; };

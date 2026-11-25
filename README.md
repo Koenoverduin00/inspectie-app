@@ -1,4 +1,4 @@
-# Inspectie & Registratie – Civiele Techniek
+# BaasOverBuiten
 
 Web-app voor het **registreren** van civieltechnische objecten (bruggen, viaducten, duikers, sluizen, kademuren,
 wegvakken, …) en het **inspecteren** ervan volgens de systematiek van NEN 2767. De app werkt volledig in de browser,
@@ -228,8 +228,8 @@ zonder wachtwoorden); zolang dat niet is uitgevoerd, staat er een melding op de 
    naar leden van het Supabase-team, dus dan komen uitnodigingen niet aan.
 2. *Authentication → URL Configuration*: Site URL én Redirect URL = het adres van de app.
 3. *Authentication → Emails → Templates*: pas de sjablonen **Magic Link** en **Confirm signup** aan naar een
-   uitnodiging, bijvoorbeeld onderwerp *"Uitnodiging Inspectie & Registratie"* en tekst *"Je bent uitgenodigd voor de app
-   Inspectie & Registratie. Klik op de knop om in te loggen: {{ .ConfirmationURL }}"*.
+   uitnodiging, bijvoorbeeld onderwerp *"Uitnodiging BaasOverBuiten"* en tekst *"Je bent uitgenodigd voor de app
+   BaasOverBuiten. Klik op de knop om in te loggen: {{ .ConfirmationURL }}"*.
 4. *Authentication → Sign In / Providers*: laat *Allow new users to sign up* aan staan (nodig om het account bij de
    uitnodiging aan te maken). Toegang tot gegevens krijgt alleen wie in een project of in `teamleden` staat.
 
@@ -248,12 +248,19 @@ zonder wachtwoorden); zolang dat niet is uitgevoerd, staat er een melding op de 
 Beheerders zien altijd alles. De server (RLS) dwingt de toegang per project af; binnen een project regelt de app welke
 werkpakketten en knoppen iemand ziet.
 
-## Inloggen op de telefoon
+## Inloggen (pc en telefoon)
 
-Op de telefoon start de app (als de online synchronisatie is ingesteld en je niet bent ingelogd) met een
-inlogscherm over het volledige scherm, zonder menu's: e-mailadres (wordt onthouden), wachtwoord met oogje om te tonen,
-**Wachtwoord vergeten?** (stuurt een herstelmail), **Account aanmaken** en onderaan *Offline werken zonder account*
-(geldt tot de app wordt gesloten). Na uitloggen of een verlopen sessie kom je vanzelf terug op dit scherm.
+Zodra de online synchronisatie is ingesteld, start **BaasOverBuiten** op pc én telefoon met een inlogscherm over het
+volledige scherm, zonder menu's. Op het scherm staan alleen:
+- het e-mailadres (dat wordt onthouden);
+- het wachtwoord, met een oogje om het te tonen;
+- de knop **Inloggen**;
+- de link **Wachtwoord vergeten?** naast het wachtwoordveld. Die stuurt een herstelmail en meldt daarna "Check je
+  mail".
+
+Er is **geen** optie om een account of project aan te maken, en ook niet om zonder account te werken. Nieuwe
+gebruikers krijgen een uitnodiging van de beheerder (Personen → Uitnodigen); onderaan het scherm staat dat ook.
+Na uitloggen of een verlopen sessie kom je vanzelf terug op dit scherm.
 De link uit de herstelmail opent het scherm *Nieuw wachtwoord*.
 
 > Zet in Supabase onder *Authentication → URL Configuration* de **Site URL** (en eventueel een Redirect URL) op het
@@ -1470,8 +1477,8 @@ veld zonder bereik kunt inspecteren. Ben je ingelogd, dan worden wijzigingen aut
 3. **Online zetten** – kies in GitHub *Settings → Pages → Source: GitHub Actions*. De workflow
    [`.github/workflows/pages.yml`](.github/workflows/pages.yml) publiceert de app bij elke push naar `main`
    op `https://<gebruiker>.github.io/inspectie-app/`.
-4. **Inloggen** – open de app op de pc, ga naar *Instellingen* en kies *Account aanmaken* (bevestig je e-mail) of
-   *Inloggen*. Doe hetzelfde op je telefoon en zet de app op het beginscherm.
+4. **Inloggen** – maak je eigen account aan in Supabase (*Authentication → Users → Add user*) en log in op de
+   pc. Doe hetzelfde op je telefoon en zet de app op het beginscherm.
 5. **Aanbevolen** – zet daarna in Supabase onder *Authentication → Sign In / Providers* de optie
    *Allow new users to sign up* uit, en maak accounts voor collega's aan via *Authentication → Users → Invite*.
 

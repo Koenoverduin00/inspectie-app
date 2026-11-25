@@ -1,6 +1,6 @@
 {
   "appId": "nl.inspectieregistratie.app",
-  "appName": "Inspectie & Registratie",
+  "appName": "BaasOverBuiten",
   "webDir": "www",
   "android": {
     "allowMixedContent": false

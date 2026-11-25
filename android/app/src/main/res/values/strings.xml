@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Inspectie &amp; Registratie</string>
-    <string name="title_activity_main">Inspectie &amp; Registratie</string>
+    <string name="app_name">BaasOverBuiten</string>
+    <string name="title_activity_main">BaasOverBuiten</string>
     <string name="package_name">nl.inspectieregistratie.app</string>
     <string name="custom_url_scheme">nl.inspectieregistratie.app</string>
 </resources>

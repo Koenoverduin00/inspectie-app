@@ -206,7 +206,8 @@ async function toonRoute() {
   });
   window.scrollTo(0, 0);
   if (pad === '/wachtwoord') { wachtwoordPagina(query.get('welkom') === '1'); return; }
-  const inlog = mobiel && moetInloggen(pad);
+  // Inloggen is verplicht (pc en telefoon) zodra de app met de server is verbonden.
+  const inlog = moetInloggen(pad);
   document.body.classList.toggle('inlogscherm', inlog);
   if (inlog) { inlogScherm(); return; }
   if (!route) {
@@ -5716,41 +5717,38 @@ function moetInloggen(pad) {
 }
 
 function inlogScherm(modus = 'in', bericht = '') {
+  if (modus !== 'vergeten') modus = 'in';
   const email = instelling.lees('laatsteEmail');
   const teksten = {
-    in: { titel: 'Welkom terug', sub: 'Log in met je werkaccount', knop: 'Inloggen' },
-    nieuw: { titel: 'Account aanmaken', sub: 'Gebruik je zakelijke e-mailadres', knop: 'Account aanmaken' },
-    vergeten: { titel: 'Wachtwoord vergeten', sub: 'We sturen je een link om een nieuw wachtwoord in te stellen', knop: 'Link versturen' },
+    in: { titel: 'Inloggen', sub: 'Log in met je werkaccount', knop: 'Inloggen' },
+    vergeten: { titel: 'Wachtwoord vergeten', sub: 'Vul je e-mailadres in. Je ontvangt een link om een nieuw wachtwoord in te stellen.', knop: 'Herstellink versturen' },
   };
   const t = teksten[modus];
-  const berichtKaart = (titel, tekst) => `<div class="inlog-kaart inlog-bericht"><div class="inlog-vink" aria-hidden="true">${I.mail}</div>
-    <h2>${titel}</h2><p>${tekst}</p><button class="inlog-knop" type="button" id="terug">Naar inloggen</button></div>`;
+  const berichtKaart = (titel, tekst) => `<div class="inlog-bericht"><div class="inlog-vink" aria-hidden="true">${I.mail}</div>
+    <h2>${titel}</h2><p>${tekst}</p><button class="inlog-knop" type="button" id="terug">Terug naar inloggen</button></div>`;
   app.innerHTML = `<div class="inlog">
-    <div class="inlog-merk">
-      <div class="inlog-logo"><img src="icons/icon.svg" alt="" width="44" height="44"></div>
-      <h1>Inspectie &amp; Registratie</h1>
-      <p>Werkzaamheden en inspecties in het veld</p>
-    </div>
-    ${bericht === 'bevestigen' ? berichtKaart('Bevestig je e-mailadres', `We hebben een bevestigingsmail gestuurd naar <strong>${esc(email)}</strong>. Klik op de link in die mail en log daarna in.`)
-    : bericht === 'verzonden' ? berichtKaart('Check je mail', `Als er een account bestaat voor <strong>${esc(email)}</strong>, ontvang je zo een link om een nieuw wachtwoord in te stellen.`)
-      : `<form class="inlog-kaart" id="inlog" novalidate>
+    <div class="inlog-kaart">
+      <div class="inlog-merk">
+        <img src="icons/icon.svg" alt="" width="40" height="40">
+        <div><h1>BaasOverBuiten</h1><p>Werkzaamheden, inspecties en planning</p></div>
+      </div>
+    ${bericht === 'verzonden' ? berichtKaart('Check je mail', `Als er een account bestaat voor <strong>${esc(email)}</strong>, ontvang je zo een link om een nieuw wachtwoord in te stellen. Kijk ook in je map met ongewenste e-mail.`)
+    : `<form id="inlog" novalidate>
       <h2>${t.titel}</h2>
       <p class="inlog-sub">${t.sub}</p>
       <label class="inlog-veld"><span>E-mailadres</span>
         <input id="i-email" name="email" type="email" inputmode="email" autocomplete="username" autocapitalize="off" spellcheck="false"
           value="${esc(email)}" placeholder="naam@bedrijf.nl" required></label>
-      ${modus === 'vergeten' ? '' : `<label class="inlog-veld"><span>Wachtwoord</span>
-        <span class="inlog-ww"><input id="i-ww" name="wachtwoord" type="password" minlength="6" required
-          autocomplete="${modus === 'nieuw' ? 'new-password' : 'current-password'}" placeholder="${modus === 'nieuw' ? 'Minimaal 6 tekens' : '••••••••'}">
-        <button type="button" class="inlog-oog" aria-label="Wachtwoord tonen" aria-pressed="false">${OOG}</button></span></label>`}
-      ${modus === 'in' ? '<a href="#" class="inlog-link inlog-vergeten" data-modus="vergeten">Wachtwoord vergeten?</a>' : ''}
+      ${modus === 'vergeten' ? '' : `<div class="inlog-veld"><div class="inlog-labelregel"><label for="i-ww">Wachtwoord</label>
+          <a href="#" class="inlog-link inlog-vergeten" data-modus="vergeten">Wachtwoord vergeten?</a></div>
+        <span class="inlog-ww"><input id="i-ww" name="wachtwoord" type="password" minlength="6" required autocomplete="current-password" placeholder="••••••••">
+        <button type="button" class="inlog-oog" aria-label="Wachtwoord tonen" aria-pressed="false">${OOG}</button></span></div>`}
       <p class="inlog-fout" role="alert" hidden></p>
       <button class="inlog-knop" type="submit"><span class="inlog-spinner" aria-hidden="true"></span><span>${t.knop}</span></button>
-      <p class="inlog-wissel">${modus === 'in'
-        ? 'Nog geen account? <a href="#" class="inlog-link" data-modus="nieuw">Account aanmaken</a>'
-        : '<a href="#" class="inlog-link" data-modus="in">← Terug naar inloggen</a>'}</p>
+      ${modus === 'vergeten' ? '<p class="inlog-wissel"><a href="#" class="inlog-link" data-modus="in">← Terug naar inloggen</a></p>' : ''}
     </form>`}
-    <button type="button" class="inlog-zonder" id="zonder">Offline werken zonder account</button>
+    </div>
+    <p class="inlog-voet">Nog geen account? Vraag de beheerder van je organisatie om een uitnodiging.</p>
   </div>`;
 
   app.querySelector('#terug')?.addEventListener('click', () => inlogScherm('in'));
@@ -5760,11 +5758,6 @@ function inlogScherm(modus = 'in', bericht = '') {
     if (v) instelling.schrijf('laatsteEmail', v);
     inlogScherm(a.dataset.modus);
   }));
-  app.querySelector('#zonder').onclick = () => {
-    try { sessionStorage.setItem(ZONDER_LOGIN, '1'); } catch { /* geen opslag: alleen voor deze keer */ }
-    document.body.classList.remove('inlogscherm');
-    if (location.hash && location.hash !== '#/') location.hash = '#/'; else router();
-  };
   const oog = app.querySelector('.inlog-oog');
   if (oog) {
     oog.onclick = () => {
@@ -5807,12 +5800,7 @@ function inlogScherm(modus = 'in', bericht = '') {
         inlogScherm('in', 'verzonden');
         return;
       }
-      if (modus === 'nieuw') {
-        const r = await sync.registreren(adres, ww.value);
-        if (r.bevestigen) { inlogScherm('in', 'bevestigen'); return; }
-      } else {
-        await sync.inloggen(adres, ww.value);
-      }
+      await sync.inloggen(adres, ww.value);
       document.body.classList.remove('inlogscherm');
       melding('Ingelogd');
       router();
@@ -5852,8 +5840,8 @@ async function verwerkAuthLink() {
 function wachtwoordPagina(welkom = false) {
   document.body.classList.add('inlogscherm');
   app.innerHTML = `<div class="inlog">
-    <div class="inlog-merk"><div class="inlog-logo"><img src="icons/icon.svg" alt="" width="44" height="44"></div><h1>Inspectie &amp; Registratie</h1></div>
     <form class="inlog-kaart" id="nieuwww" novalidate>
+      <div class="inlog-merk"><img src="icons/icon.svg" alt="" width="40" height="40"><div><h1>BaasOverBuiten</h1><p>Werkzaamheden, inspecties en planning</p></div></div>
       <h2>${welkom && sync.sessie() ? 'Welkom!' : 'Nieuw wachtwoord'}</h2>
       <p class="inlog-sub">${sync.sessie() ? (welkom
     ? `Je bent uitgenodigd en ingelogd als <strong>${esc(sync.sessie().gebruiker?.email ?? '')}</strong>. Stel een wachtwoord in, dan kun je voortaan ook zonder e-mail inloggen.`
@@ -16209,7 +16197,7 @@ function toonAccount(el) {
         <div class="veld"><label for="f-wachtwoord">Wachtwoord</label><input id="f-wachtwoord" name="wachtwoord" type="password" autocomplete="current-password" minlength="6" required></div>
         <div class="veld" style="justify-content:flex-end"><div class="knoppen">
           <button class="knop primair" type="submit" data-actie="in">Inloggen</button>
-          <button class="knop" type="submit" data-actie="nieuw">Account aanmaken</button></div></div>
+          <button class="knop" type="submit" data-actie="vergeten" formnovalidate>Wachtwoord vergeten</button></div></div>
       </form>
       <p><small>Verbonden met ${esc(url)} · <a href="#" id="ontkoppel">wijzigen</a></small></p>
       <p id="loginfout" class="label-status verlopen" hidden></p>`;
@@ -16222,20 +16210,17 @@ function toonAccount(el) {
     el.querySelector('#login').onsubmit = async (e) => {
       e.preventDefault();
       const form = e.target;
-      if (!form.checkValidity()) return form.reportValidity();
+      const vergeten = e.submitter?.dataset.actie === 'vergeten';
+      if (vergeten ? !form.elements.email.checkValidity() || !form.elements.email.value : !form.checkValidity()) return (vergeten ? form.elements.email : form).reportValidity();
       const d = formulierData(form);
       const knoppen = form.querySelectorAll('button');
       knoppen.forEach((k) => { k.disabled = true; });
       fout.hidden = true;
       try {
-        if (e.submitter?.dataset.actie === 'nieuw') {
-          const r = await sync.registreren(d.email, form.elements.wachtwoord.value);
-          if (r.bevestigen) {
-            el.innerHTML = `<h2>Bevestig je e-mailadres</h2><p>We hebben een bevestigingsmail gestuurd naar <strong>${esc(d.email)}</strong>.
-              Klik op de link in die mail en log daarna hier in.</p><button class="knop" id="terug">Naar inloggen</button>`;
-            el.querySelector('#terug').onclick = () => toonAccount(el);
-            return;
-          }
+        if (e.submitter?.dataset.actie === 'vergeten') {
+          await sync.wachtwoordVergeten(d.email, location.href.split('#')[0]);
+          melding('Als er een account bestaat voor dit e-mailadres, ontvang je zo een link om een nieuw wachtwoord in te stellen.');
+          return;
         } else {
           await sync.inloggen(d.email, form.elements.wachtwoord.value);
         }

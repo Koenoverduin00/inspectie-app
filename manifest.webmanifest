@@ -1,7 +1,7 @@
 {
-  "name": "Inspectie & Registratie – Civiele Techniek",
-  "short_name": "Inspectie",
-  "description": "Registreren en inspecteren van civieltechnische objecten.",
+  "name": "BaasOverBuiten",
+  "short_name": "BaasOverBuiten",
+  "description": "BaasOverBuiten – werkzaamheden, inspecties en planning van de buitenruimte.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

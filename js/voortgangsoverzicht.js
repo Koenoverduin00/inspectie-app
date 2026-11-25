@@ -96,7 +96,7 @@ const KLEUR = { achterstallig: 'FFB42318', lopend: 'FF0B4F6C', komend: 'FF6B7785
 
 export function maakWerkboek(ExcelJS, ind, meta, fmt) {
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'Inspectie & Registratie';
+  wb.creator = 'BaasOverBuiten';
   wb.created = new Date();
   const s = wb.addWorksheet('Overzicht', { properties: { tabColor: { argb: 'FF0B4F6C' } } });
   s.columns = [{ width: 30 }, { width: 50 }];
@@ -198,7 +198,7 @@ export function momentopname(ind, { titel, sub, periode, voortgang, stand, href 
  */
 export function maakNotulenWerkboek(ExcelJS, { overleg: o, foto, vorige = [], meta }) {
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'Inspectie & Registratie';
+  wb.creator = 'BaasOverBuiten';
   wb.created = new Date();
   const kop = { font: { bold: true, color: { argb: 'FFFFFFFF' } }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0B4F6C' } }, alignment: { vertical: 'middle', wrapText: true } };
   const dt = (iso) => (/^\d{4}-\d{2}-\d{2}$/.test(iso ?? '') ? meta.datumTekst(iso) : '');

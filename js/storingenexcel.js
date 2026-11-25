@@ -65,7 +65,7 @@ const KLEUR = { open: 'FFE8710A', bezig: 'FFB8860B', opgelost: 'FF1A7F37', verva
 export function maakWerkboek(ExcelJS, zaken, meta, fmt) {
   const { zaakRijen, regRijen, inzetRijen } = rijen(zaken, fmt);
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'Inspectie & Registratie';
+  wb.creator = 'BaasOverBuiten';
   wb.created = new Date();
   const kop = { font: { bold: true, color: { argb: 'FFFFFFFF' } }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0B4F6C' } }, alignment: { vertical: 'middle', wrapText: true } };
   const blad = (naam, kolommen, lijst, statusKolom) => {
