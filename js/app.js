@@ -36,6 +36,7 @@ import * as MP from './msproject.js';
 import * as FM from './formulierimport.js';
 import * as RS from './rondestats.js';
 import * as HS from './herstel.js';
+import * as PV from './planningversie.js';
 import * as IMP from './gisimport.js';
 import * as ST from './stowa.js';
 import * as DG from './digigids.js';
@@ -7602,6 +7603,7 @@ const RECHTEN = {
   incident: { label: 'Incident melden', uitleg: 'Inspectie na incident of calamiteit, zonder werkpakket' },
   storing: { label: 'Storingen oplossen', uitleg: 'Altijd, ook ’s nachts en zonder werkpakket: een storing of gebrek oplossen en vastleggen' },
   goedkeuren: { label: 'Goedkeuren', uitleg: 'Registraties in de inbox beoordelen (standaard uit)', standaardUit: true },
+  plannen: { label: 'Planning bewerken', uitleg: 'Rondes inplannen en verschuiven; alleen als het project dat toestaat (Projectinstellingen → Planning). Standaard uit.', standaardUit: true },
 };
 let huidigProject = null; // bijgewerkt bij elke paginawissel
 /** Kosten (ramingen) en uren zijn per project uit te zetten, bijv. als dat via een ander proces loopt. */
@@ -7669,6 +7671,13 @@ function mijnRechten(p = huidigProject) {
   return { ...alle, ...(p?.ledenInfo?.[ikEmail()]?.rechten ?? {}) };
 }
 const mag = (recht) => mijnRechten()[recht] !== false;
+/** Mag ik de planning nu bewerken? Vastgezet = niemand; per project: alleen beheerders, of ook leden met het recht 'Planning bewerken'. */
+const planningRecht = (p = huidigProject) => PV.magBewerken(p, { beheerder: magBeheren(), rechtPlannen: toegangActief() && mijnRechten(p).plannen === true });
+const PLANNING_REDEN = {
+  vast: 'De planning is vastgezet. Een beheerder kan hem vrijgeven om een nieuwe versie te maken.',
+  beheer: 'Alleen beheerders kunnen de planning bewerken.',
+  recht: 'Je hebt geen recht om de planning te bewerken.',
+};
 
 /** Ziet deze gebruiker dit werkpakket (of deze ronde)? */
 /** Op de pc: een beheerder ziet alle werkpakketten van het project (zoals in de planning); anderen alleen de hunne. */
@@ -8717,6 +8726,11 @@ async function projectFormulier(id) {
           <label class="vink"><input type="checkbox" name="urenTonen" ${p.urenTonen === false ? '' : 'checked'}>
             <span><strong>Uren registreren</strong><small>Veld Uren bij werkzaamheden en uren op het dashboard, in overzichten en exports.</small></span></label></div>
           <small>Loopt dit bij jullie via een ander proces (bijv. het ERP- of urensysteem)? Zet het uit: dan wordt het niet gevraagd en nergens getoond. Al ingevulde waarden blijven bewaard.</small></div>
+        <div class="veld breed"><label>Planning</label><div class="vinkjes-onder">
+          <label class="vink"><input type="checkbox" name="planningAlleenBeheer" ${p.planningAlleenBeheer === false ? '' : 'checked'}>
+            <span><strong>Alleen beheerders mogen de planning bewerken</strong><small>Uit: ook projectleden met het recht <em>Planning bewerken</em> (in te stellen bij Toewijzen) kunnen rondes inplannen en verschuiven.</small></span></label>
+          <label class="vink"><input type="checkbox" name="planningVastzetten" ${p.planningVastzetten ? 'checked' : ''}>
+            <span><strong>Planning vastzetten met versienummers</strong><small>Een beheerder zet de planning vast als versie 1, 2, 3 … Vastgezet kan niemand hem wijzigen tot hij wordt vrijgegeven voor de volgende versie. Afwijkingen ten opzichte van de laatste versie zijn zichtbaar in de planning.</small></span></label></div></div>
         <div class="veld breed"><label for="f-locatieMaatregel">Exacte locatie bij maatregelen (BVC)</label><select id="f-locatieMaatregel" name="locatieMaatregel">
           ${optie('vlaklijn', 'Verplicht bij vlakken en lijnen (standaard)', p.locatieMaatregel ?? 'vlaklijn')}
           ${optie('altijd', 'Altijd verplicht', p.locatieMaatregel ?? 'vlaklijn')}
@@ -8749,7 +8763,7 @@ async function projectFormulier(id) {
     const opslaan = {
       ...p, id: bestaand?.id ?? nieuwId(), naam: d.naam, opdrachtgever: d.opdrachtgever, omschrijving: d.omschrijving,
       ...(bestaand ? {} : { aangemaaktDoor: ikEmail() || '' }),
-      status: d.status, planningswijze: d.planningswijze || 'gepland', kostenTonen: form.elements.kostenTonen.checked, urenTonen: form.elements.urenTonen.checked, locatieMaatregel: form.elements.locatieMaatregel.value || 'vlaklijn', leden, bevindingenAlsTaak: form.elements.bevindingenAlsTaak.checked, aangemaakt: p.aangemaakt ?? nu, gewijzigd: nu,
+      status: d.status, planningswijze: d.planningswijze || 'gepland', kostenTonen: form.elements.kostenTonen.checked, urenTonen: form.elements.urenTonen.checked, locatieMaatregel: form.elements.locatieMaatregel.value || 'vlaklijn', planningAlleenBeheer: form.elements.planningAlleenBeheer.checked, planningVastzetten: form.elements.planningVastzetten.checked, leden, bevindingenAlsTaak: form.elements.bevindingenAlsTaak.checked, aangemaakt: p.aangemaakt ?? nu, gewijzigd: nu,
     };
     await db.bewaar('projecten', opslaan);
     formulierGewijzigd = false;
@@ -9507,7 +9521,7 @@ async function exporteerMsProject() {
         notitie: [t.omschrijving, t.status === 'gereed' ? 'Gereed' : '', !metResources && t.toegewezenAan ? `Toegewezen aan: ${naamVan(t.toegewezenAan)}` : ''].filter(Boolean).join('\n'), werkpakket: pkNaam.get(t.werkpakketId) ?? '' }));
     const indeling = d.querySelector('input[name=mp-indeling]:checked')?.value ?? 'rondes';
     const planning = d.querySelector('#mp-handmatig').checked ? 'handmatig' : 'automatisch';
-    return { ...MP.mspdi({ naam: project.naam ?? 'Planning', groepen, mijlpalen, auteur: instelling.lees('organisatie') || '', indeling, planning }),
+    return { ...MP.mspdi({ naam: `${project.naam ?? 'Planning'}${PV.versieLabel(project) ? ` – planning ${PV.versieLabel(project)}` : ''}`, groepen, mijlpalen, auteur: instelling.lees('organisatie') || '', indeling, planning }),
       aantalRondes: groepen.reduce((n, x) => n + x.rondes.filter((r) => r.start).length, 0), aantalTaken: mijlpalen.length, gekozen: gekozen.size };
   };
   const info = () => {
@@ -9522,7 +9536,8 @@ async function exporteerMsProject() {
     e.preventDefault();
     const r = maak();
     if (!r.taken) return melding('Er is niets om te exporteren met deze keuze (geen rondes of taken met een datum).', 'fout');
-    const naam = `${String(project.naam ?? 'planning').replace(/[^\w-]+/g, '_')}-planning${periode().sleutel ? `-${periode().sleutel}` : ''}-${vandaag()}`;
+    const pvLabel = PV.versieLabel(project).replace(/\s*\(concept\)/, '-concept');
+    const naam = `${String(project.naam ?? 'planning').replace(/[^\w-]+/g, '_')}-planning${pvLabel ? `-${pvLabel}` : ''}${periode().sleutel ? `-${periode().sleutel}` : ''}-${vandaag()}`;
     if (d.querySelector('[name=mp-formaat]:checked').value === 'xml') {
       download(`${naam}.xml`, r.xml, 'application/xml');
     } else {
@@ -10119,8 +10134,78 @@ async function bewaarRonde(pakketId, rondeId, wijziging) {
   await db.bewaar('werkpakketten', { ...p, rondes: lijst, status: pakketStatus({ rondes: lijst }), gewijzigd: new Date().toISOString() });
 }
 
+/** Vastzetten, vrijgeven en versies bekijken (alleen als het project vastzetten gebruikt). */
+async function planningVersieActie(actie, g, klaar) {
+  const project = await actiefProject();
+  const nu = new Date().toISOString();
+  const door = accountNaam() || ikEmail();
+  const huidig = PV.momentopname(g.pakketten, rondesVan);
+  const laatste = PV.laatsteVersie(project);
+  const verschilTabel = (lijst) => (lijst.length ? `<div class="tabelhouder" style="max-height:45vh"><table><thead><tr><th>Ronde</th><th>Wijziging</th><th>Was</th><th>Wordt</th></tr></thead><tbody>
+    ${lijst.map((x) => `<tr><td>${esc(x.label)}</td><td>${esc(PV.VERSCHIL_TEKST[x.soort])}${x.dagen ? ` <small>(${x.dagen > 0 ? '+' : ''}${x.dagen} d)</small>` : ''}</td>
+      <td>${x.oud?.start ? esc(periodeTekst({ start: x.oud.start, eind: x.oud.eind })) : '–'}</td><td>${x.nieuw?.start ? esc(periodeTekst({ start: x.nieuw.start, eind: x.nieuw.eind })) : '–'}</td></tr>`).join('')}</tbody></table></div>`
+    : '<p class="zacht">Geen verschillen.</p>');
+  const dialoog = (html) => new Promise((ok) => {
+    const d = document.createElement('dialog');
+    d.className = 'dialoog breed';
+    d.innerHTML = html;
+    document.body.append(d);
+    d.showModal();
+    const sluit = (w) => { d.close(); d.remove(); ok(w); };
+    d.addEventListener('cancel', (e) => { e.preventDefault(); sluit(null); });
+    d.querySelectorAll('[data-weg]').forEach((x) => { x.onclick = () => sluit(null); });
+    d.querySelector('form')?.addEventListener('submit', (e) => { e.preventDefault(); sluit(Object.fromEntries(new FormData(e.target))); });
+    d.addEventListener('click', (e) => {
+      const v = e.target.closest('[data-vergelijk]');
+      if (v) {
+        const versie = PV.versies(project).find((x) => String(x.nummer) === v.dataset.vergelijk);
+        d.querySelector('#pv-verschil').innerHTML = `<h3>v${versie.nummer} vergeleken met de huidige planning</h3>${verschilTabel(PV.vergelijk(versie.rondes, huidig))}`;
+      }
+      const c = e.target.closest('[data-pv-csv]');
+      if (c) {
+        const versie = PV.versies(project).find((x) => String(x.nummer) === c.dataset.pvCsv);
+        download(`planning-v${versie.nummer}-${String(project.naam ?? '').replace(/[^\w-]+/g, '_')}.csv`, csv([['Ronde', 'Start', 'Eind', 'Status'], ...versie.rondes.map(([, l, st, ei, stt]) => [l, st, ei, stt])]), 'text/csv;charset=utf-8');
+      }
+    });
+  });
+  if (actie === 'vast') {
+    if (!magBeheren()) return melding('Alleen beheerders kunnen de planning vastzetten.', 'fout');
+    const verschil = laatste ? PV.vergelijk(laatste.rondes, huidig) : null;
+    const k = await dialoog(`<form novalidate><h2>${I.vink} Planning vastzetten als v${PV.volgendNummer(project)}</h2>
+      <p>${huidig.filter((x) => x[2]).length} ingeplande rondes${huidig.some((x) => !x[2]) ? ` · ${huidig.filter((x) => !x[2]).length} nog niet ingepland` : ''}. Na het vastzetten kan niemand de planning wijzigen tot een beheerder hem vrijgeeft.</p>
+      ${verschil ? `<h3>Wijzigingen sinds v${laatste.nummer}</h3>${verschilTabel(verschil)}` : ''}
+      <div class="veld"><label for="pv-opm">Opmerking bij deze versie</label><input id="pv-opm" name="opmerking" maxlength="200" placeholder="bijv. Vastgesteld in bouwvergadering 12"></div>
+      <div class="formvoet"><button class="knop" type="button" data-weg>Annuleren</button><button class="knop primair" type="submit">${I.vink} Vastzetten</button></div></form>`);
+    if (!k) return;
+    await bewaarActiefProject((p) => PV.vastzetten(p, PV.momentopname(g.pakketten, rondesVan), { op: nu, door, opmerking: k.opmerking }));
+    melding(`Planning vastgezet als v${PV.laatsteVersie(huidigProject).nummer}`);
+  } else if (actie === 'vrij') {
+    if (!magBeheren()) return melding('Alleen beheerders kunnen de planning vrijgeven.', 'fout');
+    const k = await dialoog(`<form novalidate><h2>Planning vrijgeven voor wijziging</h2>
+      <p>v${laatste?.nummer ?? ''} blijft bewaard. De wijzigingen worden de concept-versie <strong>v${PV.volgendNummer(project)}</strong>, tot je die vastzet.</p>
+      <div class="veld"><label for="pv-reden">Reden</label><input id="pv-reden" name="reden" maxlength="200" placeholder="bijv. vertraging door weersomstandigheden"></div>
+      <div class="formvoet"><button class="knop" type="button" data-weg>Annuleren</button><button class="knop primair" type="submit">${I.start} Vrijgeven</button></div></form>`);
+    if (!k) return;
+    await bewaarActiefProject((p) => PV.vrijgeven(p, { op: nu, door, reden: k.reden }));
+    melding(`Planning vrijgegeven: wijzigingen worden v${PV.volgendNummer(huidigProject)}`);
+  } else if (actie === 'versies') {
+    const log = [...(project.planningLog ?? [])].reverse();
+    await dialoog(`<h2>${I.lijst} Versies van de planning</h2>
+      <div class="tabelhouder"><table><thead><tr><th>Versie</th><th>Vastgezet</th><th>Door</th><th>Opmerking</th><th>Rondes</th><th></th></tr></thead><tbody>
+      ${PV.versies(project).reverse().map((v) => `<tr><td><strong>v${v.nummer}</strong></td><td>${datumTijdNL(v.op)}</td><td>${esc(v.door || '–')}</td><td>${esc(v.opmerking || '')}</td><td>${v.rondes.length}</td>
+        <td class="knoppen" style="flex-wrap:nowrap"><button type="button" class="knop klein" data-vergelijk="${v.nummer}">Vergelijk met nu</button><button type="button" class="knop klein" data-pv-csv="${v.nummer}">CSV</button></td></tr>`).join('')}
+      </tbody></table></div>
+      <div id="pv-verschil"></div>
+      ${log.length ? `<details><summary>Logboek (${log.length})</summary><ul>${log.map((l) => `<li>${datumTijdNL(l.op)} · ${l.actie === 'vastgezet' ? `v${l.versie} vastgezet` : `v${l.versie} vrijgegeven`}${l.door ? ` door ${esc(l.door)}` : ''}${l.reden ? `: ${esc(l.reden)}` : ''}</li>`).join('')}</ul></details>` : ''}
+      <div class="formvoet"><button class="knop" type="button" data-weg>Sluiten</button></div>`);
+    return;
+  }
+  klaar();
+}
+
 async function planningsbord(el, { focusPakket = '' } = {}) {
-  const beheer = magBeheren();
+  const isBeheer = magBeheren();
+  let beheer = planningRecht().mag;
   const zoom = PL.ZOOM[instelling.lees('planZoom')] ? instelling.lees('planZoom') : 'maanden';
   let anker = instelling.lees('planAnker') || vandaag();
   let filterSoort = '';
@@ -10150,6 +10235,12 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
   let houdScroll = null; // horizontale positie bewaren zolang je op dezelfde schaal en periode werkt
   const teken = async () => {
     const g = await pakketGegevens();
+    const project = await actiefProject();
+    const recht = planningRecht(project);
+    beheer = recht.mag;
+    const pvAan = PV.instellingen(project).vastzetten;
+    const laatste = pvAan ? PV.laatsteVersie(project) : null;
+    const basis = laatste ? PV.basislijn(laatste) : null;
     const b = PL.bereik(zoom, anker);
     const vorige = el.querySelector('.bord');
     const scrollX = houdScroll === `${zoom}:${anker}` && vorige ? vorige.scrollLeft : null;
@@ -10174,7 +10265,7 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
     return `<tr><td><a href="#/werkpakketten/${esc(p.id)}"><strong>${wpNaam(p)}</strong></a>
           <br><small>${p.afroepSoort === 'inspectie' ? esc(p.afroepInspectiesoort || 'Inspectie') : esc(p.afroepWerksoort || 'Werkzaamheid')} · ${(p.objecten ?? []).length} objecten${p.reactietijd !== '' && p.reactietijd != null ? ` · reactietijd ${p.reactietijd} dg` : ''}</small></td>
           <td>${lopend.length ? `${lopend.length} lopende afroep${lopend.length === 1 ? '' : 'en'}${lopend.some((r) => PL.teLaat(r, vandaag())) ? ' · <b style="color:var(--gevaar)">te laat</b>' : ''}` : '<span class="zacht">Niets afgeroepen</span>'}</td>
-          <td style="text-align:right">${beheer ? `<a class="knop klein primair" href="#/werkpakketten/${esc(p.id)}/afroep">＋ Afroep</a>` : ''}</td></tr>`;
+          <td style="text-align:right">${isBeheer ? `<a class="knop klein primair" href="#/werkpakketten/${esc(p.id)}/afroep">＋ Afroep</a>` : ''}</td></tr>`;
   }).join('')}</tbody></table></div></section>` : '';
 
     const rondeRij = (p, r) => {
@@ -10185,11 +10276,16 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
       const laat = PL.teLaat(r, vandaag());
       const letter = r.afroep ? 'A' : 'R';
       const titel = `${letter}${r.nummer} ${r.naam} · ${r.afroep ? `afroep (${r.afroep.reden}) · ` : ''}${periodeTekst(v) || 'nog niet ingepland'} · ${vg.gedaan.size + vg.overgeslagen.size}/${vg.totaal}`;
+      // Basislijn: de periode uit de laatst vastgezette versie, alleen als die afwijkt.
+      const bl = basis?.get(PV.sleutel(p.id, r.id));
+      const blAfwijkend = bl && bl.start && (bl.start !== (r.start || '') || bl.eind !== (r.eind || r.start || ''));
+      const blPos = blAfwijkend ? PL.balk({ start: bl.start, eind: bl.eind || bl.start }, b) : null;
       return `<div class="bord-rij" data-pakket="${esc(p.id)}" data-ronde="${esc(r.id)}">
         <div class="bord-label"><div class="bord-labelregel"><a href="${pakketPagina(v, false)}"><span class="bord-soort" style="background:${kleur}"></span>${letter}${r.nummer} ${esc(r.naam)}</a>${rondeNietIngepland(p, r) ? ` ${inplanLet()}` : ''}${r.opmerking ? ` <span class="bord-opm" title="${esc(r.opmerking)}">💬</span>` : ''}${r.afroep?.spoed ? ' <span class="afroeplabel spoedlabel">Spoed</span>' : ''}
             <span class="bord-pct ${r.status === 'afgerond' ? 'klaar' : ''}" title="${vg.gedaan.size + vg.overgeslagen.size} van ${vg.totaal} objecten">${r.status === 'afgerond' ? I.vink + ' ' : ''}${vg.percentage}%</span></div>
           <small>${r.soort === 'inspectie' ? esc(r.inspectiesoort || 'Inspectie') : esc(r.werksoort || 'Werkzaamheid')} · ${PL.duurTekst(PL.duurVan(r))}</small></div>
         <div class="bord-spoor ${beheer ? 'bewerkbaar' : ''}" style="width:${breedte}px">
+          ${blPos ? `<div class="bord-basis" style="left:${blPos.left}px;width:${Math.max(blPos.width, 4)}px" title="Vastgezet in v${laatste.nummer}: ${esc(periodeTekst({ start: bl.start, eind: bl.eind }))}"></div>` : ''}
           ${pos ? `<div class="bord-balk status-${esc(r.status)} ${laat ? 'te-laat' : ''}" style="left:${pos.left}px;width:${Math.max(pos.width, 4)}px;--kleur:${kleur}" title="${esc(titel)}" tabindex="0">
             <span class="bord-voortgang" style="width:${vg.percentage}%"></span>
             ${beheer && !pos.afgekaptLinks ? '<span class="greep begin"></span>' : ''}<span class="bord-tekst">${esc(PL.balkTekst(r, vg.percentage, Math.max(pos.width, 4)))}</span>${beheer && !pos.afgekaptRechts ? '<span class="greep eind"></span>' : ''}
@@ -10197,7 +10293,18 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
         </div></div>`;
     };
 
-    el.innerHTML = `
+    const verschillen = laatste ? PV.vergelijk(laatste.rondes, PV.momentopname(g.pakketten, rondesVan)) : [];
+    const versieBalk = pvAan || !recht.mag ? `<div class="planversie ${PV.isVast(project) ? 'vast' : ''}">
+        ${pvAan ? `<span class="planversie-label">${PV.isVast(project) ? I.vink : I.kalender} Planning <strong>${esc(PV.versieLabel(project))}</strong>
+          ${PV.isVast(project) && laatste ? `<small>vastgezet ${datumTijdNL(laatste.op)}${laatste.door ? ` door ${esc(laatste.door)}` : ''}${laatste.opmerking ? ` · ${esc(laatste.opmerking)}` : ''}</small>`
+    : laatste ? `<small>${verschillen.length ? `${verschillen.length} wijziging${verschillen.length === 1 ? '' : 'en'} sinds v${laatste.nummer}` : `nog gelijk aan v${laatste.nummer}`}</small>` : '<small>nog nooit vastgezet</small>'}</span>` : ''}
+        ${!recht.mag ? `<span class="planversie-slot">${I.let} ${esc(PLANNING_REDEN[recht.reden] ?? '')}</span>` : ''}
+        <span class="knoppen">
+          ${pvAan && isBeheer && !PV.isVast(project) ? `<button type="button" class="knop klein primair" data-pv="vast">${I.vink} Vastzetten als v${PV.volgendNummer(project)}</button>` : ''}
+          ${pvAan && isBeheer && PV.isVast(project) ? `<button type="button" class="knop klein" data-pv="vrij">${I.start} Vrijgeven voor wijziging (v${PV.volgendNummer(project)})</button>` : ''}
+          ${pvAan && PV.versies(project).length ? `<button type="button" class="knop klein" data-pv="versies">${I.lijst} Versies (${PV.versies(project).length})</button>` : ''}
+        </span></div>` : '';
+    el.innerHTML = `${versieBalk}
       <div class="bord-balkje">
         <div class="knoppen">
           <button class="knop klein" data-nav-bord="-1" aria-label="Eerder">◀</button>
@@ -10209,7 +10316,7 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
         <input type="search" id="bord-zoek" placeholder="Zoek werkpakket of ronde…" value="${esc(zoekTekst)}" aria-label="Zoek op naam van werkpakket of ronde">
         <select id="bord-soort" aria-label="Soort">${optie('', 'Werk en inspecties', filterSoort)}${optie('werk', 'Werkzaamheden', filterSoort)}${optie('inspectie', 'Inspecties', filterSoort)}</select>
         <span class="bord-legenda"><i style="background:${BORD_KLEUR.werk}"></i>Werkzaamheid <i style="background:${BORD_KLEUR.inspectie}"></i>Inspectie
-          <i class="gepland"></i>Gepland <i class="afgerond">${I.vink}</i>Afgerond <i class="telaat"></i>Te laat</span>
+          <i class="gepland"></i>Gepland <i class="afgerond">${I.vink}</i>Afgerond <i class="telaat"></i>Te laat${laatste ? ` <i class="basis"></i>Vastgezet (v${laatste.nummer})` : ''}</span>
       </div>
       ${buiten ? `<p class="bord-melding zacht">${I.kalender} ${buiten} ronde${buiten === 1 ? '' : 's'} buiten ${esc(pb.jaar ? String(pb.jaar) : pb.eigen ? `${datumNL(pb.van)} t/m ${datumNL(pb.tot)}` : pb.label.toLowerCase())} verborgen. Kies hierboven een andere periode of "Alle jaren" om ze te zien.</p>` : ''}
       <p class="bord-melding zacht" id="bord-zoekmelding" hidden></p>
@@ -10243,7 +10350,7 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
           </div>`;
   }).join('')}
         </div>
-      </div>` : afroepPakketten.length ? '<p class="leeg">Er zijn geen geplande rondes of lopende afroepen.</p>' : leegKaart('Er zijn nog geen werkpakketten om te plannen.', beheer ? '<a class="knop primair" href="#/werkpakketten/nieuw">+ Werkpakket maken</a>' : '')}
+      </div>` : afroepPakketten.length ? '<p class="leeg">Er zijn geen geplande rondes of lopende afroepen.</p>' : leegKaart('Er zijn nog geen werkpakketten om te plannen.', isBeheer ? '<a class="knop primair" href="#/werkpakketten/nieuw">+ Werkpakket maken</a>' : '')}
       ${afroepBlok}`;
 
     // Navigatie, zoom en filters
@@ -10273,6 +10380,7 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
     else if (scroller && vandaagNr >= b.begin && vandaagNr <= b.eind) scroller.scrollLeft = Math.max(0, x(vandaagNr) - 200);
     houdScroll = `${zoom}:${anker}`;
 
+    el.querySelectorAll('[data-pv]').forEach((k2) => { k2.onclick = () => planningVersieActie(k2.dataset.pv, g, () => teken()); });
     if (!beheer) {
       el.querySelectorAll('.bord-balk').forEach((balk) => { balk.onclick = () => rondeDialoog(balk.closest('.bord-rij'), false); });
       return;
@@ -10626,7 +10734,7 @@ async function takenPagina(_, q = new URLSearchParams()) {
   const gesorteerd = sorteerTaken(lijst);
   app.innerHTML = `
     <div class="paginakop">
-      <div><h1>Planning</h1><p>Plan de rondes van de werkpakketten in de tijd${magBeheren() ? ': sleep een balk om te verplaatsen, sleep de randen om korter of langer te maken, of trek in een lege rij de periode' : ''}. Daaronder alle taken.</p></div>
+      <div><h1>Planning</h1><p>Plan de rondes van de werkpakketten in de tijd${planningRecht().mag ? ': sleep een balk om te verplaatsen, sleep de randen om korter of langer te maken, of trek in een lege rij de periode' : ''}. Daaronder alle taken.</p></div>
       <div class="knoppen"><a class="knop" href="#/planning/overzicht" title="Agenda en notulen voor het planningsoverleg">${I.bestand} Planningsoverleg</a><button type="button" class="knop" data-msproject title="Planning downloaden voor Microsoft Project">${I.exporteer} MS Project</button>${magBeheren() ? '<a class="knop" href="#/werkpakketten/nieuw">+ Werkpakket</a>' : ''}<a class="knop" href="#/taken/nieuw">+ Taak plannen</a></div>
     </div>
     <section class="kaart bordkaart"><div id="planningsbord"><p class="leeg">Planning laden…</p></div></section>
@@ -10775,7 +10883,7 @@ async function voortgangsOverzicht(q) {
     const scroll = window.scrollY;
     app.innerHTML = `
     <div class="paginakop geen-print dossierbalk">
-      <div><p><a href="#/planning">← Planning</a></p><h1>Planningsoverleg</h1>
+      <div><p><a href="#/planning">← Planning</a></p><h1>Planningsoverleg${PV.versieLabel(huidigProject) ? ` <small class="planversie-chip">planning ${esc(PV.versieLabel(huidigProject))}</small>` : ''}</h1>
         <p>Agenda en notulen voor het bespreken van de planning in het projectteam of met de opdrachtgever. Vul tijdens het overleg de
           bespreekpunten en actiepunten in; ${kanOpslaan ? 'alles wordt direct opgeslagen in het project' : 'alleen een beheerder kan de notulen in het project opslaan (jouw invoer blijft op dit apparaat)'}.</p></div>
       <div class="vo-balk">

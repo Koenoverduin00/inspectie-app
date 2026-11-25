@@ -2208,3 +2208,14 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
 .rondeknoppen { white-space: normal; }
 .rondeknoppen .knop { margin: .1rem 0; }
 .afronddialoog .waarschuwingskaart, .afronddialoog .mhier { margin: .5rem 0; }
+
+/* Planning vastzetten met versies */
+.planversie { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; padding: .55rem .75rem; margin-bottom: .6rem; border-radius: 8px;
+  background: color-mix(in srgb, var(--primair, #0b4f6c) 7%, transparent); border: 1px solid color-mix(in srgb, var(--primair, #0b4f6c) 20%, transparent); }
+.planversie.vast { background: color-mix(in srgb, #1a7f37 9%, transparent); border-color: color-mix(in srgb, #1a7f37 30%, transparent); }
+.planversie-label small { display: block; color: var(--zacht, #5b6875); }
+.planversie-slot { color: var(--zacht, #5b6875); font-size: .9rem; }
+.planversie .knoppen { margin-left: auto; }
+.planversie-chip { font-size: .8rem; font-weight: 600; padding: .1rem .45rem; border-radius: 999px; background: color-mix(in srgb, var(--primair, #0b4f6c) 12%, transparent); vertical-align: middle; }
+.bord-basis { position: absolute; bottom: 2px; height: 4px; border-radius: 2px; background: repeating-linear-gradient(90deg, #5b6875 0 5px, transparent 5px 8px); opacity: .85; pointer-events: none; z-index: 1; }
+.bord-legenda i.basis { height: 4px; background: repeating-linear-gradient(90deg, #5b6875 0 5px, transparent 5px 8px); }

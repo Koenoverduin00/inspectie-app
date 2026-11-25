@@ -1139,6 +1139,32 @@ naar een **eisvraag** die in de formulieren komt, gekoppeld aan het **eisnummer*
   ondertekeningsblok. Optioneel met foto's als bewijs. *Afdrukken / opslaan als PDF* geeft het dossier; *Excel* geeft
   dezelfde inhoud in de bladen Samenvatting, Eisen, Bewijs en Afwijkingen.
 
+## Planning vastzetten met versienummers en wie de planning bewerkt
+
+Per project in te stellen (Projectinstellingen → **Planning**). Logica in `js/planningversie.js` (getest in
+`tests/planningversie.test.js`).
+
+- **Alleen beheerders mogen de planning bewerken.** Staat standaard aan (`planningAlleenBeheer`).
+  - Uit: ook projectleden met het recht **Planning bewerken** kunnen rondes inplannen en verschuiven. Dat recht staat
+    standaard uit en zet je per persoon aan bij Toewijzen.
+  - Wie niet mag bewerken, ziet de planning alleen-lezen, met de reden erbij.
+- **Planning vastzetten met versienummers.** Staat standaard uit (`planningVastzetten`).
+  - Een beheerder kiest **Vastzetten als v1**, met een optionele opmerking. De planning is dan voor iedereen vergrendeld,
+    ook voor beheerders.
+  - **Vrijgeven voor wijziging** (met reden) opent de concept-versie **v2**. Die zet je later weer vast.
+  - Een versie is een compacte momentopname per ronde (start, eind, status) in `project.planningVersies`. Er worden
+    maximaal 50 versies bewaard; vastzetten en vrijgeven staan in `project.planningLog`. Afroepen horen niet bij de
+    planning.
+  - Op het planningsbord staat een balk met de versie: "v2 · vastgezet … door …" of "v3 (concept) · 4 wijzigingen sinds
+    v2".
+  - Wijkt een ronde af van de laatst vastgezette versie, dan staat er een **streepjeslijn** op de plek uit die versie.
+  - **Versies** toont alle versies. Per versie kun je *Vergelijk met nu* kiezen (verschoven met het aantal dagen, duur
+    gewijzigd, nieuw, vervallen, ingepland) en een CSV downloaden. Bij het vastzetten zie je de wijzigingen ten opzichte
+    van de vorige versie.
+  - Het versienummer staat ook in de MS Project-export (bestandsnaam en projectnaam) en in de kop van het
+    planningsoverleg.
+- **Let op:** de vergrendeling werkt in de app. De server (RLS) controleert niet apart op de planning.
+
 ## Locatie van een gebrek: het puntobject is leidend
 
 Bij **alle inspecties en schouwen** geldt: bij een **puntobject** (bijv. een boom, bord of put) zit het gebrek op het
