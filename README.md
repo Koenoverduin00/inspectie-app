@@ -1154,6 +1154,55 @@ naar een **eisvraag** die in de formulieren komt, gekoppeld aan het **eisnummer*
   ondertekeningsblok. Optioneel met foto's als bewijs. *Afdrukken / opslaan als PDF* geeft het dossier; *Excel* geeft
   dezelfde inhoud in de bladen Samenvatting, Eisen, Bewijs en Afwijkingen.
 
+## Bedrijven: aparte omgevingen per bedrijf
+
+Eén app en één database, met per bedrijf een eigen, afgeschermde omgeving. Dat geldt voor projecten, personen,
+formulierenbibliotheek, inspectietypen en eisen. Naam, logo, kleur en webadres zijn voor iedereen hetzelfde. Op de
+server: `supabase/013_bedrijven.sql`.
+
+| Rol | Waar vastgelegd | Ziet en beheert |
+|---|---|---|
+| **Platformbeheerder** | tabel `teamleden` (zoals voorheen de beheerders) | alle bedrijven: aanmaken, hernoemen, beheerders aanwijzen, overal meekijken |
+| **Bedrijfsbeheerder** | `bedrijfsleden`, rol `beheerder` | alleen het eigen bedrijf: projecten, personen, bibliotheek |
+| **Gebruiker** | `bedrijfsleden`, rol `lid` | alleen de projecten van het eigen bedrijf waar hij lid van is |
+
+**Regels op de server (RLS).**
+- Elk project heeft een `bedrijf_id`. Voor iedereen behalve de platformbeheerder bepaalt de server dat zelf: altijd het
+  eigen bedrijf. Een project kan niet naar een ander bedrijf verhuizen.
+- Alle toegangsregels hebben de bedrijfscontrole: projecten, alle gegevens, foto's, accountstatus, profielen en
+  opdrachtgevers. Ook als iemand van bedrijf A in de ledenlijst van een project van bedrijf B staat, ziet hij dat
+  project niet.
+- **Eén bedrijf per e-mailadres.** Een adres dat al bij een ander bedrijf hoort, wordt geweigerd met een duidelijke
+  melding. Werkt iemand voor twee bedrijven, dan krijgt hij een aparte uitnodiging met een ander e-mailadres.
+
+**In de app.**
+- **Platformbeheerder.**
+  - In de kop staat het bedrijf waarin je werkt; klik erop om te wisselen. Op de projectenpagina staat ook een
+    keuzelijst *Bedrijf*.
+  - **Instellingen → Bedrijven**: bedrijf aanmaken met de eerste beheerder (met uitnodiging), naam wijzigen, en per
+    bedrijf de personen (beheerder of gebruiker) toevoegen, wijzigen of verwijderen.
+  - Nieuwe projecten en bibliotheekformulieren komen in het gekozen bedrijf.
+- **Bedrijfsbeheerder.** Op **Personen** staat de kolom *Rol in bedrijf* (gebruiker of beheerder) en een vinkje
+  *Beheerder van het bedrijf* bij uitnodigen. Een beheerder hoeft niet aan projecten te worden gekoppeld; hij ziet alle
+  projecten van het bedrijf. Verwijderen haalt iemand uit het bedrijf en uit alle projecten.
+- **Formulieren.**
+  - De ingebouwde typen (visuele inspectie, NEN 2767, schouw, BVC, STOWA) en de voorbeeldformulieren zijn in elk
+    bedrijf beschikbaar.
+  - De eigen formulierenbibliotheek is per bedrijf.
+  - De platformbeheerder kan een formulier met **Naar bedrijf** als kopie in de bibliotheek van een ander bedrijf
+    zetten.
+- **Zonder update 013** (of lokaal zonder account) werkt de app zoals voorheen: één omgeving.
+
+**Invoeren in Supabase.**
+1. Voer `supabase/013_bedrijven.sql` uit (SQL Editor → Run). Bestaande projecten en bibliotheek komen in het bedrijf
+   *Mijn bedrijf*; huidige projectleden worden gebruiker van dat bedrijf. Er wordt niets verwijderd.
+2. Iedereen in `teamleden` is daarna **platformbeheerder** en ziet alle bedrijven. Collega's die alleen het eigen
+   bedrijf mogen beheren, zet je om met de twee regels onderaan het script.
+3. Hernoem *Mijn bedrijf* in de app (Instellingen → Bedrijven → Naam wijzigen).
+
+**Getest.** De beveiliging is getest op een echte PostgreSQL met een nabootsing van Supabase (`supabase/tests/`,
+50 controles). Zie `supabase/tests/README.md`.
+
 ## "Volgende dichtbij": eerst naar het object
 
 In een werkpakket op de telefoon opent **Volgende dichtbij** (en *Volgende*) eerst de **objectpagina** (locatie) van

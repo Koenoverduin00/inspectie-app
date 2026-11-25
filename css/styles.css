@@ -2268,3 +2268,10 @@ body.kiesmodus .mvoet, body.kiesmodus .mkaartlegenda { visibility: hidden; }
 .mlijstknop > span:not(.micoon) { flex: 1; min-width: 0; display: grid; }
 @media (min-width: 761px) { .kiesbalk { bottom: 16px; } }
 body.kiesmodus .mfilterchips, body.kiesmodus .mtedoenseg, body.kiesmodus .ff-filters { display: none; }
+
+/* Bedrijven (platformbeheerder) */
+.bedrijfchip { background: rgba(255, 255, 255, .22); font-weight: 700; margin-right: .35rem; }
+.bedrijfkeuze { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; padding: .6rem .8rem; margin-bottom: 1rem; }
+.bedrijfkeuze label { font-weight: 700; display: flex; align-items: center; gap: .35rem; }
+.bedrijfkeuze select { width: auto; min-width: 14rem; }
+.bedrijventabel tr.gekozen td { background: color-mix(in srgb, var(--primair) 6%, transparent); }

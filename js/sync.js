@@ -254,7 +254,8 @@ export async function uitloggen() {
   }
   schrijf('sessie', null);
   schrijf('rol', null);
-  zetStatus({ fase: bepaalRustFase(), fout: '', rol: null });
+  schrijf('bedrijf', null);
+  zetStatus({ fase: bepaalRustFase(), fout: '', rol: null, bedrijf: null });
 }
 
 // Eén vernieuwing tegelijk: Supabase accepteert elke vernieuwingssleutel maar één keer. Vroegen meerdere verzoeken
@@ -323,7 +324,39 @@ export async function haalRolOp() {
   const rol = await res.json();
   schrijf('rol', rol);
   zetStatus({ rol });
+  await haalBedrijfOp().catch(() => {});
   return rol;
+}
+
+// ---------------------------------------------------------------------------
+// Bedrijven (update 013): elk account hoort bij één bedrijf; de platformbeheerder beheert alle bedrijven.
+// ---------------------------------------------------------------------------
+const geenFunctie = (fout) => /404|PGRST202|Could not find/i.test(String(fout?.message ?? ''));
+
+/** Een databasefunctie aanroepen; geeft de JSON-uitkomst terug. */
+export async function rpc(naam, args = {}) {
+  const res = await api(`/rest/v1/rpc/${naam}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
+  const tekst = await res.text();
+  return tekst ? JSON.parse(tekst) : null;
+}
+
+/** { platform, bedrijfId, naam, rol } van de ingelogde gebruiker, of null (lokaal of update 013 nog niet uitgevoerd). */
+export function bedrijf() {
+  if (!sessie()) return null;
+  return status.bedrijf !== undefined ? status.bedrijf : lees('bedrijf') ?? null;
+}
+
+export async function haalBedrijfOp() {
+  try {
+    const info = await rpc('mijn_bedrijf_info');
+    const b = info && (info.platform || info.bedrijfId) ? info : null;
+    schrijf('bedrijf', b);
+    zetStatus({ bedrijf: b });
+    return b;
+  } catch (fout) {
+    if (geenFunctie(fout)) { schrijf('bedrijf', null); zetStatus({ bedrijf: null }); return null; }
+    throw fout;
+  }
 }
 
 /**

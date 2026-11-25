@@ -138,6 +138,7 @@ const ROUTES = [
   [/^\/kaart$/, 'kaart', kaart],
   [/^\/instellingen$/, 'instellingen', instellingen],
   [/^\/personen$/, 'personen', personenPagina],
+  [/^\/bedrijven$/, 'personen', bedrijvenPagina],
   [/^\/toewijzen$/, 'toewijzen', toewijzenPagina],
   [/^\/decompositie$/, 'decompositie', decompositiePagina],
   [/^\/inspectietypen$/, 'inspectietypen', inspectietypenPagina],
@@ -153,10 +154,10 @@ const ROUTES = [
 const NAV_GROEP = { inspecties: 'werkpakketten', werkzaamheden: 'werkpakketten', maatregelen: 'werkpakketten', taken: 'planning', kaart: 'instellingen', personen: 'instellingen', decompositie: 'instellingen', eisen: 'instellingen', inspectietypen: 'instellingen', bibliotheek: 'instellingen', toewijzen: 'werkpakketten' };
 const TABBLADEN = {
   werkpakketten: () => [['#/werkpakketten', I.pakket + ' Werkpakketten'], ['#/inspecties', I.inspectie + ' Inspecties'], ['#/werkzaamheden', I.werk + ' Werkzaamheden'], ['#/maatregelen', I.let + ' Maatregelen'], ...(magBeheren() ? [['#/toewijzen', I.personen + ' Toewijzen']] : [])],
-  instellingen: () => (magBeheren() ? [['#/instellingen', I.instellingen + ' Algemeen'], ['#/personen', I.personen + ' Personen'], ['#/kaart', I.kaart + ' Kaart & GIS'], ['#/inspectietypen', I.inspectie + ' Inspectietypen'], ['#/bibliotheek', I.lijst + ' Bibliotheek'], ['#/decompositie', I.lagen + ' Decompositie'], ['#/eisen', I.taak + ' Eisen']] : []),
+  instellingen: () => (magBeheren() ? [['#/instellingen', I.instellingen + ' Algemeen'], ...(isPlatform() ? [['#/bedrijven', I.personen + ' Bedrijven']] : []), ['#/personen', I.personen + ' Personen'], ['#/kaart', I.kaart + ' Kaart & GIS'], ['#/inspectietypen', I.inspectie + ' Inspectietypen'], ['#/bibliotheek', I.lijst + ' Bibliotheek'], ['#/decompositie', I.lagen + ' Decompositie'], ['#/eisen', I.taak + ' Eisen']] : []),
 };
 // Alleen de overzichtspagina's krijgen tabbladen (geen formulieren of details).
-const TAB_PAGINAS = /^\/(werkpakketten|inspecties|werkzaamheden|maatregelen|toewijzen|instellingen|personen|kaart|decompositie|inspectietypen|bibliotheek|eisen)$/;
+const TAB_PAGINAS = /^\/(werkpakketten|inspecties|werkzaamheden|maatregelen|toewijzen|instellingen|personen|bedrijven|kaart|decompositie|inspectietypen|bibliotheek|eisen)$/;
 
 function tabbalk(pad, groep) {
   const tabs = TABBLADEN[groep]?.() ?? [];
@@ -231,7 +232,7 @@ async function toonRoute() {
       return;
     }
     // Eerst een project kiezen; alleen projecten, instellingen en account werken zonder project.
-    if (!/^\/(projecten|instellingen|m\/account)(\/|$)/.test(pad) && !(await actiefProject())) {
+    if (!/^\/(projecten|instellingen|bedrijven|bibliotheek|personen|m\/account)(\/|$)/.test(pad) && !(await actiefProject())) {
       await projectenPagina();
       return;
     }
@@ -1289,7 +1290,7 @@ const oordeelChip = (o) => (o ? `<span class="score" style="background:${esc(o.k
 const schaalChips = (schaal) => (schaal ?? []).map((x) => `<span class="schaalchip" style="--k:${esc(x.kleur)}">${esc(x.label)}</span>`).join('');
 
 async function bibliotheekItems() {
-  return (await db.alle('projecten')).filter((p) => isBibliotheek(p) && !p.verwijderd)
+  return (await db.alle('projecten')).filter((p) => isBibliotheek(p) && !p.verwijderd && inHuidigBedrijf(p))
     .sort((a, b) => String(a.naam).localeCompare(String(b.naam), 'nl'));
 }
 
@@ -1593,7 +1594,7 @@ async function bewaarInBibliotheek({ type, velden: typeVelden }, { item = null }
   const schoon = TY.controleer(type).type;
   delete schoon.id; delete schoon.standaard; delete schoon.verborgen; delete schoon.bron;
   const vv = FM.vragenOvernemen(typeVelden ?? [], nieuwId).map(({ alleenBij, nieuw, ...d }) => { const n = velden.normaliseer({ ...d, formulier: 'inspectie' }); delete n.alleenBij; return n; });
-  const x = { ...(item ?? { id: nieuwId(), soort: 'bibliotheek', aangemaakt: nu }), naam: schoon.naam, type: schoon, velden: vv,
+  const x = { ...(item ?? { id: nieuwId(), soort: 'bibliotheek', aangemaakt: nu, ...bedrijfVeld() }), naam: schoon.naam, type: schoon, velden: vv,
     versie: item ? Number(item.versie || 1) + 1 : 1, gewijzigd: nu, door: ikEmail() || instelling.lees('inspecteur') || '' };
   await db.bewaar('projecten', x);
   return x;
@@ -1851,7 +1852,7 @@ async function typeNaarBibliotheek(t, items) {
   } else if (item && !confirm(`Bibliotheekformulier "${item.naam}" bijwerken van versie ${item.versie} naar ${Number(item.versie) + 1}? Andere projecten krijgen een melding dat er een nieuwere versie is.`)) return;
   const nu = new Date().toISOString();
   const nieuw = {
-    ...(item ?? { id: nieuwId(), soort: 'bibliotheek', aangemaakt: nu }),
+    ...(item ?? { id: nieuwId(), soort: 'bibliotheek', aangemaakt: nu, ...bedrijfVeld() }),
     naam: schoonType.naam, type: schoonType, velden: typeVelden, versie: item ? Number(item.versie) + 1 : 1, gewijzigd: nu, door: ikEmail() || instelling.lees('inspecteur') || '',
   };
   await db.bewaar('projecten', nieuw);
@@ -2084,7 +2085,7 @@ async function inspectietypeEditor(id, { bibliotheek = false } = {}) {
     const nu = new Date().toISOString();
     if (bibliotheek) {
       const { id: _i, standaard, verborgen, bron, ...schoon } = type;
-      const nieuw = { ...(item ?? { id: nieuwId(), soort: 'bibliotheek', aangemaakt: nu, velden: [] }), naam: schoon.naam, type: schoon,
+      const nieuw = { ...(item ?? { id: nieuwId(), soort: 'bibliotheek', aangemaakt: nu, velden: [], ...bedrijfVeld() }), naam: schoon.naam, type: schoon,
         versie: item ? Number(item.versie) + 1 : 1, gewijzigd: nu, door: ikEmail() || instelling.lees('inspecteur') || '' };
       await db.bewaar('projecten', nieuw);
       formulierGewijzigd = false;
@@ -2122,6 +2123,8 @@ async function inspectietypeEditor(id, { bibliotheek = false } = {}) {
 async function bibliotheekPagina() {
   if (!magBeheren()) { app.innerHTML = leegKaart('Alleen beheerders kunnen de formulierenbibliotheek beheren.'); return; }
   const items = await bibliotheekItems();
+  // Platformbeheerder: formulieren naar een ander bedrijf kopiëren (elk bedrijf heeft een eigen bibliotheek).
+  const andereBedrijven = isPlatform() ? (await laadBedrijven()).filter((b) => b.id !== huidigBedrijfId()) : [];
   const projecten = await zichtbareProjecten();
   const gebruiktIn = (x) => projecten.filter((p) => (p.inspectietypen ?? []).some((t) => t.bron?.bibId === x.id));
   const ontbrekend = TY.VOORBEELDEN.filter((v) => !items.some((x) => x.naam.toLowerCase() === v.naam.toLowerCase()));
@@ -2148,15 +2151,37 @@ async function bibliotheekPagina() {
         <a class="knop klein" href="#/bibliotheek/${encodeURIComponent(x.id)}">${I.concept} Bewerken</a>
         <button class="knop klein" data-bibkopie="${esc(x.id)}" title="Kopie maken in de bibliotheek, als basis voor een nieuw formulier">${I.kopie} Kopie</button>
         <button class="knop klein" data-naar="${esc(x.id)}">${I.exporteer} Naar projecten</button>
+        ${andereBedrijven.length ? `<button class="knop klein" data-naarbedrijf="${esc(x.id)}" title="Kopie in de bibliotheek van een ander bedrijf zetten">${I.kopie} Naar bedrijf</button>` : ''}
         <button class="knop klein gevaar" data-weg="${esc(x.id)}" aria-label="Verwijderen">${I.verwijder}</button></div></td></tr>`;
   }).join('')}</tbody></table></div></section>`
     : leegKaart('De bibliotheek is nog leeg. Maak een nieuw formulier, voeg de voorbeelden toe (Staat verhardingen, Bebording, Eenvoudige schouw), of sla vanuit Inspectietypen een type van een project op in de bibliotheek.')}`;
 
+  app.querySelectorAll('[data-naarbedrijf]').forEach((k) => k.addEventListener('click', async () => {
+    const x = items.find((y) => y.id === k.dataset.naarbedrijf);
+    const d = document.createElement('dialog');
+    d.className = 'dialoog';
+    d.innerHTML = `<form method="dialog"><h2>${I.kopie} "${esc(x.naam)}" naar een ander bedrijf</h2>
+      <p><small>Het andere bedrijf krijgt een eigen kopie (versie 1) die het zelf kan aanpassen. Het origineel hier verandert niet.</small></p>
+      <div class="kieslijst">${andereBedrijven.map((b) => `<label class="vink"><input type="checkbox" name="bedrijf" value="${esc(b.id)}"><span>${esc(b.naam)}</span></label>`).join('')}</div>
+      <div class="formvoet"><button class="knop" value="nee">Annuleren</button><button class="knop primair" value="ja">${I.kopie} Kopiëren</button></div></form>`;
+    document.body.append(d);
+    d.showModal();
+    const ok = await new Promise((r2) => d.addEventListener('close', () => r2(d.returnValue === 'ja'), { once: true }));
+    const doelen = [...d.querySelectorAll('input[name=bedrijf]:checked')].map((c) => c.value);
+    d.remove();
+    if (!ok || !doelen.length) return;
+    const nu = new Date().toISOString();
+    for (const bid of doelen) {
+      const { id: _id, bedrijfId: _b, ...rest } = x;
+      await db.bewaar('projecten', { ...rest, id: nieuwId(), bedrijfId: bid, versie: 1, aangemaakt: nu, gewijzigd: nu, door: ikEmail() || '', gekopieerdVan: { id: x.id, versie: x.versie } });
+    }
+    melding(`"${x.naam}" gekopieerd naar ${doelen.map((bid) => bedrijfNamen.get(bid) ?? bid).join(', ')}`);
+  }));
   app.querySelector('#voorbeelden')?.addEventListener('click', async () => {
     const nu = new Date().toISOString();
     for (const v of ontbrekend) {
       const { type } = TY.controleer(v);
-      await db.bewaar('projecten', { id: nieuwId(), soort: 'bibliotheek', naam: type.naam, type, velden: [], versie: 1, aangemaakt: nu, gewijzigd: nu, door: ikEmail() || '' });
+      await db.bewaar('projecten', { id: nieuwId(), soort: 'bibliotheek', naam: type.naam, type, velden: [], versie: 1, aangemaakt: nu, gewijzigd: nu, door: ikEmail() || '', ...bedrijfVeld() });
     }
     melding(`${ontbrekend.length} voorbeeld${ontbrekend.length === 1 ? '' : 'en'} toegevoegd`);
     bibliotheekPagina();
@@ -7902,15 +7927,42 @@ async function inProject(store) {
 async function actiefProject() {
   const pid = projectId();
   const p = pid ? await db.haal('projecten', pid) : null;
-  return p && !p.verwijderd && !isBibliotheek(p) ? p : null;
+  return p && !p.verwijderd && !isBibliotheek(p) && inHuidigBedrijf(p) ? p : null;
 }
 
 async function zichtbareProjecten() {
-  return (await db.alle('projecten')).filter((p) => !p.verwijderd && !isBibliotheek(p))
+  return (await db.alle('projecten')).filter((p) => !p.verwijderd && !isBibliotheek(p) && inHuidigBedrijf(p))
     .sort((a, b) => String(a.naam).localeCompare(String(b.naam), 'nl', { numeric: true }));
 }
 
 const magBeheren = () => sync.rol() === 'beheerder';
+
+// ---------------------------------------------------------------------------
+// Bedrijven (update 013): elk bedrijf is een eigen omgeving. De server scheidt de gegevens; de platformbeheerder
+// (die alle bedrijven ziet) kiest in de app met welk bedrijf hij werkt.
+// ---------------------------------------------------------------------------
+/** Staan bedrijven aan (ingelogd en update 013 uitgevoerd)? */
+const bedrijvenAan = () => Boolean(sync.bedrijf());
+const isPlatform = () => sync.bedrijf()?.platform === true;
+const bedrijfSleutel = () => `bedrijf:${ikEmail()}`;
+/** Het bedrijf waarin je nu werkt: voor gewone accounts het eigen bedrijf, voor de platformbeheerder het gekozen bedrijf. */
+function huidigBedrijfId() {
+  const b = sync.bedrijf();
+  if (!b) return null;
+  if (!b.platform) return b.bedrijfId ?? null;
+  return instelling.lees(bedrijfSleutel(), '') || b.bedrijfId || 'bedrijf-1';
+}
+/** Hoort dit project (of bibliotheekitem) bij het bedrijf waarin je werkt? Zonder bedrijf (oud of lokaal): ja. */
+const inHuidigBedrijf = (p) => !bedrijvenAan() || !p?.bedrijfId || p.bedrijfId === huidigBedrijfId();
+/** Bij een nieuw project of bibliotheekitem: het bedrijf meegeven (de server controleert het). */
+const bedrijfVeld = () => (huidigBedrijfId() ? { bedrijfId: huidigBedrijfId() } : {});
+let bedrijfNamen = new Map();
+/** Persoon aan het bedrijf koppelen voordat hij aan projecten wordt toegevoegd. Een e-mailadres hoort bij één bedrijf. */
+async function koppelAanBedrijf(email, rol = null) {
+  if (!bedrijvenAan()) return;
+  if (!navigator.onLine) throw new Error('Je bent offline. Een persoon toevoegen aan het bedrijf kan alleen met internetverbinding.');
+  await sync.rpc('zet_bedrijfslid', { p_email: email, p_rol: rol, p_bedrijf: isPlatform() ? huidigBedrijfId() : null });
+}
 
 // ---------------------------------------------------------------------------
 // Toegang binnen een project: wie ziet welk werkpakket, en wie mag wat doen
@@ -8070,6 +8122,8 @@ function personenUitProjecten(projecten) {
 
 /** Zet een persoon in (of uit) de ledenlijst van projecten; info wordt per project bewaard. */
 async function zetPersoonInProjecten(email, gewenst, info = {}, alleenVoor = null) {
+  // Eerst aan het bedrijf koppelen (een bestaande rol blijft staan); hoort het adres bij een ander bedrijf, dan stopt het hier.
+  if (gewenst.size) await koppelAanBedrijf(email);
   const nu = new Date().toISOString();
   for (const p of await zichtbareProjecten()) {
     const leden = new Set((p.leden ?? []).map((x) => String(x).toLowerCase()));
@@ -8096,7 +8150,7 @@ async function maakDemoProject(email, naam, tot) {
     id: nieuwId(), naam: `Demo – ${naam || email.split('@')[0]}`, opdrachtgever: 'Voorbeeldgemeente', omschrijving: 'Demo-omgeving met voorbeeldgegevens om de app uit te proberen.',
     status: 'actief', planningswijze: 'gepland', kostenTonen: true, urenTonen: true, demo: true,
     leden: [email], ledenInfo: { [email]: { naam: naam || '', rol: 'demo', verlooptOp: tot } },
-    aangemaakt: nu, gewijzigd: nu, door: ikEmail() || '',
+    aangemaakt: nu, gewijzigd: nu, door: ikEmail() || '', ...bedrijfVeld(),
   };
   await db.bewaar('projecten', project);
   const data = demoData();
@@ -8653,6 +8707,16 @@ async function personenPagina() {
   }
   const projecten = await zichtbareProjecten();
   const personen = personenUitProjecten(projecten);
+  // Bedrijven: wie hoort bij dit bedrijf en met welke rol (ook beheerders zonder project).
+  const bedrijfRol = new Map();
+  if (bedrijvenAan()) {
+    try {
+      for (const l of await sync.rpc('bedrijf_leden', { p_bedrijf: isPlatform() ? huidigBedrijfId() : null }) ?? []) bedrijfRol.set(String(l.email).toLowerCase(), l.rol);
+    } catch (fout) { console.warn('Personen van het bedrijf niet opgehaald', fout.message); }
+    for (const [email] of bedrijfRol) if (!personen.some((x) => x.email === email)) personen.push({ email, naam: '', projecten: [], uitgenodigdOp: '', uitgenodigdDoor: '', rollen: new Set() });
+    personen.sort((a, b) => Number(bedrijfRol.get(b.email) === 'beheerder') - Number(bedrijfRol.get(a.email) === 'beheerder') || (a.naam || a.email).localeCompare(b.naam || b.email, 'nl'));
+  }
+  const metBedrijf = bedrijvenAan();
   const actief = projectId();
   const ik = sync.sessie()?.gebruiker?.email ?? '';
   const kanMailen = sync.isIngesteld() && Boolean(sync.sessie());
@@ -8675,6 +8739,8 @@ async function personenPagina() {
         <div class="veld breed" id="p-demo" hidden><label for="p-tot">Demo-toegang tot en met</label>
           <input type="date" id="p-tot" name="tot" value="${PL.isoVan(PL.dagNr(vandaag()) + DEMO_DAGEN)}" min="${vandaag()}">
           <small>Er wordt automatisch een eigen project <em>Demo – naam</em> met voorbeeldgegevens aangemaakt. Na deze datum kan hij niet meer inloggen op de demo.</small></div>
+        ${metBedrijf ? `<div class="veld breed" id="p-beheer"><label class="vink"><input type="checkbox" name="beheerder">
+          <span><strong>Beheerder van ${esc(bedrijfNamen.get(huidigBedrijfId()) || sync.bedrijf()?.naam || 'het bedrijf')}</strong><small>Ziet en beheert alle projecten, personen en formulieren van dit bedrijf. Andere bedrijven ziet hij niet. Projecten kiezen is dan niet nodig.</small></span></label></div>` : ''}
         <div class="veld breed" id="p-projecten"><label>Toegang tot projecten</label>
           ${projecten.length ? `<div class="chips">${projectChips('p-project', new Set(actief ? [actief] : []))}</div>
           <small>De persoon ziet en bewerkt alleen de inhoud van deze projecten.</small>` : '<small>Maak eerst een project aan.</small>'}</div>
@@ -8685,10 +8751,11 @@ async function personenPagina() {
     </form>
     <section class="kaart" style="padding:0">
       <div class="tabelhouder"><table>
-        <thead><tr><th>Naam</th><th>E-mailadres</th><th>Organisatie</th><th>Projecten</th><th>Uitnodiging</th><th>Account</th><th></th></tr></thead>
+        <thead><tr><th>Naam</th><th>E-mailadres</th>${metBedrijf ? '<th>Rol in bedrijf</th>' : ''}<th>Organisatie</th><th>Projecten</th><th>Uitnodiging</th><th>Account</th><th></th></tr></thead>
         <tbody>${personen.length ? personen.map((x) => `<tr data-email="${esc(x.email)}">
           <td>${x.naam ? esc(x.naam) : '<span class="zacht">–</span>'}${x.email === ik ? ' <small>(jij)</small>' : ''}</td>
           <td>${esc(x.email)}</td>
+          ${metBedrijf ? `<td><select data-bedrijfrol aria-label="Rol van ${esc(x.naam || x.email)} in het bedrijf" ${x.email === ik && !isPlatform() ? 'disabled title="Je eigen rol kun je niet wijzigen"' : ''}>${bedrijfRol.has(x.email) ? '' : optie('', '– niet gekoppeld –', '')}${optie('lid', 'Gebruiker', bedrijfRol.get(x.email) ?? '')}${optie('beheerder', 'Beheerder', bedrijfRol.get(x.email) ?? '')}</select></td>` : ''}
           <td><select data-org aria-label="Organisatie van ${esc(x.naam || x.email)}">${x.rollen.size > 1 ? optie('', 'Verschilt per project', '') : ''}${optie('opdrachtnemer', 'Opdrachtnemer', x.rollen.size > 1 ? '' : [...x.rollen][0])}${optie('opdrachtgever', 'Opdrachtgever', x.rollen.size > 1 ? '' : [...x.rollen][0])}${x.rollen.has('demo') ? optie('demo', 'Demo', x.rollen.size > 1 ? '' : 'demo') : ''}</select>
             ${x.demoTot ? `<small class="subregel ${x.demoTot < vandaag() ? 'fouttekst' : ''}">${x.demoTot < vandaag() ? 'verlopen' : 'tot'} ${datumNL(x.demoTot)}</small><button type="button" class="knop klein" data-verleng>+${DEMO_DAGEN} dagen</button>` : ''}</td>
           <td>${x.projecten.map((p) => `<span class="chipje${p.ledenInfo?.[x.email]?.rol === 'opdrachtgever' ? ' og' : ''}" title="${p.ledenInfo?.[x.email]?.rol === 'opdrachtgever' ? 'Opdrachtgever' : 'Opdrachtnemer'} in dit project">${esc(p.naam)}</span>`).join(' ')}</td>
@@ -8699,16 +8766,18 @@ async function personenPagina() {
             <button class="knop klein" type="button" data-wijzig>Projecten</button>
             <button class="knop klein" type="button" data-profiel ${kanMailen ? '' : 'disabled'} title="Naam en organisatie corrigeren">Gegevens</button>
             <button class="knop klein gevaar" type="button" data-weg aria-label="${esc(x.email)} verwijderen">${I.verwijder}</button></td>
-        </tr>`).join('') : '<tr><td colspan="7" class="leeg">Nog geen personen toegevoegd.</td></tr>'}</tbody>
+        </tr>`).join('') : `<tr><td colspan="${metBedrijf ? 8 : 7}" class="leeg">Nog geen personen toegevoegd.</td></tr>`}</tbody>
       </table></div>
     </section>
     <p class="hulptekst" id="accountuitleg">${I.let} <strong>Wachtwoorden zijn niet in te zien</strong>, ook niet door een beheerder: ze worden alleen versleuteld (gehasht) opgeslagen.
       Is iemand zijn wachtwoord vergeten, gebruik dan <strong>Wachtwoord resetten</strong>: de persoon krijgt een mail met een link om zelf een nieuw wachtwoord in te stellen.
       In de kolom <strong>Account</strong> zie je of iemand al een account heeft en wanneer hij voor het laatst heeft ingelogd.</p>
-    <p><small>Beheerders (toegang tot alle projecten) worden vastgelegd in Supabase, in de tabel <code>teamleden</code>.</small></p>`;
+    <p><small>${metBedrijf ? `Iedereen hoort bij één bedrijf: een e-mailadres dat al bij een ander bedrijf hoort, kan hier niet worden toegevoegd (gebruik een ander e-mailadres). <strong>Beheerders</strong> van het bedrijf zien alle projecten van dit bedrijf.${isPlatform() ? ' Platformbeheerders (alle bedrijven) staan in Supabase in de tabel <code>teamleden</code>.' : ''}` : 'Beheerders (toegang tot alle projecten) worden vastgelegd in Supabase, in de tabel <code>teamleden</code>.'}</small></p>`;
   if (!isMobiel()) app.insertAdjacentHTML('afterbegin', tabbalk('/personen', 'instellingen'));
 
   const form = app.querySelector('#uitnodigen');
+  // Tijdens het invullen niet opnieuw tekenen bij een synchronisatie op de achtergrond.
+  form.addEventListener('input', () => { formulierGewijzigd = true; });
   form.querySelectorAll('input[name=rol]').forEach((r) => r.addEventListener('change', () => {
     const demo = form.elements.rol.value === 'demo';
     form.querySelector('#p-demo').hidden = !demo;
@@ -8741,10 +8810,12 @@ async function personenPagina() {
       }
       return;
     }
-    if (!gekozen.size) return melding('Kies minstens één project.', 'fout');
+    const alsBeheerder = Boolean(form.elements.beheerder?.checked);
+    if (!gekozen.size && !alsBeheerder) return melding('Kies minstens één project.', 'fout');
     const knop = form.querySelector('button[type=submit]');
     knop.disabled = true;
     try {
+      if (alsBeheerder) await koppelAanBedrijf(email, 'beheerder');
       const bestaand = personen.find((x) => x.email === email);
       const huidig = new Set([...(bestaand?.projecten ?? []).map((p) => p.id), ...gekozen]);
       const rol = form.elements.rol.value === 'opdrachtgever' ? 'opdrachtgever' : 'opdrachtnemer';
@@ -8755,11 +8826,12 @@ async function personenPagina() {
       } else {
         melding(`${email} toegevoegd als ${rol} (zonder e-mail)`);
       }
+      formulierGewijzigd = false;
       personenPagina();
     } catch (fout) {
+      // Formulier laten staan: dan hoef je alleen het e-mailadres te verbeteren.
       melding(fout instanceof TypeError ? 'Geen verbinding met de server.' : fout.message, 'fout');
       knop.disabled = false;
-      personenPagina();
     }
   };
 
@@ -8786,6 +8858,16 @@ async function personenPagina() {
   }
 
   app.querySelector('tbody').addEventListener('change', async (e) => {
+    const br = e.target.closest('select[data-bedrijfrol]');
+    if (br && br.value) {
+      const em = br.closest('tr').dataset.email;
+      try {
+        await koppelAanBedrijf(em, br.value);
+        melding(`${em} is nu ${br.value === 'beheerder' ? 'beheerder' : 'gebruiker'} van het bedrijf`);
+      } catch (fout) { melding(fout.message, 'fout'); }
+      personenPagina();
+      return;
+    }
     const sel = e.target.closest('select[data-org]');
     if (!sel || !sel.value) return;
     const x = personen.find((p) => p.email === sel.closest('tr').dataset.email);
@@ -8858,9 +8940,13 @@ async function personenPagina() {
         knop.disabled = false;
       }
     } else if (e.target.closest('[data-weg]')) {
-      if (!confirm(`${x.naam || x.email} uit alle projecten verwijderen? Het account blijft bestaan, maar heeft geen toegang meer tot deze projecten.`)) return;
-      await zetPersoonInProjecten(x.email, new Set());
-      melding('Persoon verwijderd uit de projecten');
+      if (!confirm(metBedrijf ? `${x.naam || x.email} uit het bedrijf en alle projecten verwijderen? Het account blijft bestaan, maar heeft geen toegang meer.`
+        : `${x.naam || x.email} uit alle projecten verwijderen? Het account blijft bestaan, maar heeft geen toegang meer tot deze projecten.`)) return;
+      try {
+        await zetPersoonInProjecten(x.email, new Set());
+        if (metBedrijf) await sync.rpc('verwijder_bedrijfslid', { p_email: x.email });
+      } catch (fout) { melding(fout.message, 'fout'); return; }
+      melding(metBedrijf ? 'Persoon verwijderd uit het bedrijf' : 'Persoon verwijderd uit de projecten');
       personenPagina();
     } else if (e.target.closest('[data-wijzig]')) {
       const d = document.createElement('dialog');
@@ -8960,13 +9046,183 @@ async function werkProjectkopBij() {
   werkRechtenKlassenBij();
   werkInboxBadgeBij();
   chip.textContent = p ? p.naam : 'Kies een project';
+  // Platformbeheerder: in welk bedrijf werk je nu?
+  let bchip = document.getElementById('bedrijfchip');
+  if (isPlatform()) {
+    if (!bchip) { chip.insertAdjacentHTML('beforebegin', '<a id="bedrijfchip" class="projectchip bedrijfchip" href="#/bedrijven" title="Ander bedrijf kiezen"></a>'); bchip = document.getElementById('bedrijfchip'); }
+    if (!bedrijfNamen.size) await laadBedrijven();
+    bchip.textContent = bedrijfNamen.get(huidigBedrijfId()) ?? 'Bedrijf';
+  } else bchip?.remove();
   // Maar één project: op de telefoon valt er niets te kiezen.
   const een = Boolean(p) && (await zichtbareProjecten()).length <= 1 && !magBeheren();
   document.body.classList.toggle('een-project', een);
   chip.title = p && !een ? 'Ander project kiezen' : '';
 }
 
+// ---------------------------------------------------------------------------
+// Bedrijven beheren (alleen de platformbeheerder)
+// ---------------------------------------------------------------------------
+/** Bedrijfsnamen (voor de kop en keuzelijsten); bij de platformbeheerder alle bedrijven. */
+async function laadBedrijven() {
+  if (!bedrijvenAan()) return [];
+  try {
+    const lijst = (await sync.rpc('bedrijven_lijst')) ?? [];
+    bedrijfNamen = new Map(lijst.map((b) => [b.id, b.naam]));
+    return lijst;
+  } catch (fout) {
+    console.warn('Bedrijven niet opgehaald', fout.message);
+    return [...bedrijfNamen].map(([id, naam]) => ({ id, naam }));
+  }
+}
+
+/** Wisselen van bedrijf (platformbeheerder): het geopende project van een ander bedrijf wordt gesloten. */
+async function kiesBedrijf(id) {
+  if (!isPlatform()) return;
+  instelling.schrijf(bedrijfSleutel(), id);
+  const p = projectId() ? await db.haal('projecten', projectId()) : null;
+  if (p?.bedrijfId && p.bedrijfId !== id) instelling.schrijf('project', '');
+  melding(`Je werkt nu in ${bedrijfNamen.get(id) ?? 'het gekozen bedrijf'}`);
+}
+
+/** Keuzelijst met bedrijven voor de platformbeheerder (op de projectenpagina en in de kop). */
+function bedrijfKeuzeHtml(lijst) {
+  if (!isPlatform() || !lijst.length) return '';
+  return `<div class="kaart bedrijfkeuze"><label for="bedrijf-kies">${I.personen} Bedrijf</label>
+    <select id="bedrijf-kies">${lijst.map((b) => optie(b.id, b.naam, huidigBedrijfId())).join('')}</select>
+    <a class="knop klein" href="#/bedrijven">Bedrijven beheren</a></div>`;
+}
+
+async function bedrijvenPagina() {
+  if (!isPlatform()) {
+    app.innerHTML = leegKaart('Alleen de platformbeheerder kan bedrijven beheren.', '<a class="knop" href="#/projecten">Naar de projecten</a>');
+    return;
+  }
+  if (!navigator.onLine) {
+    app.innerHTML = leegKaart('Bedrijven beheren kan alleen met internetverbinding.', '<a class="knop" href="#/projecten">Naar de projecten</a>');
+    return;
+  }
+  const lijst = await laadBedrijven();
+  app.innerHTML = `
+    <div class="paginakop"><div><h1>Bedrijven</h1>
+      <p>Elk bedrijf is een eigen omgeving met eigen projecten, personen, formulieren, inspectietypen en eisen. Een bedrijf ziet nooit de gegevens van een ander bedrijf; alleen jij (platformbeheerder) ziet alle bedrijven.</p></div></div>
+    <form class="kaart" id="bedrijf-nieuw" novalidate>
+      <h2>${I.personen} Nieuw bedrijf</h2>
+      <div class="velden">
+        <div class="veld"><label for="b-naam" class="vereist">Naam van het bedrijf</label><input id="b-naam" name="naam" maxlength="120" required autocomplete="off"></div>
+        <div class="veld"><label for="b-email" class="vereist">E-mailadres van de beheerder</label><input id="b-email" name="email" type="email" autocomplete="off" placeholder="beheerder@bedrijf.nl" required></div>
+        <div class="veld"><label for="b-pnaam">Naam van de beheerder</label><input id="b-pnaam" name="pnaam" autocomplete="off"></div>
+        <div class="veld breed"><label class="vink"><input type="checkbox" name="mailen" checked><span><strong>Uitnodiging per e-mail versturen</strong>
+          <small>De beheerder krijgt een mail met een inloglink en richt daarna zelf projecten en personen in. Een e-mailadres hoort bij één bedrijf.</small></span></label></div>
+      </div>
+      <div class="formvoet"><button class="knop primair" type="submit">＋ Bedrijf aanmaken</button></div>
+    </form>
+    <section class="kaart" style="padding:0"><div class="tabelhouder"><table class="bedrijventabel">
+      <thead><tr><th>Bedrijf</th><th>Beheerders</th><th>Personen</th><th>Projecten</th><th></th></tr></thead>
+      <tbody>${lijst.length ? lijst.map((b) => `<tr data-bedrijf="${esc(b.id)}" class="${b.id === huidigBedrijfId() ? 'gekozen' : ''}">
+        <td><strong>${esc(b.naam)}</strong>${b.id === huidigBedrijfId() ? ' <span class="label-status afgerond">Hier werk je nu</span>' : ''}<br><small class="zacht">sinds ${datumNL(String(b.aangemaakt ?? '').slice(0, 10))}</small></td>
+        <td>${b.beheerders ?? 0}</td><td>${b.leden ?? 0}</td><td>${b.projecten ?? 0}</td>
+        <td class="knoppen" style="flex-wrap:nowrap">
+          <button type="button" class="knop klein ${b.id === huidigBedrijfId() ? '' : 'primair'}" data-b="open">Openen</button>
+          <button type="button" class="knop klein" data-b="personen">Personen</button>
+          <button type="button" class="knop klein" data-b="naam">Naam wijzigen</button></td></tr>`).join('')
+    : '<tr><td colspan="5" class="leeg">Nog geen bedrijven. Voer update 013 uit in Supabase.</td></tr>'}</tbody></table></div></section>`;
+  if (!isMobiel()) app.insertAdjacentHTML('afterbegin', tabbalk('/bedrijven', 'instellingen'));
+
+  app.querySelector('#bedrijf-nieuw').onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const naam = f.elements.naam.value.trim();
+    const email = f.elements.email.value.trim().toLowerCase();
+    if (!naam) return melding('Vul de naam van het bedrijf in.', 'fout');
+    if (!EMAIL_RE.test(email)) return melding('Vul een geldig e-mailadres van de beheerder in.', 'fout');
+    const knop = f.querySelector('button[type=submit]');
+    knop.disabled = true;
+    try {
+      const id = `bedrijf-${nieuwId()}`;
+      await sync.rpc('bedrijf_opslaan', { p_id: id, p_naam: naam });
+      await sync.rpc('zet_bedrijfslid', { p_email: email, p_rol: 'beheerder', p_bedrijf: id });
+      if (f.elements.mailen.checked) await sync.nodigUit(email, { naam: f.elements.pnaam.value.trim(), terugUrl: location.href.split('#')[0] });
+      gedaan('Bedrijf aangemaakt', { extra: `${naam} · beheerder ${email}${f.elements.mailen.checked ? ' (uitnodiging verstuurd)' : ''}` });
+      bedrijvenPagina();
+    } catch (fout) {
+      melding(fout instanceof TypeError ? 'Geen verbinding met de server.' : fout.message, 'fout');
+      knop.disabled = false;
+    }
+  };
+  app.querySelector('.bedrijventabel tbody').addEventListener('click', async (e) => {
+    const k = e.target.closest('[data-b]');
+    if (!k) return;
+    const id = k.closest('tr').dataset.bedrijf;
+    const b = lijst.find((x) => x.id === id);
+    if (k.dataset.b === 'open') { await kiesBedrijf(id); ga('#/projecten'); return; }
+    if (k.dataset.b === 'naam') {
+      const nieuw = prompt('Nieuwe naam van het bedrijf', b.naam);
+      if (!nieuw || !nieuw.trim()) return;
+      try { await sync.rpc('bedrijf_opslaan', { p_id: id, p_naam: nieuw.trim() }); melding('Naam gewijzigd'); bedrijvenPagina(); } catch (fout) { melding(fout.message, 'fout'); }
+      return;
+    }
+    if (k.dataset.b === 'personen') bedrijfPersonenDialoog(b);
+  });
+}
+
+/** Personen van een bedrijf: beheerders en gebruikers, toevoegen (met uitnodiging), rol wijzigen en verwijderen. */
+async function bedrijfPersonenDialoog(b) {
+  const d = document.createElement('dialog');
+  d.className = 'dialoog breed';
+  document.body.append(d);
+  const teken = async () => {
+    let leden = [];
+    try { leden = (await sync.rpc('bedrijf_leden', { p_bedrijf: b.id })) ?? []; } catch (fout) { melding(fout.message, 'fout'); }
+    d.innerHTML = `<h2>${I.personen} Personen van ${esc(b.naam)}</h2>
+      <form id="bp-nieuw" class="velden" novalidate>
+        <div class="veld"><label for="bp-email" class="vereist">E-mailadres</label><input id="bp-email" name="email" type="email" autocomplete="off" required></div>
+        <div class="veld"><label for="bp-rol">Rol</label><select id="bp-rol" name="rol">${optie('beheerder', 'Beheerder', 'beheerder')}${optie('lid', 'Gebruiker', 'beheerder')}</select></div>
+        <div class="veld breed"><label class="vink"><input type="checkbox" name="mailen" checked><span><strong>Uitnodiging per e-mail versturen</strong></span></label></div>
+        <div class="veld"><button class="knop primair" type="submit">＋ Toevoegen</button></div>
+      </form>
+      <div class="tabelhouder" style="max-height:45vh"><table><thead><tr><th>E-mailadres</th><th>Rol</th><th></th></tr></thead><tbody>
+      ${leden.length ? leden.map((l) => `<tr data-email="${esc(l.email)}"><td>${esc(l.email)}</td>
+        <td><select data-rol>${optie('beheerder', 'Beheerder', l.rol)}${optie('lid', 'Gebruiker', l.rol)}</select></td>
+        <td><button type="button" class="knop klein gevaar" data-weg aria-label="${esc(l.email)} verwijderen">${I.verwijder}</button></td></tr>`).join('')
+    : '<tr><td colspan="3" class="leeg">Nog niemand gekoppeld.</td></tr>'}</tbody></table></div>
+      <p><small>Een e-mailadres hoort bij één bedrijf. Projectleden voegt de beheerder van het bedrijf zelf toe via Personen.</small></p>
+      <div class="formvoet"><button type="button" class="knop" data-sluit>Sluiten</button></div>`;
+  };
+  await teken();
+  d.showModal();
+  d.addEventListener('cancel', (e) => { e.preventDefault(); d.close(); d.remove(); bedrijvenPagina(); });
+  d.addEventListener('click', async (e) => {
+    if (e.target.closest('[data-sluit]')) { d.close(); d.remove(); bedrijvenPagina(); return; }
+    const weg = e.target.closest('[data-weg]');
+    if (weg) {
+      const em = weg.closest('tr').dataset.email;
+      if (!confirm(`${em} uit ${b.naam} verwijderen? Het account blijft bestaan, maar heeft geen toegang meer tot dit bedrijf.`)) return;
+      try { await sync.rpc('verwijder_bedrijfslid', { p_email: em }); } catch (fout) { melding(fout.message, 'fout'); }
+      teken();
+    }
+  });
+  d.addEventListener('change', async (e) => {
+    const sel = e.target.closest('select[data-rol]');
+    if (!sel) return;
+    try { await sync.rpc('zet_bedrijfslid', { p_email: sel.closest('tr').dataset.email, p_rol: sel.value, p_bedrijf: b.id }); melding('Rol gewijzigd'); } catch (fout) { melding(fout.message, 'fout'); }
+    teken();
+  });
+  d.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const em = f.elements.email.value.trim().toLowerCase();
+    if (!EMAIL_RE.test(em)) return melding('Vul een geldig e-mailadres in.', 'fout');
+    try {
+      await sync.rpc('zet_bedrijfslid', { p_email: em, p_rol: f.elements.rol.value, p_bedrijf: b.id });
+      if (f.elements.mailen.checked) await sync.nodigUit(em, { terugUrl: location.href.split('#')[0] });
+      melding(`${em} toegevoegd aan ${b.naam}`);
+    } catch (fout) { melding(fout instanceof TypeError ? 'Geen verbinding met de server.' : fout.message, 'fout'); return; }
+    teken();
+  });
+}
+
 async function projectenPagina() {
+  const bedrijfLijst = isPlatform() ? await laadBedrijven() : [];
   const projecten = await zichtbareProjecten();
   const actief = projectId();
   const tellingen = new Map();
@@ -8985,6 +9241,7 @@ async function projectenPagina() {
       <div><h1>${actief && projecten.some((p) => p.id === actief) ? 'Projecten' : 'Kies een project'}</h1></div>
       ${beheer ? '<div class="knoppen"><a class="knop primair" href="#/projecten/nieuw">+ Nieuw project</a></div>' : ''}
     </div>
+    ${bedrijfKeuzeHtml(bedrijfLijst)}
     ${nietIngelogd ? `<a class="kaart mhint" href="${isMobiel() ? '#/m/account' : '#/instellingen'}">${I.inloggen} <span><strong>Log in</strong> om de projecten van je organisatie te zien.</span></a>` : ''}
     ${projecten.length ? `<div class="projecten">${projecten.map((p) => {
     const t = tellingen.get(p.id);
@@ -9005,6 +9262,7 @@ async function projectenPagina() {
     : 'Je bent nog niet aan een project toegevoegd. Vraag de beheerder om je e-mailadres aan een project toe te voegen.',
   beheer ? '<a class="knop primair" href="#/projecten/nieuw">+ Nieuw project</a>' : '')}`;
 
+  app.querySelector('#bedrijf-kies')?.addEventListener('change', async (e) => { await kiesBedrijf(e.target.value); projectenPagina(); werkProjectkopBij(); });
   app.querySelectorAll('[data-kies]').forEach((k) => {
     k.onclick = () => {
       kiesProject(k.dataset.kies);
@@ -9092,10 +9350,13 @@ async function projectFormulier(id) {
     const leden = [...new Set(form.elements.leden.value.split(/[\s,;]+/).map((x) => x.trim().toLowerCase()).filter(Boolean))];
     const fout = leden.find((x) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));
     if (fout) return melding(`Ongeldig e-mailadres: ${fout}`, 'fout');
+    // Nieuwe projectleden horen bij dit bedrijf (een e-mailadres van een ander bedrijf wordt geweigerd).
+    const nieuweLeden = leden.filter((x) => !(bestaand?.leden ?? []).map((y) => String(y).toLowerCase()).includes(x));
+    try { for (const em of nieuweLeden) await koppelAanBedrijf(em); } catch (f) { return melding(`${f.message}`, 'fout'); }
     const nu = new Date().toISOString();
     const opslaan = {
       ...p, id: bestaand?.id ?? nieuwId(), naam: d.naam, opdrachtgever: d.opdrachtgever, omschrijving: d.omschrijving,
-      ...(bestaand ? {} : { aangemaaktDoor: ikEmail() || '' }),
+      ...(bestaand ? {} : { aangemaaktDoor: ikEmail() || '', ...bedrijfVeld() }),
       status: d.status, planningswijze: d.planningswijze || 'gepland', kostenTonen: form.elements.kostenTonen.checked, urenTonen: form.elements.urenTonen.checked, locatieMaatregel: form.elements.locatieMaatregel.value || 'vlaklijn', planningAlleenBeheer: form.elements.planningAlleenBeheer.checked, planningVastzetten: form.elements.planningVastzetten.checked, voortgangRegel: { afgekeurd: form.elements.vgAfgekeurd.value, afgekeurdKleur: form.elements.vgKleur.value === 'ja', ingediend: form.elements.vgIngediend.value }, leden, bevindingenAlsTaak: form.elements.bevindingenAlsTaak.checked, aangemaakt: p.aangemaakt ?? nu, gewijzigd: nu,
     };
     await db.bewaar('projecten', opslaan);
@@ -16819,6 +17080,16 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !isN
 sync.opStatus(syncIndicator);
 let laatsteSyncStatus = null;
 let vorigeFase = '';
+// Bedrijf net bekend geworden (na inloggen) of gewijzigd: kop en projectenpagina bijwerken.
+let vorigBedrijf = JSON.stringify(sync.bedrijf());
+sync.opStatus(() => {
+  const nu = JSON.stringify(sync.bedrijf());
+  if (nu === vorigBedrijf) return;
+  vorigBedrijf = nu;
+  bedrijfNamen = new Map();
+  werkProjectkopBij();
+  if (/^#\/projecten\/?$/.test(location.hash) && !formulierGewijzigd) router();
+});
 sync.opStatus((st) => {
   laatsteSyncStatus = { ...st };
   statusregel(st);
