@@ -6480,7 +6480,7 @@ const VAN_LOCATIE = 'inspectie-app:vanLocatie';
 /** Werk in delen: veelgebruikte omschrijvingen van het gedane deel. */
 const DEEL_VOORBEELDEN = ['Vanaf het land', 'Vanaf het water', 'Linkerzijde', 'Rechterzijde', 'Eerste helft'];
 
-async function mobielLocatie(objectId) {
+async function mobielLocatie(objectId, q = new URLSearchParams()) {
   const g = await pakketGegevens();
   const o = g.objectMap.get(objectId);
   if (!o) {
@@ -6491,7 +6491,10 @@ async function mobielLocatie(objectId) {
   const dvLoc = await veldDecompositie();
   // Planning die het dichtst bij vandaag ligt bovenaan, zodat je bij afmelden altijd de goede kiest.
   const lijst = PL.dichtstbijEerst(rondesOpObject(g, objectId, ik), vandaag());
-  const actueel = lijst.length > 1 && isTeDoen(lijst[0].st) ? lijst[0] : null;
+  // Via "Volgende dichtbij" uit een werkpakket: die ronde bovenaan en gemarkeerd.
+  const vanPakket = q.get('pakket') ? lijst.findIndex((x) => x.v.id === q.get('pakket') && (!q.get('ronde') || x.v.rondeId === q.get('ronde'))) : -1;
+  if (vanPakket > 0) lijst.unshift(...lijst.splice(vanPakket, 1));
+  const actueel = vanPakket >= 0 ? lijst[0] : lijst.length > 1 && isTeDoen(lijst[0].st) ? lijst[0] : null;
   const ondLoc = rondeOnderscheid(lijst.map((x) => x.v));
   const open = lijst.filter((x) => isTeDoen(x.st));
   const geom = objectGeometrie(o);
@@ -6507,7 +6510,7 @@ async function mobielLocatie(objectId) {
     const isActueel = x === actueel;
     const afstand = PL.afstandTotVandaag(x.v, vandaag());
     return `<li class="locregel ${x.st}${isActueel ? ' actueel' : ''}" data-ronde="${esc(sleutel)}">
-      ${isActueel ? `<span class="actueellabel">${I.kalender} ${afstand === 0 ? 'Loopt nu' : 'Dichtst bij vandaag'}</span>` : ''}
+      ${isActueel ? `<span class="actueellabel">${vanPakket >= 0 ? `${I.pakket} Je werkpakket` : `${I.kalender} ${afstand === 0 ? 'Loopt nu' : 'Dichtst bij vandaag'}`}</span>` : ''}
       <div class="locregel-kop"><span class="micoon klein">${x.v.soort === 'inspectie' ? (x.v.inspectiesoort === BV.BVC_SOORT ? I.boom : x.v.inspectiesoort === ST.STOWA_SOORT ? I.water : I.inspectie) : I.werk}</span>
         <span><strong>${wpNaam(x.v)}</strong><small>${pakketSoortTekst(x.v)}</small>${rondeKenmerkenHtml(x.v, ondLoc.get(`${x.v.id}:${x.v.rondeId}`))}</span></div>
       ${x.st === 'deels' ? `<div class="locregel-deels"><span class="label-status deels">${I.werk} Gedeeltelijk gedaan</span>
@@ -6528,7 +6531,7 @@ async function mobielLocatie(objectId) {
   };
   app.innerHTML = `
     ${opslagKaart(opslagBevestiging(), { objectMap: g.objectMap })}
-    <div class="mkop"><a href="#/m/kaart" class="mterug" aria-label="Terug naar de kaart">←</a>
+    <div class="mkop"><a href="${vanPakket >= 0 ? pakketPagina(lijst[0].v, true) : '#/m/kaart'}" class="mterug" aria-label="${vanPakket >= 0 ? 'Terug naar het werkpakket' : 'Terug naar de kaart'}">←</a>
       <div style="flex:1;min-width:0"><small>${I.locatie} Locatie</small><h1>${esc(o.code)} – ${esc(o.naam)}</h1></div></div>
     ${dvLoc?.van(o) ? `<div class="kaart mdecomp">${dvLoc.html(o)}</div>` : ''}
     ${lijst.length > 1 ? dubbelMelding(ondLoc) : ''}
@@ -14939,13 +14942,15 @@ async function mobielPakket(id, q = new URLSearchParams()) {
   app.querySelector('#mtedoen')?.addEventListener('change', (e) => { instelling.schrijf('mKaartTeDoen', e.target.checked ? '1' : ''); kaartBijwerken(); });
   app.querySelector('#m-zoek')?.addEventListener('input', () => { tekenLijst(); kaartBijwerken(); });
   app.querySelector('#nieuweboom')?.addEventListener('click', () => nieuweBoomHier(p));
+  const naarObject = (oid) => `${locatiePagina(oid)}?${new URLSearchParams({ pakket: p.id, ...(p.rondeId ? { ronde: p.rondeId } : {}) })}`;
   app.querySelector('[data-volgende]')?.addEventListener('click', () => app.querySelector('#volgende')?.click());
   app.querySelector('#volgende')?.addEventListener('click', () => {
     if (!laatstePositie) {
-      bepaalPositie(() => { gesorteerd = tekenLijst(); if (gesorteerd[0]) location.hash = pakketHref(p, gesorteerd[0].o.id, true); });
+      bepaalPositie(() => { gesorteerd = tekenLijst(); if (gesorteerd[0]) location.hash = naarObject(gesorteerd[0].o.id); });
       return;
     }
-    if (gesorteerd[0]) location.hash = pakketHref(p, gesorteerd[0].o.id, true);
+    // Eerst naar het object (locatiepagina, met dit werkpakket bovenaan); daar kies je zelf het formulier.
+    if (gesorteerd[0]) location.hash = naarObject(gesorteerd[0].o.id);
   });
   const klik = async (e) => {
     const over = e.target.closest('[data-overslaan]');

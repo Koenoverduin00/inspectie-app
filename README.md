@@ -1154,6 +1154,14 @@ naar een **eisvraag** die in de formulieren komt, gekoppeld aan het **eisnummer*
   ondertekeningsblok. Optioneel met foto's als bewijs. *Afdrukken / opslaan als PDF* geeft het dossier; *Excel* geeft
   dezelfde inhoud in de bladen Samenvatting, Eisen, Bewijs en Afwijkingen.
 
+## "Volgende dichtbij": eerst naar het object
+
+In een werkpakket op de telefoon opent **Volgende dichtbij** (en *Volgende*) eerst de **objectpagina** (locatie) van
+het dichtstbijzijnde te doen object, niet meteen het formulier. Op de objectpagina:
+- staat het werkpakket waar je vandaan komt **bovenaan**, gemarkeerd als *Je werkpakket*;
+- kies je zelf **Gereed melden**, *Deels gedaan* of *Overslaan*;
+- brengt de terugknop je weer naar het werkpakket.
+
 ## Meerdere objecten tegelijk selecteren op de kaart (telefoon)
 
 Alleen voor **werkzaamheden** (werkpakketten) en de **flora & fauna**-kaart, niet voor inspecties en schouw.
