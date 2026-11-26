@@ -11178,7 +11178,7 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
     };
     const objHref = (x) => (x.status === 'gedaan' || x.status === 'deels') && x.registratie
       ? (isInsp ? `#/inspecties/${encodeURIComponent(x.registratie.id)}` : `#/werkzaamheden/${encodeURIComponent(x.registratie.id)}`) : '';
-    const objRij = (x) => {
+    const objRij = (x, pad = null) => {
       const [label, kl] = STATUS[x.status];
       const detail = x.status === 'gedaan' ? `${datumNL(x.datum)}${x.wie ? ` · ${esc(x.wie)}` : ''}${x.oordeel?.label ? ` · <span class="schaalchip" style="--k:${esc(x.oordeel.kleur || '#6b7785')}">${esc(x.oordeel.label)}</span>` : ''}${x.vervolg ? ' · <strong>vervolg nodig</strong>' : ''}`
         : x.status === 'deels' ? `${x.keer}× gedeeltelijk · laatst ${datumNL(x.datum)}${x.wie ? ` · ${esc(x.wie)}` : ''}`
@@ -11186,13 +11186,52 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
             : x.status === 'nietnodig' ? 'Hoeveelheden bereikt'
               : x.status === 'afgekeurd' ? `${datumNL(x.datum)}${x.wie ? ` · ${esc(x.wie)}` : ''} · <strong>reden:</strong> ${esc(x.reden || 'geen reden opgegeven')}`
                 : x.status === 'ingediend' ? `${datumNL(x.datum)}${x.wie ? ` · ${esc(x.wie)}` : ''} · ingediend, nog niet beoordeeld` : 'Nog niet bezocht';
-      return `<tr data-st="${x.status}" data-oid="${esc(x.id)}" data-zoek="${esc(`${x.o?.code ?? ''} ${x.o?.naam ?? ''} ${x.wie ?? ''} ${x.reden ?? ''}`.toLowerCase())}">
+      const boomAttr = pad ? ` class="rd-blad" data-pad="${esc(pad.map((g) => g.sleutel).join(' '))}" style="--diepte:${pad.length}"` : '';
+      return `<tr data-st="${x.status}" data-oid="${esc(x.id)}"${boomAttr} data-zoek="${esc(`${x.o?.code ?? ''} ${x.o?.naam ?? ''} ${x.wie ?? ''} ${x.reden ?? ''} ${(pad ?? []).map((g) => g.zoek).join(' ')}`.toLowerCase())}">
         <td><a href="#/objecten/${encodeURIComponent(x.id)}"><strong>${esc(x.o?.code ?? '')}</strong> ${esc(x.o?.naam ?? '(object verwijderd)')}</a>${x.o?.type ? `<small>${esc(x.o.type)}</small>` : ''}</td>
         <td><span class="rd-stip">${statusStip(kl)}</span>${label}</td><td><small>${detail}</small></td>
         <td class="rd-acties">${objectGeometrie(x.o ?? {}) ? `<button type="button" class="knop klein" data-rd-kaart="${esc(x.id)}" title="Op de kaart tonen" aria-label="Op de kaart">${I.locatie}</button>` : ''}
           ${objHref(x) ? `<a class="knop klein" href="${objHref(x)}">Registratie</a>` : ''}
           ${x.status === 'afgekeurd' && x.registratie ? `<a class="knop klein" href="${aanpasHref(x.registratie, isInsp, false)}">Aanpassen</a>`
     : (x.status === 'open' || x.status === 'deels') && r.status !== 'afgerond' ? `<a class="knop klein" href="${pakketHref(v, x.id, false)}">${isInsp ? 'Inspecteren' : 'Uitvoeren'}</a>` : ''}</td></tr>`;
+    };
+    // Afmelden per element/beheerobject: de objecten als boom (bijv. beheerobject → element → bouwdelen), per niveau in- en uitklapbaar.
+    const bIdx = !isInsp && v.registratieNiveau ? decompIndex() : null;
+    const objBoom = bIdx ? GR.boom(lijst.map((x) => x.id), (oid) => gR.objectMap.get(oid), bIdx, v.registratieNiveau) : null;
+    const metBoom = Boolean(objBoom?.kinderen.length);
+    const boomNiveaus = metBoom ? GR.boomNiveaus(v.registratieNiveau) : [];
+    const regelVan = new Map(lijst.map((x) => [x.id, x]));
+    const padVan = new Map(); // object-id → voorouders [{knoop, niveau}] (voor zoeken en de CSV)
+    const knoopTekst = (k) => [k.code, k.naam].filter(Boolean).join(' ');
+    let boomAan = metBoom;
+    let tonenTot = '';              // '' = alles open (tot bouwdeel); anders: dit niveau en lager ingeklapt
+    const dichtGroepen = new Set();
+    const groepRij = (n, pad) => {
+      const sts = n.alle.map((oid) => regelVan.get(oid)?.status ?? 'open');
+      const gst = GR.groepStatus(sts);
+      const [label, kl] = STATUS[gst] ?? STATUS.open;
+      const klaar = sts.filter((x) => x === 'gedaan' || x === 'nietnodig').length;
+      const over = sts.filter((x) => x === 'overgeslagen').length;
+      const open1 = n.alle.find((oid) => ['open', 'deels'].includes(regelVan.get(oid)?.status));
+      const diepte = pad.length;
+      const zoek = `${knoopTekst(n.knoop)} ${pad.map((x) => x.zoek).join(' ')}`.toLowerCase();
+      const eigen = { sleutel: n.knoop.id, zoek: knoopTekst(n.knoop).toLowerCase(), knoop: n.knoop, niveau: n.niveau };
+      const binnen = [...pad, eigen];
+      for (const oid of n.objectIds) padVan.set(oid, binnen);
+      const kop = `<tr class="rd-groep" data-groep="${esc(n.knoop.id)}" data-niveau="${esc(n.niveau)}" data-st="${gst}" data-pad="${esc(pad.map((x) => x.sleutel).join(' '))}" data-zoek="${esc(zoek)}" style="--diepte:${diepte}">
+        <td><span class="rd-groepnaam"><button type="button" class="rd-klap" data-rd-klap="${esc(n.knoop.id)}" aria-expanded="true" aria-label="${esc(knoopTekst(n.knoop))} in- of uitklappen"><span class="rd-pijl" aria-hidden="true">▾</span></button>
+          <span><span class="rd-niveau">${esc(GR.NIVEAU_KORT[n.niveau] ?? n.niveau)}</span> <strong>${esc(knoopTekst(n.knoop))}</strong></span></span></td>
+        <td><span class="rd-stip">${statusStip(kl)}</span>${label}</td>
+        <td><small>${klaar}/${n.alle.length} bouwde${n.alle.length === 1 ? 'el' : 'len'} gedaan${over ? ` · ${over} overgeslagen` : ''}</small></td>
+        <td class="rd-acties">${n.niveau === v.registratieNiveau && open1 && r.status !== 'afgerond' ? `<a class="knop klein" href="${pakketHref(v, open1, false)}" title="Alle open bouwdelen van dit ${esc(GR.NIVEAU_KORT[n.niveau])} in één keer afmelden">Uitvoeren</a>` : ''}</td></tr>`;
+      return kop + n.kinderen.map((c) => groepRij(c, binnen)).join('')
+        + n.objectIds.map((oid) => regelVan.get(oid)).filter(Boolean).map((x) => objRij(x, binnen)).join('');
+    };
+    const objRijen = () => {
+      padVan.clear();
+      if (!boomAan) return lijst.map((x) => objRij(x)).join('');
+      return objBoom.kinderen.map((c) => groepRij(c, [])).join('')
+        + objBoom.objectIds.map((oid) => regelVan.get(oid)).filter(Boolean).map((x) => objRij(x, [])).join('');
     };
     const FILTERS = [['tedoen', 'Nog te doen', nTeDoen], ['open', 'Nog niet gestart', st?.aantallen.nietGestart ?? 0], ['deels', 'Gedeeltelijk', st?.aantallen.deels ?? 0], ...(st?.aantallen.afgekeurd ? [['afgekeurd', 'Afgekeurd', st.aantallen.afgekeurd]] : []), ...(st?.aantallen.wacht ? [['ingediend', 'Wacht op beoordeling', st.aantallen.wacht]] : []),
       ['gedaan', 'Gedaan', st?.aantallen.gedaan ?? 0], ['overgeslagen', 'Overgeslagen', st?.aantallen.overgeslagen ?? 0], ['nietnodig', 'Niet meer nodig', st?.aantallen.nietNodig ?? 0], ['alles', 'Alles', lijst.length]];
@@ -11237,8 +11276,12 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
       objecten: () => `<div class="rd-filters"><div class="chips" role="radiogroup" aria-label="Welke objecten">${FILTERS.filter(([k, , n]) => n || k === 'tedoen' || k === 'alles').map(([k, l, n]) => `<label class="chip"><input type="radio" name="rd-filter" value="${k}" ${k === (objFilter ?? opt('objecten').filter ?? 'tedoen') ? 'checked' : ''}><span>${esc(l)} <small>(${n})</small></span></label>`).join('')}</div>
           <input type="search" id="rd-zoek" placeholder="Zoek op code, naam, uitvoerder…" aria-label="Zoek object" value="${esc(objZoek)}">
           <button type="button" class="knop klein" id="rd-csv" title="De zichtbare objecten als CSV (Excel)">${I.excel} Lijst</button></div>
-        <div class="tabelhouder rd-objecten"><table><thead><tr><th>Object</th><th>Status</th><th>Details</th><th></th></tr></thead>
-          <tbody>${lijst.map(objRij).join('')}</tbody></table><p class="leeg" id="rd-leeg" hidden>Geen objecten met deze keuze.</p></div>`,
+        ${metBoom ? `<div class="rd-boombalk">
+          <label class="vink"><input type="checkbox" id="rd-boom" ${boomAan ? 'checked' : ''}><span>Per ${esc(GR.NIVEAU_KORT[v.registratieNiveau])} groeperen</span></label>
+          <span class="chips" role="radiogroup" aria-label="Uitklappen tot niveau" ${boomAan ? '' : 'hidden'}><span class="zacht"><small>Uitklappen tot</small></span>
+            ${[...boomNiveaus, ''].map((n) => `<label class="chip"><input type="radio" name="rd-tot" value="${n}" ${n === tonenTot ? 'checked' : ''}><span>${esc(n ? GR.NIVEAU_KORT[n] : 'bouwdeel')}</span></label>`).join('')}</span></div>` : ''}
+        <div class="tabelhouder rd-objecten${boomAan ? ' rd-alsboom' : ''}"><table><thead><tr><th>${boomAan ? `${esc(boomNiveaus.map((n) => GR.NIVEAU_KORT[n]).join(' / '))} / bouwdeel` : 'Object'}</th><th>Status</th><th>Details</th><th></th></tr></thead>
+          <tbody>${objRijen()}</tbody></table><p class="leeg" id="rd-leeg" hidden>Geen objecten met deze keuze.</p></div>`,
       planning: () => `<div class="velden">
         <div class="veld"><label for="d-start">Start</label><input type="date" id="d-start" data-w="start" value="${esc(waarden.start)}" ${bewerkbaar ? '' : 'disabled'}></div>
         <div class="veld"><label for="d-eind">Gereed uiterlijk</label><input type="date" id="d-eind" data-w="eind" value="${esc(waarden.eind)}" ${bewerkbaar ? '' : 'disabled'}></div>
@@ -11287,11 +11330,27 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
       const f = d.querySelector('input[name=rd-filter]:checked')?.value ?? 'tedoen';
       const q = (d.querySelector('#rd-zoek')?.value ?? '').trim().toLowerCase();
       let n = 0;
-      d.querySelectorAll('.rd-objecten tbody tr').forEach((tr) => {
-        const s2 = tr.dataset.st;
-        const ok = (f === 'alles' || (f === 'tedoen' ? s2 === 'open' || s2 === 'deels' : s2 === f)) && (!q || tr.dataset.zoek.includes(q));
-        tr.hidden = !ok; if (ok) n += 1;
-      });
+      const past = (tr) => { const s2 = tr.dataset.st; return (f === 'alles' || (f === 'tedoen' ? s2 === 'open' || s2 === 'deels' : s2 === f)) && (!q || tr.dataset.zoek.includes(q)); };
+      const rijen = [...d.querySelectorAll('.rd-objecten tbody tr')];
+      // Boom: een groep blijft zichtbaar als hij zelf past of als er een bouwdeel onder hangt dat past; een ingeklapte groep verbergt alles eronder.
+      const metPas = new Set();
+      for (const tr of rijen) {
+        const ok = past(tr);
+        tr.dataset.past = ok ? '1' : '';
+        if (ok && tr.dataset.pad) for (const k of tr.dataset.pad.split(' ')) metPas.add(k);
+      }
+      for (const tr of rijen) {
+        const voorouders = tr.dataset.pad ? tr.dataset.pad.split(' ') : [];
+        const ingeklapt = voorouders.some((k) => dichtGroepen.has(k));
+        const ok = !ingeklapt && (tr.dataset.past === '1' || (tr.dataset.groep && metPas.has(tr.dataset.groep)));
+        tr.hidden = !ok;
+        if (tr.dataset.groep) {
+          const dicht = dichtGroepen.has(tr.dataset.groep);
+          tr.classList.toggle('dicht', dicht);
+          tr.querySelector('.rd-klap')?.setAttribute('aria-expanded', String(!dicht));
+          const pijl = tr.querySelector('.rd-pijl'); if (pijl) pijl.textContent = dicht ? '▸' : '▾';
+        } else if (ok || (tr.dataset.past === '1' && ingeklapt)) n += 1;
+      }
       const leeg = d.querySelector('#rd-leeg');
       if (leeg) leeg.hidden = n > 0;
     };
@@ -11347,6 +11406,14 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
         return;
       }
       if (e.target.closest('#rd-aanpassen')) { bewerken = true; return tekenInhoud(); }
+      const klap = e.target.closest('[data-rd-klap]');
+      if (klap) {
+        const k = klap.dataset.rdKlap;
+        if (dichtGroepen.has(k)) dichtGroepen.delete(k); else dichtGroepen.add(k);
+        tonenTot = null; // handmatig in- of uitgeklapt: geen niveau meer gekozen
+        d.querySelectorAll('input[name=rd-tot]').forEach((x) => { x.checked = false; });
+        return filterObjecten();
+      }
       const fk = e.target.closest('[data-rd-filter]');
       if (fk) {
         objFilter = fk.dataset.rdFilter;
@@ -11367,9 +11434,15 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
         return;
       }
       if (e.target.closest('#rd-csv')) {
-        const regels = [['Objectcode', 'Object', 'Status', 'Datum', 'Door', 'Toelichting']];
-        const zicht = new Set([...d.querySelectorAll('.rd-objecten tbody tr:not([hidden])')].map((tr) => tr.dataset.oid));
-        for (const x of lijst.filter((y) => zicht.has(y.id))) regels.push([x.o?.code ?? '', x.o?.naam ?? '', STATUS[x.status][0], x.datum ?? '', x.wie ?? '', x.reden ?? x.oordeel?.label ?? (x.keer ? `${x.keer}× gedeeltelijk` : '')]);
+        // Alle objecten die door het filter komen (ook als hun groep is ingeklapt); bij afmelden per element/beheerobject met die kolommen erbij.
+        const kolommen = metBoom ? boomNiveaus : [];
+        const regels = [[...kolommen.map((n) => GR.NIVEAU_LABEL[n]), 'Objectcode', 'Object', 'Status', 'Datum', 'Door', 'Toelichting']];
+        const zicht = new Set([...d.querySelectorAll('.rd-objecten tbody tr[data-oid][data-past="1"]')].map((tr) => tr.dataset.oid));
+        if (metBoom && !padVan.size) objRijen();
+        for (const x of lijst.filter((y) => zicht.has(y.id))) {
+          const pad = padVan.get(x.id) ?? [];
+          regels.push([...kolommen.map((n) => { const g = pad.find((y) => y.niveau === n); return g ? knoopTekst(g.knoop) : ''; }), x.o?.code ?? '', x.o?.naam ?? '', STATUS[x.status][0], x.datum ?? '', x.wie ?? '', x.reden ?? x.oordeel?.label ?? (x.keer ? `${x.keer}× gedeeltelijk` : '')]);
+        }
         download(`${(p.code || p.naam || 'werkpakket').replace(/[^\w-]+/g, '_')}-R${r.nummer}-objecten-${vandaag()}.csv`, csv(regels), 'text/csv;charset=utf-8');
       }
     });
@@ -11381,6 +11454,14 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
         return bewaarCfg(cfg.map((b) => (b.id === t.dataset.id ? { ...b, opties: { ...(b.opties ?? {}), [t.dataset.rwOptie]: waarde } } : b)));
       }
       if (t.name === 'rd-filter') { objFilter = t.value; filterObjecten(); }
+      if (t.id === 'rd-boom') { boomAan = t.checked; return tekenInhoud(); }
+      if (t.name === 'rd-tot') {
+        tonenTot = t.value;
+        dichtGroepen.clear();
+        const vanaf = tonenTot ? boomNiveaus.indexOf(tonenTot) : -1;
+        if (vanaf >= 0) d.querySelectorAll('.rd-objecten tr[data-groep]').forEach((tr) => { if (boomNiveaus.indexOf(tr.dataset.niveau) >= vanaf) dichtGroepen.add(tr.dataset.groep); });
+        return filterObjecten();
+      }
       if (t.dataset.w) waarden[t.dataset.w] = t.value;
     });
     d.addEventListener('input', (e) => {

@@ -59,3 +59,17 @@ test('status van een groep', () => {
   assert.equal(G.groepStatus(['ingediend', 'ingediend']), 'ingediend');
   assert.equal(G.groepStatus(['deels', 'gedaan']), 'deels');
 });
+
+test('boom: beheerobject → element → bouwdelen, alleen objecten uit de ronde', () => {
+  const b = G.boom(['o1', 'o2', 'o4', 'x'], van, idx, 'object');
+  assert.deepEqual(b.objectIds, ['x']);
+  assert.equal(b.kinderen.length, 1);
+  const k1 = b.kinderen[0];
+  assert.equal(k1.knoop.id, 'K1');
+  assert.deepEqual(k1.kinderen.map((e) => [e.knoop.id, e.niveau, e.objectIds]), [['E2', 'element', ['o4']], ['E1', 'element', ['o1', 'o2']]].sort((a, c) => a[0].localeCompare(c[0])));
+  assert.deepEqual(k1.alle.sort(), ['o1', 'o2', 'o4']);
+  assert.deepEqual(G.boomNiveaus('element'), ['element']);
+  assert.deepEqual(G.boomNiveaus('systeemdeel'), ['systeemdeel', 'object', 'element']);
+  // vanaf element: geen object-laag
+  assert.deepEqual(G.boom(['o1', 'o4'], van, idx, 'element').kinderen.map((e) => e.knoop.id), ['E1', 'E2']);
+});

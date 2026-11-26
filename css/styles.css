@@ -2161,6 +2161,17 @@ span.mfchip > button > span { overflow: hidden; text-overflow: ellipsis; }
 .rd-objecten .rd-stip { display: inline-block; margin-right: .35rem; vertical-align: -1px; }
 .rd-objecten .rd-acties { white-space: nowrap; text-align: right; }
 .rd-objecten .rd-acties .knop { margin-left: .25rem; }
+/* Rondevenster: boom beheerobject → element → bouwdelen (afmelden op een hoger niveau) */
+.rd-boombalk { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .9rem; margin: .1rem 0 .5rem; }
+.rd-boombalk .chips { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .3rem; }
+.rd-alsboom tbody td:first-child { padding-left: calc(.5rem + var(--diepte, 0) * 1.15rem); }
+.rd-objecten tr.rd-groep td { background: color-mix(in srgb, var(--primair) 7%, transparent); }
+.rd-objecten tr.rd-groep td small { display: inline; }
+.rd-groepnaam { display: inline-flex; align-items: center; gap: .15rem; }
+.rd-klap { border: 0; background: none; cursor: pointer; padding: .1rem .3rem; margin-right: .1rem; min-width: 1.9rem; min-height: 1.9rem; font-size: 1rem; color: var(--primair, #0f4c81); border-radius: 6px; }
+.rd-klap:hover, .rd-klap:focus-visible { background: rgba(15, 76, 129, .12); }
+.rd-niveau { display: inline-block; font-size: .72rem; text-transform: uppercase; letter-spacing: .03em; padding: .05rem .4rem; border-radius: 999px; background: rgba(15, 76, 129, .1); color: var(--tekst-zacht); vertical-align: 1px; }
+@media (max-width: 760px) { .rd-alsboom tbody td:first-child { padding-left: calc(.35rem + var(--diepte, 0) * .7rem); min-width: 10rem; } .rd-niveau { display: none; } }
 @media (max-width: 760px) { .rd-kern { grid-template-columns: 1fr; } .rd-kern dt { margin-top: .3rem; } .rd-objecten td:nth-child(2) { white-space: normal; } }
 .rondedialoog .rd-paneel { min-height: min(470px, 60vh); }
 .rondedialoog .rd-tabs .tab { border-bottom: 3px solid transparent; padding: .45rem .75rem; color: var(--tekst-zacht); }

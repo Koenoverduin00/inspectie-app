@@ -1198,6 +1198,14 @@ Sommige opdrachtgevers willen het onderhoud niet per bouwdeel afgemeld zien, maa
   - Op de telefoon toont de lijst van het werkpakket één regel per groep, met de bouwdelen erbij.
   - Op de objectpagina staat *"Wordt afgemeld per element: …"*.
   - In de objectentabel op de pc en in de kaartpopup staat de naam van de groep.
+  - In het rondevenster van de planning (blok *Objecten*) staan de objecten als boom: bijv. **beheerobject →
+    element → bouwdelen**, vanaf het gekozen afmeldniveau. Elke groep toont status en *"1/3 bouwdelen gedaan"*,
+    met *Uitvoeren* op het afmeldniveau.
+    - Per groep in- en uitklappen met ▸/▾, of in één keer met *Uitklappen tot* beheerobject / element / bouwdeel.
+    - Het statusfilter en zoeken werken in de boom: een groep blijft staan als er een bouwdeel onder hangt dat past;
+      zoeken op de naam van een element toont dat element met zijn bouwdelen.
+    - *Per … groeperen* uitvinken geeft weer de platte lijst. De CSV (*Lijst*) krijgt kolommen voor element en
+      beheerobject.
 - **Voortgang.** Blijft per bouwdeel tellen, zodat percentages en kaartkleuren gelijk blijven.
 - Geldt voor werkzaamheden; inspecties en schouwen blijven per object.
 

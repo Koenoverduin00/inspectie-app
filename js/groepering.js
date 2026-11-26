@@ -75,3 +75,35 @@ export function groepNaam(g, { aantal = true } = {}) {
   const naam = [g.knoop.code, g.knoop.naam].filter(Boolean).join(' ');
   return aantal ? `${naam} (${g.objectIds.length} bouwde${g.objectIds.length === 1 ? 'el' : 'len'})` : naam;
 }
+
+// --- Boomweergave (rondevenster): van het afmeldniveau tot de bouwdelen ---
+const HOOG_NAAR_LAAG = ['systeemdeel', 'object', 'element'];
+/** De niveaus in de boom, van het gekozen niveau omlaag tot en met element (daaronder hangen de bouwdelen). */
+export const boomNiveaus = (top) => { const i = HOOG_NAAR_LAAG.indexOf(top); return i < 0 ? [] : HOOG_NAAR_LAAG.slice(i); };
+
+/**
+ * Boom van de objecten van een ronde: bijv. object → element → bouwdelen.
+ * Een object zonder knoop op een tussenliggend niveau hangt direct onder het dichtstbijzijnde niveau erboven.
+ * @returns {{ kinderen: object[], objectIds: string[], alle: string[] }}  wortel; elk kind: { knoop, niveau, kinderen, objectIds, alle }
+ */
+export function boom(objectIds, objectVan, idx, top) {
+  const niveaus = boomNiveaus(top);
+  const wortel = { kinderen: new Map(), objectIds: [] };
+  for (const id of objectIds ?? []) {
+    const o = objectVan(id);
+    let plek = wortel;
+    for (const n of niveaus) {
+      const k = o?.decomp && idx ? knoopOpNiveau(idx, o.decomp, n) : null;
+      if (!k) continue;
+      if (!plek.kinderen.has(k.id)) plek.kinderen.set(k.id, { knoop: k, niveau: n, kinderen: new Map(), objectIds: [] });
+      plek = plek.kinderen.get(k.id);
+    }
+    plek.objectIds.push(id);
+  }
+  const volg = (a, b) => String(a.knoop.code || a.knoop.naam).localeCompare(String(b.knoop.code || b.knoop.naam), 'nl', { numeric: true });
+  const maak = (x) => {
+    const kinderen = [...x.kinderen.values()].map(maak).sort(volg);
+    return { ...x, kinderen, alle: [...x.objectIds, ...kinderen.flatMap((c) => c.alle)] };
+  };
+  return maak(wortel);
+}
