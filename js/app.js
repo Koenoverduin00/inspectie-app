@@ -9371,8 +9371,10 @@ function afkeurDialoog(aantal = 1) {
     d.innerHTML = `<form method="dialog"><h2>${aantal === 1 ? 'Registratie afkeuren' : `${aantal} registraties afkeuren`}</h2>
       <p>De medewerker ziet de reden en kan de registratie aanpassen en opnieuw indienen.</p>
       <div class="veld"><label for="afk-reden" class="vereist">Reden</label><textarea id="afk-reden" required maxlength="1000" placeholder="bijv. Foto ontbreekt, verkeerd object, werk niet volledig"></textarea></div>
-      <div class="knoppen" style="justify-content:flex-end;margin-top:1rem"><button class="knop" value="nee">Annuleren</button><button class="knop gevaar" value="ja">Afkeuren</button></div></form>`;
+      <div class="knoppen" style="justify-content:flex-end;margin-top:1rem"><button type="button" class="knop" data-afk-annuleer>Annuleren</button><button class="knop gevaar" value="ja">Afkeuren</button></div></form>`;
     document.body.append(d);
+    // Annuleren mag het formulier niet versturen: dan houdt de browser het venster tegen zolang de (verplichte) reden leeg is.
+    d.querySelector('[data-afk-annuleer]').addEventListener('click', () => d.close('nee'));
     d.querySelector('button[value=ja]').addEventListener('click', (e) => {
       if (!d.querySelector('#afk-reden').value.trim()) { e.preventDefault(); d.querySelector('#afk-reden').focus(); }
     });
