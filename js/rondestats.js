@@ -165,6 +165,7 @@ export function objectRegels(ids, vg, { objectVan = () => null, wieVan = (r) => 
 /** Alle blokken van het rondevenster. `alleen`: alleen bij werk of alleen bij inspecties. */
 export const RONDE_BLOKKEN = {
   tegels: { titel: 'Tegels', uitleg: '% uitgevoerd, gedaan, gedeeltelijk, nog niet gestart en overgeslagen (klikbaar).' },
+  maat: { titel: 'Oppervlakte en lengte', uitleg: 'Voortgang naar m² van de vlakken en strekkende meters van de lijnen, in plaats van per stuk.' },
   balk: { titel: 'Voortgangsbalk', uitleg: 'Balk met gedaan en overgeslagen, en de hoeveelheden per bestekpost.' },
   periode: { titel: 'Periode', uitleg: 'Start en einde, werkdagen totaal en resterend, en de fase.' },
   schema: { titel: 'Op schema?', uitleg: 'Werkelijke voortgang tegenover de verwachte volgens de tijd.' },
@@ -184,7 +185,7 @@ export const RONDE_BLOKKEN = {
 
 /** Standaardindeling van het rondevenster. */
 export const STANDAARD_WEERGAVE = [
-  { id: 'tegels', breed: true }, { id: 'balk', breed: true },
+  { id: 'tegels', breed: true }, { id: 'balk', breed: true }, { id: 'maat', breed: true },
   { id: 'periode' }, { id: 'schema' }, { id: 'tempo' }, { id: 'prognose' }, { id: 'activiteit' }, { id: 'uren' },
   { id: 'kaart', breed: true }, { id: 'objecten', breed: true, opties: { filter: 'tedoen' } },
   { id: 'planning' }, { id: 'opmerking' },
@@ -192,3 +193,49 @@ export const STANDAARD_WEERGAVE = [
 
 /** Blokken die bij deze soort ronde horen. */
 export const beschikbareBlokken = (soort) => Object.keys(RONDE_BLOKKEN).filter((id) => !RONDE_BLOKKEN[id].alleen || RONDE_BLOKKEN[id].alleen === soort);
+
+// ---------------------------------------------------------------------------
+// Voortgang naar maat: een groot vlak telt zwaarder dan een klein vlak
+// ---------------------------------------------------------------------------
+/**
+ * Voortgang per soort maat: m² van de vlakken en meters van de lijnen (punten tellen alleen als aantal).
+ * @param {string[]} objectIds  objecten van de ronde
+ * @param {object} vg  voortgang (gedaan, overgeslagen, deels, nietNodig als Map/Set)
+ * @param {(id: string) => { soort: 'vlak'|'lijn'|'punt'|null, maat: number }} maatVan
+ * @returns {{ vlak: object|null, lijn: object|null }}  per soort: totaal, gedaan, overgeslagen, deels, open, aantal en percentages
+ */
+export function maatVoortgang(objectIds, vg, maatVan) {
+  const leeg = () => ({ totaal: 0, gedaan: 0, overgeslagen: 0, deels: 0, open: 0, aantal: 0 });
+  const uit = { vlak: leeg(), lijn: leeg() };
+  const heeft = (m, id) => Boolean(m?.has?.(id));
+  for (const id of objectIds ?? []) {
+    const { soort, maat } = maatVan(id) ?? {};
+    if (!uit[soort] || !(maat > 0)) continue;
+    const t = uit[soort];
+    t.totaal += maat;
+    t.aantal += 1;
+    if (heeft(vg?.gedaan, id)) t.gedaan += maat;
+    else if (heeft(vg?.overgeslagen, id) || heeft(vg?.nietNodig, id)) t.overgeslagen += maat;
+    else if (heeft(vg?.deels, id)) t.deels += maat;
+    else t.open += maat;
+  }
+  const af = (t) => {
+    if (!t.aantal) return null;
+    const pct = (x) => (t.totaal ? Math.round((x / t.totaal) * 1000) / 10 : 0);
+    return { ...t, pctGedaan: pct(t.gedaan), pctAfgehandeld: pct(t.gedaan + t.overgeslagen), pctDeels: pct(t.deels), pctOpen: pct(t.open) };
+  };
+  return { vlak: af(uit.vlak), lijn: af(uit.lijn) };
+}
+
+/** "12.345 m²" / "1,2 ha" – leesbare oppervlakte. */
+export function m2Tekst(m2) {
+  if (!(m2 > 0)) return '0 m²';
+  if (m2 >= 100000) return `${(m2 / 10000).toLocaleString('nl-NL', { maximumFractionDigits: 1 })} ha`;
+  return `${Math.round(m2).toLocaleString('nl-NL')} m²`;
+}
+/** "850 m" / "2,4 km" – leesbare lengte. */
+export function meterTekst(m) {
+  if (!(m > 0)) return '0 m';
+  if (m >= 10000) return `${(m / 1000).toLocaleString('nl-NL', { maximumFractionDigits: 1 })} km`;
+  return `${Math.round(m).toLocaleString('nl-NL')} m`;
+}

@@ -11148,6 +11148,8 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
     const wieVan = (x) => naamVanEmail(x.uitvoerder || x.inspecteur || x.beoordeling?.ingediendDoor || '');
     const st = vg ? RS.rondeStatistiek({ ronde: r, vg, registraties: regs, vandaag: vandaag(), manurenVan, wieVan, oordeelVan }) : null;
     const lijst = vg ? RS.objectRegels(v.objecten ?? [], vg, { objectVan: (oid) => gR.objectMap.get(oid), wieVan, oordeelVan }) : [];
+    // Voortgang naar maat: m² van de vlakken en meters van de lijnen (een groot vlak telt zwaarder dan een klein vlak).
+    const maat = vg ? RS.maatVoortgang(v.objecten ?? [], vg, (oid) => objectMaat(gR.objectMap.get(oid))) : null;
     const STATUS = { open: ['Nog niet gestart', 'open'], deels: ['Gedeeltelijk', 'deels'], gedaan: ['Gedaan', 'gedaan'], overgeslagen: ['Overgeslagen', 'overgeslagen'], nietnodig: ['Niet meer nodig', 'overgeslagen'],
       afgekeurd: ['Afgekeurd – opnieuw doen', 'afgekeurd'], ingediend: ['Wacht op beoordeling', 'ingediend'] };
     const nTeDoen = lijst.filter((x) => isTeDoen(x.status)).length;
@@ -11215,8 +11217,20 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
           <button type="button" class="tegel" data-rd-filter="gedaan"><strong>${st.aantallen.gedaan}/${st.aantallen.totaal}</strong><span>gedaan</span></button>
           <button type="button" class="tegel ${st.aantallen.deels ? 'let' : ''}" data-rd-filter="deels"><strong>${st.aantallen.deels}</strong><span>gedeeltelijk</span></button>
           <button type="button" class="tegel ${st.aantallen.nietGestart ? '' : 'goed'}" data-rd-filter="open"><strong>${st.aantallen.nietGestart}</strong><span>nog niet gestart</span></button>
-          <button type="button" class="tegel" data-rd-filter="overgeslagen"><strong>${st.aantallen.overgeslagen}</strong><span>overgeslagen</span></button></div>` : '<p class="leeg">Geen voortgang beschikbaar.</p>'),
+          <button type="button" class="tegel" data-rd-filter="overgeslagen"><strong>${st.aantallen.overgeslagen}</strong><span>overgeslagen</span></button>
+          ${maat?.vlak ? `<span class="tegel ${maat.vlak.pctGedaan >= 100 ? 'goed' : ''}" title="${esc(RS.m2Tekst(maat.vlak.gedaan))} van ${esc(RS.m2Tekst(maat.vlak.totaal))} gedaan"><strong>${String(maat.vlak.pctGedaan).replace('.', ',')}%</strong><span>van de m² gedaan</span></span>` : ''}</div>` : '<p class="leeg">Geen voortgang beschikbaar.</p>'),
       balk: () => (vg ? voortgangBalk(vg) : ''),
+      maat: () => {
+        if (!maat?.vlak && !maat?.lijn) return '<p class="leeg"><small>Geen vlakken of lijnen in deze ronde: de voortgang telt per stuk.</small></p>';
+        const getal = (x) => String(x).replace('.', ',');
+        const regel = (m, label, tekst) => `<div class="maatregel-rd">
+          <div class="maatkop"><strong>${label}</strong><span><b>${getal(m.pctGedaan)}%</b> gedaan · ${tekst(m.gedaan)} van ${tekst(m.totaal)}</span></div>
+          <div class="balkje maatbalk" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${m.pctGedaan}" aria-label="${label}: ${getal(m.pctGedaan)}% gedaan">
+            <i style="width:${m.pctGedaan}%;background:${PAKKET_KLEUR.gedaan}"></i><i style="width:${Math.max(0, m.pctAfgehandeld - m.pctGedaan)}%;background:${PAKKET_KLEUR.overgeslagen}"></i><i style="width:${m.pctDeels}%;background:${PAKKET_KLEUR.deels}"></i></div>
+          <small class="zacht">${m.aantal} ${label === 'Vlakken' ? 'vlakken' : 'lijnen'}${m.overgeslagen ? ` · overgeslagen ${tekst(m.overgeslagen)}` : ''}${m.deels ? ` · gedeeltelijk ${tekst(m.deels)}` : ''} · nog te doen ${tekst(m.open + m.deels)}</small></div>`;
+        return `${maat.vlak ? regel(maat.vlak, 'Vlakken', RS.m2Tekst) : ''}${maat.lijn ? regel(maat.lijn, 'Lijnen', RS.meterTekst) : ''}
+          ${maat.vlak && st ? `<p class="zacht"><small>Per stuk: ${st.aantallen.gedaan} van ${st.aantallen.totaal} objecten (${st.percentage}%). Naar oppervlakte telt een groot vlak zwaarder dan een klein vlak.</small></p>` : ''}`;
+      },
       kaart: () => (metKaart ? `<div class="rd-kaartvlak" id="rd-kaart"><p class="leeg">Kaart laden…</p></div>
         <div class="mlegenda"><span>${statusStip('open')}Te doen (${st ? st.aantallen.nietGestart : rondeObjecten.length})</span>${vg?.deels?.size ? `<span>${statusStip('deels')}Gedeeltelijk (${vg.deels.size})</span>` : ''}${opt('kaart').alleenTeDoen ? '' : `<span>${statusStip('gedaan')}Gedaan (${vg?.gedaan.size ?? 0})</span>${vg?.overgeslagen.size ? `<span>${statusStip('overgeslagen')}Overgeslagen (${vg.overgeslagen.size})</span>` : ''}`}${opmaakKnop()}</div>`
         : '<p class="leeg">Geen objecten met een ligging.</p>'),
@@ -13179,6 +13193,18 @@ function pakketRondesTekst(p, bereik = null) {
 function periodeTekst(p) {
   if (!p.start && !p.eind) return '';
   return `${p.start ? datumNL(p.start) : '…'} – ${p.eind ? datumNL(p.eind) : '…'}`;
+}
+
+// Maat van een object: oppervlakte (m²) van een vlak of lengte (m) van een lijn; punten hebben geen maat. Onthouden per geometrie.
+const maatCache = new WeakMap();
+function objectMaat(o) {
+  const geom = o ? objectGeometrie(o) : null;
+  if (!geom) return { soort: null, maat: 0 };
+  if (maatCache.has(geom)) return maatCache.get(geom);
+  const m = /Polygon/.test(geom.type) ? { soort: 'vlak', maat: gis.oppervlakte(geom) }
+    : /LineString/.test(geom.type) ? { soort: 'lijn', maat: gis.lengte(geom) } : { soort: 'punt', maat: 0 };
+  maatCache.set(geom, m);
+  return m;
 }
 
 // --- Registreren op een hoger niveau van de decompositie (element, beheerobject, systeemdeel) ---

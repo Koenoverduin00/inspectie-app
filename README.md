@@ -1154,6 +1154,23 @@ naar een **eisvraag** die in de formulieren komt, gekoppeld aan het **eisnummer*
   ondertekeningsblok. Optioneel met foto's als bewijs. *Afdrukken / opslaan als PDF* geeft het dossier; *Excel* geeft
   dezelfde inhoud in de bladen Samenvatting, Eisen, Bewijs en Afwijkingen.
 
+## Rondestatistieken naar oppervlakte en lengte
+
+In het rondevenster (planning → klik op een ronde) telt de voortgang standaard per stuk. Bij vlakken is dat scheef,
+want een groot vlak is meer werk dan een klein vlak. Daarom toont het venster ook de voortgang **naar maat**. De logica
+staat in `maatVoortgang()` in `js/rondestats.js`; de oppervlakte en lengte komen uit de geometrie (`gis.oppervlakte`,
+`gis.lengte`).
+
+- **Tegels.** Er staat een extra tegel **"% van de m² gedaan"** als de ronde vlakken heeft.
+- **Blok *Oppervlakte en lengte*** (standaard in de weergave):
+  - **Vlakken**: % gedaan, m² gedaan van het totaal, en een balk (gedaan, overgeslagen, gedeeltelijk). Daaronder het
+    aantal vlakken en de m² die nog te doen zijn.
+  - **Lijnen**: hetzelfde in strekkende meters.
+  - Ter vergelijking het percentage per stuk.
+- Grote getallen worden leesbaar weergegeven (bijv. *35.398 m²*, *25 ha*, *12,4 km*).
+- Heb je de weergave van het rondevenster al eens aangepast? Voeg het blok toe via *Weergave aanpassen*. De tegel
+  verschijnt altijd.
+
 ## Afmelden per element of beheerobject (hoger niveau in de decompositie)
 
 Sommige opdrachtgevers willen het onderhoud niet per bouwdeel afgemeld zien, maar per **element** of per

@@ -2283,3 +2283,8 @@ body.kiesmodus .mfilterchips, body.kiesmodus .mtedoenseg, body.kiesmodus .ff-fil
 .locregel-groep { display: grid; gap: .2rem; margin: .45rem 0; padding: .5rem .65rem; border-radius: 10px; background: color-mix(in srgb, var(--primair) 8%, transparent); }
 .regniveau { display: inline-flex; align-items: center; gap: .4rem; font-size: .9rem; font-weight: 600; }
 .regniveau select { width: auto; }
+
+/* Voortgang naar oppervlakte en lengte (rondevenster) */
+.maatregel-rd { display: grid; gap: .3rem; margin-bottom: .75rem; }
+.maatregel-rd .maatkop { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .5rem; }
+.maatbalk { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: color-mix(in srgb, #e07b00 22%, var(--achtergrond)); }

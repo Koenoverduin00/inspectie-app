@@ -62,3 +62,22 @@ test('rondeweergave: blokken per soort en standaard', () => {
   assert.ok(RS.beschikbareBlokken('werk').includes('vervolg'));
   assert.ok(RS.STANDAARD_WEERGAVE.every((b) => RS.RONDE_BLOKKEN[b.id]));
 });
+
+test('voortgang naar maat: grote vlakken tellen zwaarder', async () => {
+  const RS = await import('../js/rondestats.js');
+  // Vier vlakken: 1000, 200, 300 en 500 m²; twee lijnen; één punt.
+  const maten = { a: ['vlak', 1000], b: ['vlak', 200], c: ['vlak', 300], d: ['vlak', 500], l1: ['lijn', 120], l2: ['lijn', 80], p: ['punt', 0] };
+  const maatVan = (id) => ({ soort: maten[id][0], maat: maten[id][1] });
+  const vg = { gedaan: new Map([['a', {}], ['l1', {}]]), overgeslagen: new Map([['b', {}]]), deels: new Map([['c', []]]), nietNodig: new Set() };
+  const m = RS.maatVoortgang(Object.keys(maten), vg, maatVan);
+  // Per stuk: 1 van 4 vlakken gedaan (25%); naar oppervlakte 1000 van 2000 m² (50%).
+  assert.deepEqual([m.vlak.totaal, m.vlak.gedaan, m.vlak.overgeslagen, m.vlak.deels, m.vlak.open, m.vlak.aantal], [2000, 1000, 200, 300, 500, 4]);
+  assert.equal(m.vlak.pctGedaan, 50);
+  assert.equal(m.vlak.pctAfgehandeld, 60);
+  assert.equal(m.lijn.pctGedaan, 60);
+  assert.equal(RS.maatVoortgang(['p'], vg, maatVan).vlak, null);
+  assert.equal(RS.m2Tekst(12345.6), '12.346 m²');
+  assert.equal(RS.m2Tekst(250000), '25 ha');
+  assert.equal(RS.meterTekst(2400), '2.400 m');
+  assert.equal(RS.meterTekst(12400), '12,4 km');
+});
