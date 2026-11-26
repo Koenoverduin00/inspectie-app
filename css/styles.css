@@ -2288,3 +2288,15 @@ body.kiesmodus .mfilterchips, body.kiesmodus .mtedoenseg, body.kiesmodus .ff-fil
 .maatregel-rd { display: grid; gap: .3rem; margin-bottom: .75rem; }
 .maatregel-rd .maatkop { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .5rem; }
 .maatbalk { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: color-mix(in srgb, #e07b00 22%, var(--achtergrond)); }
+
+/* Rood sluitkruisje rechtsboven in het rondevenster */
+.rondedialoog { position: relative; }
+.rondedialoog .rd-kop { padding-right: 3rem; }
+.rd-sluit {
+  position: absolute; top: .6rem; right: .6rem; z-index: 2; width: 40px; height: 40px; border-radius: 50%;
+  display: grid; place-items: center; border: 0; cursor: pointer; color: #fff; background: #d1242f;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .2); transition: filter .15s, transform .1s;
+}
+.rd-sluit:hover { filter: brightness(1.1); }
+.rd-sluit:active { transform: scale(.94); }
+.rd-sluit:focus-visible { outline: 3px solid color-mix(in srgb, #d1242f 40%, transparent); outline-offset: 2px; }

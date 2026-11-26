@@ -1156,6 +1156,10 @@ naar een **eisvraag** die in de formulieren komt, gekoppeld aan het **eisnummer*
 
 ## Rondestatistieken naar oppervlakte en lengte
 
+Het rondevenster heeft rechtsboven een **rood kruisje** om het te sluiten (zonder op te slaan, net als *Annuleren*).
+Enter in een invulveld van het venster doet niets; eerder kon Enter het venster sluiten of de eerste knop activeren
+(*Uit planning halen*).
+
 In het rondevenster (planning → klik op een ronde) telt de voortgang standaard per stuk. Bij vlakken is dat scheef,
 want een groot vlak is meer werk dan een klein vlak. Daarom toont het venster ook de voortgang **naar maat**. De logica
 staat in `maatVoortgang()` in `js/rondestats.js`; de oppervlakte en lengte komen uit de geometrie (`gis.oppervlakte`,

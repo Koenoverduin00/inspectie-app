@@ -11266,6 +11266,7 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
     const d = document.createElement('dialog');
     d.className = 'dialoog rondedialoog';
     d.innerHTML = `<form method="dialog">
+      <button type="button" class="rd-sluit" aria-label="Venster sluiten" title="Sluiten"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" fill="none"/></svg></button>
       <div class="rd-kop"><div><h2>R${r.nummer} ${esc(r.naam)}</h2>
         <p><small>${esc(p.code ? `${p.code} · ` : '')}${esc(p.naam)} · ${pakketSoortTekst(v)}</small></p></div>
         <button type="button" class="knop klein" id="rd-aanpassen" title="Kies zelf welke blokken je ziet">${I.instellingen} Weergave aanpassen</button></div>
@@ -11277,7 +11278,9 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
       </div></form>`;
     document.body.append(d);
     // Links naar andere pagina's sluiten het venster (anders blijft het boven de nieuwe pagina staan).
-    d.addEventListener('click', (e) => { if (e.target.closest('a[href^="#/"]')) d.close('nee'); });
+    d.addEventListener('click', (e) => { if (e.target.closest('a[href^="#/"]') || e.target.closest('.rd-sluit')) d.close('nee'); });
+    // Enter in een invulveld mag het venster niet versturen of sluiten (dat zou bijv. "Uit planning halen" kunnen kiezen).
+    d.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.matches('input:not([type=submit]):not([type=button]), select')) e.preventDefault(); });
     d.showModal();
     let kaartObj = null;
     const filterObjecten = () => {
