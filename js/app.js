@@ -37,6 +37,7 @@ import * as FM from './formulierimport.js';
 import * as RS from './rondestats.js';
 import * as HS from './herstel.js';
 import * as PV from './planningversie.js';
+import * as GR from './groepering.js';
 import * as IMP from './gisimport.js';
 import * as ST from './stowa.js';
 import * as DG from './digigids.js';
@@ -67,7 +68,7 @@ const instelling = {
 const ROUTES = [
   [/^\/$/, 'dashboard', () => (isMobiel() && !isOpdrachtgever() ? mobielStart() : dashboard())],
   [/^\/m\/werk$/, 'm-werk', () => werkpakketKiezer(null, { mobiel: true })],
-  [/^\/m\/werk\/nieuw$/, 'm-werk', (_, q) => werkFormulier(null, q.get('object') ?? q.get('objecten')?.split(',')[0], { mobiel: true, taakId: q.get('taak'), maatregel: q.get('maatregel'), pakketId: q.get('pakket'), rondeId: q.get('ronde'), deel: q.get('deel') === '1', objectIds: q.get('objecten')?.split(',').filter(Boolean) ?? null })],
+  [/^\/m\/werk\/nieuw$/, 'm-werk', (_, q) => werkFormulier(null, q.get('object') ?? q.get('objecten')?.split(',')[0], { mobiel: true, taakId: q.get('taak'), maatregel: q.get('maatregel'), pakketId: q.get('pakket'), rondeId: q.get('ronde'), deel: q.get('deel') === '1', objectIds: q.get('objecten')?.split(',').filter(Boolean) ?? null, groep: q.get('groep') })],
   [/^\/m\/werk\/([^/]+)$/, 'm-werk', (id) => werkFormulier(id, null, { mobiel: true })],
   [/^\/m\/storing$/, 'm-werk', (_, q) => werkFormulier(null, q.get('object'), { mobiel: true, storing: true, maatregel: q.get('maatregel'), zaak: q.get('zaak') })],
   [/^\/m\/storingen$/, 'm-werk', () => storingenPagina(null, null, { mobiel: true })],
@@ -97,7 +98,7 @@ const ROUTES = [
   [/^\/storingen\/nieuw$/, 'werkpakketten', (_, q) => meldingFormulier(null, { objectId: q.get('object') })],
   [/^\/storingen\/([^/]+)\/bewerken$/, 'werkpakketten', (id) => meldingFormulier(id)],
   [/^\/storingen$/, 'werkpakketten', storingenPagina],
-  [/^\/werkzaamheden\/nieuw$/, 'werkzaamheden', (_, q) => werkFormulier(null, q.get('object'), { taakId: q.get('taak'), maatregel: q.get('maatregel'), pakketId: q.get('pakket'), rondeId: q.get('ronde'), deel: q.get('deel') === '1' })],
+  [/^\/werkzaamheden\/nieuw$/, 'werkzaamheden', (_, q) => werkFormulier(null, q.get('object') ?? q.get('objecten')?.split(',')[0], { taakId: q.get('taak'), maatregel: q.get('maatregel'), pakketId: q.get('pakket'), rondeId: q.get('ronde'), deel: q.get('deel') === '1', objectIds: q.get('objecten')?.split(',').filter(Boolean) ?? null, groep: q.get('groep') })],
   [/^\/werkzaamheden\/([^/]+)\/bewerken$/, 'werkzaamheden', (id) => werkFormulier(id)],
   [/^\/werkzaamheden\/([^/]+)$/, 'werkzaamheden', async (id) => { await werkDetail(id); toonBeoordelingBlok('werkzaamheden', await db.haal('werkzaamheden', id)); }],
   [/^\/objecten$/, 'objecten', objectenLijst],
@@ -6532,6 +6533,8 @@ async function mobielLocatie(objectId, q = new URLSearchParams()) {
       ${isActueel ? `<span class="actueellabel">${vanPakket >= 0 ? `${I.pakket} Je werkpakket` : `${I.kalender} ${afstand === 0 ? 'Loopt nu' : 'Dichtst bij vandaag'}`}</span>` : ''}
       <div class="locregel-kop"><span class="micoon klein">${x.v.soort === 'inspectie' ? (x.v.inspectiesoort === BV.BVC_SOORT ? I.boom : x.v.inspectiesoort === ST.STOWA_SOORT ? I.water : I.inspectie) : I.werk}</span>
         <span><strong>${wpNaam(x.v)}</strong><small>${pakketSoortTekst(x.v)}</small>${rondeKenmerkenHtml(x.v, ondLoc.get(`${x.v.id}:${x.v.rondeId}`))}</span></div>
+      ${(() => { const gr = x.v.soort !== 'inspectie' ? groepVoor(x.v, objectId) : null; return gr && isTeDoen(x.st) ? `<div class="locregel-groep">${I.lagen} Wordt afgemeld per ${esc(GR.NIVEAU_KORT[gr.knoop.niveau])}: <strong>${esc(GR.groepNaam(gr, { aantal: false }))}</strong>
+          <small>${gr.objectIds.length} bouwdelen in dit werkpakket: ${gr.objectIds.map((oid) => esc(g.objectMap.get(oid)?.code ?? '')).join(', ')}</small></div>` : ''; })()}
       ${x.st === 'deels' ? `<div class="locregel-deels"><span class="label-status deels">${I.werk} Gedeeltelijk gedaan</span>
           <small>${(x.vg.deels.get(objectId) ?? []).map((r) => `<a href="#/m/werk/${esc(r.id)}">${datumNL(r.datum)}${r.uitvoerder ? ` · ${esc(r.uitvoerder)}` : ''}</a>${r.deel ? `: ${esc(r.deel)}` : ''}`).join('<br>')}</small>
           <small class="zacht">Nog niet volledig klaar: blijft te doen tot iemand <strong>Volledig klaar</strong> meldt.</small></div>` : ''}
@@ -7379,7 +7382,7 @@ async function werkpakketKiezer(objectId, { mobiel = false, taakId = null, maatr
         <a class="knop" href="#/planning">Naar de planning</a></div>` : ''}</div>`}`;
 }
 
-async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maatregel = null, pakketId = null, rondeId = null, storing = false, deel = false, zaak = null, objectIds = null } = {}) {
+async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maatregel = null, pakketId = null, rondeId = null, storing = false, deel = false, zaak = null, objectIds = null, groep = null } = {}) {
   if (!id && storing && !mag('storing')) return geenRecht('storing');
   if (!id && !storing && !mag('werk')) return geenRecht('werk');
   if (!id && !pakketId && !storing) return werkpakketKiezer(objectId, { mobiel, taakId, maatregel });
@@ -7437,9 +7440,24 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
   }
   if (pakket && !bestaand && pakket.werksoort) w.soort = pakket.werksoort;
   // Meerdere objecten tegelijk (gekozen op de kaart): één formulier, per object een registratie. Alleen werk binnen één werkpakket.
-  const batch = !bestaand && !isStoring && pakket && objectIds?.length > 1
+  let batch = !bestaand && !isStoring && pakket && objectIds?.length > 1
     ? [...new Set(objectIds)].filter((oid) => objecten.some((o) => o.id === oid)) : null;
+  // Per element/beheerobject: bouwdelen die in deze ronde al (volledig) zijn afgemeld vallen af.
+  if (batch && groep) {
+    const klaar = new Set((await inProject('werkzaamheden')).filter((x) => x.werkpakketId === pakket.id && (x.rondeId || STANDAARD_RONDE) === (pakket.rondeId || STANDAARD_RONDE)
+      && !isDeels(x) && beoordelingVan(x) !== 'afgekeurd').map((x) => x.objectId));
+    const over = new Set((await inProject('overgeslagen')).filter((x) => x.pakketId === pakket.id && (x.rondeId || STANDAARD_RONDE) === (pakket.rondeId || STANDAARD_RONDE)).map((x) => x.objectId));
+    batch = batch.filter((oid) => !klaar.has(oid) && !over.has(oid));
+    if (!batch.length) { app.innerHTML = leegKaart('Alle bouwdelen van dit onderdeel zijn in deze ronde al afgemeld.', `<a class="knop" href="${pakketPagina(pakket, mobiel)}">Terug naar het werkpakket</a>`); return; }
+    if (batch.length === 1) {
+      // Nog maar één bouwdeel open: gewoon het formulier van dat object.
+      const q1 = new URLSearchParams({ object: batch[0], pakket: pakket.id, ...(rondeParam(pakket) ? { ronde: rondeParam(pakket) } : {}) });
+      history.replaceState(null, '', `${mobiel ? '#/m/werk' : '#/werkzaamheden'}/nieuw?${q1}`);
+      return werkFormulier(null, batch[0], { mobiel, pakketId: pakket.id, rondeId: pakket.rondeId });
+    }
+  }
   if (batch && batch.length < 2) { app.innerHTML = leegKaart('Deze objecten horen niet (meer) bij dit werkpakket.', `<a class="knop" href="${mobiel ? '#/m/kaart' : '#/werkpakketten'}">Terug</a>`); return; }
+  const groepKnoop = groep ? decompIndex()?.perId.get(groep) : null;
   const pakketTerug = pakket ? pakketPagina(pakket, mobiel) : null;
   // Bestekposten: per post de uitgevoerde hoeveelheid; ernaast wat er in deze ronde al is gedaan.
   const postenW = pakket && !isStoring ? postenVan(pakket) : [];
@@ -7492,7 +7510,7 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
 
   const objectVeld = batch
     ? `<input type="hidden" name="objectId" value="${esc(batch[0])}">
-      <div class="veld breed batchobjecten"><label>${batch.length} objecten</label>
+      <div class="veld breed batchobjecten"><label>${groepKnoop ? `${esc(GR.NIVEAU_LABEL[groepKnoop.niveau] ?? 'Onderdeel')}: ${esc([groepKnoop.code, groepKnoop.naam].filter(Boolean).join(' '))} · ` : ''}${batch.length} ${groepKnoop ? 'bouwdelen' : 'objecten'}</label>
         <div class="chips">${batch.map((oid) => { const o = objecten.find((x) => x.id === oid); return `<span class="chip"><span>${esc(o?.code ?? '?')}</span></span>`; }).join('')}</div>
         <small class="zacht">Dit formulier geldt voor alle gekozen objecten: per object wordt een registratie vastgelegd (met dezelfde foto's en antwoorden).</small></div>`
     : mobiel && object && !isStoring
@@ -13031,7 +13049,8 @@ async function pakketGegevens() {
     });
     voortgangen.set(p.id, totaalVoortgang(lijst));
   }
-  return { pakketten, objecten, objectMap: new Map(objecten.map((o) => [o.id, o])), werkzaamheden, inspecties, overgeslagen, voortgangen, views, rondeVoortgang };
+  laatsteObjectMap = new Map(objecten.map((o) => [o.id, o]));
+  return { pakketten, objecten, objectMap: laatsteObjectMap, werkzaamheden, inspecties, overgeslagen, voortgangen, views, rondeVoortgang };
 }
 
 /** Actieve rondes voor de ingelogde gebruiker, met hun open objecten (voor 'Logisch nu'). */
@@ -13162,7 +13181,30 @@ function periodeTekst(p) {
   return `${p.start ? datumNL(p.start) : '…'} – ${p.eind ? datumNL(p.eind) : '…'}`;
 }
 
+// --- Registreren op een hoger niveau van de decompositie (element, beheerobject, systeemdeel) ---
+let laatsteObjectMap = new Map();
+const groepCache = new Map();
+/** Groepen van een werkpakket (ronde) als het op een hoger niveau wordt afgemeld; null = per object (bouwdeel). */
+function pakketGroepen(p) {
+  if (!p || p.soort === 'inspectie' || !p.registratieNiveau) return null;
+  const idx = decompIndex();
+  if (!idx) return null;
+  const ids = p.objecten ?? [];
+  const sleutel = `${p.id}:${p.rondeId ?? ''}:${p.registratieNiveau}:${ids.length}:${laatsteObjectMap.size}`;
+  if (!groepCache.has(sleutel)) groepCache.set(sleutel, GR.groepeer(ids, (id) => laatsteObjectMap.get(id), idx, p.registratieNiveau));
+  return groepCache.get(sleutel);
+}
+/** De groep van een object in dit werkpakket, alleen als die meer dan één object heeft. */
+const groepVoor = (p, objectId) => { const g = GR.groepVan(pakketGroepen(p) ?? [], objectId); return g && g.objectIds.length > 1 ? g : null; };
+
 function pakketHref(p, objectId, mobiel) {
+  // Afmelden per element/beheerobject: één formulier voor de bouwdelen van die groep in dit werkpakket.
+  const grp = groepVoor(p, objectId);
+  if (grp) {
+    const qg = new URLSearchParams({ pakket: p.id, objecten: grp.objectIds.join(','), groep: grp.sleutel });
+    if (rondeParam(p)) qg.set('ronde', rondeParam(p));
+    return `${mobiel ? '#/m/werk' : '#/werkzaamheden'}/nieuw?${qg}`;
+  }
   const q = new URLSearchParams({ object: objectId, pakket: p.id });
   if (rondeParam(p)) q.set('ronde', rondeParam(p));
   if (p.soort === 'inspectie' && p.inspectiesoort === BV.BVC_SOORT) return `${mobiel ? '#/m/bvc' : '#/bvc'}/nieuw?${q}`;
@@ -13198,7 +13240,8 @@ async function tekenPakketKaart(el, { pakket, objecten, statusVan, positie = nul
         ? `<div class="popupknoppen"><a class="knop klein primair" href="${pakketHref(pakket, o.id, mobiel)}">Uitvoeren</a>
          <button class="knop klein" data-overslaan="${esc(o.id)}">Overslaan</button></div>`
         : `<small>${st === 'gedaan' ? I.vink + ' Gedaan' : st === 'ingediend' ? `${I.wacht} Wacht op beoordeling` : I.overslaan + ' Overgeslagen'}</small>`;
-    return `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}<br>${knoppen}${mobiel ? '' : `<br><a href="#/objecten/${esc(o.id)}">Object openen</a>`}`;
+    const grp = groepVoor(pakket, o.id);
+    return `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}${grp ? `<br><small class="groeplabel">${I.lagen} ${esc(GR.groepNaam(grp))} – samen afmelden</small>` : ''}<br>${knoppen}${mobiel ? '' : `<br><a href="#/objecten/${esc(o.id)}">Object openen</a>`}`;
   };
   const laag = L.geoJSON(fc, {
     style: (f) => statusStijl(statusVan(f.properties.id), f.geometry.type.includes('Point')),
@@ -13258,14 +13301,14 @@ async function tekenPakketKaart(el, { pakket, objecten, statusVan, positie = nul
 }
 
 // --- Overslaan ----------------------------------------------------------------
-function overslaanDialoog(object) {
+function overslaanDialoog(object, groep = null) {
   return new Promise((resolve) => {
     const d = document.createElement('dialog');
     d.className = 'dialoog';
     d.innerHTML = `
       <form method="dialog" novalidate>
-        <h2>Object overslaan</h2>
-        <p>${objectNaam(object)}</p>
+        <h2>${groep ? `${esc(GR.NIVEAU_LABEL[groep.knoop.niveau] ?? 'Onderdeel')} overslaan` : 'Object overslaan'}</h2>
+        <p>${groep ? `<strong>${esc(GR.groepNaam(groep, { aantal: false }))}</strong><br><small>De nog openstaande bouwdelen van dit ${esc(GR.NIVEAU_KORT[groep.knoop.niveau] ?? 'onderdeel')} in dit werkpakket worden overgeslagen: ${groep.objectIds.map((id) => esc(laatsteObjectMap.get(id)?.code ?? '')).join(', ')}</small>` : objectNaam(object)}</p>
         <div class="veld"><label for="d-reden" class="vereist">Reden</label>
           <select id="d-reden" name="reden" required><option value="">– kies –</option>${OVERSLAAN_REDENEN.map((r) => optie(r, r)).join('')}</select></div>
         <div class="veld" style="margin-top:.75rem"><label for="d-toelichting">Toelichting</label>
@@ -13291,14 +13334,24 @@ function overslaanDialoog(object) {
 
 async function slaObjectOver(pakket, object) {
   if (!mag('overslaan')) { melding('Je hebt geen recht om objecten over te slaan.', 'fout'); return false; }
-  const keuze = await overslaanDialoog(object);
+  // Afmelden per element/beheerobject: de hele groep (de bouwdelen uit dit werkpakket) overslaan.
+  let grp = groepVoor(pakket, object.id);
+  if (grp) {
+    // Alleen de bouwdelen van de groep die in deze ronde nog niet (volledig) zijn afgemeld.
+    const klaar = new Set((await inProject('werkzaamheden')).filter((x) => x.werkpakketId === pakket.id && (x.rondeId || STANDAARD_RONDE) === (pakket.rondeId || STANDAARD_RONDE)
+      && !isDeels(x) && beoordelingVan(x) !== 'afgekeurd').map((x) => x.objectId));
+    const open = grp.objectIds.filter((oid) => !klaar.has(oid));
+    grp = { ...grp, objectIds: open.length ? open : [object.id] };
+  }
+  const keuze = await overslaanDialoog(object, grp);
   if (!keuze) return false;
   const nu = new Date().toISOString();
-  await db.bewaar('overgeslagen', {
-    id: overslaanId(pakket.id, object.id, pakket.rondeId), projectId: pakket.projectId, pakketId: pakket.id, rondeId: pakket.rondeId ?? '', objectId: object.id,
-    ...keuze, door: sync.sessie()?.gebruiker?.email || instelling.lees('inspecteur') || '', op: vandaag(), gewijzigd: nu,
-  });
-  gedaan('Overslaan vastgelegd', { object, extra: `Reden: ${keuze.reden ?? ''}` });
+  const ids = grp ? grp.objectIds : [object.id];
+  await db.bewaarVeel('overgeslagen', ids.map((oid) => ({
+    id: overslaanId(pakket.id, oid, pakket.rondeId), projectId: pakket.projectId, pakketId: pakket.id, rondeId: pakket.rondeId ?? '', objectId: oid,
+    ...keuze, ...(grp ? { groep: grp.sleutel } : {}), door: sync.sessie()?.gebruiker?.email || instelling.lees('inspecteur') || '', op: vandaag(), gewijzigd: nu,
+  })));
+  gedaan('Overslaan vastgelegd', { object: grp ? null : object, extra: `${grp ? `${GR.groepNaam(grp)} · ` : ''}Reden: ${keuze.reden ?? ''}` });
   return true;
 }
 
@@ -13669,6 +13722,13 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
             <span><strong>Flora- en fauna-vrijgave vereist</strong><small>Uitvoerders zien per object of er een geldige ecologische vrijgave is.</small></span></label></div>
           <div class="veld breed"><label class="vink"><input type="checkbox" name="datumsGelijk" ${p.datumsGelijk !== false ? 'checked' : ''}>
             <span><strong>Start- en einddatum standaard gelijk</strong><small>In het werkformulier gaat de einddatum mee met de startdatum (werk op één dag). Uitzetten voor werk dat meerdere dagen duurt; de uitvoerder vult dan zelf de einddatum in.</small></span></label></div>
+          ${(() => {
+    const idx = decompIndex();
+    const niveaus = idx ? GR.NIVEAUS.filter((n) => idx.knopen.some((k) => k.niveau === n)) : [];
+    return niveaus.length ? `<div class="veld breed"><label for="f-regniveau">Registreren en afmelden op (werkzaamheden)</label>
+            <select id="f-regniveau" name="registratieNiveau">${optie('', GR.NIVEAU_LABEL[''], p.registratieNiveau ?? '')}${niveaus.map((n) => optie(n, GR.NIVEAU_LABEL[n], p.registratieNiveau ?? '')).join('')}</select>
+            <small>Wil de opdrachtgever het onderhoud per element of per beheerobject afgemeld zien? Dan worden de bouwdelen van dit werkpakket die bij hetzelfde ${'element of object'} horen samen afgemeld (één formulier; per bouwdeel een registratie). Bouwdelen die niet in het werkpakket zitten, tellen niet mee.</small></div>` : '';
+  })()}
           <div class="veld breed"><label class="vink"><input type="checkbox" name="deelsAfmelden" ${p.deelsAfmelden ? 'checked' : ''}>
             <span><strong>Gedeeltelijk afmelden per object toestaan</strong><small>Voor werk met meerdere ploegen op hetzelfde vak (bijv. vanaf het land en vanaf het water).
               Uitvoerders krijgen dan de knop <em>Deels gedaan</em> en de vraag <em>Is het vak volledig klaar?</em>; een vak is pas gereed na "volledig klaar". Alleen voor werkzaamheden.</small></span></label></div>
@@ -14122,6 +14182,7 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
       toegewezen: [...form.querySelectorAll('input[name=toegewezen]:checked')].map((c) => c.value),
       vrijgaveVereist: form.elements.vrijgaveVereist.checked,
       deelsAfmelden: form.elements.deelsAfmelden.checked,
+      registratieNiveau: form.elements.registratieNiveau?.value ?? (id ? bron.registratieNiveau ?? '' : ''),
       datumsGelijk: form.elements.datumsGelijk.checked,
       posten: posten.filter((x) => Number(String(x.hoeveelheid).replace(',', '.')) > 0).map((x) => ({ id: x.id, omschrijving: String(x.omschrijving ?? '').trim(), hoeveelheid: Number(String(x.hoeveelheid).replace(',', '.')), eenheid: x.eenheid || 'm2' })),
       voortgangOp: form.elements.voortgangOp.value === 'hoeveelheid' ? 'hoeveelheid' : 'objecten',
@@ -14299,6 +14360,16 @@ async function pakketDetail(id, q = new URLSearchParams()) {
   const v = g.rondeVoortgang.get(`${id}:${ronde.id}`);
   const totaal = g.voortgangen.get(id);
   const objecten = (p.objecten ?? []).map((oid) => g.objectMap.get(oid)).filter(Boolean);
+  // Afmelden per element/beheerobject: objecten per groep onder elkaar, met de naam van de groep erbij.
+  const groepen = pakketGroepen(p);
+  if (groepen) {
+    const volg = new Map(groepen.flatMap((gr, n) => gr.objectIds.map((oid) => [oid, n])));
+    objecten.sort((a, b) => (volg.get(a.id) ?? 0) - (volg.get(b.id) ?? 0));
+  }
+  const decIdx = p.soort !== 'inspectie' ? decompIndex() : null;
+  const regNiveaus = decIdx ? GR.beschikbareNiveaus(p.objecten ?? [], (oid) => g.objectMap.get(oid), decIdx) : [];
+  const niveauSchakelaar = magBeheren() && regNiveaus.length ? `<label class="regniveau" title="Op welk niveau van de decompositie wordt het onderhoud afgemeld?">Afmelden per
+    <select id="regniveau">${optie('', 'bouwdeel', p.registratieNiveau ?? '')}${regNiveaus.map((n) => optie(n, GR.NIVEAU_KORT[n], p.registratieNiveau ?? '')).join('')}</select></label>` : '';
   const statusVan = (oid) => rondeStatusVan(v, oid);
   const regHref = (r) => (p.soort === 'inspectie' ? `#/inspecties/${esc(r.id)}` : `#/werkzaamheden/${esc(r.id)}`);
   const vrijgavenProject = p.vrijgaveVereist ? await inProject('vrijgaven') : [];
@@ -14340,7 +14411,7 @@ async function pakketDetail(id, q = new URLSearchParams()) {
     </section>
     ${afroep && ronde.afroep?.toelichting ? `<div class="kaart afroepkaart"><strong>${esc(ronde.afroep.reden ?? 'Afroep')}</strong><p style="white-space:pre-wrap;margin:.35rem 0 0">${esc(ronde.afroep.toelichting)}</p></div>` : ''}
     <div class="mtussen"><h2>${afroep ? 'A' : 'R'}${ronde.nummer} ${esc(ronde.naam)} <small style="font-weight:400">· ${pakketSoortTekst(p)}</small></h2>
-      <div class="knoppen">${huidigProject?.eisen?.lijst?.length ? `<a class="knop" href="#/eisen/dossier?${new URLSearchParams({ pakket: id, ...(rondesVan(pr).length > 1 ? { ronde: ronde.id } : {}) })}" title="Verificatiedossier van de eisen voor deze ronde (te wijzigen naar het hele werkpakket of een periode)">${I.taak} Verificatiedossier</a>` : ''}<button class="knop" id="uitkomsten-xls" title="Alle antwoorden per registratie, bevindingen en vervolgacties">${I.excel} Uitkomsten naar Excel</button>${p.soort === 'inspectie' ? '<button class="knop" id="resultaten-xls">' + I.excel + ' Resultaten ronde</button>' : ''}<button class="knop" id="export">CSV</button>${p.inspectiesoort === BV.BVC_SOORT && p.soort === 'inspectie' ? '<button class="knop" id="suf">SUF-BVC</button>' : ''}</div></div>
+      <div class="knoppen">${niveauSchakelaar}${huidigProject?.eisen?.lijst?.length ? `<a class="knop" href="#/eisen/dossier?${new URLSearchParams({ pakket: id, ...(rondesVan(pr).length > 1 ? { ronde: ronde.id } : {}) })}" title="Verificatiedossier van de eisen voor deze ronde (te wijzigen naar het hele werkpakket of een periode)">${I.taak} Verificatiedossier</a>` : ''}<button class="knop" id="uitkomsten-xls" title="Alle antwoorden per registratie, bevindingen en vervolgacties">${I.excel} Uitkomsten naar Excel</button>${p.soort === 'inspectie' ? '<button class="knop" id="resultaten-xls">' + I.excel + ' Resultaten ronde</button>' : ''}<button class="knop" id="export">CSV</button>${p.inspectiesoort === BV.BVC_SOORT && p.soort === 'inspectie' ? '<button class="knop" id="suf">SUF-BVC</button>' : ''}</div></div>
     <section class="kaart">${voortgangBalk(v, { groot: true })}</section>
     ${ronde.afronding?.op && ronde.status === 'afgerond' ? `<div class="kaart mhier">${I.vink} Afgerond ${datumTijdNL(ronde.afronding.op)}${ronde.afronding.door ? ` door ${esc(ronde.afronding.door)}` : ''}${ronde.afronding.open?.length ? ` · ${ronde.afronding.open.length} objecten stonden nog open (${esc(HS.OPEN_ACTIES[ronde.afronding.openActie]?.label?.toLowerCase() ?? '')})` : ''}</div>` : ''}
     ${herstelBlokHtml(herstelPunten(p, g.inspecties, g.objectMap))}
@@ -14370,7 +14441,7 @@ async function pakketDetail(id, q = new URLSearchParams()) {
     const r = v.gedaan.get(o.id) ?? v.wacht?.get(o.id) ?? v.afgekeurd?.get(o.id);
     const ov = v.overgeslagen.get(o.id);
     return `<tr data-id="${esc(o.id)}" data-status="${st}">
-          <td><a href="#/objecten/${esc(o.id)}"><strong>${esc(o.code)}</strong></a>${objectGeometrie(o) ? ` <button type="button" class="kaartpin" data-opkaart="${esc(o.id)}" title="Toon op de kaart" aria-label="${esc(o.code)} op de kaart tonen">${I.locatie}</button>` : ''}</td><td>${esc(o.naam)}${p.vrijgaveVereist ? `<br>${vrijgaveLabel(eco.vrijgaveVoorObject(vrijgavenProject, o.id, vandaag()))}` : ''}</td>
+          <td><a href="#/objecten/${esc(o.id)}"><strong>${esc(o.code)}</strong></a>${objectGeometrie(o) ? ` <button type="button" class="kaartpin" data-opkaart="${esc(o.id)}" title="Toon op de kaart" aria-label="${esc(o.code)} op de kaart tonen">${I.locatie}</button>` : ''}</td><td>${esc(o.naam)}${(() => { const gr = groepen ? GR.groepVan(groepen, o.id) : null; return gr && gr.objectIds.length > 1 ? `<br><small class="groeplabel">${I.lagen} ${esc(GR.groepNaam(gr))}</small>` : ''; })()}${p.vrijgaveVereist ? `<br>${vrijgaveLabel(eco.vrijgaveVoorObject(vrijgavenProject, o.id, vandaag()))}` : ''}</td>
           <td><span class="label-status ${STATUS_KLASSE[st] ?? ''}">${STATUS_LABEL[st]}</span>${st === 'afgekeurd' ? `<br><small>${afkeurTekst(v.afgekeurd.get(o.id))}</small>` : ''}${st === 'deels' ? `<br><small>${(v.deels.get(o.id) ?? []).map((x) => `${datumNL(x.datum)}${x.deel ? `: ${esc(x.deel)}` : ''}`).join('<br>')}</small>` : ''}</td>
           <td>${r ? `<a href="${regHref(r)}">${datumNL(r.datum)}</a> · ${esc(r.uitvoerder || r.inspecteur || '')}` : ov ? `${datumNL(ov.op)} · ${esc(ov.door)}` : '–'}</td>
           <td class="verberg-mobiel">${ov ? `${esc(ov.reden)}${ov.toelichting ? `: ${esc(ov.toelichting)}` : ''}` : r ? esc(r.omschrijving || r.samenvatting || '') : ''}</td>
@@ -14391,6 +14462,12 @@ async function pakketDetail(id, q = new URLSearchParams()) {
     };
   });
   app.querySelectorAll('[data-afronden]').forEach((k) => { k.onclick = () => rondeAfronden(id, k.dataset.afronden); });
+  app.querySelector('#regniveau')?.addEventListener('change', async (e) => {
+    const actueel = await db.haal('werkpakketten', id);
+    await db.bewaar('werkpakketten', { ...actueel, registratieNiveau: e.target.value, gewijzigd: new Date().toISOString() });
+    melding(e.target.value ? `Dit werkpakket wordt nu per ${GR.NIVEAU_KORT[e.target.value]} afgemeld` : 'Dit werkpakket wordt weer per bouwdeel afgemeld');
+    router();
+  });
   app.querySelectorAll('[data-heropen]').forEach((k) => { k.onclick = () => rondeHeropenen(id, k.dataset.heropen); });
   app.querySelectorAll('[data-ronde-status]').forEach((k) => {
     k.onclick = async () => {
@@ -15173,9 +15250,23 @@ async function mobielPakket(id, q = new URLSearchParams()) {
     if (laatstePositie) metAfstand.sort((a, b) => (a.afstand ?? Infinity) - (b.afstand ?? Infinity));
     const el = app.querySelector('#open-lijst');
     if (!el) return [];
-    el.innerHTML = metAfstand.length ? metAfstand.map(({ o, afstand }) => `
+    // Afmelden per element/beheerobject: één regel per groep (het dichtstbijzijnde bouwdeel bepaalt de plek in de lijst).
+    const groepenM = pakketGroepen(p);
+    if (groepenM) {
+      const gezien = new Set();
+      const uit = [];
+      for (const x of metAfstand) {
+        const gr = GR.groepVan(groepenM, x.o.id);
+        const sl = gr && gr.objectIds.length > 1 ? gr.sleutel : x.o.id;
+        if (gezien.has(sl)) continue;
+        gezien.add(sl);
+        uit.push({ ...x, groep: gr && gr.objectIds.length > 1 ? gr : null });
+      }
+      metAfstand.splice(0, metAfstand.length, ...uit);
+    }
+    el.innerHTML = metAfstand.length ? metAfstand.map(({ o, afstand, groep: gr }) => `
       <li><div class="mregel">
-        <a href="${pakketHref(p, o.id, true)}" class="mregel-link"><span><strong>${esc(o.code)} – ${esc(o.naam)}</strong>
+        <a href="${pakketHref(p, o.id, true)}" class="mregel-link"><span><strong>${gr ? `${I.lagen} ${esc(GR.groepNaam(gr, { aantal: false }))}` : `${esc(o.code)} – ${esc(o.naam)}`}</strong>${gr ? `<small>${gr.objectIds.length} bouwdelen: ${gr.objectIds.map((oid) => esc(g.objectMap.get(oid)?.code ?? '')).join(', ')}</small>` : ''}
           <small>${esc(o.type || '')}${afstand != null ? ` · ${afstand === 0 ? I.locatie + ' hier' : afstandTekst(afstand)}` : ''}</small>${v.deels?.has(o.id) ? `<small class="deelstag"><span class="label-status deels">Gedeeltelijk</span> ${v.deels.get(o.id).map((x) => esc(x.deel || datumNL(x.datum))).join(', ')}</small>` : ''}${vrijgaveChip(o)}${meerHier(o)}</span></a>
         <button class="knop klein" data-overslaan="${esc(o.id)}" aria-label="${esc(o.code)} overslaan">${I.overslaan}</button>
         <a class="knop klein primair" href="${pakketHref(p, o.id, true)}">${I.start}</a></div></li>`).join('')

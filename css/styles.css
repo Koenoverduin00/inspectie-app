@@ -2277,3 +2277,9 @@ body.kiesmodus .mfilterchips, body.kiesmodus .mtedoenseg, body.kiesmodus .ff-fil
 .bedrijventabel tr.gekozen td { background: color-mix(in srgb, var(--primair) 6%, transparent); }
 .bedrijfchip.alleenlezen { cursor: default; background: rgba(255, 255, 255, .12); }
 .bedrijfchip.alleenlezen::after { content: none; }
+
+/* Afmelden per element / beheerobject */
+.groeplabel { color: var(--primair); font-weight: 600; }
+.locregel-groep { display: grid; gap: .2rem; margin: .45rem 0; padding: .5rem .65rem; border-radius: 10px; background: color-mix(in srgb, var(--primair) 8%, transparent); }
+.regniveau { display: inline-flex; align-items: center; gap: .4rem; font-size: .9rem; font-weight: 600; }
+.regniveau select { width: auto; }

@@ -1154,6 +1154,32 @@ naar een **eisvraag** die in de formulieren komt, gekoppeld aan het **eisnummer*
   ondertekeningsblok. Optioneel met foto's als bewijs. *Afdrukken / opslaan als PDF* geeft het dossier; *Excel* geeft
   dezelfde inhoud in de bladen Samenvatting, Eisen, Bewijs en Afwijkingen.
 
+## Afmelden per element of beheerobject (hoger niveau in de decompositie)
+
+Sommige opdrachtgevers willen het onderhoud niet per bouwdeel afgemeld zien, maar per **element** of per
+**beheerobject** (NEN 2767). De koppeling met het onderhoud blijft altijd per bouwdeel (GIS-object). Logica in
+`js/groepering.js`, getest in `tests/groepering.test.js`.
+
+- **Instellen per werkpakket.** Kies in het werkpakketformulier bij *Registreren en afmelden op*: bouwdeel (standaard),
+  element, object (beheerobject) of systeemdeel. Op de pakketpagina staat ook de schakelaar *Afmelden per …* om
+  snel te wisselen. Je ziet alleen niveaus die in de decompositie voorkomen. Andere decompositiestelsels worden bij het
+  inlezen op dezelfde vier niveaus gelegd, dus de keuze werkt voor elk stelsel.
+- **Groeperen.** Alleen de bouwdelen **die in het werkpakket zitten** en onder **hetzelfde** element (of object)
+  vallen, vormen samen een groep. Andere bouwdelen van dat element tellen niet mee. Een bouwdeel zonder hoger niveau
+  blijft een eigen regel.
+- **Afmelden.**
+  - *Gereed melden* opent één werkformulier voor de groep (*"Element: E1 Grasvelden · 2 bouwdelen"*); per bouwdeel
+    komt een eigen registratie. Dit geldt overal: op de kaart, de objectpagina, de pakketpagina, Volgende dichtbij en
+    de rondedialoog.
+  - Bouwdelen die al zijn afgemeld vallen af. Is er nog één over, dan opent gewoon het formulier van dat bouwdeel.
+- **Overslaan.** Overslaat de nog openstaande bouwdelen van de groep in één keer, met dezelfde reden.
+- **Weergave.**
+  - Op de telefoon toont de lijst van het werkpakket één regel per groep, met de bouwdelen erbij.
+  - Op de objectpagina staat *"Wordt afgemeld per element: …"*.
+  - In de objectentabel op de pc en in de kaartpopup staat de naam van de groep.
+- **Voortgang.** Blijft per bouwdeel tellen, zodat percentages en kaartkleuren gelijk blijven.
+- Geldt voor werkzaamheden; inspecties en schouwen blijven per object.
+
 ## Bedrijven: aparte omgevingen per bedrijf
 
 Eén app en één database, met per bedrijf een eigen, afgeschermde omgeving. Dat geldt voor projecten, personen,
