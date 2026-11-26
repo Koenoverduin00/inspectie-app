@@ -475,6 +475,15 @@ Op alle kaarten met voortgang (mobiele kaart, werkpakketkaart, dashboardkaart me
   **voor iedereen in het project** (wordt gesynchroniseerd); iedereen kan ook een eigen opmaak **alleen op dit apparaat**
   kiezen. *Standaard herstellen* zet alles terug. De voortgangsbalken en legenda's volgen dezelfde kleuren.
 
+## Kaart op de telefoon: teller bij meerdere werkpakketten
+
+Staan er op één object meerdere werkpakketten open, dan toont de kaart een teller (bijv. **2**). Zo ziet de inspecteur
+dat hij daar meer taken kan doen.
+- De teller telt **alle** open werkpakketten op het object, ook als je er met het filter een paar hebt uitgezet.
+- De teller staat alleen bij objecten die op de kaart **te zien** zijn. Is geen van de werkpakketten van dat object
+  zichtbaar (filter op werkpakket of soort werk, of *alleen te doen*), dan verdwijnt de teller, zodat de kaart niet
+  vervuilt.
+
 ## Objecten uit scope van het contract halen
 
 Valt een object niet meer onder het contract, dan haal je het **uit scope**. Het blijft in het register met zijn

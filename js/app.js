@@ -6775,8 +6775,29 @@ async function mobielKaart() {
     app.querySelector('#mtdalles').textContent = n;
     app.querySelector('#mtdopen').textContent = o;
   };
+  // Teller "meerdere werkpakketten open op deze locatie": telt altijd alle open werkpakketten op het object (ook die je
+  // hebt weggefilterd), maar staat alleen bij objecten die nu op de kaart te zien zijn. Is het object weggefilterd, geen teller.
+  const badgeLaag = L.layerGroup().addTo(kaart.map);
+  const opKaart = () => new Set(inPk().filter(({ o }) => !st.teDoen || isTeDoen(statusVan(o.id))).map(({ o }) => o.id));
+  function tekenBadges(ids = opKaart()) {
+    badgeLaag.clearLayers();
+    for (const { o } of lijst) {
+      if (!ids.has(o.id)) continue;
+      const nOpen = pakkettenOp(o.id).filter((x) => isTeDoen(x.st)).length;
+      if (nOpen < 2) continue;
+      const geom = objectGeometrie(o);
+      if (!geom) continue;
+      const [lng, lat] = geom.type === 'Point' ? geom.coordinates : gis.middelpunt(geom);
+      L.marker([lat, lng], {
+        icon: L.divIcon({ className: 'kaartbadge', html: `<span title="${nOpen} werkpakketten open op deze locatie">${nOpen}</span>`, iconSize: [26, 26], iconAnchor: [-4, 30] }),
+        keyboard: false,
+      }).on('click', () => { location.hash = locatiePagina(o.id); }).addTo(badgeLaag);
+    }
+  }
   const toonPakket = (inzoomen) => {
-    kaart.toon(new Set(inPk().filter(({ o }) => !st.teDoen || isTeDoen(statusVan(o.id))).map(({ o }) => o.id)), { inzoomen });
+    const ids = opKaart();
+    kaart.toon(ids, { inzoomen });
+    tekenBadges(ids);
     tekenLabels();
     tekenLijst();
     werkTellingBij();
@@ -6802,17 +6823,6 @@ async function mobielKaart() {
     app.querySelector('#veldkaart').scrollIntoView({ behavior: 'smooth', block: 'start' });
     kaart.zoomNaar(z.dataset.mzoom);
   });
-  for (const { o } of lijst) {
-    const nOpen = pakkettenOp(o.id).filter((x) => isTeDoen(x.st)).length;
-    if (nOpen < 2) continue;
-    const geom = objectGeometrie(o);
-    if (!geom) continue;
-    const [lng, lat] = geom.type === 'Point' ? geom.coordinates : gis.middelpunt(geom);
-    L.marker([lat, lng], {
-      icon: L.divIcon({ className: 'kaartbadge', html: `<span title="${nOpen} werkpakketten open op deze locatie">${nOpen}</span>`, iconSize: [26, 26], iconAnchor: [-4, 30] }),
-      keyboard: false,
-    }).on('click', () => { location.hash = locatiePagina(o.id); }).addTo(kaart.map);
-  }
   const toonLocatie = (stil) => bepaalPositie(() => {
     kaart.zetPositie(laatstePositie);
     if (!stil) kaart.map.setView([laatstePositie[1], laatstePositie[0]], Math.max(kaart.map.getZoom(), 17), { animate: false });
