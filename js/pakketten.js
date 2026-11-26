@@ -59,7 +59,10 @@ export const rondeCode = (p, r) => `${p.code || 'WP'}-R${r.nummer ?? 1}`;
 const norm = (x) => String(x ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 export function rondeView(p, r) {
   const binnen = new Set(p.objecten ?? []);
-  const objecten = r.objectIds?.length ? r.objectIds.filter((id) => binnen.has(id)) : [...(p.objecten ?? [])];
+  // Objecten buiten scope (zie scope.js) horen alleen nog bij de rondes waarin ze bleven staan of op hun ingangsdatum wachten.
+  const uit = p.uitScope ?? {};
+  const hoort = (id) => { const u = uit[id]; return !u || (u.blijft ?? []).includes(r.id) || (u.wacht ?? []).includes(r.id); };
+  const objecten = (r.objectIds?.length ? r.objectIds.filter((id) => binnen.has(id)) : [...(p.objecten ?? [])]).filter(hoort);
   const enkel = !p.rondes?.length;
   return {
     ...p, ...r, id: p.id, rondeId: r.id, rondeNaam: r.naam, pakketNaam: p.naam,

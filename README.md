@@ -475,6 +475,43 @@ Op alle kaarten met voortgang (mobiele kaart, werkpakketkaart, dashboardkaart me
   **voor iedereen in het project** (wordt gesynchroniseerd); iedereen kan ook een eigen opmaak **alleen op dit apparaat**
   kiezen. *Standaard herstellen* zet alles terug. De voortgangsbalken en legenda's volgen dezelfde kleuren.
 
+## Objecten uit scope van het contract halen
+
+Valt een object niet meer onder het contract, dan haal je het **uit scope**. Het blijft in het register met zijn
+historie, maar gaat uit alle werk- en inspectiepakketten. Logica in `js/scope.js`, getest in `tests/scope.test.js`.
+
+- **Wie:** alleen projectbeheerders.
+- **Waar:**
+  - op de objectpagina met *Uit scope halen*;
+  - op de objectenpagina voor meerdere objecten tegelijk: selecteren en dan *Uit scope halen*.
+- **Vastleggen:** je vult een ingangsdatum, reden, kenmerk (bijv. wijzigingsopdracht) en toelichting in. Vóór het
+  bevestigen zie je per werkpakket welke rondes het object kwijtraken en welke blijven.
+- **Wat er gebeurt per ronde:**
+  - **Afgeronde rondes** en rondes die eindigen vóór de ingangsdatum blijven ongewijzigd.
+  - **Rondes die op of na de ingangsdatum beginnen** verliezen het object. Dat geldt ook voor nieuwe rondes en afroepen.
+  - **De ronde waarin de ingangsdatum valt** (of een ronde zonder datums): het object blijft staan als het daar al
+    gedaan is (volledig, of ingediend en wachtend op beoordeling). Anders gaat het eruit. Gedeeltelijk gedaan telt als
+    nog open.
+  - Blijft er van een werkpakket niets over, dan gaat het object helemaal uit het pakket.
+- **Ingangsdatum in de toekomst:**
+  - Tot die datum blijft het object in de lopende rondes.
+  - Op de ingangsdatum valt het besluit vanzelf: al gedaan → blijft staan, anders eruit. Dat gebeurt de eerste keer
+    dat een projectbeheerder de app op of na die dag opent.
+- **Werkpakketten:** per werkpakket wordt het besluit bewaard in `uitScope[objectId] = { per, blijft, wacht }`.
+  `rondeView` in `pakketten.js` filtert daarop.
+- **Daarna:**
+  - Het object staat niet meer in de objectenlijst; zet het terug met *Ook buiten scope*. Je ziet het label
+    *buiten scope* of *uit scope per …*.
+  - Het is niet meer te kiezen bij registraties en werkpakketten. Het telt niet mee op het dashboard.
+  - Open maatregelen van het object staan niet meer in de lijsten.
+  - Registraties die al gedaan zijn blijven bewaard.
+- **Weer in scope:** een geplande uit-scope kun je annuleren, of je zet het object weer in scope. Naar keuze komt het
+  terug in de werkpakketten waar het uit is gehaald; anders voeg je het zelf weer toe.
+- **Verantwoording:**
+  - Elke wijziging staat in het logboek van het object.
+  - *Objecten → Scopewijzigingen* toont het overzicht met CSV-export voor de verrekening met de opdrachtgever.
+  - Op de planning staat bij een vastgezette versie hoeveel objecten sindsdien uit scope zijn gehaald.
+
 ## Objectenpagina: pagina's en kolommen
 
 De lijst op de objectenpagina toont standaard **100 regels per pagina**, met knoppen *Vorige*, paginanummers en

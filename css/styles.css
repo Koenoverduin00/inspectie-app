@@ -2334,3 +2334,13 @@ body.kiesmodus .mfilterchips, body.kiesmodus .mtedoenseg, body.kiesmodus .ff-fil
 .objecttabel td:nth-child(-n+2) { white-space: nowrap; }
 .paginering { display: flex; flex-wrap: wrap; gap: .3rem; justify-content: center; align-items: center; margin: .75rem 0; }
 .paginering[hidden] { display: none; }
+
+/* Scope van het contract */
+.scopemelding { display: flex; gap: .6rem; align-items: flex-start; padding: .75rem 1rem; border-radius: 10px; margin-bottom: 1rem; border: 1px solid; }
+.scopemelding.uit { background: color-mix(in srgb, #8b1a1a 8%, transparent); border-color: color-mix(in srgb, #8b1a1a 35%, transparent); }
+.scopemelding.gepland { background: color-mix(in srgb, #e07b00 9%, transparent); border-color: color-mix(in srgb, #e07b00 40%, transparent); }
+.scopemelding small { display: block; color: var(--tekst-zacht); margin-top: .15rem; }
+.scopevoorbeeld { margin-top: .75rem; padding: .6rem .8rem; border-radius: 8px; background: color-mix(in srgb, var(--primair) 6%, transparent); font-size: .92rem; }
+.scopevoorbeeld p { margin: 0 0 .3rem; }
+.scopevoorbeeld ul { margin: 0; padding-left: 1.1rem; }
+.planversie .scopehint a { color: inherit; }

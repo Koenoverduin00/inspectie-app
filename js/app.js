@@ -39,6 +39,7 @@ import * as HS from './herstel.js';
 import * as PV from './planningversie.js';
 import * as GR from './groepering.js';
 import * as OT from './objecttabel.js';
+import * as SC from './scope.js';
 import * as IMP from './gisimport.js';
 import * as ST from './stowa.js';
 import * as DG from './digigids.js';
@@ -104,6 +105,7 @@ const ROUTES = [
   [/^\/werkzaamheden\/([^/]+)$/, 'werkzaamheden', async (id) => { await werkDetail(id); toonBeoordelingBlok('werkzaamheden', await db.haal('werkzaamheden', id)); }],
   [/^\/objecten$/, 'objecten', objectenLijst],
   [/^\/objecten\/nieuw$/, 'objecten', () => objectFormulier()],
+  [/^\/objecten\/scope$/, 'objecten', scopeOverzicht],
   [/^\/objecten\/([^/]+)\/bewerken$/, 'objecten', objectFormulier],
   [/^\/objecten\/([^/]+)$/, 'objecten', async (id) => {
     await objectDetail(id);
@@ -243,6 +245,7 @@ async function toonRoute() {
       app.innerHTML = leegKaart(`Je demo-toegang is verlopen op ${datumNL(demoTot())}. Neem contact op als je verder wilt kijken.`, '<a class="knop" href="#/m/account">Account</a>');
       if (!/^\/m\/account$/.test(pad)) return;
     }
+    if (magBeheren() && await actiefProject()) await verwerkScope();
     if (isDemoGebruiker() && DEMO_DICHT.test(pad)) {
       location.replace('#/');
       melding('Dit onderdeel is in de demo niet beschikbaar.');
@@ -2557,6 +2560,8 @@ function alleMaatregelen(inspecties, objectMap) {
   for (const insp of inspecties) {
     for (const g of ST.gebrekItems(insp)) {
       if (!g.maatregel && !g.urgentie) continue;
+      // Object buiten scope: de maatregel valt niet meer onder het contract.
+      if (SC.scopeStatus(objectMap.get(insp.objectId), vandaag()) === 'uit' && g.maatregelStatus !== 'uitgevoerd') continue;
       lijst.push({ gebrek: g, inspectie: insp, object: objectMap.get(insp.objectId) });
     }
   }
@@ -2848,7 +2853,10 @@ const DASH_KAART_KLEUR = { voortgang: 'Voortgang (te doen / gedaan)', pakket: 'W
 const DASH_KAART_PERIODE = { 7: 'Laatste 7 dagen', 30: 'Laatste 30 dagen', 90: 'Laatste 90 dagen', 365: 'Laatste jaar', alles: 'Alles' };
 const PAKKET_PALET = ['#1f6feb', '#e8710a', '#7d5ba6', '#1a7f37', '#c2185b', '#00838f', '#b8860b', '#5d4037'];
 async function dashboard() {
-  const { objecten, inspecties, werkzaamheden, objectMap, status } = await laadAlles();
+  const alles = await laadAlles();
+  const { inspecties, werkzaamheden, objectMap, status } = alles;
+  // Objecten buiten scope tellen niet mee in de cijfers van het areaal.
+  const objecten = alles.objecten.filter((o) => SC.scopeStatus(o, vandaag()) !== 'uit');
   const project = await actiefProject();
   const og = isOpdrachtgever();
   const rol = og ? 'opdrachtgever' : DASH_ROLLEN[instelling.lees('dashboardRol')] ? instelling.lees('dashboardRol') : 'opdrachtnemer';
@@ -3778,6 +3786,17 @@ async function objectenNaarPakket(ids) {
   if (!pid) return false;
   const p = await db.haal('werkpakketten', pid);
   const bestaand = new Set(p.objecten ?? []);
+  // Objecten buiten scope (of die binnenkort uit scope gaan) kunnen niet meer aan een werkpakket.
+  const buiten = [];
+  for (const id of ids) { const o = await db.haal('objecten', id); if (SC.scopeStatus(o, vandaag()) !== 'in') buiten.push(id); }
+  if (buiten.length) { ids = ids.filter((id) => !buiten.includes(id)); melding(`${buiten.length} object${buiten.length === 1 ? '' : 'en'} buiten scope niet toegevoegd`, 'fout'); }
+  // Weer in scope gezet en nu opnieuw toegevoegd: het oude uit-scopebesluit vervalt.
+  const herstel = ids.filter((id) => p.uitScope?.[id]);
+  if (herstel.length) {
+    const uitScope = { ...p.uitScope }; herstel.forEach((id) => delete uitScope[id]);
+    await db.bewaar('werkpakketten', { ...p, uitScope, gewijzigd: new Date().toISOString() });
+    Object.assign(p, { uitScope });
+  }
   const erbij = ids.filter((id) => !bestaand.has(id));
   if (!erbij.length) { melding('Alle gekozen objecten zitten al in dit werkpakket.'); return false; }
   await db.bewaar('werkpakketten', { ...p, objecten: [...(p.objecten ?? []), ...erbij], gewijzigd: new Date().toISOString() });
@@ -3787,7 +3806,11 @@ async function objectenNaarPakket(ids) {
 const SELECTIE_NIEUW_PAKKET = 'inspectie-app:selectieNieuwPakket';
 
 async function objectenLijst() {
-  const { objecten, status } = await laadAlles();
+  const { objecten: alleObjecten, status } = await laadAlles();
+  // Objecten buiten scope standaard niet in de lijst (aan te zetten met "Ook buiten scope").
+  const nBuiten = alleObjecten.filter((o) => SC.scopeStatus(o, vandaag()) === 'uit').length;
+  let metBuiten = instelling.lees('objectenBuitenScope') === '1';
+  let objecten = metBuiten ? alleObjecten : alleObjecten.filter((o) => SC.scopeStatus(o, vandaag()) !== 'uit');
   let weergave = instelling.lees('objectWeergave') === 'kaart' ? 'kaart' : 'lijst';
   const typen = [...new Set(objecten.map((o) => o.type).filter(Boolean))].sort();
   const lagen = await inProject('lagen');
@@ -3842,6 +3865,7 @@ async function objectenLijst() {
     <div class="paginakop">
       <div><h1>Objecten</h1><p>${objecten.length} geregistreerde objecten in het areaal.</p></div>
       <div class="knoppen">
+        ${alleObjecten.some((o) => o.scopeLog?.length) ? `<a class="knop" href="#/objecten/scope">${I.lijst} Scopewijzigingen</a>` : ''}
         <button class="knop" id="export">CSV exporteren</button>
         <a class="knop primair" href="#/objecten/nieuw">+ Object registreren</a>
       </div>
@@ -3855,6 +3879,7 @@ async function objectenLijst() {
         ${Object.entries(PLANNING_TEKST).filter(([k]) => k !== 'onbekend').map(([k, v]) => optie(k, v)).join('')}</select>
       ${lagen.length > 1 ? `<select id="laag" aria-label="Laag"><option value="">Alle lagen</option>${lagen.map((l) => optie(l.id, l.naam)).join('')}${optie('-', 'Losse objecten (geen laag)')}</select>` : ''}
       <span id="kenmerkfilters" class="kfgroep"></span>
+      ${nBuiten ? `<label class="vink"><input type="checkbox" id="metbuiten" ${metBuiten ? 'checked' : ''}><span>Ook buiten scope (${nBuiten})</span></label>` : ''}
       <div class="segment weergavekeuze" role="radiogroup" aria-label="Weergave">
         <label><input type="radio" name="oweergave" value="lijst" ${weergave === 'lijst' ? 'checked' : ''}><span>${I.lijst} Lijst</span></label>
         <label><input type="radio" name="oweergave" value="kaart" ${weergave === 'kaart' ? 'checked' : ''}><span>${I.kaart} Kaart</span></label></div>
@@ -3864,7 +3889,8 @@ async function objectenLijst() {
       <button type="button" class="knop klein" id="sel-alle"></button>
       <button type="button" class="knop klein" id="sel-wis" hidden>Selectie wissen</button>
       <span class="sel-acties" hidden><button type="button" class="knop klein primair" id="sel-pakket">${I.pakket} Aan werkpakket toevoegen</button>
-        <button type="button" class="knop klein" id="sel-nieuw">＋ Nieuw werkpakket met selectie</button></span></div>` : ''}
+        <button type="button" class="knop klein" id="sel-nieuw">＋ Nieuw werkpakket met selectie</button>
+        <button type="button" class="knop klein" id="sel-scope">${I.overslaan} Uit scope halen</button></span></div>` : ''}
     <div id="objectkaart-blok" ${weergave === 'kaart' ? '' : 'hidden'}>
       <div class="kaartindeling">
         <div id="objectkaart" class="kaart objectenkaart"><p class="leeg">Kaart laden…</p></div>
@@ -3939,7 +3965,7 @@ async function objectenLijst() {
       const s = status.get(o.id);
       return `<tr class="klikbaar${gekozen.has(o.id) ? ' gekozen' : ''}" data-href="#/objecten/${esc(o.id)}">
         ${kanKiezen ? `<td><input type="checkbox" data-sel="${esc(o.id)}" ${gekozen.has(o.id) ? 'checked' : ''} aria-label="${esc(o.code)} selecteren"></td>` : ''}
-        <td><strong>${esc(o.code)}</strong>${objectGeometrie(o) ? ` <button type="button" class="kaartpin" data-opkaart="${esc(o.id)}" title="Op de kaart tonen" aria-label="${esc(o.code)} op de kaart tonen">${I.locatie}</button>` : ''}</td>${kolommen.map((id) => `<td${smal(id)}>${celHtml(id, o, s)}</td>`).join('')}</tr>`;
+        <td><strong>${esc(o.code)}</strong>${objectGeometrie(o) ? ` <button type="button" class="kaartpin" data-opkaart="${esc(o.id)}" title="Op de kaart tonen" aria-label="${esc(o.code)} op de kaart tonen">${I.locatie}</button>` : ''}${scopeChip(o)}</td>${kolommen.map((id) => `<td${smal(id)}>${celHtml(id, o, s)}</td>`).join('')}</tr>`;
     }).join('') : `<tr><td colspan="${kolommen.length + (kanKiezen ? 2 : 1)}" class="leeg">${objecten.length ? 'Geen objecten gevonden met deze filters.' : 'Nog geen objecten. <a href="#/objecten/nieuw">Registreer het eerste object</a>.'}</td></tr>`;
     app.querySelector('#pag-telling').textContent = pg.totaal ? `${pg.van.toLocaleString('nl-NL')}–${pg.tot.toLocaleString('nl-NL')} van ${pg.totaal.toLocaleString('nl-NL')} objecten` : '';
     app.querySelector('#kol-aantal').textContent = `(${kolommen.length + 1})`;
@@ -4116,11 +4142,21 @@ async function objectenLijst() {
     app.querySelector('#sel-pakket').onclick = async () => {
       if (await objectenNaarPakket([...gekozen])) { gekozen.clear(); toon(); }
     };
+    app.querySelector('#sel-scope').onclick = async () => {
+      const objs = alleObjecten.filter((o) => gekozen.has(o.id) && SC.scopeStatus(o, vandaag()) === 'in');
+      if (!objs.length) return melding('De gekozen objecten zijn al buiten scope.');
+      if (await uitScopeDialoog(objs)) router();
+    };
     app.querySelector('#sel-nieuw').onclick = () => {
       try { sessionStorage.setItem(SELECTIE_NIEUW_PAKKET, JSON.stringify([...gekozen])); } catch { /* geen opslag */ }
       ga('#/werkpakketten/nieuw?selectie=1');
     };
   }
+  app.querySelector('#metbuiten')?.addEventListener('change', (e) => {
+    metBuiten = e.target.checked;
+    instelling.schrijf('objectenBuitenScope', metBuiten ? '1' : '');
+    router();
+  });
   toon();
   if (weergave === 'kaart') startKaart();
 
@@ -4140,6 +4176,206 @@ async function objectenLijst() {
 }
 
 // ---------------------------------------------------------------------------
+// Scope van het contract: objecten uit scope halen (zie scope.js)
+// ---------------------------------------------------------------------------
+function scopeChip(o) {
+  const st = SC.scopeStatus(o, vandaag());
+  if (st === 'in') return '';
+  return st === 'uit' ? ` <span class="label-status verlopen" title="${esc(o.scope.reden || '')}">buiten scope</span>`
+    : ` <span class="label-status binnenkort" title="${esc(o.scope.reden || '')}">uit scope per ${datumNL(o.scope.per)}</span>`;
+}
+
+/** Is het object in deze ronde al gedaan (volledig, of ingediend en wachtend op beoordeling)? */
+const gedaanInRonde = (g, p, rondeId, objectId) => {
+  const vg = g.rondeVoortgang.get(`${p.id}:${rondeId}`);
+  return Boolean(vg?.gedaan?.has(objectId) || vg?.wacht?.has(objectId));
+};
+
+/** Eén of meer objecten uit scope halen: dialoog met ingangsdatum, reden en een voorbeeld van wat er gebeurt. */
+async function uitScopeDialoog(objecten) {
+  if (!magBeheren()) { melding('Alleen projectbeheerders kunnen objecten uit scope halen.', 'fout'); return false; }
+  const g = await pakketGegevens();
+  const ids = new Set(objecten.map((o) => o.id));
+  const voorbeeld = (per) => {
+    const regels = [];
+    for (const p of g.pakketten) {
+      for (const oid of (p.objecten ?? []).filter((x) => ids.has(x))) {
+        const x = SC.pasToe(p, oid, { per, vandaag: vandaag(), gedaanIn: (rid) => gedaanInRonde(g, p, rid, oid) });
+        if (x && (x.weg.length || x.wacht.length)) regels.push({ p, x, oid });
+      }
+    }
+    return regels;
+  };
+  const d = document.createElement('dialog');
+  d.className = 'dialoog';
+  d.innerHTML = `<form method="dialog" novalidate>
+    <h2>${objecten.length === 1 ? `${esc(objecten[0].code)} uit scope halen` : `${objecten.length} objecten uit scope halen`}</h2>
+    <p><small>Het object valt niet meer onder het contract. Het blijft in het register met zijn historie, maar gaat uit alle werk- en inspectiepakketten.
+      Afgeronde rondes en werk dat al gedaan is blijven staan.</small></p>
+    <div class="velden">
+      <div class="veld"><label for="sc-per" class="vereist">Ingangsdatum</label><input type="date" id="sc-per" value="${vandaag()}" required>
+        <small>Een datum in de toekomst kan ook: tot dan blijft het object in de lopende rondes.</small></div>
+      <div class="veld"><label for="sc-reden" class="vereist">Reden</label><select id="sc-reden" required><option value="">– kies –</option>${SC.SCOPE_REDENEN.map((r) => optie(r, r)).join('')}</select></div>
+      <div class="veld"><label for="sc-kenmerk">Kenmerk</label><input id="sc-kenmerk" maxlength="80" placeholder="bijv. wijzigingsopdracht WO-012"></div>
+      <div class="veld breed"><label for="sc-toel">Toelichting</label><textarea id="sc-toel" maxlength="500" rows="2"></textarea></div>
+    </div>
+    <div class="scopevoorbeeld" id="sc-voorbeeld" aria-live="polite"></div>
+    <div class="formvoet"><button type="button" class="knop" data-sc="nee">Annuleren</button>
+      <button type="submit" class="knop gevaar">${I.overslaan} Uit scope halen</button></div></form>`;
+  document.body.append(d);
+  const teken = () => {
+    const per = d.querySelector('#sc-per').value || vandaag();
+    const r = voorbeeld(per);
+    const nPakket = new Set(r.map((x) => x.p.id)).size;
+    const nWeg = r.reduce((t, x) => t + x.x.weg.length, 0);
+    const nWacht = r.reduce((t, x) => t + x.x.wacht.length, 0);
+    const nBlijft = r.reduce((t, x) => t + x.x.blijft.length, 0);
+    const naam = (p, rid) => { const ro = rondesVan(p).find((y) => y.id === rid); return p.rondes?.length ? `R${ro?.nummer ?? '?'}` : 'het pakket'; };
+    d.querySelector('#sc-voorbeeld').innerHTML = r.length ? `<p><strong>Wordt verwijderd uit ${nPakket} werkpakket${nPakket === 1 ? '' : 'ten'}</strong> (${nWeg} ronde${nWeg === 1 ? '' : 's'}${nWacht ? `; ${nWacht} lopende ronde${nWacht === 1 ? '' : 's'} op de ingangsdatum` : ''}${nBlijft ? `; ${nBlijft} afgeronde of al uitgevoerde ronde${nBlijft === 1 ? ' blijft' : 's blijven'} staan` : ''}).</p>
+      <ul>${r.slice(0, 12).map(({ p, x, oid }) => `<li>${wpNaam(p)}${objecten.length > 1 ? ` · ${esc(g.objectMap.get(oid)?.code ?? '')}` : ''}: ${x.weg.length ? `uit ${x.weg.map((rid) => naam(p, rid)).join(', ')}` : ''}${x.wacht.length ? `${x.weg.length ? '; ' : ''}${x.wacht.map((rid) => naam(p, rid)).join(', ')} op ${datumNL(per)}` : ''}${x.blijft.length ? ` <small class="zacht">(${x.blijft.map((rid) => naam(p, rid)).join(', ')} blijft)</small>` : ''}</li>`).join('')}${r.length > 12 ? `<li>… en ${r.length - 12} meer</li>` : ''}</ul>`
+      : '<p><small>Het object zit in geen lopend of toekomstig werk- of inspectiepakket.</small></p>';
+  };
+  teken();
+  d.querySelector('#sc-per').addEventListener('change', teken);
+  d.showModal();
+  const ok = await new Promise((klaar) => {
+    d.querySelector('[data-sc=nee]').onclick = () => klaar(false);
+    d.addEventListener('cancel', (e) => { e.preventDefault(); klaar(false); });
+    d.querySelector('form').onsubmit = (e) => {
+      e.preventDefault();
+      if (!d.querySelector('#sc-per').value) return melding('Kies een ingangsdatum.', 'fout');
+      if (!d.querySelector('#sc-reden').value) return melding('Kies een reden.', 'fout');
+      if (d.querySelector('#sc-reden').value === 'Anders' && !d.querySelector('#sc-toel').value.trim()) return melding('Licht de reden toe.', 'fout');
+      klaar(true);
+    };
+  });
+  const keuze = { per: d.querySelector('#sc-per').value, reden: d.querySelector('#sc-reden').value, kenmerk: d.querySelector('#sc-kenmerk').value.trim(), toelichting: d.querySelector('#sc-toel').value.trim() };
+  d.close(); d.remove();
+  if (!ok) return false;
+  const n = await haalUitScope(objecten.map((o) => o.id), keuze, g);
+  gedaan(`${objecten.length === 1 ? `${objecten[0].code} is` : `${objecten.length} objecten zijn`} ${keuze.per > vandaag() ? `per ${datumNL(keuze.per)}` : ''} uit scope gehaald`, { extra: n ? `uit ${n} werkpakket${n === 1 ? '' : 'ten'}` : 'zat in geen lopend werkpakket' });
+  return true;
+}
+
+/** Uit scope halen en de werkpakketten bijwerken. Geeft het aantal geraakte werkpakketten terug. */
+async function haalUitScope(objectIds, { per, reden, kenmerk = '', toelichting = '' }, g = null) {
+  g = g ?? await pakketGegevens();
+  const nu = new Date().toISOString();
+  const door = accountNaam() || ikEmail() || instelling.lees('inspecteur') || '';
+  const perObject = new Map(objectIds.map((id) => [id, []]));
+  const geraakt = new Set();
+  for (const p0 of g.pakketten) {
+    let p = await db.haal('werkpakketten', p0.id);
+    let anders = false;
+    for (const oid of objectIds) {
+      const x = SC.pasToe(p, oid, { per, vandaag: vandaag(), gedaanIn: (rid) => gedaanInRonde(g, p0, rid, oid) });
+      if (!x) continue;
+      p = x.pakket; anders = true;
+      perObject.get(oid).push({ pakketId: p.id, naam: metCode(p), weg: x.weg, blijft: x.blijft, wacht: x.wacht, helemaalWeg: x.helemaalWeg });
+    }
+    if (anders) { await db.bewaar('werkpakketten', { ...p, gewijzigd: nu }); geraakt.add(p.id); }
+  }
+  for (const oid of objectIds) {
+    const o = await db.haal('objecten', oid);
+    if (!o) continue;
+    const scope = { per, reden, kenmerk, toelichting, door, op: nu };
+    await db.bewaar('objecten', { ...o, scope, scopeLog: [...(o.scopeLog ?? []), { actie: 'uit', ...scope, pakketten: perObject.get(oid) }], gewijzigd: nu });
+  }
+  scopeVerwerkt = '';
+  return geraakt.size;
+}
+
+/** Weer in scope (of een geplande uit-scope annuleren). */
+async function inScopeDialoog(o) {
+  if (!magBeheren()) { melding('Alleen projectbeheerders kunnen de scope aanpassen.', 'fout'); return false; }
+  const gepland = SC.scopeStatus(o, vandaag()) === 'gepland';
+  const laatste = [...(o.scopeLog ?? [])].reverse().find((x) => x.actie === 'uit');
+  const pakketten = laatste?.pakketten ?? [];
+  const d = document.createElement('dialog');
+  d.className = 'dialoog';
+  d.innerHTML = `<form method="dialog">
+    <h2>${gepland ? 'Uit scope halen annuleren' : `${esc(o.code)} weer in scope`}</h2>
+    <p><small>${gepland ? `${esc(o.code)} zou per ${datumNL(o.scope.per)} uit scope gaan.` : `${esc(o.code)} is buiten scope sinds ${datumNL(o.scope.per)}.`}</small></p>
+    ${pakketten.length ? `<label class="vink"><input type="checkbox" id="sc-terug" ${gepland ? 'checked' : ''}><span>Ook terugzetten in de werkpakketten waar het uit is gehaald
+      <small>${pakketten.map((p) => esc(p.naam)).join(', ')}</small></span></label>
+      <p><small>Niet aangevinkt: het object blijft uit die werkpakketten. Je kunt het later zelf weer toevoegen via Objecten → <em>Aan werkpakket toevoegen</em>.</small></p>` : ''}
+    <div class="veld"><label for="sc-toel2">Toelichting</label><input id="sc-toel2" maxlength="200"></div>
+    <div class="formvoet"><button type="button" class="knop" data-sc="nee">Annuleren</button><button type="submit" class="knop primair">${gepland ? 'Annuleren bevestigen' : 'Weer in scope'}</button></div></form>`;
+  document.body.append(d);
+  d.showModal();
+  const ok = await new Promise((klaar) => {
+    d.querySelector('[data-sc=nee]').onclick = () => klaar(false);
+    d.addEventListener('cancel', (e) => { e.preventDefault(); klaar(false); });
+    d.querySelector('form').onsubmit = (e) => { e.preventDefault(); klaar(true); };
+  });
+  const terug = d.querySelector('#sc-terug')?.checked ?? false;
+  const toelichting = d.querySelector('#sc-toel2').value.trim();
+  d.close(); d.remove();
+  if (!ok) return false;
+  const nu = new Date().toISOString();
+  let n = 0;
+  if (terug) {
+    for (const x of pakketten) {
+      const p = await db.haal('werkpakketten', x.pakketId);
+      const nieuw = p ? SC.zetTerug(p, o.id, pakketten) : null;
+      if (nieuw) { await db.bewaar('werkpakketten', { ...nieuw, gewijzigd: nu }); n += 1; }
+    }
+  }
+  const actueel = await db.haal('objecten', o.id);
+  const { scope, ...rest } = actueel;
+  await db.bewaar('objecten', { ...rest, scopeLog: [...(actueel.scopeLog ?? []), { actie: gepland ? 'geannuleerd' : 'terug', per: vandaag(), toelichting, door: accountNaam() || ikEmail() || '', op: nu, terugInPakketten: terug }], gewijzigd: nu });
+  gedaan(`${o.code} is weer in scope`, { extra: terug ? `terug in ${n} werkpakket${n === 1 ? '' : 'ten'}` : 'niet teruggezet in de werkpakketten' });
+  return true;
+}
+
+/** Op de ingangsdatum: de rondes die wachtten krijgen hun besluit (al gedaan → blijft staan, anders eruit). Eens per dag. */
+let scopeVerwerkt = '';
+async function verwerkScope() {
+  const sleutel = `${projectId()}:${vandaag()}`;
+  if (scopeVerwerkt === sleutel) return;
+  scopeVerwerkt = sleutel;
+  try {
+    const pakketten = await inProject('werkpakketten');
+    const open = pakketten.filter((p) => Object.values(p.uitScope ?? {}).some((u) => u.wacht?.length && u.per <= vandaag()));
+    if (!open.length) return;
+    const g = await pakketGegevens();
+    const nu = new Date().toISOString();
+    for (const p0 of open) {
+      let p = p0;
+      for (const [oid, u] of Object.entries(p0.uitScope)) {
+        if (!u.wacht?.length || u.per > vandaag()) continue;
+        const x = SC.pasToe(p, oid, { per: u.per, vandaag: vandaag(), vast: u, gedaanIn: (rid) => gedaanInRonde(g, p0, rid, oid) });
+        if (x) p = x.pakket;
+      }
+      await db.bewaar('werkpakketten', { ...p, gewijzigd: nu });
+    }
+  } catch (fout) {
+    console.warn('Scope verwerken mislukt', fout);
+  }
+}
+
+/** Overzicht van alle scopewijzigingen, met export (voor de verrekening met de opdrachtgever). */
+async function scopeOverzicht() {
+  const objecten = await inProject('objecten');
+  const lijst = SC.wijzigingen(objecten);
+  const ACTIE = { uit: ['Uit scope', 'verlopen'], terug: ['Weer in scope', 'afgerond'], geannuleerd: ['Geannuleerd', ''] };
+  app.innerHTML = `<div class="paginakop"><div><p><a href="#/objecten">← Objecten</a></p><h1>Scopewijzigingen</h1>
+      <p>Objecten die uit de scope van het contract zijn gehaald of er weer in zijn gezet. ${objecten.filter((o) => SC.scopeStatus(o, vandaag()) === 'uit').length} objecten zijn nu buiten scope${objecten.some((o) => SC.scopeStatus(o, vandaag()) === 'gepland') ? `, ${objecten.filter((o) => SC.scopeStatus(o, vandaag()) === 'gepland').length} gaan binnenkort uit scope` : ''}.</p></div>
+      <div class="knoppen"><button class="knop" id="sc-export" ${lijst.length ? '' : 'disabled'}>${I.excel} CSV exporteren</button></div></div>
+    <div class="kaart" style="padding:0"><div class="tabelhouder"><table><thead><tr><th>Ingangsdatum</th><th>Object</th><th>Wijziging</th><th>Reden</th><th>Kenmerk</th><th class="verberg-mobiel">Werkpakketten</th><th class="verberg-mobiel">Door</th></tr></thead>
+    <tbody>${lijst.map((x) => `<tr class="klikbaar" data-href="#/objecten/${esc(x.objectId)}"><td>${datumNL(x.per)}${x.actie === 'uit' && x.per > vandaag() ? ' <span class="label-status binnenkort">gepland</span>' : ''}</td>
+      <td><strong>${esc(x.code)}</strong> ${esc(x.naam ?? '')}</td><td><span class="label-status ${ACTIE[x.actie]?.[1] ?? ''}">${ACTIE[x.actie]?.[0] ?? esc(x.actie)}</span></td>
+      <td>${esc(x.reden || '')}${x.toelichting ? `<small>${esc(x.toelichting)}</small>` : ''}</td><td>${esc(x.kenmerk || '')}</td>
+      <td class="verberg-mobiel"><small>${(x.pakketten ?? []).map((p) => esc(p.naam)).join(', ') || (x.actie === 'terug' ? (x.terugInPakketten ? 'teruggezet' : 'niet teruggezet') : '–')}</small></td>
+      <td class="verberg-mobiel"><small>${esc(x.door || '')} · ${datumNL(String(x.op).slice(0, 10))}</small></td></tr>`).join('') || '<tr><td colspan="7" class="leeg">Nog geen scopewijzigingen.</td></tr>'}</tbody></table></div></div>`;
+  app.querySelector('#sc-export').onclick = () => {
+    const regels = [['Ingangsdatum', 'Objectcode', 'Object', 'Wijziging', 'Reden', 'Kenmerk', 'Toelichting', 'Werkpakketten', 'Door', 'Vastgelegd op']];
+    for (const x of lijst) regels.push([x.per ?? '', x.code ?? '', x.naam ?? '', ACTIE[x.actie]?.[0] ?? x.actie, x.reden ?? '', x.kenmerk ?? '', x.toelichting ?? '', (x.pakketten ?? []).map((p) => p.naam).join(', '), x.door ?? '', String(x.op ?? '').slice(0, 10)]);
+    download(`scopewijzigingen-${vandaag()}.csv`, csv(regels), 'text/csv;charset=utf-8');
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Logboek per object: de volledige onderhouds- en inspectiegeschiedenis als tijdlijn
 // ---------------------------------------------------------------------------
 const LOG_SOORTEN = {
@@ -4147,6 +4383,7 @@ const LOG_SOORTEN = {
   inspectie: { label: 'Inspectie', icoon: 'inspectie', kleur: '#1f6feb' },
   afroep: { label: 'Afroep', icoon: 'wacht', kleur: '#7c3aed' },
   overgeslagen: { label: 'Overgeslagen', icoon: 'overslaan', kleur: '#8a96a3' },
+  scope: { label: 'Scope', icoon: 'let', kleur: '#8b1a1a' },
   vrijgave: { label: 'Flora & fauna', icoon: 'blad', kleur: '#1a7f37' },
 };
 
@@ -4179,6 +4416,16 @@ async function objectLogboek(objectId) {
       labels: `${i.status === 'afgerond' ? `${inspectieOordeel(i)} ${beoordelingLabel(i)}` : statusLabel(i.status)}`,
       extra: items.length ? `${items.length} bevinding${items.length === 1 ? '' : 'en'}${items.filter((g) => g.maatregelStatus !== 'uitgevoerd' && g.maatregel).length ? ` · ${items.filter((g) => g.maatregelStatus !== 'uitgevoerd' && g.maatregel).length} maatregel(en) open` : ''}` : 'Geen bevindingen',
       export: [i.soort, i.samenvatting, i.status === 'afgerond' ? BEOORDELING[beoordelingVan(i)].label : 'Concept'],
+    });
+  }
+  const obj = await db.haal('objecten', objectId);
+  for (const x of obj?.scopeLog ?? []) {
+    uit.push({
+      soort: 'scope', datum: x.actie === 'uit' ? x.per : String(x.op ?? '').slice(0, 10), wie: x.door, href: '#/objecten/scope', pakket: '', labels: '',
+      titel: x.actie === 'uit' ? 'Uit scope gehaald' : x.actie === 'geannuleerd' ? 'Uit scope halen geannuleerd' : 'Weer in scope',
+      tekst: [x.reden, x.kenmerk ? `kenmerk ${x.kenmerk}` : '', x.toelichting].filter(Boolean).join(' · '),
+      extra: x.actie === 'uit' && x.pakketten?.length ? `Uit ${x.pakketten.length} werkpakket${x.pakketten.length === 1 ? '' : 'ten'}: ${x.pakketten.map((p) => p.naam).join(', ')}` : '',
+      export: ['Scope', x.actie === 'uit' ? `Uit scope: ${x.reden ?? ''}` : 'Weer in scope', ''],
     });
   }
   for (const o of over.filter((x) => x.objectId === objectId)) {
@@ -4282,6 +4529,8 @@ async function objectDetail(id) {
       <div><p><a href="#/objecten">← Objecten</a></p><h1>${esc(o.code)} – ${esc(o.naam)}</h1><p>${esc(o.type)}${o.materiaal ? ` · ${esc(o.materiaal)}` : ''}</p></div>
       <div class="knoppen">
         <a class="knop" href="#/objecten/${esc(id)}/bewerken">Bewerken</a>
+        ${magBeheren() ? (SC.scopeStatus(o, vandaag()) === 'in' ? `<button class="knop" id="uitscope" title="Het object valt niet meer onder het contract: het gaat uit alle werk- en inspectiepakketten">${I.overslaan} Uit scope halen</button>`
+    : `<button class="knop" id="inscope">${I.start} ${SC.scopeStatus(o, vandaag()) === 'gepland' ? 'Uit scope halen annuleren' : 'Weer in scope'}</button>`) : ''}
         <button class="knop gevaar" id="verwijder">Verwijderen</button>
         ${/^Boom|beplanting/i.test(o.type ?? '') ? `<a class="knop" href="#/bvc/nieuw?object=${esc(id)}">${I.boom} BVC</a>` : ''}
         <a class="knop" href="#/taken/nieuw?object=${esc(id)}">+ Taak</a>
@@ -4291,6 +4540,9 @@ async function objectDetail(id) {
     .map((p) => `<a class="knop" href="#/werkpakketten/${esc(p.id)}/afroep?object=${encodeURIComponent(id)}" title="Werk afroepen voor dit object">${I.wacht} Afroep: ${esc(metCode(p))}</a>`).join('') : ''}
       </div>
     </div>
+    ${o.scope?.per ? `<div class="scopemelding ${SC.scopeStatus(o, vandaag())}">${I.let} <div><strong>${SC.scopeStatus(o, vandaag()) === 'uit' ? `Buiten scope sinds ${datumNL(o.scope.per)}` : `Gaat uit scope per ${datumNL(o.scope.per)}`}</strong>
+      <small>${esc(o.scope.reden || '')}${o.scope.kenmerk ? ` · kenmerk ${esc(o.scope.kenmerk)}` : ''}${o.scope.toelichting ? ` · ${esc(o.scope.toelichting)}` : ''} · vastgelegd ${datumNL(String(o.scope.op).slice(0, 10))}${o.scope.door ? ` door ${esc(o.scope.door)}` : ''}</small>
+      <small>${SC.scopeStatus(o, vandaag()) === 'uit' ? 'Het object staat niet meer in lopende of toekomstige werk- en inspectierondes. Afgeronde rondes en werk dat al gedaan is blijven bewaard.' : 'Tot die datum blijft het object gewoon in de rondes die nu lopen; rondes die daarna beginnen hebben het object al niet meer.'}</small></div></div>` : ''}
     <div class="raster-2">
       <section class="kaart">
         <h2>Registratiegegevens</h2>
@@ -4367,6 +4619,8 @@ async function objectDetail(id) {
           <td>${esc(g.bouwdeel)} – ${esc(g.gebrek)}</td><td>${esc(g.maatregel || '–')}</td>${toonKosten() ? `<td>${euro(g.kostenraming)}</td>` : ''}</tr>`).join('')}
         </tbody></table></div></section>` : ''}`;
 
+  app.querySelector('#uitscope')?.addEventListener('click', async () => { if (await uitScopeDialoog([o])) router(); });
+  app.querySelector('#inscope')?.addEventListener('click', async () => { if (await inScopeDialoog(o)) router(); });
   app.querySelector('#verwijder').onclick = async () => {
     const tekst = eigen.length || eigenWerk.length
       ? `Object ${o.code} met ${eigen.length} inspectie(s) en ${eigenWerk.length} werkzaamheid/werkzaamheden inclusief foto's definitief verwijderen?`
@@ -7155,7 +7409,7 @@ function afstandTekst(m) {
 
 async function objectKiezer(doel) {
   const objecten = (await inProject('objecten'))
-    .filter((o) => o.status !== 'Gesloopt')
+    .filter((o) => o.status !== 'Gesloopt' && SC.scopeStatus(o, vandaag()) !== 'uit')
     .sort((a, b) => String(a.code).localeCompare(String(b.code), 'nl', { numeric: true }));
   const titel = { werk: 'Registratie werkzaamheden', inspectie: 'Schouw & inspectie', bvc: 'Boomveiligheidscontrole', vrijgave: 'Flora & fauna vrijgave' }[doel];
   const vrijgaven = doel === 'vrijgave' || doel === 'werk' ? await inProject('vrijgaven') : [];
@@ -11117,6 +11371,7 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
     const verschillen = laatste ? PV.vergelijk(laatste.rondes, PV.momentopname(g.pakketten, rondesVan)) : [];
     const versieBalk = pvAan || !recht.mag ? `<div class="planversie ${PV.isVast(project) ? 'vast' : ''}">
         ${pvAan ? `<span class="planversie-label">${PV.isVast(project) ? I.vink : I.kalender} Planning <strong>${esc(PV.versieLabel(project))}</strong>
+          ${(() => { const n = laatste ? SC.wijzigingen(g.objecten).filter((x) => x.actie === 'uit' && String(x.op) > String(laatste.op)).length : 0; return n ? `<small class="scopehint"><a href="#/objecten/scope">${I.let} Sinds v${laatste.nummer} ${n === 1 ? 'is 1 object' : `zijn ${n} objecten`} uit scope gehaald</a></small>` : ''; })()}
           ${PV.isVast(project) && laatste ? `<small>vastgezet ${datumTijdNL(laatste.op)}${laatste.door ? ` door ${esc(laatste.door)}` : ''}${laatste.opmerking ? ` · ${esc(laatste.opmerking)}` : ''}</small>`
     : laatste ? `<small>${verschillen.length ? `${verschillen.length} wijziging${verschillen.length === 1 ? '' : 'en'} sinds v${laatste.nummer}` : `nog gelijk aan v${laatste.nummer}`}</small>` : '<small>nog nooit vastgezet</small>'}</span>` : ''}
         ${!recht.mag ? `<span class="planversie-slot">${I.let} ${esc(PLANNING_REDEN[recht.reden] ?? '')}</span>` : ''}
@@ -13967,7 +14222,10 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
     app.innerHTML = leegKaart('Alleen beheerders kunnen werkpakketten samenstellen.', '<a class="knop" href="#/werkpakketten">Terug</a>');
     return;
   }
-  const { objecten, status } = await laadAlles();
+  const alles = await laadAlles();
+  const { status } = alles;
+  // Objecten buiten scope (of die binnenkort uit scope gaan) kun je niet meer kiezen; wat er al in zit blijft bewaard.
+  const objecten = alles.objecten.filter((o) => SC.scopeStatus(o, vandaag()) === 'in');
   const [lagen, project] = await Promise.all([inProject('lagen'), actiefProject()]);
   const bron = id ? await db.haal('werkpakketten', id) : (q.get('kopie') ? await db.haal('werkpakketten', q.get('kopie')) : null);
   if (id && !bron) {
