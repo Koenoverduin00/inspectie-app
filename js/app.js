@@ -171,6 +171,49 @@ function tabbalk(pad, groep) {
   return `<nav class="tabbalk" aria-label="Onderdelen">${tabs.map(([href, label]) => `<a href="${href}" class="${href === `#${pad}` ? 'actief' : ''}"${href === `#${pad}` ? ' aria-current="page"' : ''}>${label}</a>`).join('')}</nav>`;
 }
 
+// ---------------------------------------------------------------------------
+// Vragen en bevestigen in de app zelf (in plaats van de pop-ups van de browser, die "… meldt" tonen)
+// ---------------------------------------------------------------------------
+function appVraagVenster({ tekst, invoer = null, ja = 'OK', nee = 'Annuleren', gevaar = false }) {
+  return new Promise((klaar) => {
+    const delen = String(tekst ?? '').split(/\n{2,}/);
+    const kop = delen.length > 1 && delen[0].length <= 160 ? delen.shift() : '';
+    const d = document.createElement('dialog');
+    d.className = 'dialoog appvraag';
+    d.setAttribute('aria-label', kop || 'Bevestigen');
+    d.innerHTML = `<form method="dialog" novalidate>
+      ${kop ? `<h2>${esc(kop)}</h2>` : ''}
+      <div class="appvraag-tekst">${delen.map((x) => `<p>${esc(x)}</p>`).join('')}</div>
+      ${invoer !== null ? `<input type="text" class="appvraag-invoer" value="${esc(invoer)}" aria-label="Antwoord" autocomplete="off">` : ''}
+      <div class="formvoet">${nee ? `<button type="button" class="knop" data-av="nee">${esc(nee)}</button>` : ''}
+        <button type="submit" class="knop ${gevaar ? 'gevaar-vol' : 'primair'}" data-av="ja">${esc(ja)}</button></div></form>`;
+    document.body.append(d);
+    let antwoord = invoer !== null ? null : false;
+    const sluit = () => { d.close(); d.remove(); klaar(antwoord); };
+    d.querySelector('[data-av=nee]')?.addEventListener('click', sluit);
+    d.addEventListener('cancel', (e) => { e.preventDefault(); sluit(); });
+    d.querySelector('form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      antwoord = invoer !== null ? d.querySelector('.appvraag-invoer').value : true;
+      sluit();
+    });
+    d.showModal();
+    const veld = d.querySelector('.appvraag-invoer');
+    if (veld) { veld.focus(); veld.select(); } else (gevaar ? d.querySelector('[data-av=nee]') ?? d.querySelector('[data-av=ja]') : d.querySelector('[data-av=ja]')).focus();
+  });
+}
+/** Ja/nee-vraag in de app. Bij verwijderen of wissen een rode knop met de juiste tekst. */
+function bevestig(tekst, opties = {}) {
+  const t = String(tekst ?? '');
+  const weg = /\b(verwijder|wissen|wis |definitief|uitschakelen|intrekken)/i.test(t);
+  const ja = opties.ja ?? (/\bverwijder/i.test(t) ? 'Verwijderen' : /\bwissen\b|\bwis\b/i.test(t) ? 'Wissen' : 'Doorgaan');
+  return appVraagVenster({ tekst: t, ja, nee: opties.nee ?? 'Annuleren', gevaar: opties.gevaar ?? weg });
+}
+/** Tekst vragen in de app (zoals prompt): geeft de ingevulde tekst, of null bij annuleren. */
+function vraagTekst(tekst, standaard = '') {
+  return appVraagVenster({ tekst, invoer: String(standaard ?? ''), ja: 'OK' });
+}
+
 let formulierGewijzigd = false;
 // Luisteraars die bij één pagina horen maar aan de vaste #app hangen, worden bij een paginawissel opgeruimd.
 let paginaAbort = new AbortController();
@@ -483,7 +526,7 @@ async function eisenPagina() {
     const eis = lijst.find((x) => x.nummer === k.dataset.gewenst);
     const hulp = { janee: 'Ja of Nee', getal: 'bijv. <= 10, >= 5, 5 - 10 of 4', keuze: `één of meer van: ${(eis.opties ?? []).join('; ')} (gescheiden door ;)`,
       meerkeuze: `deze moeten aangevinkt zijn: ${(eis.opties ?? []).join('; ')} (gescheiden door ;)`, checklist: 'altijd: alle punten afgevinkt', tekst: 'een exacte tekst, of leeg = ingevuld is genoeg' }[eis.type] ?? 'leeg = ingevuld is genoeg';
-    const nieuw = prompt(`Gewenst antwoord voor ${eis.nummer}\n${eis.vraag}\n\n(${hulp})`, eis.gewenst ?? (eis.type === 'janee' ? 'Ja' : ''));
+    const nieuw = (await vraagTekst(`Gewenst antwoord voor ${eis.nummer}\n${eis.vraag}\n\n(${hulp})`, eis.gewenst ?? (eis.type === 'janee' ? 'Ja' : '')));
     if (nieuw === null) return;
     const fout = EI.controleerGewenst({ ...eis, gewenst: nieuw });
     if (fout) return melding(fout, 'fout');
@@ -1050,7 +1093,7 @@ async function decompositiePagina(_, q) {
     tekenKoppel();
     const over = el.querySelector('#d-overnemen');
     if (over) over.onclick = async () => {
-      if (vb.vervallenObj.length && !confirm(`${vb.vervallenObj.length} GIS-koppeling(en) vervallen omdat het onderdeel niet meer in het bestand staat. Doorgaan?`)) return;
+      if (vb.vervallenObj.length && !(await bevestig(`${vb.vervallenObj.length} GIS-koppeling(en) vervallen omdat het onderdeel niet meer in het bestand staat. Doorgaan?`))) return;
       const koppeling = { kolom: kp.kolom, veld: kp.veld, niveau: kp.niveau, laag: kp.laag };
       const auto = koppelRes?.wijzigingen ?? new Map();
       await bewaarProject({ knopen: vb.nieuweKnopen, bestand: vb.bestand, op: new Date().toISOString(), kolommen: project.decompositie?.kolommen?.length ? project.decompositie.kolommen : res.kop, sleutel: vb.sleutel, koppeling, systeemdeelKolom: vb.sd,
@@ -1171,8 +1214,8 @@ async function decompositiePagina(_, q) {
         · ${D.NIVEAUS.filter((n) => x.telling?.[n]).map((n) => aantalNiveau(x.telling[n], n)).join(', ')}</small></li>`).join('')}</ul></details>` : ''}`;
     el.querySelector('#d-definitief')?.addEventListener('click', async () => {
       const tn = D.telling(knopen);
-      if (!confirm(`Decompositie definitief maken als versie ${volgende}?\n\n${D.NIVEAUS.filter((n) => tn[n]).map((n) => aantalNiveau(tn[n], n)).join(', ')}.\n`
-        + 'Werkpakketten gebruiken daarna deze versie om objecten te kiezen.')) return;
+      if (!(await bevestig(`Decompositie definitief maken als versie ${volgende}?\n\n${D.NIVEAUS.filter((n) => tn[n]).map((n) => aantalNiveau(tn[n], n)).join(', ')}.\n`
+        + 'Werkpakketten gebruiken daarna deze versie om objecten te kiezen.'))) return;
       await bewaarProject(D.maakDefinitief(project.decompositie, { door: ikEmail() || instelling.lees('inspecteur') || '' }));
       gedaan(`Decompositie versie ${volgende} is definitief`, { extra: 'Werkpakketten gebruiken nu deze versie om objecten te kiezen.' });
       tekenVersie();
@@ -1180,7 +1223,7 @@ async function decompositiePagina(_, q) {
   };
   tekenVersie();
   app.querySelector('#d-wis')?.addEventListener('click', async () => {
-    if (!confirm(`De decompositie en alle koppelingen met GIS-objecten verwijderen?${project.decompositie?.definitief ? ' Ook de definitieve versies vervallen; werkpakketten houden hun objecten.' : ''} Afgeronde inspecties behouden hun bouwdeelscores.`)) return;
+    if (!(await bevestig(`De decompositie en alle koppelingen met GIS-objecten verwijderen?${project.decompositie?.definitief ? ' Ook de definitieve versies vervallen; werkpakketten houden hun objecten.' : ''} Afgeronde inspecties behouden hun bouwdeelscores.`))) return;
     await bewaarKoppelingen(new Map(objecten.filter((o) => o.decomp).map((o) => [o.id, ''])));
     await bewaarProject(null);
     melding('Decompositie verwijderd');
@@ -1228,7 +1271,7 @@ async function decompositiePagina(_, q) {
       return naWijziging();
     }
     const oud = idx.perId.get(bewerk.id);
-    if (oud.code && oud.code !== data.code && !confirm(`Je wijzigt de code "${oud.code}" in "${data.code}".\n\nDe code is de sleutel waarop de app dit onderdeel herkent als je een nieuw bestand van de opdrachtgever inleest. Pas de code daar ook aan, of kies bij het bijwerken een andere code die hetzelfde is gebleven (bijv. de GIS-code).\n\nKoppelingen en scores blijven behouden. Doorgaan?`)) return;
+    if (oud.code && oud.code !== data.code && !(await bevestig(`Je wijzigt de code "${oud.code}" in "${data.code}".\n\nDe code is de sleutel waarop de app dit onderdeel herkent als je een nieuw bestand van de opdrachtgever inleest. Pas de code daar ook aan, of kies bij het bijwerken een andere code die hetzelfde is gebleven (bijv. de GIS-code).\n\nKoppelingen en scores blijven behouden. Doorgaan?`))) return;
     const r = D.pasKnoopAan(knopen, bewerk.id, data);
     if (r.fout) return melding(r.fout, 'fout');
     await bewaarKnopen(r.knopen);
@@ -1246,8 +1289,8 @@ async function decompositiePagina(_, q) {
       const { knopen: rest, weg } = D.verwijderKnoop(knopen, gekozen);
       const los = objecten.filter((o) => weg.has(o.decomp));
       const metScore = [...weg].filter((id) => scores.has(id)).length;
-      if (!confirm(`${D.NIVEAU_LABEL[k.niveau]} "${k.naam}" verwijderen${weg.size > 1 ? `, met ${weg.size - 1} onderdeel/onderdelen eronder` : ''}?`
-        + `${los.length ? `\n${los.length} GIS-koppeling(en) vervallen.` : ''}${metScore ? `\n${metScore} bouwdeel/bouwdelen hebben een conditiescore; afgeronde inspecties blijven bewaard.` : ''}`)) return;
+      if (!(await bevestig(`${D.NIVEAU_LABEL[k.niveau]} "${k.naam}" verwijderen${weg.size > 1 ? `, met ${weg.size - 1} onderdeel/onderdelen eronder` : ''}?`
+        + `${los.length ? `\n${los.length} GIS-koppeling(en) vervallen.` : ''}${metScore ? `\n${metScore} bouwdeel/bouwdelen hebben een conditiescore; afgeronde inspecties blijven bewaard.` : ''}`))) return;
       await bewaarKoppelingen(new Map(los.map((o) => [o.id, ''])));
       await bewaarKnopen(rest);
       gekozen = k.ouder && idx.perId.has(k.ouder) ? k.ouder : null;
@@ -1427,7 +1470,7 @@ async function inspectietypenPagina() {
     if (!k) return;
     if (k.dataset.kopie) {
       const t = typeVan(k.dataset.kopie);
-      const naam = prompt('Naam van de kopie:', FM.kopieNaam(t.naam, andereTypeNamen(project, null)))?.trim();
+      const naam = (await vraagTekst('Naam van de kopie:', FM.kopieNaam(t.naam, andereTypeNamen(project, null))))?.trim();
       if (!naam) return;
       if (andereTypeNamen(project, null).some((x) => x.toLowerCase() === naam.toLowerCase())) return melding(`Er bestaat al een formulier "${naam}".`, 'fout');
       const nieuw = await maakKopieInProject(t, TY.veldenVoorBibliotheek(project.velden, t.naam), naam);
@@ -1437,7 +1480,7 @@ async function inspectietypenPagina() {
     if (k.dataset.bijwerk) {
       const t = typeVan(k.dataset.bijwerk);
       const item = TY.nieuwereVersie(t, items);
-      if (t.bron?.aangepast && !confirm(`"${t.naam}" is in dit project aangepast. Bijwerken naar bibliotheekversie ${item.versie} overschrijft die aanpassingen. Doorgaan?`)) return;
+      if (t.bron?.aangepast && !(await bevestig(`"${t.naam}" is in dit project aangepast. Bijwerken naar bibliotheekversie ${item.versie} overschrijft die aanpassingen. Doorgaan?`))) return;
       await zetTypeInProject(item.type, item.velden, { bibId: item.id, versie: item.versie }, t.naam);
       melding(`${t.naam} bijgewerkt naar versie ${item.versie}`);
       return opnieuw();
@@ -1451,7 +1494,7 @@ async function inspectietypenPagina() {
       const g = await soortGebruik(t.naam);
       const actief = g.pakketten.filter((p) => !p.gesloten && pakketStatus(p) !== 'afgerond');
       if (actief.length) return melding(`"${t.naam}" wordt gebruikt in ${actief.length} lopend${actief.length === 1 ? '' : 'e'} werkpakket${actief.length === 1 ? '' : 'ten'} (${actief.slice(0, 3).map((p) => p.naam).join(', ')}). Kies daar eerst een ander type.`, 'fout');
-      if (!confirm(t.standaard ? `"${t.naam}" verbergen in dit project? Je kunt het later weer tonen.` : `"${t.naam}" verwijderen uit dit project? Bestaande inspecties blijven bewaard.`)) return;
+      if (!(await bevestig(t.standaard ? `"${t.naam}" verbergen in dit project? Je kunt het later weer tonen.` : `"${t.naam}" verwijderen uit dit project? Bestaande inspecties blijven bewaard.`))) return;
       await bewaarActiefProject((p) => {
         const lijst = [...(p.inspectietypen ?? [])];
         const i = lijst.findIndex((x) => x.id === t.id);
@@ -1699,7 +1742,7 @@ async function formulierUitEisen(voorgekozen = []) {
   if (!project) return melding('Kies eerst een project.', 'fout');
   const eisen = project.eisen?.lijst ?? [];
   if (!eisen.length) {
-    if (confirm('Er is nog geen eisbibliotheek voor dit project. Nu de eisen inlezen?')) ga('#/eisen');
+    if ((await bevestig('Er is nog geen eisbibliotheek voor dit project. Nu de eisen inlezen?'))) ga('#/eisen');
     return;
   }
   const gebruikt = new Set((project.velden ?? []).filter((d) => d.eis).map((d) => EI.sleutel(d.eis.nummer)));
@@ -1854,9 +1897,9 @@ async function typeNaarBibliotheek(t, items) {
   let item = t.bron?.bibId ? items.find((x) => x.id === t.bron.bibId) : null;
   const zelfdeNaam = items.find((x) => x.naam.toLowerCase() === t.naam.toLowerCase() && x.id !== item?.id);
   if (!item && zelfdeNaam) {
-    if (!confirm(`De bibliotheek heeft al een formulier "${zelfdeNaam.naam}" (versie ${zelfdeNaam.versie}). Vervangen door deze versie?`)) return;
+    if (!(await bevestig(`De bibliotheek heeft al een formulier "${zelfdeNaam.naam}" (versie ${zelfdeNaam.versie}). Vervangen door deze versie?`))) return;
     item = zelfdeNaam;
-  } else if (item && !confirm(`Bibliotheekformulier "${item.naam}" bijwerken van versie ${item.versie} naar ${Number(item.versie) + 1}? Andere projecten krijgen een melding dat er een nieuwere versie is.`)) return;
+  } else if (item && !(await bevestig(`Bibliotheekformulier "${item.naam}" bijwerken van versie ${item.versie} naar ${Number(item.versie) + 1}? Andere projecten krijgen een melding dat er een nieuwere versie is.`))) return;
   const nu = new Date().toISOString();
   const nieuw = {
     ...(item ?? { id: nieuwId(), soort: 'bibliotheek', aangemaakt: nu, ...bedrijfVeld() }),
@@ -2098,7 +2141,7 @@ async function inspectietypeEditor(id, { bibliotheek = false } = {}) {
       formulierGewijzigd = false;
       // Projecten met een niet-aangepaste kopie van een oudere versie: meteen meenemen?
       const projecten = (await zichtbareProjecten()).filter((p) => (p.inspectietypen ?? []).some((x) => x.bron?.bibId === nieuw.id && !x.bron.aangepast && Number(x.bron.versie) < nieuw.versie));
-      if (item && projecten.length && confirm(`Versie ${nieuw.versie} opgeslagen.\n\n${projecten.length} project(en) gebruiken een ongewijzigde kopie van een oudere versie:\n${projecten.map((p) => `• ${p.naam}`).join('\n')}\n\nOok daar bijwerken? (Bestaande inspecties blijven ongewijzigd.)`)) {
+      if (item && projecten.length && (await bevestig(`Versie ${nieuw.versie} opgeslagen.\n\n${projecten.length} project(en) gebruiken een ongewijzigde kopie van een oudere versie:\n${projecten.map((p) => `• ${p.naam}`).join('\n')}\n\nOok daar bijwerken? (Bestaande inspecties blijven ongewijzigd.)`))) {
         for (const p of projecten) {
           const oud = p.inspectietypen.find((x) => x.bron?.bibId === nieuw.id);
           if (oud.naam !== nieuw.naam && p.id !== projectId()) continue; // hernoemen alleen binnen het actieve project
@@ -2208,7 +2251,7 @@ async function bibliotheekPagina() {
     const kopieKnop = e.target.closest('[data-bibkopie]');
     if (kopieKnop) {
       const x = items.find((y) => y.id === kopieKnop.dataset.bibkopie);
-      const naam = prompt('Naam van de kopie:', FM.kopieNaam(x.naam, items.map((y) => y.naam)))?.trim();
+      const naam = (await vraagTekst('Naam van de kopie:', FM.kopieNaam(x.naam, items.map((y) => y.naam))))?.trim();
       if (!naam) return;
       if (items.some((y) => y.naam.toLowerCase() === naam.toLowerCase())) return melding(`Er bestaat al een formulier "${naam}" in de bibliotheek.`, 'fout');
       const nieuw = await bewaarInBibliotheek(FM.kopie(x.type, x.velden ?? [], naam));
@@ -2218,7 +2261,7 @@ async function bibliotheekPagina() {
     const weg = e.target.closest('[data-weg]');
     if (weg) {
       const x = items.find((y) => y.id === weg.dataset.weg);
-      if (!confirm(`"${x.naam}" uit de bibliotheek verwijderen? Projecten houden hun kopie.`)) return;
+      if (!(await bevestig(`"${x.naam}" uit de bibliotheek verwijderen? Projecten houden hun kopie.`))) return;
       await db.verwijder('projecten', x.id);
       melding(`${x.naam} verwijderd uit de bibliotheek`);
       return bibliotheekPagina();
@@ -3236,7 +3279,7 @@ async function dashboard() {
       return dashboard();
     }
     if (actie === 'voorproject') {
-      if (!confirm(`Deze indeling instellen als standaard voor iedereen in dit project (weergave "${DASH_ROLLEN[rol]}")? Wie zelf al een eigen indeling heeft, houdt die.`)) { pagina.addEventListener('click', dashKlik); return; }
+      if (!(await bevestig(`Deze indeling instellen als standaard voor iedereen in dit project (weergave "${DASH_ROLLEN[rol]}")? Wie zelf al een eigen indeling heeft, houdt die.`))) { pagina.addEventListener('click', dashKlik); return; }
       await bewaarActiefProject((p) => ({ dashboard: { ...(p.dashboard ?? {}), [rol]: cfg } }));
       melding('Ingesteld als standaard voor dit project');
       return dashboard();
@@ -4643,8 +4686,8 @@ async function rapportenPagina() {
       teken();
       app.querySelector('.rp-blok:last-child textarea')?.focus();
     });
-    app.querySelector('#rp-herstel')?.addEventListener('click', () => {
-      if (!confirm(`De blokken van "${RP.SOORTEN[soort].label}" terugzetten naar de standaard? Eigen tekstblokken vervallen.`)) return;
+    app.querySelector('#rp-herstel')?.addEventListener('click', async () => {
+      if (!(await bevestig(`De blokken van "${RP.SOORTEN[soort].label}" terugzetten naar de standaard? Eigen tekstblokken vervallen.`))) return;
       const soorten = { ...(werk.soorten ?? {}) };
       delete soorten[soort];
       werk = { ...werk, soorten };
@@ -5134,7 +5177,7 @@ async function objectDetail(id) {
     const tekst = eigen.length || eigenWerk.length
       ? `Object ${o.code} met ${eigen.length} inspectie(s) en ${eigenWerk.length} werkzaamheid/werkzaamheden inclusief foto's definitief verwijderen?`
       : `Object ${o.code} definitief verwijderen?`;
-    if (!confirm(tekst)) return;
+    if (!(await bevestig(tekst))) return;
     for (const w of eigenWerk) {
       for (const fid of [...(w.fotoIds ?? []), ...(w.extraFotoIds ?? [])]) await db.verwijder('fotos', fid);
       await db.verwijder('werkzaamheden', w.id);
@@ -5458,7 +5501,7 @@ async function fotoOpslagBlok(el) {
     if (e.target.value === 'project') sync.synchroniseer();
   });
   el.querySelector('#fotos-opruimen').addEventListener('click', async () => {
-    if (!confirm(`${anders.length} foto's van andere projecten (${mb(andersBytes)}) van dit apparaat verwijderen? Ze blijven online bewaard.`)) return;
+    if (!(await bevestig(`${anders.length} foto's van andere projecten (${mb(andersBytes)}) van dit apparaat verwijderen? Ze blijven online bewaard.`))) return;
     for (const f of anders) await db.sync.verwijder('fotos', f.id);
     melding(`${anders.length} foto's verwijderd van dit apparaat`);
     fotoOpslagBlok(el);
@@ -5764,7 +5807,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
   const bevDefs = await projectVelden('inspectie', () => form.elements.soort.value, 'bevinding');
   const bevExtraHtml = (sleutel) => (bevDefs().length
     ? `<div class="veld breed bevextra" data-bevextra="${esc(String(sleutel))}"><div class="extra-velden"></div></div>` : '');
-  form.addEventListener('change', (e) => {
+  form.addEventListener('change', async (e) => {
     if (e.target.name !== 'soort') return;
     if (e.target.value === ST.STOWA_SOORT && !bestaand) {
       // Waterkering: verder in het STOWA-formulier, met hetzelfde object, taak en pakket.
@@ -5780,7 +5823,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     }
     const nieuwType = typeVanSoort(e.target.value);
     if ((nieuwType?.methodiek ?? 'nen') !== methodiek() && staat.gebreken.length
-      && !confirm('Dit inspectietype gebruikt een andere methodiek. Bevindingen houden onderdeel, gebrek, toelichting en foto\'s, maar oordeel of conditie moet je opnieuw kiezen. Doorgaan?')) {
+      && !(await bevestig('Dit inspectietype gebruikt een andere methodiek. Bevindingen houden onderdeel, gebrek, toelichting en foto\'s, maar oordeel of conditie moet je opnieuw kiezen. Doorgaan?'))) {
       e.target.value = staat.soort;
       return;
     }
@@ -6093,7 +6136,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     herteken(sleutel);
   });
 
-  form.addEventListener('click', (e) => {
+  form.addEventListener('click', async (e) => {
     const weg = e.target.closest('[data-foto-weg]');
     if (weg) {
       const [sleutel, n] = weg.dataset.fotoWeg.split(':');
@@ -6105,7 +6148,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     const gebrekWeg = e.target.closest('[data-gebrek-weg]');
     if (gebrekWeg) {
       const i = Number(gebrekWeg.dataset.gebrekWeg);
-      if (!confirm(`Gebrek ${i + 1} verwijderen?`)) return;
+      if (!(await bevestig(`Gebrek ${i + 1} verwijderen?`))) return;
       staat.gebreken.splice(i, 1);
       formulierGewijzigd = true;
       toonGebreken();
@@ -6325,7 +6368,7 @@ async function inspectieDetail(id) {
   bevindingKnoppen(i);
   const knopWeg = app.querySelector('#verwijder');
   if (knopWeg) knopWeg.onclick = async () => {
-    if (!confirm('Deze inspectie inclusief foto\'s definitief verwijderen?')) return;
+    if (!(await bevestig('Deze inspectie inclusief foto\'s definitief verwijderen?'))) return;
     await verwijderInspectieData(i);
     melding('Inspectie verwijderd');
     ga(o ? `#/objecten/${o.id}` : '#/inspecties');
@@ -6527,7 +6570,7 @@ async function bevindingKnoppen(insp) {
     }
     if (e.target.closest('#alle-als-taak')) {
       const open = items.filter((g) => g.maatregelStatus !== 'uitgevoerd' && !taken.has(bevindingSleutel(insp, g)));
-      if (!confirm(`${open.length} bevinding${open.length === 1 ? '' : 'en'} als taak doorzetten? Prioriteit en deadline volgen de urgentie; aanpassen kan daarna in de planning.`)) return;
+      if (!(await bevestig(`${open.length} bevinding${open.length === 1 ? '' : 'en'} als taak doorzetten? Prioriteit en deadline volgen de urgentie; aanpassen kan daarna in de planning.`))) return;
       const n = await maakBevindingTaken(open.map((g) => ({ inspectie: insp, gebrek: g })));
       (await takenPerBevinding()).forEach((t, s) => taken.set(s, t));
       melding(`${n} taak/taken aangemaakt`);
@@ -6585,7 +6628,7 @@ async function maatregelen() {
   app.querySelector('#zichtbaar-als-taak').onclick = async () => {
     const open = zichtbaar.filter(({ gebrek: g, inspectie: i }) => g.maatregelStatus !== 'uitgevoerd' && !taken.has(bevindingSleutel(i, g)));
     if (!open.length) return melding('Alle zichtbare bevindingen zijn al een taak of uitgevoerd.');
-    if (!confirm(`${open.length} bevinding${open.length === 1 ? '' : 'en'} als taak doorzetten? Prioriteit en deadline volgen de urgentie.`)) return;
+    if (!(await bevestig(`${open.length} bevinding${open.length === 1 ? '' : 'en'} als taak doorzetten? Prioriteit en deadline volgen de urgentie.`))) return;
     const n = await maakBevindingTaken(open);
     taken = await takenPerBevinding();
     melding(`${n} taak/taken aangemaakt`);
@@ -8169,7 +8212,7 @@ async function werkDetail(id) {
     </ul></section>` : ''}`;
 
   app.querySelector('#verwijder').onclick = async () => {
-    if (!confirm('Deze werkzaamheid inclusief foto\'s verwijderen? Gekoppelde maatregelen worden weer open gezet.')) return;
+    if (!(await bevestig('Deze werkzaamheid inclusief foto\'s verwijderen? Gekoppelde maatregelen worden weer open gezet.'))) return;
     await verwijderWerk(w);
     melding('Werkzaamheid verwijderd');
     ga(o ? `#/objecten/${o.id}` : '#/werkzaamheden');
@@ -9192,7 +9235,7 @@ async function toewijzenPagina() {
     const pg = e.target.closest('[data-persoon-geen]');
     if (alle) await bewaarPakket(alle.dataset.alle, strikt ? personen : []);
     else if (geen) {
-      if (!strikt && !confirm('Niemand ziet dit pakket dan nog. Doorgaan? (Tip: zet strikte toewijzing aan.)')) return;
+      if (!strikt && !(await bevestig('Niemand ziet dit pakket dan nog. Doorgaan? (Tip: zet strikte toewijzing aan.)'))) return;
       await bewaarPakket(geen.dataset.geen, []);
       if (!strikt) await bewaarProject(() => ({ striktToewijzen: true }));
     } else if (pg) {
@@ -9821,7 +9864,7 @@ async function personenPagina() {
     }
     if (e.target.closest('[data-herstel]')) {
       const knop = e.target.closest('[data-herstel]');
-      if (!confirm(`Een mail sturen naar ${x.email} met een link om een nieuw wachtwoord in te stellen?`)) return;
+      if (!(await bevestig(`Een mail sturen naar ${x.email} met een link om een nieuw wachtwoord in te stellen?`))) return;
       knop.disabled = true;
       try {
         await sync.wachtwoordVergeten(x.email, location.href.split('#')[0]);
@@ -9844,8 +9887,8 @@ async function personenPagina() {
         knop.disabled = false;
       }
     } else if (e.target.closest('[data-weg]')) {
-      if (!confirm(metBedrijf ? `${x.naam || x.email} uit het bedrijf en alle projecten verwijderen? Het account blijft bestaan, maar heeft geen toegang meer.`
-        : `${x.naam || x.email} uit alle projecten verwijderen? Het account blijft bestaan, maar heeft geen toegang meer tot deze projecten.`)) return;
+      if (!(await bevestig(metBedrijf ? `${x.naam || x.email} uit het bedrijf en alle projecten verwijderen? Het account blijft bestaan, maar heeft geen toegang meer.`
+        : `${x.naam || x.email} uit alle projecten verwijderen? Het account blijft bestaan, maar heeft geen toegang meer tot deze projecten.`))) return;
       try {
         await zetPersoonInProjecten(x.email, new Set());
         if (metBedrijf) await sync.rpc('verwijder_bedrijfslid', { p_email: x.email });
@@ -9865,7 +9908,7 @@ async function personenPagina() {
         const ok = d.returnValue === 'ja';
         d.remove();
         if (!ok) return;
-        if (!gekozen.size && !confirm('Geen projecten gekozen: de persoon wordt verwijderd. Doorgaan?')) return;
+        if (!gekozen.size && !(await bevestig('Geen projecten gekozen: de persoon wordt verwijderd. Doorgaan?'))) return;
         await zetPersoonInProjecten(x.email, gekozen, { naam: x.naam || undefined });
         melding('Opgeslagen');
         personenPagina();
@@ -10071,7 +10114,7 @@ async function bedrijvenPagina() {
     if (k.dataset.b === 'open') { await kiesBedrijf(id); ga('#/projecten'); return; }
     if (k.dataset.b === 'bibliotheek') { if (platform && id !== huidigBedrijfId()) await kiesBedrijf(id); ga('#/bibliotheek'); return; }
     if (k.dataset.b === 'naam') {
-      const nieuw = prompt('Nieuwe naam van het bedrijf', b.naam);
+      const nieuw = (await vraagTekst('Nieuwe naam van het bedrijf', b.naam));
       if (!nieuw || !nieuw.trim()) return;
       try { await sync.rpc('bedrijf_opslaan', { p_id: id, p_naam: nieuw.trim() }); if (!platform) await sync.haalBedrijfOp(); melding('Naam gewijzigd'); bedrijfNamen = new Map(); werkProjectkopBij(); bedrijvenPagina(); } catch (fout) { melding(fout.message, 'fout'); }
       return;
@@ -10111,7 +10154,7 @@ async function bedrijfPersonenDialoog(b) {
     const weg = e.target.closest('[data-weg]');
     if (weg) {
       const em = weg.closest('tr').dataset.email;
-      if (!confirm(`${em} uit ${b.naam} verwijderen? Het account blijft bestaan, maar heeft geen toegang meer tot dit bedrijf.`)) return;
+      if (!(await bevestig(`${em} uit ${b.naam} verwijderen? Het account blijft bestaan, maar heeft geen toegang meer tot dit bedrijf.`))) return;
       try { await sync.rpc('verwijder_bedrijfslid', { p_email: em }); } catch (fout) { melding(fout.message, 'fout'); }
       teken();
     }
@@ -10283,7 +10326,7 @@ async function projectFormulier(id) {
     ga(bestaand ? (vanStappenplan ? '#/inrichting?stap=gis' : '#/projecten') : '#/inrichting');
   };
   app.querySelector('#verwijder')?.addEventListener('click', async () => {
-    const naam = prompt(`Hiermee verwijder je het project met álle objecten, GIS-lagen, inspecties, werkzaamheden, taken en foto's.\n\nTyp de projectnaam "${p.naam}" om te bevestigen:`);
+    const naam = (await vraagTekst(`Hiermee verwijder je het project met álle objecten, GIS-lagen, inspecties, werkzaamheden, taken en foto's.\n\nTyp de projectnaam "${p.naam}" om te bevestigen:`));
     if (naam !== p.naam) return;
     for (const store of ['fotos', 'vrijgaven', 'overgeslagen', 'werkpakketten', 'taken', 'werkzaamheden', 'inspecties', 'objecten', 'lagen']) {
       const ids = (await db.alle(store)).filter((r) => r.projectId === p.id).map((r) => r.id);
@@ -10542,7 +10585,7 @@ async function toonImportVoorstel(kandidaten, fouten, { doel = null } = {}) {
     const doelen = actief.filter((v) => v.actie === 'bijwerken').map((v) => v.doelId);
     if (new Set(doelen).size !== doelen.length) return melding('Twee lagen uit het bestand werken dezelfde laag bij. Kies voor één ervan "Nieuwe laag".', 'fout');
     const vervalt = actief.reduce((t, v) => t + (plan(v)?.verwijderen.length ?? 0), 0);
-    if (vervalt && !confirm(`${vervalt} objecten staan niet meer in het nieuwe bestand en worden verwijderd (ze hebben geen inspecties, werk of taken). Doorgaan?`)) return;
+    if (vervalt && !(await bevestig(`${vervalt} objecten staan niet meer in het nieuwe bestand en worden verwijderd (ze hebben geen inspecties, werk of taken). Doorgaan?`))) return;
     knop.disabled = true;
     const voortgang = (t) => { const p = el.querySelector('#voortgang'); if (p) p.textContent = t; };
     const samenvatting = [];
@@ -10661,7 +10704,7 @@ async function verwijderLaag(laag) {
   const weg = vanLaag.filter((o) => !metHistorie.has(o.id));
   const tekst = `Laag "${laag.naam}" verwijderen?\n\n${weg.length} objecten zonder inspecties, werkzaamheden of taken worden verwijderd.`
     + (behouden.length ? `\n${behouden.length} objecten met historie blijven bewaard (los van de laag).` : '');
-  if (!confirm(tekst)) return false;
+  if (!(await bevestig(tekst))) return false;
   const nu = new Date().toISOString();
   await db.bewaarVeel('objecten', behouden.map((o) => ({ ...o, laagId: '', gewijzigd: nu })));
   await db.verwijderVeel('objecten', weg.map((o) => o.id));
@@ -12332,7 +12375,7 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
           return tekenInhoud();
         }
         if (a2 === 'voorproject') {
-          if (!confirm('Deze weergave instellen als standaard voor iedereen in dit project? Wie zelf al een eigen weergave heeft, houdt die.')) return;
+          if (!(await bevestig('Deze weergave instellen als standaard voor iedereen in dit project? Wie zelf al een eigen weergave heeft, houdt die.'))) return;
           await bewaarActiefProject(() => ({ rondeWeergave: cfg }));
           melding('Ingesteld als standaardweergave voor dit project');
           return;
@@ -12423,7 +12466,7 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
       return;
     }
     if (keuze === 'wis') {
-      if (!confirm(`Weet je zeker dat je R${r.nummer} ${r.naam} uit de planning wilt halen?\n\nDe ronde zelf en alle registraties blijven bestaan; alleen de periode vervalt.`)) return;
+      if (!(await bevestig(`Weet je zeker dat je R${r.nummer} ${r.naam} uit de planning wilt halen?\n\nDe ronde zelf en alle registraties blijven bestaan; alleen de periode vervalt.`))) return;
       await bewaarRonde(p.id, r.id, { start: '', eind: '' });
       melding(`R${r.nummer} ${r.naam} uit de planning gehaald`);
       teken();
@@ -12754,20 +12797,20 @@ async function voortgangsOverzicht(q) {
     });
     app.querySelector('#vo-opslaan')?.addEventListener('click', () => bewaar());
     app.querySelector('#vo-vaststellen')?.addEventListener('click', async () => {
-      if (!confirm('Notulen vaststellen? De planning zoals nu besproken wordt vastgelegd; het overleg kan daarna alleen nog worden heropend door een beheerder.')) return;
+      if (!(await bevestig('Notulen vaststellen? De planning zoals nu besproken wordt vastgelegd; het overleg kan daarna alleen nog worden heropend door een beheerder.'))) return;
       overleg.foto = live; overleg.fotoDatum = nu; overleg.vastgesteld = true; overleg.vastgesteldOp = new Date().toISOString(); overleg.vastgesteldDoor = ikEmail() || '';
       await bewaar({ stil: true });
       melding('Notulen vastgesteld');
       teken();
     });
     app.querySelector('#vo-heropen')?.addEventListener('click', async () => {
-      if (!confirm('Overleg heropenen? Bij opslaan wordt de planning van vandaag gebruikt in plaats van de vastgelegde planning.')) return;
+      if (!(await bevestig('Overleg heropenen? Bij opslaan wordt de planning van vandaag gebruikt in plaats van de vastgelegde planning.'))) return;
       overleg.vastgesteld = false;
       await bewaar({ stil: true });
       teken();
     });
     app.querySelector('#vo-weg')?.addEventListener('click', async () => {
-      if (!confirm(`Overleg #${overleg.nummer} van ${datumNL(overleg.datum)} verwijderen? Actiepunten uit dit overleg verdwijnen ook.`)) return;
+      if (!(await bevestig(`Overleg #${overleg.nummer} van ${datumNL(overleg.datum)} verwijderen? Actiepunten uit dit overleg verdwijnen ook.`))) return;
       await bewaarActiefProject((p) => ({ planningsoverleggen: (p.planningsoverleggen ?? []).filter((o) => o.id !== overleg.id) }));
       melding('Overleg verwijderd');
       location.hash = '#/planning/overzicht';
@@ -12847,7 +12890,7 @@ async function taakFormulier(id, q = new URLSearchParams()) {
     ga('#/planning');
   };
   app.querySelector('#verwijder')?.addEventListener('click', async () => {
-    if (!confirm('Deze taak verwijderen?')) return;
+    if (!(await bevestig('Deze taak verwijderen?'))) return;
     for (const fid of bestaand.extraFotoIds ?? []) await db.verwijder('fotos', fid);
     await db.verwijder('taken', id);
     ga('#/planning');
@@ -13311,7 +13354,7 @@ async function extraBlok(blok, defsNu, record, { ns = '', nieuw = !record } = {}
     if (gt) { geomZet(gt.dataset.geomTerug, (extra[gt.dataset.geomTerug]?.punten ?? []).slice(0, -1)); return; }
     const gw = e.target.closest('[data-geom-wis]');
     if (gw) {
-      if (!confirm('Alle ingewonnen punten van dit veld wissen?')) return;
+      if (!(await bevestig('Alle ingewonnen punten van dit veld wissen?'))) return;
       geomStop(gw.dataset.geomWis);
       geomZet(gw.dataset.geomWis, []);
       return;
@@ -13712,7 +13755,7 @@ async function formulierveldenPagina(id, q) {
       k.onclick = async () => {
         const d = lijst.find((x) => x.id === k.dataset.weg);
         const afhankelijk = lijst.filter((x) => x.toonAls?.veld === d.id).map((x) => x.label);
-        if (!confirm(`Vraag "${d.label}" verwijderen? Al ingevulde antwoorden blijven bij de registraties bewaard.${afhankelijk.length ? `\n\nDeze vragen hangen ervan af en worden daarna altijd getoond: ${afhankelijk.join(', ')}.` : ''}`)) return;
+        if (!(await bevestig(`Vraag "${d.label}" verwijderen? Al ingevulde antwoorden blijven bij de registraties bewaard.${afhankelijk.length ? `\n\nDeze vragen hangen ervan af en worden daarna altijd getoond: ${afhankelijk.join(', ')}.` : ''}`))) return;
         lijst = lijst.filter((x) => x.id !== d.id).map((x) => (x.toonAls?.veld === d.id ? { ...x, toonAls: null } : x));
         if (bewerk?.id === d.id) bewerk = null;
         await opslaan();
@@ -13762,7 +13805,7 @@ async function formulierveldenPagina(id, q) {
   const eisenKiezen = async () => {
     const eisLijst = (bib ? (await actiefProject())?.eisen?.lijst : project.eisen?.lijst) ?? [];
     if (!eisLijst.length) {
-      if (confirm('Er is nog geen eisbibliotheek voor dit project. Nu de eisen inlezen?')) ga('#/eisen');
+      if ((await bevestig('Er is nog geen eisbibliotheek voor dit project. Nu de eisen inlezen?'))) ga('#/eisen');
       return;
     }
     const al = new Set(lijst.filter((x) => inScope(x) && x.eis).map((x) => EI.sleutel(x.eis.nummer)));
@@ -13893,8 +13936,8 @@ async function formulierveldenPagina(id, q) {
     });
     el.querySelector('#annuleer').onclick = () => { bewerk = null; formulierGewijzigd = false; teken(); };
     tekenVoorbeeld();
-    el.querySelector('#ontkoppel')?.addEventListener('click', () => {
-      if (!confirm(`Het veld loskoppelen van eis ${bewerk.eis.nummer}? De vraag blijft staan, maar telt niet meer mee voor de verificatie van de eis.`)) return;
+    el.querySelector('#ontkoppel')?.addEventListener('click', async () => {
+      if (!(await bevestig(`Het veld loskoppelen van eis ${bewerk.eis.nummer}? De vraag blijft staan, maar telt niet meer mee voor de verificatie van de eis.`))) return;
       lees(); bewerk.eis = null; tekenEditor();
     });
     form.onsubmit = async (e) => {
@@ -14580,7 +14623,7 @@ async function storingenPagina(_, __, { mobiel = false } = {}) {
     const id = v.dataset.vervallen ?? v.dataset.heropen;
     const m = await db.haal('meldingen', id);
     if (!m) return;
-    if (v.dataset.vervallen && !confirm('Deze melding laten vervallen (bijv. dubbel gemeld of niet meer nodig)? Hij verdwijnt dan van de telefoons.')) return;
+    if (v.dataset.vervallen && !(await bevestig('Deze melding laten vervallen (bijv. dubbel gemeld of niet meer nodig)? Hij verdwijnt dan van de telefoons.'))) return;
     await db.bewaar('meldingen', { ...m, vervallen: Boolean(v.dataset.vervallen), gewijzigd: new Date().toISOString() });
     melding(v.dataset.vervallen ? 'Melding vervallen' : 'Melding heropend');
     storingenPagina();
@@ -14949,9 +14992,9 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
     formulierGewijzigd = true;
     tekenRondes();
   });
-  $('#aantal-rondes').addEventListener('change', (e) => {
+  $('#aantal-rondes').addEventListener('change', async (e) => {
     const n = Math.min(52, Math.max(1, Math.round(Number(e.target.value) || 1)));
-    if (n < rondes.length && !confirm(`Rondes R${rondes[n].nummer} t/m R${rondes[rondes.length - 1].nummer} verwijderen? Registraties blijven bewaard.`)) {
+    if (n < rondes.length && !(await bevestig(`Rondes R${rondes[n].nummer} t/m R${rondes[rondes.length - 1].nummer} verwijderen? Registraties blijven bewaard.`))) {
       e.target.value = rondes.length;
       return;
     }
@@ -14968,9 +15011,9 @@ async function pakketFormulier(id, q = new URLSearchParams()) {
     if (e.target.dataset.veld === 'soort' || e.target.dataset.veld === 'status') tekenRondes();
     tekenBvcInst();
   });
-  $('#rondes').addEventListener('click', (e) => {
+  $('#rondes').addEventListener('click', async (e) => {
     const w = e.target.closest('[data-ronde-weg]');
-    if (w && confirm('Deze ronde verwijderen? Registraties blijven bewaard.')) { rondes.splice(Number(w.dataset.rondeWeg), 1); tekenRondes(); $('#aantal-rondes').value = rondes.length; }
+    if (w && (await bevestig('Deze ronde verwijderen? Registraties blijven bewaard.'))) { rondes.splice(Number(w.dataset.rondeWeg), 1); tekenRondes(); $('#aantal-rondes').value = rondes.length; }
     const al = e.target.closest('[data-ronde-alles]');
     if (al) { rondes[Number(al.dataset.rondeAlles)].objectIds = null; tekenRondes(); }
   });
@@ -15553,7 +15596,7 @@ async function pakketDetail(id, q = new URLSearchParams()) {
     };
   });
   app.querySelector('#verwijder')?.addEventListener('click', async () => {
-    if (!confirm(`Werkpakket "${metCode(pr)}" met alle rondes verwijderen? Registraties blijven bewaard.`)) return;
+    if (!(await bevestig(`Werkpakket "${metCode(pr)}" met alle rondes verwijderen? Registraties blijven bewaard.`))) return;
     await db.verwijderVeel('overgeslagen', g.overgeslagen.filter((o) => o.pakketId === pr.id).map((o) => o.id));
     await db.verwijder('werkpakketten', pr.id);
     ga('#/werkpakketten');
@@ -15633,7 +15676,7 @@ async function rondeAfronden(pakketId, rondeId) {
 
 /** Opnieuw openen van een afgeronde ronde (alleen beheer); de afronding blijft als historie bewaard. */
 async function rondeHeropenen(pakketId, rondeId) {
-  if (!confirm('Deze ronde weer op actief zetten? Wat bij het afronden is vastgelegd blijft bewaard.')) return;
+  if (!(await bevestig('Deze ronde weer op actief zetten? Wat bij het afronden is vastgelegd blijft bewaard.'))) return;
   const actueel = await db.haal('werkpakketten', pakketId);
   const nu = new Date().toISOString();
   const lijst = rondesVan(actueel).map((r) => (r.id === rondeId ? { ...r, status: 'actief', afronding: r.afronding ? { ...r.afronding, heropend: [...(r.afronding.heropend ?? []), { op: nu, door: accountNaam() || ikEmail() }] } : r.afronding } : r));
@@ -16766,7 +16809,7 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
     } catch (fout) { melding(fout.message, 'fout'); }
     if (k === 'alg') tekenAlg(); else tekenW();
   });
-  form.addEventListener('click', (e) => {
+  form.addEventListener('click', async (e) => {
     // Een voorbeeldfoto in de Digigids-keuze vergroot alleen; de klasse kies je door op de tekst te tikken.
     if (e.target.matches('.dg-fotos img')) { e.preventDefault(); return; }
     const fw = e.target.closest('[data-foto-weg]');
@@ -16798,7 +16841,7 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
     const kw = e.target.closest('[data-w-wijzig]');
     if (kw) { W[Number(kw.dataset.wWijzig)].wijzigen = true; tekenW(); return; }
     const ww = e.target.closest('[data-w-weg]');
-    if (ww && confirm('Deze waarneming verwijderen?')) {
+    if (ww && (await bevestig('Deze waarneming verwijderen?'))) {
       W.splice(Number(ww.dataset.wWeg), 1);
       open.clear();
       tekenW();
@@ -16996,7 +17039,7 @@ async function stowaDetail(i, { rapport = false } = {}) {
       </div>${inhoud}`;
     const knopWeg = app.querySelector('#verwijder');
   if (knopWeg) knopWeg.onclick = async () => {
-      if (!confirm('Deze inspectie inclusief foto\'s verwijderen?')) return;
+      if (!(await bevestig('Deze inspectie inclusief foto\'s verwijderen?'))) return;
       await verwijderInspectieData(i);
       ga(o ? `#/objecten/${o.id}` : '#/inspecties');
     };
@@ -17438,7 +17481,7 @@ async function bvcDetail(i, { rapport = false } = {}) {
   bevindingKnoppen(i);
   const knopWeg = app.querySelector('#verwijder');
   if (knopWeg) knopWeg.onclick = async () => {
-    if (!confirm('Deze boomveiligheidscontrole inclusief foto\'s verwijderen?')) return;
+    if (!(await bevestig('Deze boomveiligheidscontrole inclusief foto\'s verwijderen?'))) return;
     await verwijderInspectieData(i);
     ga(o ? `#/objecten/${o.id}` : '#/inspecties');
   };
@@ -17831,7 +17874,7 @@ async function vrijgaveDetail(id, { mobiel = false } = {}) {
     router();
   };
   app.querySelector('#verwijder')?.addEventListener('click', async () => {
-    if (!confirm('Deze vrijgave verwijderen? Het logboek hoort minimaal 2 jaar bewaard te blijven.')) return;
+    if (!(await bevestig('Deze vrijgave verwijderen? Het logboek hoort minimaal 2 jaar bewaard te blijven.'))) return;
     for (const fid of [...(v.fotoIds ?? []), ...(v.waarnemingen ?? []).flatMap((w) => w.fotoIds ?? [])]) await db.verwijder('fotos', fid);
     await db.verwijder('vrijgaven', id);
     ga('#/vrijgaven');
@@ -17959,7 +18002,7 @@ async function instellingen() {
     if (!bestand) return;
     try {
       const data = JSON.parse(await bestand.text());
-      const vervangen = confirm('Huidige gegevens vervangen door de back-up?\n\nOK = vervangen, Annuleren = samenvoegen.');
+      const vervangen = (await bevestig('Huidige gegevens vervangen door de back-up?\n\nKies Vervangen om alles te vervangen, of Samenvoegen om de back-up toe te voegen aan wat er al staat.', { ja: 'Vervangen', nee: 'Samenvoegen', gevaar: true }));
       await db.importeer(data, { vervangen });
       if (vervangen) sync.resetOphalen();
       melding('Back-up geïmporteerd');
@@ -17974,7 +18017,7 @@ async function instellingen() {
   app.querySelector('#wis').onclick = async () => {
     const wachtend = await db.sync.aantalInWachtrij();
     const waarschuwing = wachtend ? `\n\nLet op: ${wachtend} wijziging(en) zijn nog niet verstuurd en gaan verloren.` : '';
-    if (!confirm(`Alle gegevens op dit apparaat wissen?${waarschuwing}`)) return;
+    if (!(await bevestig(`Alle gegevens op dit apparaat wissen?${waarschuwing}`))) return;
     await db.wisLokaal();
     sync.resetOphalen();
     melding('Lokale gegevens gewist');
@@ -18142,7 +18185,7 @@ function toonAccount(el) {
   };
   el.querySelector('#uit').onclick = async () => {
     const wachtend = await db.sync.aantalInWachtrij();
-    if (wachtend && !confirm(`Er zijn nog ${wachtend} wijziging(en) niet verstuurd. Ze blijven op dit apparaat en worden verstuurd bij de volgende keer inloggen. Toch uitloggen?`)) return;
+    if (wachtend && !(await bevestig(`Er zijn nog ${wachtend} wijziging(en) niet verstuurd. Ze blijven op dit apparaat en worden verstuurd bij de volgende keer inloggen. Toch uitloggen?`))) return;
     await sync.uitloggen();
     naarInlogscherm();
   };
@@ -18158,7 +18201,7 @@ function toonAccount(el) {
     el.querySelector('#st-geweigerd').hidden = !st.geweigerd?.length;
   });
   el.querySelector('#st-verwerp').onclick = async (e) => {
-    if (!confirm('De geweigerde wijzigingen op dit apparaat terugdraaien naar de versie op de server?')) return;
+    if (!(await bevestig('De geweigerde wijzigingen op dit apparaat terugdraaien naar de versie op de server?'))) return;
     e.target.disabled = true;
     try {
       const r = await sync.verwerpGeweigerd();

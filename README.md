@@ -475,6 +475,17 @@ Op alle kaarten met voortgang (mobiele kaart, werkpakketkaart, dashboardkaart me
   **voor iedereen in het project** (wordt gesynchroniseerd); iedereen kan ook een eigen opmaak **alleen op dit apparaat**
   kiezen. *Standaard herstellen* zet alles terug. De voortgangsbalken en legenda's volgen dezelfde kleuren.
 
+## Vragen en bevestigen in de app
+
+Bevestigingen ("Deze werkzaamheid inclusief foto's verwijderen?") en invulvragen ("Naam van de kopie") verschijnen als
+venster in de stijl van de app. Eerder waren het de pop-ups van de browser, met "baasoverbuiten.nl meldt".
+- `bevestig(tekst, { ja, nee, gevaar })` geeft `true` of `false`.
+  - Bij verwijderen of wissen is de knop rood (*Verwijderen*, *Wissen*) en staat de focus op *Annuleren*.
+  - Escape of *Annuleren* = nee.
+- `vraagTekst(tekst, standaard)` geeft de ingevulde tekst, of `null` bij annuleren.
+- Alleen de waarschuwing bij het sluiten van het tabblad met niet-opgeslagen wijzigingen blijft van de browser. Die
+  kan een website niet zelf vormgeven.
+
 ## Rapporten als PDF
 
 Elke registratie kun je als net PDF-bestand exporteren, om te delen met de opdrachtgever of in hun systemen in te

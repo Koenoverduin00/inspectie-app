@@ -2368,3 +2368,12 @@ body.kiesmodus .mfilterchips, body.kiesmodus .mtedoenseg, body.kiesmodus .ff-fil
 .geschlijst li.metpdf { display: flex; align-items: center; gap: .4rem; }
 .geschlijst li.metpdf > a, .geschlijst li.metpdf > .geschregel { flex: 1; min-width: 0; }
 .geschpdf { flex: none; }
+
+/* Vragen en bevestigen in de app (vervangt de pop-ups van de browser) */
+.appvraag { max-width: min(30rem, calc(100vw - 2rem)); }
+.appvraag h2 { margin: 0 0 .5rem; font-size: 1.15rem; line-height: 1.3; }
+.appvraag-tekst p { margin: 0 0 .6rem; white-space: pre-line; line-height: 1.45; }
+.appvraag-invoer { width: 100%; margin: .25rem 0 .5rem; }
+.appvraag .formvoet { display: flex; justify-content: flex-end; gap: .5rem; flex-wrap: wrap; margin-top: .75rem; }
+.knop.gevaar-vol { background: #b3261e; border-color: #b3261e; color: #fff; }
+.knop.gevaar-vol:hover { background: #8f1e18; }
