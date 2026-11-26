@@ -475,6 +475,25 @@ Op alle kaarten met voortgang (mobiele kaart, werkpakketkaart, dashboardkaart me
   **voor iedereen in het project** (wordt gesynchroniseerd); iedereen kan ook een eigen opmaak **alleen op dit apparaat**
   kiezen. *Standaard herstellen* zet alles terug. De voortgangsbalken en legenda's volgen dezelfde kleuren.
 
+## Objectenpagina: pagina's en kolommen
+
+De lijst op de objectenpagina toont standaard **100 regels per pagina**, met knoppen *Vorige*, paginanummers en
+*Volgende* en een telling (*"1–100 van 2.345 objecten"*). Logica in `js/objecttabel.js`, getest in
+`tests/objecttabel.test.js`.
+
+- **Regels per pagina:** kies 25, 50, 100, 250, 500 of Alle. Dit wordt op dit apparaat onthouden. Na een nieuwe
+  zoekopdracht of filter begin je weer op pagina 1. *Alle gevonden selecteren* en het selectievak in de kop werken op
+  alle gevonden objecten, niet alleen op de pagina.
+- **Kolommen:** met de knop *Kolommen* kies je welke kolommen je ziet.
+  - Standaard: naam, type, bouwjaar, conditie, laatste inspectie en planning. Je kunt er laag, materiaal, beheerder,
+    locatie en status bij zetten.
+  - **Uit de GIS-bestanden:** alle kolommen uit de geïmporteerde bestanden, in de volgorde van het bestand. Kolommen
+    die bij geen enkel object gevuld zijn, vallen weg. Met een zoekveld, *Alle GIS-kolommen tonen* en
+    *Geen GIS-kolommen*.
+  - De keuze wordt per project op dit apparaat bewaard; *Standaard herstellen* zet hem terug. Bij veel kolommen scrolt de
+    tabel zijwaarts.
+- **CSV exporteren** bevat nu ook alle GIS-kolommen.
+
 ## Objecten zoeken en de kaart in werkpakketten en inspecties
 
 - **Zoeken** werkt op code, naam, type, locatie én GIS-kenmerken, met meerdere woorden tegelijk (bijv. `gazon noord`).

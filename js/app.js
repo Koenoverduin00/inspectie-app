@@ -38,6 +38,7 @@ import * as RS from './rondestats.js';
 import * as HS from './herstel.js';
 import * as PV from './planningversie.js';
 import * as GR from './groepering.js';
+import * as OT from './objecttabel.js';
 import * as IMP from './gisimport.js';
 import * as ST from './stowa.js';
 import * as DG from './digigids.js';
@@ -3809,6 +3810,34 @@ async function objectenLijst() {
     el.innerHTML = items.map(([l, k]) => `<span><i style="background:${esc(k)}"></i>${esc(l)}</span>`).join('');
   };
   const gekozen = new Set();
+  // Pagina's (standaard 100 regels) en zelf gekozen kolommen, waaronder alle kolommen uit de GIS-bestanden.
+  let perPagina = Number(instelling.lees('objectenPerPagina', String(OT.PER_PAGINA_STANDAARD)));
+  if (!OT.PER_PAGINA_KEUZES.includes(perPagina)) perPagina = OT.PER_PAGINA_STANDAARD;
+  let paginaNr = 1;
+  const alleKolommen = OT.beschikbareKolommen(objecten, lagen);
+  const kolSleutel = `objectKolommen:${projectId()}`;
+  const leesKolommen = () => { try { return JSON.parse(instelling.lees(kolSleutel) || 'null'); } catch { return null; } };
+  let kolommen = OT.gekozenKolommen(leesKolommen(), alleKolommen);
+  const kolomVan = new Map(alleKolommen.map((k) => [k.id, k]));
+  const laagNaam = new Map(lagen.map((l) => [l.id, l.naam]));
+  const celHtml = (id, o, s) => {
+    if (id.startsWith(OT.GIS)) return esc(OT.kenmerkTekst(o, id.slice(OT.GIS.length)));
+    switch (id) {
+      case 'naam': return esc(o.naam);
+      case 'type': return esc(o.type);
+      case 'bouwjaar': return esc(o.bouwjaar || '–');
+      case 'conditie': return oordeelLabel(s);
+      case 'laatste': return datumNL(s.laatste?.datum);
+      case 'planning': return planningLabel(s.planning);
+      case 'laag': return esc(laagNaam.get(o.laagId) ?? '');
+      case 'materiaal': return esc(o.materiaal ?? '');
+      case 'beheerder': return esc(o.beheerder ?? '');
+      case 'locatie': return esc(o.locatie ?? '');
+      case 'status': return esc(o.status ?? '');
+      default: return '';
+    }
+  };
+  const smal = (id) => (kolomVan.get(id)?.smal ? ' class="verberg-mobiel"' : '');
   app.innerHTML = `
     <div class="paginakop">
       <div><h1>Objecten</h1><p>${objecten.length} geregistreerde objecten in het areaal.</p></div>
@@ -3853,16 +3882,25 @@ async function objectenLijst() {
         </aside>
       </div>
     </div>
-    <div class="kaart" id="objectlijst" style="padding:0" ${weergave === 'kaart' ? 'hidden' : ''}><div class="tabelhouder"><table>
-      <thead><tr>${kanKiezen ? '<th style="width:38px"><input type="checkbox" id="sel-kop" aria-label="Alle gevonden objecten selecteren"></th>' : ''}<th>Code</th><th>Naam</th><th class="verberg-mobiel">Type</th><th class="verberg-mobiel">Bouwjaar</th><th>Conditie</th><th class="verberg-mobiel">Laatste inspectie</th><th>Planning</th></tr></thead>
-      <tbody id="rijen"></tbody>
-    </table></div></div>`;
+    <div id="objectlijst" ${weergave === 'kaart' ? 'hidden' : ''}>
+      <div class="tabelbalk">
+        <span id="pag-telling" class="zacht"></span>
+        <span class="knoppen"><label class="perpagina">Regels per pagina <select id="pag-per">${OT.PER_PAGINA_KEUZES.map((n) => optie(String(n), n ? String(n) : 'Alle', String(perPagina))).join('')}</select></label>
+          <button type="button" class="knop klein" id="kol-knop" aria-expanded="false" aria-controls="kolompaneel">${I.instellingen} Kolommen <small id="kol-aantal"></small></button></span>
+      </div>
+      <div class="kaart kolompaneel" id="kolompaneel" hidden></div>
+      <div class="kaart" style="padding:0"><div class="tabelhouder objecttabel"><table>
+        <thead id="kop"></thead>
+        <tbody id="rijen"></tbody>
+      </table></div></div>
+      <nav class="paginering" id="paginering" aria-label="Pagina's"></nav>
+    </div>`;
 
   let gevonden = [];
   const filters = ['zoek', 'type', 'conditie', 'planning'].map((id) => app.querySelector(`#${id}`));
   const laagEl = app.querySelector('#laag');
   const basisVoorKenmerken = () => filterObjecten(objecten, { laag: laagEl?.value ?? '', type: filters[1].value });
-  const kf = kenmerkFilters(app.querySelector('#kenmerkfilters'), { basis: basisVoorKenmerken, opWijzig: () => { toon(); werkKaartBij(); } });
+  const kf = kenmerkFilters(app.querySelector('#kenmerkfilters'), { basis: basisVoorKenmerken, opWijzig: () => { paginaNr = 1; toon(); werkKaartBij(); } });
   const werkSelectieBij = () => {
     if (!kanKiezen) return;
     const n = gekozen.size;
@@ -3891,16 +3929,84 @@ async function objectenLijst() {
       if (planning && s.planning !== planning) return false;
       return true;
     });
-    app.querySelector('#rijen').innerHTML = rijen.length ? rijen.map((o) => {
+    tekenTabel();
+  };
+  const tekenTabel = () => {
+    const pg = OT.pagina(gevonden, paginaNr, perPagina);
+    paginaNr = pg.nr;
+    app.querySelector('#kop').innerHTML = `<tr>${kanKiezen ? '<th style="width:38px"><input type="checkbox" id="sel-kop" aria-label="Alle gevonden objecten selecteren"></th>' : ''}<th>Code</th>${kolommen.map((id) => `<th${smal(id)}${id.startsWith(OT.GIS) ? ' class="gisk"' : ''}>${esc(kolomVan.get(id)?.label ?? id)}</th>`).join('')}</tr>`;
+    app.querySelector('#rijen').innerHTML = pg.items.length ? pg.items.map((o) => {
       const s = status.get(o.id);
       return `<tr class="klikbaar${gekozen.has(o.id) ? ' gekozen' : ''}" data-href="#/objecten/${esc(o.id)}">
         ${kanKiezen ? `<td><input type="checkbox" data-sel="${esc(o.id)}" ${gekozen.has(o.id) ? 'checked' : ''} aria-label="${esc(o.code)} selecteren"></td>` : ''}
-        <td><strong>${esc(o.code)}</strong>${objectGeometrie(o) ? ` <button type="button" class="kaartpin" data-opkaart="${esc(o.id)}" title="Op de kaart tonen" aria-label="${esc(o.code)} op de kaart tonen">${I.locatie}</button>` : ''}</td><td>${esc(o.naam)}</td><td class="verberg-mobiel">${esc(o.type)}</td>
-        <td class="verberg-mobiel">${esc(o.bouwjaar || '–')}</td><td>${oordeelLabel(s)}</td>
-        <td class="verberg-mobiel">${datumNL(s.laatste?.datum)}</td><td>${planningLabel(s.planning)}</td></tr>`;
-    }).join('') : `<tr><td colspan="${kanKiezen ? 8 : 7}" class="leeg">${objecten.length ? 'Geen objecten gevonden met deze filters.' : 'Nog geen objecten. <a href="#/objecten/nieuw">Registreer het eerste object</a>.'}</td></tr>`;
+        <td><strong>${esc(o.code)}</strong>${objectGeometrie(o) ? ` <button type="button" class="kaartpin" data-opkaart="${esc(o.id)}" title="Op de kaart tonen" aria-label="${esc(o.code)} op de kaart tonen">${I.locatie}</button>` : ''}</td>${kolommen.map((id) => `<td${smal(id)}>${celHtml(id, o, s)}</td>`).join('')}</tr>`;
+    }).join('') : `<tr><td colspan="${kolommen.length + (kanKiezen ? 2 : 1)}" class="leeg">${objecten.length ? 'Geen objecten gevonden met deze filters.' : 'Nog geen objecten. <a href="#/objecten/nieuw">Registreer het eerste object</a>.'}</td></tr>`;
+    app.querySelector('#pag-telling').textContent = pg.totaal ? `${pg.van.toLocaleString('nl-NL')}–${pg.tot.toLocaleString('nl-NL')} van ${pg.totaal.toLocaleString('nl-NL')} objecten` : '';
+    app.querySelector('#kol-aantal').textContent = `(${kolommen.length + 1})`;
+    const nav = app.querySelector('#paginering');
+    nav.hidden = pg.paginas <= 1;
+    nav.innerHTML = pg.paginas <= 1 ? '' : `<button type="button" class="knop klein" data-pag="${pg.nr - 1}" ${pg.nr === 1 ? 'disabled' : ''} aria-label="Vorige pagina">‹ Vorige</button>
+      ${OT.paginaNummers(pg.nr, pg.paginas).map((x) => (x === '…' ? '<span class="zacht">…</span>' : `<button type="button" class="knop klein${x === pg.nr ? ' primair' : ''}" data-pag="${x}" ${x === pg.nr ? 'aria-current="page"' : ''}>${x}</button>`)).join('')}
+      <button type="button" class="knop klein" data-pag="${pg.nr + 1}" ${pg.nr === pg.paginas ? 'disabled' : ''} aria-label="Volgende pagina">Volgende ›</button>`;
     werkSelectieBij();
   };
+  // Kolommen kiezen: de vaste kolommen en alle kolommen uit de GIS-bestanden (per project bewaard op dit apparaat).
+  const bewaarKolommen = (nieuw) => { kolommen = nieuw; instelling.schrijf(kolSleutel, JSON.stringify(kolommen)); tekenKolompaneel(); tekenTabel(); };
+  const tekenKolompaneel = () => {
+    const el = app.querySelector('#kolompaneel');
+    if (el.hidden) return;
+    const q = (el.querySelector('#kol-zoek')?.value ?? '').trim().toLowerCase();
+    const vink = (k) => `<label class="vink"><input type="checkbox" data-kol="${esc(k.id)}" ${kolommen.includes(k.id) ? 'checked' : ''}><span>${esc(k.label)}</span></label>`;
+    const gis = alleKolommen.filter((k) => k.gis);
+    const gisZicht = gis.filter((k) => !q || k.label.toLowerCase().includes(q));
+    el.innerHTML = `<div class="kolomkop"><h2>Kolommen</h2>
+        <span class="knoppen"><button type="button" class="knop klein" data-kolactie="standaard">Standaard herstellen</button>
+        <button type="button" class="knop klein" data-kolactie="sluit">${I.vink} Klaar</button></span></div>
+      <h3>Standaard</h3><div class="kolomlijst">${alleKolommen.filter((k) => !k.gis).map(vink).join('')}</div>
+      <h3>Uit de GIS-bestanden <small class="zacht">(${gis.length})</small></h3>
+      ${gis.length ? `<div class="kolomacties"><input type="search" id="kol-zoek" placeholder="Zoek kolom…" value="${esc(q)}" aria-label="Kolom zoeken">
+          <button type="button" class="knop klein" data-kolactie="allegis">Alle GIS-kolommen tonen</button>
+          <button type="button" class="knop klein" data-kolactie="geengis">Geen GIS-kolommen</button></div>
+        <div class="kolomlijst">${gisZicht.map(vink).join('') || '<p class="leeg">Geen kolom met deze naam.</p>'}</div>`
+    : '<p class="leeg"><small>Geen extra kolommen: importeer een GIS-bestand (shapefile, GeoJSON, GeoPackage…) om de kolommen daarvan hier te kiezen.</small></p>'}`;
+    if (q) { const z = el.querySelector('#kol-zoek'); z.focus(); z.setSelectionRange(q.length, q.length); }
+  };
+  app.querySelector('#kol-knop').addEventListener('click', (e) => {
+    const el = app.querySelector('#kolompaneel');
+    el.hidden = !el.hidden;
+    e.currentTarget.setAttribute('aria-expanded', String(!el.hidden));
+    tekenKolompaneel();
+  });
+  app.querySelector('#kolompaneel').addEventListener('change', (e) => {
+    const id = e.target.dataset.kol;
+    if (!id) return;
+    // Nieuwe kolom in de volgorde van het paneel (standaard eerst, dan GIS in bestandsvolgorde).
+    const aan = new Set(kolommen); if (e.target.checked) aan.add(id); else aan.delete(id);
+    bewaarKolommen(alleKolommen.map((k) => k.id).filter((x) => aan.has(x)));
+  });
+  app.querySelector('#kolompaneel').addEventListener('input', (e) => { if (e.target.id === 'kol-zoek') tekenKolompaneel(); });
+  app.querySelector('#kolompaneel').addEventListener('click', (e) => {
+    const a = e.target.closest('[data-kolactie]')?.dataset.kolactie;
+    if (!a) return;
+    if (a === 'sluit') { app.querySelector('#kolompaneel').hidden = true; app.querySelector('#kol-knop').setAttribute('aria-expanded', 'false'); return; }
+    if (a === 'standaard') { instelling.schrijf(kolSleutel, ''); kolommen = OT.gekozenKolommen(null, alleKolommen); tekenKolompaneel(); tekenTabel(); return; }
+    const gisIds = alleKolommen.filter((k) => k.gis).map((k) => k.id);
+    if (a === 'allegis') bewaarKolommen([...kolommen.filter((id) => !id.startsWith(OT.GIS)), ...gisIds]);
+    if (a === 'geengis') bewaarKolommen(kolommen.filter((id) => !id.startsWith(OT.GIS)));
+  });
+  app.querySelector('#paginering').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-pag]');
+    if (!b || b.disabled) return;
+    paginaNr = Number(b.dataset.pag);
+    tekenTabel();
+    app.querySelector('#objectlijst').scrollIntoView({ block: 'start' });
+  });
+  app.querySelector('#pag-per').addEventListener('change', (e) => {
+    perPagina = Number(e.target.value);
+    instelling.schrijf('objectenPerPagina', String(perPagina));
+    paginaNr = 1;
+    tekenTabel();
+  });
   // Kaart: zoeken en filteren tonen de gevonden objecten; bij weinig treffers zoomt de kaart erop in.
   let kaartKlaar = null;
   const werkKaartBij = async () => {
@@ -3990,8 +4096,8 @@ async function objectenLijst() {
     const eerste = gevonden.find((o) => objectGeometrie(o));
     if (eerste) (await kaartKlaar)?.zoomNaar(eerste.id);
   });
-  filters.forEach((f) => f.addEventListener('input', () => { toon(); if (kaartKlaar) werkKaartBij(); }));
-  [filters[1], laagEl].filter(Boolean).forEach((f) => f.addEventListener('change', () => { kf.ververs(); toon(); if (kaartKlaar) werkKaartBij(); }));
+  filters.forEach((f) => f.addEventListener('input', () => { paginaNr = 1; toon(); if (kaartKlaar) werkKaartBij(); }));
+  [filters[1], laagEl].filter(Boolean).forEach((f) => f.addEventListener('change', () => { paginaNr = 1; kf.ververs(); toon(); if (kaartKlaar) werkKaartBij(); }));
   if (kanKiezen) {
     app.querySelector('#rijen').addEventListener('change', (e) => {
       const id = e.target.dataset.sel;
@@ -4000,7 +4106,8 @@ async function objectenLijst() {
       e.target.closest('tr').classList.toggle('gekozen', e.target.checked);
       werkSelectieBij();
     });
-    app.querySelector('#sel-kop').addEventListener('change', (e) => {
+    app.querySelector('#kop').addEventListener('change', (e) => {
+      if (e.target.id !== 'sel-kop') return;
       for (const o of gevonden) { if (e.target.checked) gekozen.add(o.id); else gekozen.delete(o.id); }
       toon();
     });
@@ -4019,11 +4126,14 @@ async function objectenLijst() {
 
   app.querySelector('#export').onclick = () => {
     const rijen = [['Code', 'Naam', 'Type', 'Materiaal', 'Bouwjaar', 'Beheerder', 'Locatie', 'Breedtegraad', 'Lengtegraad',
-      'Lengte (m)', 'Breedte (m)', 'Status', 'Inspectie-interval (jaar)', 'Conditie', 'Laatste inspectie', 'Volgende inspectie', 'Planning']];
+      'Lengte (m)', 'Breedte (m)', 'Status', 'Inspectie-interval (jaar)', 'Conditie', 'Laatste inspectie', 'Volgende inspectie', 'Planning',
+      ...OT.gisKolommen(objecten, lagen)]];
+    const gisK = OT.gisKolommen(objecten, lagen);
     for (const o of objecten) {
       const s = status.get(o.id);
       rijen.push([o.code, o.naam, o.type, o.materiaal, o.bouwjaar, o.beheerder, o.locatie, o.lat, o.lng, o.lengte, o.breedte,
-        o.status, o.inspectieInterval, s.conditie ?? '', s.laatste?.datum ?? '', s.volgende ?? '', PLANNING_TEKST[s.planning]]);
+        o.status, o.inspectieInterval, s.conditie ?? '', s.laatste?.datum ?? '', s.volgende ?? '', PLANNING_TEKST[s.planning],
+        ...gisK.map((k) => OT.kenmerkTekst(o, k))]);
     }
     download(`objecten-${vandaag()}.csv`, csv(rijen), 'text/csv;charset=utf-8');
   };
