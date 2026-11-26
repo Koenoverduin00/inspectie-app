@@ -475,6 +475,48 @@ Op alle kaarten met voortgang (mobiele kaart, werkpakketkaart, dashboardkaart me
   **voor iedereen in het project** (wordt gesynchroniseerd); iedereen kan ook een eigen opmaak **alleen op dit apparaat**
   kiezen. *Standaard herstellen* zet alles terug. De voortgangsbalken en legenda's volgen dezelfde kleuren.
 
+## Rapporten als PDF
+
+Elke registratie kun je als net PDF-bestand exporteren, om te delen met de opdrachtgever of in hun systemen in te
+lezen. Dat geldt voor werkzaamheden, inspecties en schouwen, boomveiligheidscontroles, inspecties van waterkeringen en
+flora- en fauna-vrijgaven. De PDF wordt op het toestel gemaakt met pdfmake (meegeleverd in `vendor/pdfmake`), dus het
+werkt ook zonder verbinding zodra de module één keer is geladen. Logica in `js/rapport.js`, getest in
+`tests/rapport.test.js`.
+
+- **Exporteren:**
+  - Op elke detailpagina staat de knop **PDF**; op de telefoon ook **Delen** (mail, WhatsApp, Teams…).
+  - Bij *Mijn geschiedenis* staat bij elke registratie een PDF-knop.
+  - Op de rapportpagina van een inspectie staat de PDF-knop naast *Afdrukken*.
+- **Inhoud (standaard):**
+  - kop met titel, object en project;
+  - oordeel of conditie met status en beoordeling;
+  - objectgegevens en gegevens van de registratie;
+  - omschrijving;
+  - bij inspecties: tabel met bevindingen (E/I/O, conditie, urgentie, raming) en detailbevindingen met foto's;
+  - bij BVC, waterkering en vrijgave: alle gegevens van het formulier;
+  - eigen formuliervelden;
+  - foto's (vóór en ná apart);
+  - beoordeling en handtekeningvakken. Een digitale handtekening uit het formulier komt er vanzelf in.
+- **Voor de systemen van de opdrachtgever:**
+  - **Vaste bestandsnaam:** het patroon is instelbaar, met {project}, {object}, {soort}, {datum}, {uitvoerder}
+    en {id}.
+  - **PDF-metadata:** titel, onderwerp en trefwoorden.
+  - **Kenmerk** in de voettekst.
+  - **Blok *Gegevens voor systemen*** met alle id's.
+  - **Gegevensbestand (.json)** naar keuze, met dezelfde naam (formaat `baasoverbuiten-registratie/1`).
+- **Instellingen → Rapporten** (projectbeheerders):
+  - **Algemeen:** organisatie en logo in de kop, accentkleur, voettekst, bestandsnaam, paginanummers,
+    rapportdatum, JSON meeleveren.
+  - **Per soort registratie:**
+    - de titel van het rapport;
+    - blokken aan of uit, volgorde met ↑ ↓, een eigen titel per blok;
+    - eigen **tekstblokken**, bijv. voorwaarden of een disclaimer;
+    - opties: fotogrootte (1 tot 4 per rij), onderschrift, GIS-kenmerken bij het object, kostenraming tonen,
+      welke handtekeningvakken.
+  - **Voorbeeld-PDF** maakt een rapport van de laatste registratie van die soort, met de instellingen zoals ze op
+    het scherm staan.
+  - De instellingen worden in het project bewaard (`project.rapporten`) en gelden voor iedereen.
+
 ## Kaart op de telefoon: teller bij meerdere werkpakketten
 
 Staan er op één object meerdere werkpakketten open, dan toont de kaart een teller (bijv. **2**). Zo ziet de inspecteur

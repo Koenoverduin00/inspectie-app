@@ -40,6 +40,7 @@ import * as PV from './planningversie.js';
 import * as GR from './groepering.js';
 import * as OT from './objecttabel.js';
 import * as SC from './scope.js';
+import * as RP from './rapport.js';
 import * as IMP from './gisimport.js';
 import * as ST from './stowa.js';
 import * as DG from './digigids.js';
@@ -151,17 +152,18 @@ const ROUTES = [
   [/^\/bibliotheek\/([^/]+)\/vragen$/, 'bibliotheek', (id, q) => formulierveldenPagina(id, q)],
   [/^\/bibliotheek\/([^/]+)$/, 'bibliotheek', (id) => inspectietypeEditor(id, { bibliotheek: true })],
   [/^\/inrichting$/, 'inrichting', inrichtingPagina],
+  [/^\/rapporten$/, 'rapporten', rapportenPagina],
   [/^\/inbox$/, 'inbox', inboxPagina],
 ];
 
 // Het hoofdmenu is compact: onderdelen vallen onder een hoofdgroep en hebben daar een tabblad.
-const NAV_GROEP = { inspecties: 'werkpakketten', werkzaamheden: 'werkpakketten', maatregelen: 'werkpakketten', taken: 'planning', kaart: 'instellingen', personen: 'instellingen', decompositie: 'instellingen', eisen: 'instellingen', inspectietypen: 'instellingen', bibliotheek: 'instellingen', toewijzen: 'werkpakketten' };
+const NAV_GROEP = { inspecties: 'werkpakketten', werkzaamheden: 'werkpakketten', maatregelen: 'werkpakketten', taken: 'planning', kaart: 'instellingen', personen: 'instellingen', decompositie: 'instellingen', eisen: 'instellingen', inspectietypen: 'instellingen', bibliotheek: 'instellingen', rapporten: 'instellingen', toewijzen: 'werkpakketten' };
 const TABBLADEN = {
   werkpakketten: () => [['#/werkpakketten', I.pakket + ' Werkpakketten'], ['#/inspecties', I.inspectie + ' Inspecties'], ['#/werkzaamheden', I.werk + ' Werkzaamheden'], ['#/maatregelen', I.let + ' Maatregelen'], ...(magBeheren() ? [['#/toewijzen', I.personen + ' Toewijzen']] : [])],
-  instellingen: () => (magBeheren() ? [['#/instellingen', I.instellingen + ' Algemeen'], ['#/personen', I.personen + ' Personen'], ['#/kaart', I.kaart + ' Kaart & GIS'], ['#/inspectietypen', I.inspectie + ' Inspectietypen'], ['#/bibliotheek', I.lijst + ' Bibliotheek'], ['#/decompositie', I.lagen + ' Decompositie'], ['#/eisen', I.taak + ' Eisen']] : []),
+  instellingen: () => (magBeheren() ? [['#/instellingen', I.instellingen + ' Algemeen'], ['#/personen', I.personen + ' Personen'], ['#/kaart', I.kaart + ' Kaart & GIS'], ['#/inspectietypen', I.inspectie + ' Inspectietypen'], ['#/bibliotheek', I.lijst + ' Bibliotheek'], ['#/decompositie', I.lagen + ' Decompositie'], ['#/eisen', I.taak + ' Eisen'], ['#/rapporten', I.bestand + ' Rapporten']] : []),
 };
 // Alleen de overzichtspagina's krijgen tabbladen (geen formulieren of details).
-const TAB_PAGINAS = /^\/(werkpakketten|inspecties|werkzaamheden|maatregelen|toewijzen|instellingen|personen|bedrijven|kaart|decompositie|inspectietypen|bibliotheek|eisen)$/;
+const TAB_PAGINAS = /^\/(werkpakketten|inspecties|werkzaamheden|maatregelen|toewijzen|instellingen|personen|bedrijven|kaart|decompositie|inspectietypen|bibliotheek|eisen|rapporten)$/;
 
 function tabbalk(pad, groep) {
   const tabs = TABBLADEN[groep]?.() ?? [];
@@ -4176,6 +4178,513 @@ async function objectenLijst() {
 }
 
 // ---------------------------------------------------------------------------
+// Rapporten als PDF (zie rapport.js): elke registratie als net PDF-bestand, op te maken per project
+// ---------------------------------------------------------------------------
+let pdfLaden = null;
+function laadPdfMake() {
+  if (globalThis.pdfMake?.vfs) return Promise.resolve(globalThis.pdfMake);
+  const script = (src) => new Promise((ok, fout) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = ok;
+    s.onerror = () => fout(new Error('De PDF-module kon niet worden geladen. Controleer de verbinding en probeer het opnieuw.'));
+    document.head.append(s);
+  });
+  pdfLaden ??= script('vendor/pdfmake/pdfmake.min.js').then(() => script('vendor/pdfmake/vfs_fonts.js')).then(() => globalThis.pdfMake)
+    .catch((e) => { pdfLaden = null; throw e; });
+  return pdfLaden;
+}
+
+/** Platte tekst uit een stukje HTML (labels en chips van de app). */
+const platteTekst = (html) => { const el = document.createElement('div'); el.innerHTML = String(html ?? '').replace(/<br\s*\/?>/gi, ' · '); return el.textContent.replace(/\s+/g, ' ').replace(/^ · | · $/g, '').trim(); };
+
+/** Foto verkleinen en omzetten naar JPEG (pdfmake kent geen WebP; zo blijft het bestand ook klein). */
+async function pdfAfbeelding(data, max = 1400) {
+  if (!/^data:image\//.test(String(data ?? ''))) return null;
+  try {
+    const img = new Image();
+    img.src = data;
+    await img.decode();
+    const f = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(img.naturalWidth * f));
+    c.height = Math.max(1, Math.round(img.naturalHeight * f));
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(img, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', 0.82);
+  } catch {
+    return null;
+  }
+}
+
+async function pdfFotos(ids, { max = 1400 } = {}) {
+  const fotos = await laadFotos(ids ?? []);
+  const uit = [];
+  for (const f of fotos) {
+    const data = await pdfAfbeelding(f.data, max);
+    if (data) uit.push({ data, onderschrift: platteTekst(fotoOnderschrift(f.info ?? FOTO_INFO.get(f.id), { kort: true })) });
+  }
+  return uit;
+}
+
+function pdfObject(o, lagen = []) {
+  if (!o) return null;
+  const dIdx = decompIndex();
+  const knoop = dIdx && o.decomp ? dIdx.perId.get(o.decomp) : null;
+  return {
+    velden: [['Objectcode', o.code], ['Naam', o.naam], ['Type', o.type], ['Materiaal', o.materiaal], ['Bouwjaar', o.bouwjaar], ['Locatie', o.locatie],
+      ['Beheerder', o.beheerder], ['Laag', lagen.find((l) => l.id === o.laagId)?.naam], ['Decompositie', knoop ? D.padTekst(dIdx, knoop.id) : '']].filter(([, v]) => v !== '' && v != null),
+    gis: OT.gisKolommen([o], lagen).map((k) => [k, OT.kenmerkTekst(o, k)]),
+  };
+}
+
+function pdfLocatie(o, extra = null) {
+  const geo = o ? objectGeometrie(o) : null;
+  const c = extra ?? (geo ? gis.middelpunt(geo) : null);
+  if (!c) return null;
+  const rd = BV.wgs84NaarRd(c[0], c[1]);
+  return { wgs: `${c[1].toFixed(6)}, ${c[0].toFixed(6)}`, rd: `X ${rd[0].toFixed(1)} · Y ${rd[1].toFixed(1)}`, omschrijving: o?.locatie ?? '',
+    link: `https://www.google.com/maps/search/?api=1&query=${c[1].toFixed(6)},${c[0].toFixed(6)}` };
+}
+
+/** Extra formuliervelden: tekstregels, foto's per veld en digitale handtekeningen. */
+async function pdfExtra(record, formulier) {
+  const p = await actiefProject();
+  const regels = extraWeergave(record, (p?.velden ?? []).filter((d) => d.formulier === formulier));
+  const velden2 = regels.filter(({ d }) => !['foto', 'bijlage', 'handtekening'].includes(d.type)).map(({ d, v }) => [d.label, velden.toonWaarde(d, v, datumNL)]);
+  for (const { d, v } of regels.filter((x) => x.d.type === 'bijlage')) velden2.push([d.label, (v ?? []).map((b) => b.naam).join(', ')]);
+  const fotos = [];
+  for (const { d, v } of regels.filter((x) => x.d.type === 'foto')) fotos.push({ titel: d.label, items: await pdfFotos(v) });
+  const handtekeningen = [];
+  for (const { d, v } of regels.filter((x) => x.d.type === 'handtekening')) {
+    const f = v?.foto ? (await laadFotos([v.foto]))[0] : null;
+    handtekeningen.push({ label: d.label, naam: velden.toonWaarde(d, v, datumNL), data: f ? await pdfAfbeelding(f.data, 600) : null });
+  }
+  return { velden: velden2, fotos, handtekeningen };
+}
+
+/** Secties uit een stuk HTML (de detailweergave van BVC en waterkering): koppen, gegevenslijsten, tabellen en foto's. */
+async function pdfSectiesUitHtml(html) {
+  const el = document.createElement('div');
+  el.innerHTML = html;
+  // Kaart en locatieregel staan al in het blok Locatie; knoppen en formulieren horen niet in een rapport.
+  el.querySelectorAll('script, style, button, form, .geen-print, [id="objectkaartje"], .objectkaartje, .rapport-kaart, .locatieregel, .mlegenda').forEach((x) => x.remove());
+  const fotos = [];
+  for (const img of [...el.querySelectorAll('img')]) {
+    const data = await pdfAfbeelding(img.getAttribute('src'));
+    const fig = img.closest('figure, .foto');
+    if (data && !img.classList.contains('ht-weergave')) fotos.push({ data, onderschrift: platteTekst(fig?.querySelector('.fotoinfo')?.innerHTML ?? fig?.querySelector('figcaption')?.innerHTML ?? '') });
+    (fig ?? img).remove();
+  }
+  const secties = [];
+  let huidig = null;
+  const nieuw = (titel) => { huidig = { titel, velden: [], tabel: null, tekst: '' }; secties.push(huidig); };
+  const txt = (n) => (n?.textContent ?? '').replace(/\s+/g, ' ').trim();
+  const loop = (node) => {
+    for (const c of node.children) {
+      if (/^H[1-4]$/.test(c.tagName)) { nieuw(txt(c)); continue; }
+      if (c.tagName === 'DL') {
+        if (!huidig) nieuw('');
+        for (const dt of c.querySelectorAll(':scope > dt')) huidig.velden.push([txt(dt), txt(dt.nextElementSibling)]);
+        continue;
+      }
+      if (c.tagName === 'TABLE') {
+        if (!huidig) nieuw('');
+        const kolommen = [...c.querySelectorAll('thead th')].map(txt);
+        const rijen = [...c.querySelectorAll('tbody tr')].map((tr) => [...tr.children].map(txt));
+        if (!kolommen.length && rijen.every((r) => r.length === 2)) huidig.velden.push(...rijen);
+        else if (rijen.length) {
+          if (huidig.tabel) nieuw(huidig.titel);
+          huidig.tabel = { kolommen: kolommen.length ? kolommen : rijen[0].map(() => ''), rijen };
+        }
+        continue;
+      }
+      if (c.querySelector(':scope > .kenmerk')) {
+        // Rij kenmerken (label + waarde), bijv. bij een gebrek of maatregel.
+        if (!huidig) nieuw('');
+        for (const k of c.querySelectorAll(':scope > .kenmerk')) { const l = txt(k.querySelector('small')); huidig.velden.push([l, txt(k).slice(l.length).trim()]); }
+        continue;
+      }
+      if (c.tagName === 'P' && !c.querySelector('dl, table, h2, h3')) {
+        const t = txt(c);
+        if (t) { if (!huidig) nieuw(''); huidig.tekst = huidig.tekst ? `${huidig.tekst}\n${t}` : t; }
+        continue;
+      }
+      if (c.classList.contains('kenmerk')) {
+        if (!huidig) nieuw('');
+        huidig.velden.push([txt(c.querySelector('small')), txt(c).replace(txt(c.querySelector('small')), '').trim()]);
+        continue;
+      }
+      loop(c);
+    }
+  };
+  loop(el);
+  // Zonder kop en alleen een korte tekst (bijv. "1 gebrek · 1 maatregel"): geen eigen blok.
+  return { secties: secties.filter((s) => s.velden.length || s.tabel || (s.tekst && s.titel)), fotos };
+}
+
+const pdfBeoordeling = (r) => {
+  if (!r?.beoordeling) return null;
+  const st = beoordelingVan(r);
+  return { status: BEOORDELING[st]?.label ?? st, door: r.beoordeling.door ?? r.beoordeling.ingediendDoor ?? '', op: r.beoordeling.op ? datumNL(String(r.beoordeling.op).slice(0, 10)) : '', reden: r.beoordeling.opmerking ?? '' };
+};
+
+/**
+ * Alle gegevens van één registratie in de vorm die rapport.js verwacht.
+ * @param {'werk'|'inspectie'|'bvc'|'stowa'|'vrijgave'} soort
+ */
+async function rapportGegevens(soort, id) {
+  const project = await actiefProject();
+  const [lagen, pakketten] = await Promise.all([inProject('lagen'), inProject('werkpakketten')]);
+  const pakketTekst = (r) => {
+    const p = pakketten.find((x) => x.id === r.werkpakketId);
+    if (!p) return '';
+    const ro = rondesVan(p).find((x) => x.id === (r.rondeId || STANDAARD_RONDE));
+    return `${platteTekst(metCode(p))}${p.rondes?.length > 1 && ro ? ` · R${ro.nummer} ${ro.naam}` : ''}`;
+  };
+  const basis = { soort, project: { naam: project.naam, opdrachtgever: project.opdrachtgever ?? '' } };
+  const systeem = (r, o, extra = []) => [['Registratie-id', r.id], ['Soort registratie', RP.SOORTEN[soort].label], ['Project', project.naam], ['Project-id', project.id],
+    ['Object-id', o?.id ?? ''], ['Objectcode', o?.code ?? ''], ...extra, ['Werkpakket-id', r.werkpakketId ?? ''], ['Ronde-id', r.rondeId ?? ''],
+    ['Aangemaakt', r.aangemaakt ?? ''], ['Laatst gewijzigd', r.gewijzigd ?? '']].filter(([, v]) => v !== '' && v != null);
+
+  if (soort === 'werk') {
+    const w = await db.haal('werkzaamheden', id);
+    if (!w) throw new Error('Werkzaamheid niet gevonden.');
+    const o = await db.haal('objecten', w.objectId);
+    const extra = await pdfExtra(w, 'werk');
+    const voor = new Set(w.fotoIdsVoor ?? []);
+    const vIds = (w.fotoIds ?? []).filter((x) => voor.has(x));
+    const nIds = (w.fotoIds ?? []).filter((x) => !voor.has(x));
+    const gekoppeld = await gekoppeldeMaatregelen(w);
+    const inzet = w.inzet?.length ? IZ.totalen(w.inzet) : null;
+    return {
+      d: {
+        ...basis, titel: 'Werkregistratie', ondertitel: `${w.soort || 'Werkzaamheid'} · ${o ? `${o.code} ${o.naam}` : ''}`.trim(), uitvoerder: w.uitvoerder,
+        object: pdfObject(o, lagen), status: WERKSTATUS[w.status] ?? 'Gereed',
+        oordeel: w.gereed === false ? { titel: 'Uitvoering', label: 'Gedeeltelijk gedaan', kleur: '#e8a33d' } : null,
+        registratie: [['Soort werk', w.soort], ['Startdatum', datumNL(w.datum)], ['Einddatum', datumNL(w.eindDatum || w.datum)], ['Uitvoerder', w.uitvoerder],
+          ['Werkpakket', pakketTekst(w)], ...(toonUren() ? [['Uren', inzet ? `${String(inzet.totaal).replace('.', ',')} u` : urenTekst(w.uren)]] : []), ['Materiaal', w.materiaal],
+          ...(w.gereed === false ? [['Gedeeltelijk', w.deel || 'nog niet volledig klaar']] : []),
+          ...(w.storing ? [['Storing', [w.storing.type, STORING_RESULTAAT[w.storing.resultaat]?.label].filter(Boolean).join(' – ')], ['Referentie', w.storing.referentie], ['Melding', w.storing.melding]] : []),
+        ].filter(([, v]) => v !== '' && v != null),
+        omschrijving: [{ titel: 'Omschrijving', tekst: w.omschrijving || '–' }, ...(w.status === 'vervolg' ? [{ titel: 'Vervolg nodig', tekst: w.vervolg || '–' }] : []),
+          ...(gekoppeld.length ? [{ titel: 'Afgehandelde maatregelen', tekst: gekoppeld.map(({ gebrek: g }) => `• ${g.bouwdeel} – ${g.gebrek}: ${g.maatregel || '–'}`).join('\n') }] : [])],
+        velden: extra.velden,
+        fotos: [...(vIds.length ? [{ titel: "Foto's vóór", items: await pdfFotos(vIds) }] : []), ...(nIds.length ? [{ titel: vIds.length ? "Foto's ná" : "Foto's", items: await pdfFotos(nIds) }] : []), ...extra.fotos],
+        handtekeningen: extra.handtekeningen, locatie: pdfLocatie(o), beoordeling: pdfBeoordeling(w), systeem: systeem(w, o),
+        meta: { object: o?.code ?? '', kenmerk: String(w.id).slice(0, 8), onderwerp: `${w.soort || 'Werkzaamheid'} ${o?.code ?? ''} ${w.datum ?? ''}`, trefwoorden: [project.naam, o?.code, w.soort, w.datum, pakketTekst(w)] },
+      },
+      naam: { project: project.code || project.naam, object: o?.code ?? '', soort: 'Werkregistratie', datum: w.datum, id: String(w.id).slice(0, 8), uitvoerder: w.uitvoerder },
+    };
+  }
+
+  if (soort === 'vrijgave') {
+    const v = await db.haal('vrijgaven', id);
+    if (!v) throw new Error('Vrijgave niet gevonden.');
+    const objecten = await inProject('objecten');
+    const om = new Map(objecten.map((o) => [o.id, o]));
+    const besluit = eco.BESLUIT[v.besluit];
+    const controleTekst = { ja: 'Ja', nee: 'Nee', nvt: 'N.v.t.' };
+    const extra = await pdfExtra(v, 'vrijgave');
+    const eerste = om.get(v.objectIds?.[0]);
+    const wFotos = [];
+    for (const w of v.waarnemingen ?? []) if (w.fotoIds?.length) wFotos.push(...(await pdfFotos(w.fotoIds)).map((f) => ({ ...f, onderschrift: `${w.soort || w.soortgroep}${f.onderschrift ? ` · ${f.onderschrift}` : ''}` })));
+    return {
+      d: {
+        ...basis, titel: 'Flora- en fauna-vrijgave', ondertitel: [v.werkzaamheid, v.activiteit].filter(Boolean).join(' · '), uitvoerder: v.deskundige,
+        oordeel: { titel: 'Besluit', label: besluit?.label ?? 'Nog geen besluit', kleur: besluit?.kleur ?? '#8a96a3' },
+        status: v.status === 'afgerond' ? 'Vastgelegd' : 'Concept',
+        kernTekst: v.voorwaarden ? { titel: 'Voorwaarden', tekst: v.voorwaarden } : null,
+        registratie: [['Datum veldcheck', `${datumNL(v.datum)} ${v.starttijd || ''}${v.eindtijd ? `–${v.eindtijd}` : ''}`], ['Geldig t/m', datumNL(v.geldigTot)],
+          ['Deskundige', [v.deskundige, v.organisatie].filter(Boolean).join(' · ')], ['Deskundigheid', eco.DESKUNDIGHEID[v.deskundigheid] ?? ''], ['Weer', [v.weer, v.temperatuur !== '' && v.temperatuur != null ? `${v.temperatuur} °C` : ''].filter(Boolean).join(' · ')],
+          ['Ecologische begeleiding', v.begeleiding ? `Ja${v.begeleidingToelichting ? `: ${v.begeleidingToelichting}` : ''}` : 'Nee']].filter(([, x]) => x),
+        inhoud: [
+          { titel: 'Gebied en werkzaamheden', velden: [['Objecten', (v.objectIds ?? []).map((x) => { const o = om.get(x); return o ? `${o.code} ${o.naam}` : ''; }).filter(Boolean).join(', ')], ['Werkzaamheden', v.werkzaamheid], ['Activiteit', v.activiteit],
+            ['Uitvoering', `${datumNL(v.uitvoeringVan)} – ${datumNL(v.uitvoeringTot)}`], ['Route', v.routeGedragscode ? `Gedragscode · EWP ${v.ewpKenmerk || '–'}` : 'Zorgplicht'], ['NDFF', v.ndff ? 'Wordt doorgegeven' : '–'], ['Verklaring', v.verklaring ? 'Afgegeven' : '–']] },
+          { titel: 'Controles', velden: eco.CONTROLES.map((c) => [c.tekst, controleTekst[v.controles?.[c.id]] ?? '–']) },
+          { titel: 'Waarnemingen', ...(v.waarnemingen?.length ? { tabel: { kolommen: ['Groep', 'Soort', 'Waarneming', 'Bescherming', 'Afstand', 'Toelichting'],
+            rijen: v.waarnemingen.map((w) => [w.soortgroep, `${w.soort}${w.aantal ? ` (${w.aantal})` : ''}`, w.type, w.bescherming || '–', w.afstand ? `${w.afstand} m${w.gemarkeerd ? ' · gemarkeerd' : ''}` : '–', w.toelichting || '']) } }
+            : { tekst: 'Geen beschermde soorten of broedgevallen aangetroffen.' }) },
+          ...((v.logboek ?? []).length ? [{ titel: 'Logboek', tabel: { kolommen: ['Datum', 'Door', 'Soort', 'Omschrijving'], rijen: v.logboek.map((l) => [`${datumNL(l.datum)} ${l.tijd ?? ''}`, l.door ?? '', l.soort, l.tekst]) } }] : []),
+        ],
+        velden: extra.velden,
+        fotos: [{ titel: "Foto's", items: await pdfFotos(v.fotoIds) }, { titel: 'Waarnemingen', items: wFotos }, ...extra.fotos],
+        handtekeningen: extra.handtekeningen, locatie: pdfLocatie(eerste), systeem: systeem(v, eerste, [['Object-ids', (v.objectIds ?? []).join(', ')]]),
+        meta: { object: eerste?.code ?? '', kenmerk: String(v.id).slice(0, 8), onderwerp: `Flora- en fauna-vrijgave ${v.datum ?? ''}`, trefwoorden: [project.naam, v.werkzaamheid, besluit?.label, v.datum] },
+      },
+      naam: { project: project.code || project.naam, object: eerste?.code ?? '', soort: 'Vrijgave', datum: v.datum, id: String(v.id).slice(0, 8), uitvoerder: v.deskundige },
+    };
+  }
+
+  // Inspecties: NEN 2767 / schouw / eigen inspectietypen, BVC en waterkering.
+  const i = await db.haal('inspecties', id);
+  if (!i) throw new Error('Inspectie niet gevonden.');
+  const o = await db.haal('objecten', i.objectId);
+  const extra = await pdfExtra(i, 'inspectie');
+  const registratie = [['Datum', datumNL(i.datum)], ['Soort', i.bvc ? 'Boomveiligheidscontrole' : i.stowa ? 'Inspectie waterkering' : i.soort], [i.bvc ? 'Controleur' : 'Inspecteur', i.inspecteur],
+    ['Weer', i.weer], ['Werkpakket', pakketTekst(i)], ['Status', i.status === 'afgerond' ? 'Afgerond' : 'Concept'],
+    ...(!i.bvc && !i.stowa && o ? [['Volgende inspectie', datumNL(volgendeInspectie(i.datum, o.inspectieInterval))]] : [])].filter(([, v]) => v !== '' && v != null);
+  const gemeen = { ...basis, uitvoerder: i.inspecteur, object: pdfObject(o, lagen), status: i.status === 'afgerond' ? 'Afgerond' : 'Concept', registratie,
+    velden: extra.velden, handtekeningen: extra.handtekeningen, locatie: pdfLocatie(o), beoordeling: pdfBeoordeling(i), systeem: systeem(i, o) };
+  const naam = (titel) => ({ project: project.code || project.naam, object: o?.code ?? '', soort: titel, datum: i.datum, id: String(i.id).slice(0, 8), uitvoerder: i.inspecteur });
+  const meta = (titel) => ({ object: o?.code ?? '', kenmerk: String(i.id).slice(0, 8), onderwerp: `${titel} ${o?.code ?? ''} ${i.datum ?? ''}`, trefwoorden: [project.naam, o?.code, i.soort, i.datum, pakketTekst(i)] });
+
+  if (i.bvc || i.stowa) {
+    const { secties, fotos } = await pdfSectiesUitHtml(i.bvc ? await bvcInhoud(i, o) : await stowaInhoud(i, o));
+    const titel = i.bvc ? 'Rapport boomveiligheidscontrole' : 'Inspectierapport waterkering';
+    const oordeel = i.bvc
+      ? (i.bvc.niet ? { titel: 'Boomveiligheidsklasse', label: 'Niet aangetroffen', kleur: '#9aa5b1' } : { titel: 'Boomveiligheidsklasse', label: BV.BVK[i.bvc.bvk]?.label ?? (i.bvc.bvk || 'Geen'), kleur: BV.BVK[i.bvc.bvk]?.kleur ?? '#8a96a3' })
+      : { titel: 'Zwaarste waarneming', label: platteTekst(inspectieOordeel(i)) || 'Geen', kleur: ST.URGENTIE[ST.zwaarste(i.stowa?.waarnemingen)]?.kleur ?? '#8a96a3' };
+    return {
+      d: { ...gemeen, titel, ondertitel: `${o ? `${o.code} ${o.naam}` : ''}`, oordeel, inhoud: secties, fotos: [{ titel: "Foto's", items: fotos }, ...extra.fotos],
+        voetnoot: i.bvc ? `Uitgevoerd volgens het Boomveiligheidsprotocol Rijkswaterstaat (2017); gegevens conform SUF-BVC. Werkwijze: ${i.bvc.methode || '–'}.${i.bvc.kwalificatie ? ` Controleur: ${i.bvc.kwalificatie}${i.bvc.certificaat ? `, certificaat ${i.bvc.certificaat}` : ''}.` : ''}` : '',
+        meta: meta(titel) },
+      naam: naam(i.bvc ? 'BVC' : 'Waterkering'),
+    };
+  }
+
+  const m = TY.methodiekVan(i);
+  const typeOordeel = TY.oordeelVan(i);
+  const score = inspectieScore(i);
+  const gebreken = i.gebreken ?? [];
+  const kosten = toonKosten();
+  const urgentie = (g) => URGENTIES.find((u) => u.id === g.urgentie)?.label ?? '–';
+  const bevindingen = m === 'nen'
+    ? { kolommen: ['#', 'Bouwdeel', 'Gebrek', 'E / I / O', 'Conditie', 'Urgentie', ...(kosten ? ['Raming'] : [])],
+      rijen: gebreken.map((g, n) => [String(n + 1), g.bouwdeel, g.gebrek, `${ERNST[g.ernst]?.label ?? '–'} / ${g.intensiteit ?? '–'} / ${g.omvang === '' || g.omvang == null ? '–' : `${g.omvang}%`}`,
+        { chip: `${gebrekScore(g)} · ${CONDITIES[gebrekScore(g)]?.label ?? ''}`, kleur: CONDITIES[gebrekScore(g)]?.kleur }, urgentie(g), ...(kosten ? [platteTekst(euro(g.kostenraming))] : [])]) }
+    : { kolommen: ['#', m === 'checklist' ? 'Controlepunt' : 'Onderdeel', ...(m === 'oordeel' ? ['Gebrek', 'Oordeel'] : []), 'Maatregel', 'Urgentie', ...(kosten ? ['Raming'] : [])],
+      rijen: gebreken.map((g, n) => [String(n + 1), g.bouwdeel, ...(m === 'oordeel' ? [g.gebrek, (() => { const x = TY.bevindingOordeel(i, g); return x ? { chip: x.label, kleur: x.kleur } : '–'; })()] : []),
+        g.maatregel || '–', urgentie(g), ...(kosten ? [platteTekst(euro(g.kostenraming))] : [])]) };
+  if (kosten) { bevindingen.kostenKolom = bevindingen.kolommen.length - 1; bevindingen.totaal = ['Totaal raming', platteTekst(euro(gebreken.reduce((t, g) => t + (Number(g.kostenraming) || 0), 0)))]; }
+  bevindingen.leeg = m === 'nen' ? 'Er zijn geen gebreken geconstateerd.' : 'Er zijn geen bevindingen.';
+  const details = [];
+  for (const g of gebreken) {
+    const chipG = m === 'nen' ? { label: `${gebrekScore(g)} · ${CONDITIES[gebrekScore(g)]?.label ?? ''}`, kleur: CONDITIES[gebrekScore(g)]?.kleur } : (() => { const x = TY.bevindingOordeel(i, g); return x ? { label: x.label, kleur: x.kleur } : null; })();
+    const loc = g.locatie?.lat ? `${Number(g.locatie.lat).toFixed(6)}, ${Number(g.locatie.lng).toFixed(6)}` : '';
+    details.push({
+      titel: [g.bouwdeel, g.gebrek].filter(Boolean).join(' – ') || 'Bevinding', chip: chipG,
+      velden: [...(m === 'nen' ? [['Ernst', ERNST[g.ernst]?.label], ['Intensiteit', g.intensiteit], ['Omvang', g.omvang === '' || g.omvang == null ? '' : `${g.omvang}%`]] : []),
+        ['Urgentie', urgentie(g)], ...(kosten ? [['Raming', platteTekst(euro(g.kostenraming))]] : []), ['Maatregel', g.maatregelStatus === 'uitgevoerd' ? 'Uitgevoerd' : g.maatregel || g.urgentie ? 'Open' : ''],
+        ['Plaats', [g.plaatsOmschrijving, loc].filter(Boolean).join(' · ')]].filter(([, v]) => v !== '' && v != null && v !== '–'),
+      teksten: [['Waarneming', g.toelichting || g.omschrijving || ''], ['Maatregel', g.maatregel || '']].filter(([, v]) => v),
+      fotos: await pdfFotos(g.fotoIds ?? (g.fotos ?? []).map((f) => f.id).filter(Boolean), { max: 900 }),
+    });
+  }
+  return {
+    d: {
+      ...gemeen, titel: 'Inspectierapport', ondertitel: `${o ? `${o.code} ${o.naam}` : ''} · ${i.soort || ''}`,
+      oordeel: typeOordeel ? { titel: 'Oordeel', label: typeOordeel.label, kleur: typeOordeel.kleur }
+        : D.perBouwdeel(i) ? { titel: 'Conditie per bouwdeel', label: platteTekst(verdelingLabel(i)) || '–', kleur: '#0b4f6c' }
+          : score ? { titel: 'Conditie', label: `${score} · ${CONDITIES[score].label}`, kleur: CONDITIES[score].kleur } : null,
+      omschrijving: i.samenvatting ? [{ titel: 'Samenvatting', tekst: i.samenvatting }] : [],
+      bevindingen, details, fotos: [{ titel: "Foto's", items: await pdfFotos(i.fotoIds) }, ...extra.fotos],
+      voetnoot: m === 'nen' ? 'Conditiescores volgens de systematiek van NEN 2767 (1 = uitstekend, 6 = zeer slecht). E / I / O = ernst / intensiteit / omvang.' : `Inspectie volgens het formulier "${i.type?.naam ?? i.soort ?? ''}".`,
+      meta: meta('Inspectierapport'),
+    },
+    naam: naam('Inspectierapport'),
+  };
+}
+
+const rapportSoortVan = (i) => (i?.bvc ? 'bvc' : i?.stowa ? 'stowa' : 'inspectie');
+
+/** PDF maken en downloaden of delen (op de telefoon via het deelmenu: mail, WhatsApp, Teams…). */
+async function exporteerRapport(soort, id, { delen = false } = {}) {
+  melding('PDF wordt gemaakt…');
+  try {
+    const [pdfMake, project, { d, naam }] = await Promise.all([laadPdfMake(), actiefProject(), rapportGegevens(soort, id)]);
+    const sj = RP.sjabloon(project.rapporten, soort);
+    // De titel uit de rapportinstellingen geldt ook voor de bestandsnaam, de metadata en het gegevensbestand.
+    d.titel = sj.titel;
+    naam.soort = sj.titel;
+    const def = RP.documentDefinitie(d, sj, { vandaag: vandaag(), datumNL });
+    const blob = await new Promise((ok) => pdfMake.createPdf(def).getBlob(ok));
+    const bestand = RP.bestandsnaam(sj.algemeen.bestandsnaam, naam);
+    const bestanden = [new File([blob], bestand, { type: 'application/pdf' })];
+    if (sj.algemeen.json) bestanden.push(new File([JSON.stringify(RP.gegevensJson(d, { gemaakt: new Date().toISOString() }), null, 2)], bestand.replace(/\.pdf$/, '.json'), { type: 'application/json' }));
+    if (delen && navigator.canShare?.({ files: bestanden })) {
+      try { await navigator.share({ files: bestanden, title: def.info.title }); } catch (e) { if (e?.name !== 'AbortError') throw e; }
+      return;
+    }
+    for (const f of bestanden) {
+      const url = URL.createObjectURL(f);
+      const a = document.createElement('a');
+      a.href = url; a.download = f.name;
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    }
+    melding(`${bestand} is gedownload`);
+  } catch (fout) {
+    console.error(fout);
+    melding(`PDF maken mislukt: ${fout.message}`, 'fout');
+  }
+}
+
+/** Knoppen "PDF" (en op de telefoon "Delen") voor een registratie. */
+const kanDelen = () => typeof navigator.share === 'function' && typeof navigator.canShare === 'function';
+const pdfKnoppen = (soort, id, { klein = false } = {}) => `<button type="button" class="knop${klein ? ' klein' : ''}" data-pdf="${esc(soort)}" data-pdf-id="${esc(id)}" title="Exporteren als PDF, bijv. voor de opdrachtgever">${I.bestand} PDF</button>${kanDelen() ? `<button type="button" class="knop${klein ? ' klein' : ''}" data-pdf="${esc(soort)}" data-pdf-id="${esc(id)}" data-pdf-delen title="PDF delen via mail, WhatsApp, Teams…">${I.extern} Delen</button>` : ''}`;
+document.addEventListener('click', (e) => {
+  const k = e.target.closest('[data-pdf]');
+  if (!k) return;
+  e.preventDefault();
+  e.stopPropagation();
+  exporteerRapport(k.dataset.pdf, k.dataset.pdfId, { delen: k.hasAttribute('data-pdf-delen') });
+});
+
+// --- Instellingen → Rapporten: per soort het rapport samenstellen -----------------------------------------
+async function rapportenPagina() {
+  const project = await actiefProject();
+  const beheer = magBeheren();
+  let werk = structuredClone(project.rapporten ?? {});
+  let soort = Object.keys(RP.SOORTEN).includes(instelling.lees('rapportSoort')) ? instelling.lees('rapportSoort') : 'werk';
+  let gewijzigd = false;
+  const sjVan = (s) => RP.sjabloon(werk, s);
+  const zetSoort = (s, sj) => { werk = { ...werk, soorten: { ...(werk.soorten ?? {}), [s]: { titel: sj.titel, blokken: sj.blokken } } }; gewijzigd = true; };
+  const zetAlgemeen = (a) => { werk = { ...werk, algemeen: { ...(werk.algemeen ?? {}), ...a } }; gewijzigd = true; };
+  // Voorbeeld: de laatste registratie van deze soort in het project.
+  const laatste = async (s) => {
+    const datum = (x) => String(x.gewijzigd || x.datum || '');
+    if (s === 'werk') return (await inProject('werkzaamheden')).sort((a, b) => datum(b).localeCompare(datum(a)))[0]?.id;
+    if (s === 'vrijgave') return (await inProject('vrijgaven')).sort((a, b) => datum(b).localeCompare(datum(a)))[0]?.id;
+    return (await inProject('inspecties')).filter((i) => rapportSoortVan(i) === s).sort((a, b) => datum(b).localeCompare(datum(a)))[0]?.id;
+  };
+  const teken = () => {
+    const sj = sjVan(soort);
+    const a = sj.algemeen;
+    const blokRij = (b, n) => {
+      const meta = RP.BLOKKEN[b.id];
+      const tekstblok = b.id.startsWith(RP.TEKSTBLOK);
+      return `<li class="rp-blok${b.aan ? '' : ' uit'}" data-n="${n}">
+        <label class="rp-aan" title="${b.aan ? 'Staat in het rapport' : 'Staat niet in het rapport'}"><input type="checkbox" data-rp="aan" ${b.aan ? 'checked' : ''} ${beheer ? '' : 'disabled'} aria-label="${esc(b.titel || meta?.titel || 'Blok')} in het rapport"></label>
+        <div class="rp-midden">
+          <input class="rp-titel" data-rp="titel" value="${esc(b.titel ?? '')}" placeholder="${esc(meta?.titel ?? 'Titel')}" aria-label="Titel van het blok" ${beheer ? '' : 'disabled'}>
+          <small>${tekstblok ? 'Eigen tekstblok' : esc(meta?.uitleg ?? '')}</small>
+          ${tekstblok ? `<textarea data-rp="tekst" rows="3" placeholder="Tekst, bijv. voorwaarden, disclaimer of toelichting voor de opdrachtgever" ${beheer ? '' : 'disabled'}>${esc(b.opties?.tekst ?? '')}</textarea>` : ''}
+          ${b.id === 'fotos' ? `<div class="rp-opties"><label>Grootte <select data-rp="grootte" ${beheer ? '' : 'disabled'}>${[['klein', '4 per rij'], ['middel', '3 per rij'], ['groot', '2 per rij'], ['heel', '1 per rij']].map(([k, l]) => optie(k, l, b.opties?.grootte ?? 'middel')).join('')}</select></label>
+            <label class="vink"><input type="checkbox" data-rp="onderschrift" ${b.opties?.onderschrift !== false ? 'checked' : ''} ${beheer ? '' : 'disabled'}><span>Datum en locatie onder de foto</span></label></div>` : ''}
+          ${b.id === 'object' ? `<div class="rp-opties"><label class="vink"><input type="checkbox" data-rp="gis" ${b.opties?.gis ? 'checked' : ''} ${beheer ? '' : 'disabled'}><span>Ook alle kenmerken uit het GIS-bestand</span></label></div>` : ''}
+          ${b.id === 'bevindingen' ? `<div class="rp-opties"><label class="vink"><input type="checkbox" data-rp="kosten" ${b.opties?.kosten !== false ? 'checked' : ''} ${beheer ? '' : 'disabled'}><span>Kostenraming tonen</span></label></div>` : ''}
+          ${b.id === 'handtekening' ? `<div class="rp-opties"><label>Vakken <input data-rp="vakken" value="${esc(b.opties?.vakken ?? '')}" placeholder="bijv. Uitvoerder, Opdrachtgever" ${beheer ? '' : 'disabled'}></label><small>Gescheiden door komma's. Een digitale handtekening uit het formulier komt er vanzelf bij.</small></div>` : ''}
+        </div>
+        ${beheer ? `<span class="rp-knoppen"><button type="button" class="knop klein" data-rp="op" aria-label="Omhoog" ${n === 0 ? 'disabled' : ''}>↑</button><button type="button" class="knop klein" data-rp="neer" aria-label="Omlaag" ${n === sj.blokken.length - 1 ? 'disabled' : ''}>↓</button>
+          ${tekstblok ? `<button type="button" class="knop klein gevaar" data-rp="weg" aria-label="Tekstblok verwijderen">${I.kruis}</button>` : ''}</span>` : ''}</li>`;
+    };
+    app.innerHTML = `${isMobiel() ? '' : tabbalk('/rapporten', 'instellingen')}
+      <div class="paginakop"><div><h1>Rapporten</h1><p>Stel per soort registratie samen wat er in de PDF staat. De PDF maak je bij elke registratie met de knop <strong>PDF</strong>; op de telefoon kun je hem ook direct delen.</p></div>
+        <div class="knoppen"><button type="button" class="knop" id="rp-voorbeeld">${I.bestand} Voorbeeld-PDF</button>${beheer ? `<button type="button" class="knop primair" id="rp-opslaan" ${gewijzigd ? '' : 'disabled'}>${I.vink} Opslaan</button>` : ''}</div></div>
+      ${beheer ? '' : '<p class="melding-info">Alleen projectbeheerders kunnen de rapporten aanpassen.</p>'}
+      <div class="rp-indeling">
+        <section class="kaart">
+          <h2>Algemeen <small class="zacht">(alle rapporten)</small></h2>
+          <div class="velden">
+            <div class="veld"><label for="rp-org">Organisatie in de kop</label><input id="rp-org" data-alg="organisatie" value="${esc(a.organisatie)}" placeholder="bijv. Groenbedrijf De Linde" ${beheer ? '' : 'disabled'}></div>
+            <div class="veld"><label for="rp-kleur">Accentkleur</label><input type="color" id="rp-kleur" data-alg="kleur" value="${esc(a.kleur)}" ${beheer ? '' : 'disabled'}></div>
+            <div class="veld breed"><label>Logo</label><div class="rp-logo">${a.logo ? `<img src="${esc(a.logo)}" alt="Logo">` : '<span class="zacht">Geen logo</span>'}
+              ${beheer ? `<label class="knop klein">${I.bestand} Kiezen<input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" id="rp-logo" hidden></label>${a.logo ? '<button type="button" class="knop klein" id="rp-logo-weg">Weghalen</button>' : ''}` : ''}</div></div>
+            <div class="veld breed"><label for="rp-voet">Voettekst</label><input id="rp-voet" data-alg="voettekst" value="${esc(a.voettekst)}" placeholder="bijv. Contract 2026-014 · Vertrouwelijk" ${beheer ? '' : 'disabled'}></div>
+            <div class="veld breed"><label for="rp-naam">Bestandsnaam</label><input id="rp-naam" data-alg="bestandsnaam" value="${esc(a.bestandsnaam)}" ${beheer ? '' : 'disabled'}>
+              <small>Met {project}, {object}, {soort}, {datum}, {uitvoerder} en {id}. Voorbeeld: <strong id="rp-naamvb"></strong></small></div>
+            <div class="veld breed rp-vinkjes">
+              <label class="vink"><input type="checkbox" data-alg="paginanummers" ${a.paginanummers !== false ? 'checked' : ''} ${beheer ? '' : 'disabled'}><span>Paginanummers</span></label>
+              <label class="vink"><input type="checkbox" data-alg="rapportdatum" ${a.rapportdatum !== false ? 'checked' : ''} ${beheer ? '' : 'disabled'}><span>Rapportdatum rechtsboven</span></label>
+              <label class="vink"><input type="checkbox" data-alg="json" ${a.json ? 'checked' : ''} ${beheer ? '' : 'disabled'}><span>Ook een gegevensbestand (.json) meeleveren
+                <small>Met dezelfde naam als de PDF, met alle gegevens en kenmerken, om in het systeem van de opdrachtgever in te lezen.</small></span></label></div>
+          </div>
+        </section>
+        <section class="kaart">
+          <div class="chips rp-soorten" role="radiogroup" aria-label="Soort registratie">${Object.entries(RP.SOORTEN).map(([k, x]) => `<label class="chip"><input type="radio" name="rp-soort" value="${k}" ${k === soort ? 'checked' : ''}><span>${esc(x.label)}</span></label>`).join('')}</div>
+          <div class="veld" style="margin-top:.75rem"><label for="rp-titel">Titel van het rapport</label><input id="rp-titel" value="${esc(sj.titel)}" ${beheer ? '' : 'disabled'}></div>
+          <h3>Blokken <small class="zacht">aanvinken = in het rapport; volgorde met ↑ ↓</small></h3>
+          <ol class="rp-blokken">${sj.blokken.map(blokRij).join('')}</ol>
+          ${beheer ? `<div class="knoppen"><button type="button" class="knop" id="rp-tekst">＋ Tekstblok</button><button type="button" class="knop" id="rp-herstel">Standaard herstellen</button></div>` : ''}
+        </section>
+      </div>`;
+    const naamVb = () => { const x = sjVan(soort); app.querySelector('#rp-naamvb').textContent = RP.bestandsnaam(x.algemeen.bestandsnaam, { project: project.code || project.naam, object: 'KW-001', soort: x.titel.split(' ')[0], datum: vandaag(), id: 'a1b2c3d4', uitvoerder: 'J. Jansen' }); };
+    naamVb();
+    const knopOpslaan = () => { const k = app.querySelector('#rp-opslaan'); if (k) k.disabled = !gewijzigd; formulierGewijzigd = gewijzigd; };
+    const blokken = () => sjVan(soort).blokken;
+    const werkBlok = (n, f) => { const sj2 = sjVan(soort); const bl = sj2.blokken.map((b, i) => (i === n ? f(b) : b)); zetSoort(soort, { ...sj2, blokken: bl }); knopOpslaan(); };
+    app.querySelectorAll('input[name=rp-soort]').forEach((r) => r.addEventListener('change', () => { soort = r.value; instelling.schrijf('rapportSoort', soort); teken(); }));
+    app.querySelector('#rp-titel').addEventListener('input', (e) => { const sj2 = sjVan(soort); zetSoort(soort, { ...sj2, titel: e.target.value }); knopOpslaan(); });
+    app.querySelectorAll('[data-alg]').forEach((x) => x.addEventListener(x.type === 'checkbox' || x.type === 'color' ? 'change' : 'input', () => {
+      zetAlgemeen({ [x.dataset.alg]: x.type === 'checkbox' ? x.checked : x.value }); knopOpslaan(); if (x.dataset.alg === 'bestandsnaam') naamVb();
+    }));
+    const lijst = app.querySelector('.rp-blokken');
+    lijst.addEventListener('input', (e) => {
+      const n = Number(e.target.closest('[data-n]')?.dataset.n);
+      const k = e.target.dataset.rp;
+      if (k === 'titel') werkBlok(n, (b) => ({ ...b, titel: e.target.value }));
+      if (k === 'tekst' || k === 'vakken') werkBlok(n, (b) => ({ ...b, opties: { ...(b.opties ?? {}), [k]: e.target.value } }));
+    });
+    lijst.addEventListener('change', (e) => {
+      const n = Number(e.target.closest('[data-n]')?.dataset.n);
+      const k = e.target.dataset.rp;
+      if (k === 'aan') { werkBlok(n, (b) => ({ ...b, aan: e.target.checked })); e.target.closest('li').classList.toggle('uit', !e.target.checked); }
+      if (['onderschrift', 'gis', 'kosten'].includes(k)) werkBlok(n, (b) => ({ ...b, opties: { ...(b.opties ?? {}), [k]: e.target.checked } }));
+      if (k === 'grootte') werkBlok(n, (b) => ({ ...b, opties: { ...(b.opties ?? {}), grootte: e.target.value } }));
+    });
+    lijst.addEventListener('click', (e) => {
+      const k = e.target.closest('button[data-rp]');
+      if (!k) return;
+      const n = Number(k.closest('[data-n]').dataset.n);
+      const sj2 = sjVan(soort);
+      const bl = [...sj2.blokken];
+      if (k.dataset.rp === 'op' && n > 0) [bl[n - 1], bl[n]] = [bl[n], bl[n - 1]];
+      if (k.dataset.rp === 'neer' && n < bl.length - 1) [bl[n + 1], bl[n]] = [bl[n], bl[n + 1]];
+      if (k.dataset.rp === 'weg') bl.splice(n, 1);
+      zetSoort(soort, { ...sj2, blokken: bl });
+      teken();
+    });
+    app.querySelector('#rp-tekst')?.addEventListener('click', () => {
+      const sj2 = sjVan(soort);
+      zetSoort(soort, { ...sj2, blokken: [...sj2.blokken, { id: `${RP.TEKSTBLOK}${nieuwId().slice(0, 8)}`, aan: true, titel: 'Toelichting', opties: { tekst: '' } }] });
+      teken();
+      app.querySelector('.rp-blok:last-child textarea')?.focus();
+    });
+    app.querySelector('#rp-herstel')?.addEventListener('click', () => {
+      if (!confirm(`De blokken van "${RP.SOORTEN[soort].label}" terugzetten naar de standaard? Eigen tekstblokken vervallen.`)) return;
+      const soorten = { ...(werk.soorten ?? {}) };
+      delete soorten[soort];
+      werk = { ...werk, soorten };
+      gewijzigd = true;
+      teken();
+    });
+    app.querySelector('#rp-logo')?.addEventListener('change', async (e) => {
+      const f = e.target.files?.[0];
+      if (!f) return;
+      if (f.size > 2 * 1024 * 1024) return melding('Kies een logo van maximaal 2 MB.', 'fout');
+      const ruw = await new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(r.result); r.readAsDataURL(f); });
+      // Logo klein houden (wordt op elke pagina gebruikt): maximaal 600 px breed, als PNG met witte achtergrond.
+      const img = new Image(); img.src = ruw;
+      try { await img.decode(); } catch { return melding('Dit bestand kan niet als logo worden gebruikt.', 'fout'); }
+      const fct = Math.min(1, 600 / img.naturalWidth);
+      const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * fct) || 300; c.height = Math.round(img.naturalHeight * fct) || 100;
+      const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(img, 0, 0, c.width, c.height);
+      zetAlgemeen({ logo: c.toDataURL('image/png') });
+      teken();
+    });
+    app.querySelector('#rp-logo-weg')?.addEventListener('click', () => { zetAlgemeen({ logo: '' }); teken(); });
+    app.querySelector('#rp-opslaan')?.addEventListener('click', async () => {
+      await bewaarActiefProject(() => ({ rapporten: werk }));
+      gewijzigd = false; formulierGewijzigd = false;
+      melding('Rapportinstellingen opgeslagen');
+      teken();
+    });
+    app.querySelector('#rp-voorbeeld').addEventListener('click', async () => {
+      const id = await laatste(soort);
+      if (!id) return melding(`Er is in dit project nog geen ${RP.SOORTEN[soort].label.toLowerCase()} om een voorbeeld van te maken.`, 'fout');
+      // Voorbeeld met de instellingen zoals ze nu op het scherm staan (ook als ze nog niet zijn opgeslagen).
+      const echt = project.rapporten;
+      project.rapporten = werk;
+      try { await exporteerRapport(soort, id); } finally { project.rapporten = echt; }
+    });
+  };
+  teken();
+}
+
+// ---------------------------------------------------------------------------
 // Scope van het contract: objecten uit scope halen (zie scope.js)
 // ---------------------------------------------------------------------------
 function scopeChip(o) {
@@ -5773,6 +6282,7 @@ async function inspectieDetail(id) {
       <div><p><a href="${o ? `#/objecten/${esc(o.id)}` : '#/inspecties'}">← ${o ? esc(o.code) : 'Inspecties'}</a></p>
         <h1>${esc(i.soort)} · ${datumNL(i.datum)}</h1><p>${objectNaam(o)}${o?.type ? ` · ${esc(o.type)}` : ''}</p></div>
       <div class="knoppen">
+        ${pdfKnoppen(rapportSoortVan(i), id)}
         <a class="knop" href="#/inspecties/${esc(id)}/rapport">Rapport</a>
         ${magInspectieAanpassen(i) ? `<a class="knop" href="#/inspecties/${esc(id)}/bewerken">Bewerken</a>` : alleenLezenLabel(i)}
         ${magInspectieVerwijderen(i) ? '<button class="knop gevaar" id="verwijder">Verwijderen</button>' : ''}
@@ -5848,7 +6358,7 @@ async function inspectieRapport(id) {
   app.innerHTML = `
     <div class="paginakop geen-print">
       <p><a href="#/inspecties/${esc(id)}">← Terug naar inspectie</a></p>
-      <button class="knop primair" onclick="window.print()">Afdrukken / opslaan als PDF</button>
+      <div class="knoppen">${pdfKnoppen('inspectie', id)}<button class="knop" onclick="window.print()">Afdrukken</button></div>
     </div>
     <article class="rapport">
       <div class="rapport-kop">
@@ -7614,6 +8124,7 @@ async function werkDetail(id) {
       <div><p><a href="${o ? `#/objecten/${esc(o.id)}` : '#/werkzaamheden'}">← ${o ? esc(o.code) : 'Werkzaamheden'}</a></p>
         <h1>${esc(w.soort || 'Werkzaamheid')} · ${datumNL(w.datum)}</h1><p>${objectNaam(o)}</p></div>
       <div class="knoppen">
+        ${pdfKnoppen('werk', id)}
         <a class="knop" href="#/werkzaamheden/${esc(id)}/bewerken">Bewerken</a>
         <button class="knop gevaar" id="verwijder">Verwijderen</button>
       </div>
@@ -9014,14 +9525,14 @@ async function mijnRegistraties() {
   const pakketNaam = new Map(pakketten.map((p) => [p.id, metCode(p)]));
   const tijd = (r) => r.beoordeling?.ingediendOp || r.gewijzigd || r.datum || '';
   return [
-    ...werk.filter(van).map((r) => ({ r, icoon: I.werk, titel: r.soort || 'Werkzaamheid', href: `#/m/werk/${r.id}`, status: beoordelingVan(r), tijd: tijd(r) })),
-    ...insp.filter(van).map((r) => ({
+    ...werk.filter(van).map((r) => ({ r, pdf: 'werk', icoon: I.werk, titel: r.soort || 'Werkzaamheid', href: `#/m/werk/${r.id}`, status: beoordelingVan(r), tijd: tijd(r) })),
+    ...insp.filter(van).map((r) => ({ pdf: rapportSoortVan(r),
       r, icoon: r.bvc ? I.boom : r.stowa ? I.water : I.inspectie,
       titel: r.bvc ? 'Boomveiligheidscontrole' : r.stowa ? 'Inspectie waterkering' : r.soort,
       href: r.bvc || r.stowa || !magInspectieAanpassen(r) ? `#/inspecties/${r.id}` : `#/m/inspectie/${r.id}`, slot: !magInspectieAanpassen(r),
       status: r.status === 'afgerond' ? beoordelingVan(r) : 'concept', oordeel: r.status === 'afgerond' ? inspectieOordeel(r) : '', tijd: tijd(r),
     })),
-    ...vrij.filter((v) => isIk(v.deskundige)).map((r) => ({ r, icoon: I.blad, titel: `Vrijgave · ${eco.BESLUIT[r.besluit]?.label ?? 'concept'}`,
+    ...vrij.filter((v) => isIk(v.deskundige)).map((r) => ({ r, pdf: 'vrijgave', icoon: I.blad, titel: `Vrijgave · ${eco.BESLUIT[r.besluit]?.label ?? 'concept'}`,
       href: `#/m/vrijgave/${r.id}`, status: r.status === 'afgerond' ? 'vastgelegd' : 'concept', tijd: r.gewijzigd || r.datum || '', objectId: r.objectIds?.[0] })),
     ...over.filter((x) => isIk(x.door)).map((r) => ({ r, icoon: I.overslaan, titel: `Overgeslagen${r.reden ? ` · ${r.reden}` : ''}`,
       href: r.objectId ? `#/m/locatie/${r.objectId}` : '', status: 'vastgelegd', tijd: r.gewijzigd || r.op || '', pakketId: r.pakketId })),
@@ -9069,7 +9580,7 @@ async function toonGeschiedenis(el) {
       <span><strong>${esc(x.titel)}</strong><small>${objectNaam(x.object)}${x.pakket ? ` · ${esc(x.pakket)}` : ''}</small>
         <small class="geschstatus">${GESCH_STATUS[x.status] ?? ''} ${x.oordeel ?? ''}${x.slot ? ` <span class="geschslot" title="Ingediend: alleen-lezen">${I.slot}</span>` : ''}</small>
         ${x.status === 'afgekeurd' ? `<small class="reden">${esc(x.r.beoordeling?.opmerking || 'Geen reden opgegeven')}</small>` : ''}</span>`;
-    return `${kop}<li>${x.href ? `<a href="${x.href}">${inhoud}</a>` : `<div class="geschregel">${inhoud}</div>`}</li>`;
+    return `${kop}<li class="${x.pdf ? 'metpdf' : ''}">${x.href ? `<a href="${x.href}">${inhoud}</a>` : `<div class="geschregel">${inhoud}</div>`}${x.pdf ? `<button type="button" class="knop klein geschpdf" data-pdf="${esc(x.pdf)}" data-pdf-id="${esc(x.r.id)}"${kanDelen() ? ' data-pdf-delen' : ''} aria-label="${kanDelen() ? 'PDF delen' : 'PDF downloaden'}" title="${kanDelen() ? 'PDF delen' : 'PDF'}">${I.bestand}</button>` : ''}</li>`;
   }).join('')}</ul>` : `<p class="mleeg">${lijst.length ? 'Niets met deze status.' : 'Je hebt in dit project nog niets vastgelegd.'}</p>`}
       ${gefilterd.length > aantal ? `<button type="button" class="knop" data-meer style="width:100%">Meer tonen (${gefilterd.length - aantal})</button>` : ''}`;
   };
@@ -16462,7 +16973,7 @@ async function stowaDetail(i, { rapport = false } = {}) {
     const organisatie = instelling.lees('organisatie');
     app.innerHTML = `
       <div class="paginakop geen-print"><p><a href="#/inspecties/${esc(i.id)}">← Terug</a></p>
-        <button class="knop primair" onclick="window.print()">Afdrukken / opslaan als PDF</button></div>
+        <div class="knoppen">${pdfKnoppen('stowa', i.id)}<button class="knop" onclick="window.print()">Afdrukken</button></div></div>
       <article class="rapport">
         <div class="rapport-kop"><div><small>${esc(organisatie || 'Inspectierapport waterkering')}</small>
           <h1 style="margin:.25rem 0">Inspectie waterkering ${esc(o?.code ?? '')}</h1>
@@ -16477,7 +16988,7 @@ async function stowaDetail(i, { rapport = false } = {}) {
       <div class="paginakop">
         <div><p><a href="${o ? `#/objecten/${esc(o.id)}` : '#/inspecties'}">← ${o ? esc(o.code) : 'Inspecties'}</a></p>
           <h1>${I.water} Inspectie waterkering · ${datumNL(i.datum)}</h1><p>${objectNaam(o)} · ${statusLabel(i.status)}</p></div>
-        <div class="knoppen">
+        <div class="knoppen">${pdfKnoppen('stowa', i.id)}
           <a class="knop" href="#/inspecties/${esc(i.id)}/rapport">Rapport</a>
           ${magInspectieAanpassen(i) ? `<a class="knop" href="#/inspecties/${esc(i.id)}/bewerken">Bewerken</a>` : alleenLezenLabel(i)}
           ${magInspectieVerwijderen(i) ? '<button class="knop gevaar" id="verwijder">Verwijderen</button>' : ''}
@@ -16900,7 +17411,7 @@ async function bvcDetail(i, { rapport = false } = {}) {
   if (rapport) {
     app.innerHTML = `
       <div class="paginakop geen-print"><p><a href="#/inspecties/${esc(i.id)}">← Terug</a></p>
-        <button class="knop primair" onclick="window.print()">Afdrukken / opslaan als PDF</button></div>
+        <div class="knoppen">${pdfKnoppen('bvc', i.id)}<button class="knop" onclick="window.print()">Afdrukken</button></div></div>
       <article class="rapport">
         <div class="rapport-kop"><div><small>${esc(organisatie || 'Rapportage boomveiligheid')}</small>
           <h1 style="margin:.25rem 0">Boomveiligheidscontrole ${esc(o?.code ?? '')}</h1>
@@ -16917,7 +17428,7 @@ async function bvcDetail(i, { rapport = false } = {}) {
     <div class="paginakop">
       <div><p><a href="${o ? `#/objecten/${esc(o.id)}` : '#/inspecties'}">← ${o ? esc(o.code) : 'Inspecties'}</a></p>
         <h1>${I.boom} Boomveiligheidscontrole · ${datumNL(i.datum)}</h1><p>${objectNaam(o)} · ${statusLabel(i.status)}</p></div>
-      <div class="knoppen">
+      <div class="knoppen">${pdfKnoppen('bvc', i.id)}
         <a class="knop" href="#/inspecties/${esc(i.id)}/rapport">Rapport</a>
         ${magInspectieAanpassen(i) ? `<a class="knop" href="#/inspecties/${esc(i.id)}/bewerken">Bewerken</a>` : alleenLezenLabel(i)}
         ${magInspectieVerwijderen(i) ? '<button class="knop gevaar" id="verwijder">Verwijderen</button>' : ''}
@@ -17263,13 +17774,13 @@ async function vrijgaveDetail(id, { mobiel = false } = {}) {
     ${mobiel ? `<div class="mkop"><a href="#/" class="mterug" aria-label="Terug">←</a><div><small>${I.blad} Flora & fauna vrijgave</small><h1>${datumNL(v.datum)} · ${esc(v.werkzaamheid || '')}</h1></div></div>`
     : `<div class="paginakop"><div><p><a href="#/vrijgaven">← Flora & fauna</a></p><h1>Flora- en fauna-vrijgave · ${datumNL(v.datum)}</h1>
       <p>${esc(v.werkzaamheid || '')} · ${esc(v.activiteit || '')}</p></div>
-      <div class="knoppen geen-print"><button class="knop" onclick="window.print()">Afdrukken / PDF</button><a class="knop" href="${bewerk}">Bewerken</a>
+      <div class="knoppen geen-print">${pdfKnoppen('vrijgave', id)}<a class="knop" href="${bewerk}">Bewerken</a>
         <button class="knop gevaar" id="verwijder">Verwijderen</button></div></div>`}
     <section class="kaart besluitkaart" style="border-left:8px solid ${besluit?.kleur ?? '#8a96a3'}">
       <div class="pakketkop"><h2 style="margin:0">${esc(besluit?.label ?? 'Nog geen besluit')}</h2>${vrijgaveLabel(v)}</div>
       ${v.voorwaarden ? `<p style="white-space:pre-wrap;margin:.5rem 0 0"><strong>Voorwaarden:</strong> ${esc(v.voorwaarden)}</p>` : ''}
       <p style="margin:.5rem 0 0">Geldig t/m <strong>${datumNL(v.geldigTot)}</strong>${v.begeleiding ? ` · ecologische begeleiding nodig${v.begeleidingToelichting ? `: ${esc(v.begeleidingToelichting)}` : ''}` : ''}</p>
-      ${mobiel ? `<div class="knoppen" style="margin-top:.75rem"><a class="knop" href="${bewerk}">Bewerken</a></div>` : ''}
+      ${mobiel ? `<div class="knoppen" style="margin-top:.75rem">${pdfKnoppen('vrijgave', id)}<a class="knop" href="${bewerk}">Bewerken</a></div>` : ''}
     </section>
     <div class="raster-2">
       <section class="kaart"><h2>Gebied en werkzaamheden</h2><dl class="gegevens">
