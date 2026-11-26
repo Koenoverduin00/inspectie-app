@@ -2291,6 +2291,10 @@ body.kiesmodus .mfilterchips, body.kiesmodus .mtedoenseg, body.kiesmodus .ff-fil
 
 /* Afmelden per element / beheerobject */
 .groeplabel { color: var(--primair); font-weight: 600; }
+.leaflet-tooltip.groepmarkering { background: #0b57d0; color: #fff; border: 0; font-weight: 600; font-size: .82rem; padding: .3rem .55rem; border-radius: 8px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.3); white-space: nowrap; }
+.leaflet-tooltip.groepmarkering::before { border-top-color: #0b57d0; }
+.groepmarkering-wis { margin-left: .35rem; opacity: .85; }
+.locregel-groep .knop { margin-top: .35rem; align-self: flex-start; }
 .locregel-groep { display: grid; gap: .2rem; margin: .45rem 0; padding: .5rem .65rem; border-radius: 10px; background: color-mix(in srgb, var(--primair) 8%, transparent); }
 .regniveau { display: inline-flex; align-items: center; gap: .4rem; font-size: .9rem; font-weight: 600; }
 .regniveau select { width: auto; }

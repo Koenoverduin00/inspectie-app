@@ -1206,6 +1206,12 @@ Sommige opdrachtgevers willen het onderhoud niet per bouwdeel afgemeld zien, maa
       zoeken op de naam van een element toont dat element met zijn bouwdelen.
     - *Per … groeperen* uitvinken geeft weer de platte lijst. De CSV (*Lijst*) krijgt kolommen voor element en
       beheerobject.
+  - **Element of beheerobject op de kaart vinden.** Alle bouwdelen van de groep (uit dit werkpakket) krijgen een
+    blauwe stippelrand, de kaart zoomt erop in en een label noemt het element. Tik op het label om de markering te wissen.
+    - Rondevenster: kaartknop op elke groepsregel (beheerobject én element).
+    - Pakketpagina (pc): kaartknop naast de groepsnaam in de objectentabel.
+    - Telefoon: kaartknop op de regel van de groep, *Toon alle bouwdelen van dit element* in de kaartpopup van een
+      bouwdeel, en *Op de kaart* op de objectpagina. Het zoekveld vindt ook de naam van het element.
 - **Voortgang.** Blijft per bouwdeel tellen, zodat percentages en kaartkleuren gelijk blijven.
 - Geldt voor werkzaamheden; inspecties en schouwen blijven per object.
 

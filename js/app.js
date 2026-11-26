@@ -6534,7 +6534,8 @@ async function mobielLocatie(objectId, q = new URLSearchParams()) {
       <div class="locregel-kop"><span class="micoon klein">${x.v.soort === 'inspectie' ? (x.v.inspectiesoort === BV.BVC_SOORT ? I.boom : x.v.inspectiesoort === ST.STOWA_SOORT ? I.water : I.inspectie) : I.werk}</span>
         <span><strong>${wpNaam(x.v)}</strong><small>${pakketSoortTekst(x.v)}</small>${rondeKenmerkenHtml(x.v, ondLoc.get(`${x.v.id}:${x.v.rondeId}`))}</span></div>
       ${(() => { const gr = x.v.soort !== 'inspectie' ? groepVoor(x.v, objectId) : null; return gr && isTeDoen(x.st) ? `<div class="locregel-groep">${I.lagen} Wordt afgemeld per ${esc(GR.NIVEAU_KORT[gr.knoop.niveau])}: <strong>${esc(GR.groepNaam(gr, { aantal: false }))}</strong>
-          <small>${gr.objectIds.length} bouwdelen in dit werkpakket: ${gr.objectIds.map((oid) => esc(g.objectMap.get(oid)?.code ?? '')).join(', ')}</small></div>` : ''; })()}
+          <small>${gr.objectIds.length} bouwdelen in dit werkpakket: ${gr.objectIds.map((oid) => esc(g.objectMap.get(oid)?.code ?? '')).join(', ')}</small>
+          <a class="knop klein" href="#/m/pakket/${encodeURIComponent(x.v.id)}?${new URLSearchParams({ ...(x.v.rondeId ? { ronde: x.v.rondeId } : {}), groep: objectId })}">${I.locatie} Op de kaart</a></div>` : ''; })()}
       ${x.st === 'deels' ? `<div class="locregel-deels"><span class="label-status deels">${I.werk} Gedeeltelijk gedaan</span>
           <small>${(x.vg.deels.get(objectId) ?? []).map((r) => `<a href="#/m/werk/${esc(r.id)}">${datumNL(r.datum)}${r.uitvoerder ? ` · ${esc(r.uitvoerder)}` : ''}</a>${r.deel ? `: ${esc(r.deel)}` : ''}`).join('<br>')}</small>
           <small class="zacht">Nog niet volledig klaar: blijft te doen tot iemand <strong>Volledig klaar</strong> meldt.</small></div>` : ''}
@@ -10504,6 +10505,34 @@ async function tekenGisKaart(el, { groepen, kleur, groepVan }) {
   };
 }
 
+/**
+ * Een element of beheerobject op de kaart aanwijzen: alle onderliggende bouwdelen (uit dit werkpakket) krijgen een
+ * dikke blauwe rand, de kaart zoomt erop in en een label noemt het element. Tik op het label om de markering te wissen.
+ * @returns {{ wis: () => void } | null}
+ */
+function markeerGroepOpKaart(L, map, objecten, label) {
+  const geoms = objecten.map((o) => objectGeometrie(o)).filter(Boolean);
+  if (!geoms.length) return null;
+  const fc = { type: 'FeatureCollection', features: geoms.map((geometry) => ({ type: 'Feature', geometry, properties: {} })) };
+  const halo = L.geoJSON(fc, { interactive: false, pointToLayer: (ft, ll) => L.circleMarker(ll, { radius: 15 }),
+    style: () => ({ color: '#ffffff', weight: 10, opacity: 0.9, fill: false }) });
+  const rand = L.geoJSON(fc, { interactive: false, pointToLayer: (ft, ll) => L.circleMarker(ll, { radius: 15 }),
+    style: () => ({ color: '#0b57d0', weight: 5, opacity: 1, dashArray: '10 6', fillColor: '#0b57d0', fillOpacity: 0.12 }) });
+  const groep = L.featureGroup([halo, rand]).addTo(map);
+  const b = groep.getBounds();
+  map.fitBounds(b, { padding: [48, 48], maxZoom: 19, animate: false });
+  const kaartje = L.tooltip({ permanent: true, direction: 'top', interactive: true, className: 'groepmarkering', offset: [0, -6] })
+    .setLatLng(L.latLng(b.getNorth(), b.getCenter().lng))
+    .setContent(`${esc(label)} <span class="groepmarkering-wis" aria-hidden="true">✕</span>`)
+    .addTo(map);
+  const wis = () => { groep.remove(); kaartje.remove(); };
+  kaartje.getElement()?.addEventListener('click', wis);
+  kaartje.getElement()?.setAttribute('title', 'Markering wissen');
+  return { wis };
+}
+const hoofdletter = (t) => (t ? t[0].toUpperCase() + t.slice(1) : '');
+const groepLabelKaart = (gr) => `${hoofdletter(GR.NIVEAU_KORT[gr.knoop.niveau] ?? 'groep')} ${GR.groepNaam(gr)}`;
+
 // ---------------------------------------------------------------------------
 // Objectenkaart (werkpakket samenstellen, inspecties): filteren, kleuren, klikken en een gebied selecteren
 // ---------------------------------------------------------------------------
@@ -10581,6 +10610,7 @@ async function tekenObjectenKaart(el, { objecten, kleurVan, statusVan = null, po
   passend(groep.getBounds());
   let zichtbaar = new Set(lagen.keys());
   let jij = null;
+  let markering = null;
   return {
     map,
     aantal: lagen.size,
@@ -10626,7 +10656,17 @@ async function tekenObjectenKaart(el, { objecten, kleurVan, statusVan = null, po
       bovenop();
     },
     zichtbareIds: () => new Set(zichtbaar),
+    /** Element/beheerobject aanwijzen: alle bouwdelen gemarkeerd en in beeld. */
+    toonGroep(ids, label) {
+      map.closePopup();
+      markering?.wis();
+      const objs = ids.map((id) => lagen.get(id)).filter(Boolean);
+      objs.forEach((l) => { if (!groep.hasLayer(l)) groep.addLayer(l); });
+      markering = markeerGroepOpKaart(L, map, objs.map((l) => l.object), label);
+      return Boolean(markering);
+    },
     zoomNaar(id) {
+      markering?.wis(); markering = null;
       const laag = lagen.get(id);
       if (!laag) return false;
       if (!groep.hasLayer(laag)) groep.addLayer(laag);
@@ -10694,6 +10734,12 @@ function koppelObjectZoek({ objecten, statusVan, kaartKlaar }) {
   zoekEl.addEventListener('input', toon);
   statusEl.addEventListener('change', toon);
   app.querySelector('#o-rijen').addEventListener('click', async (e) => {
+    const gpin = e.target.closest('[data-opkaartgroep]');
+    if (gpin) {
+      const k = await kaartKlaar;
+      if (k?.toonGroep(gpin.dataset.opkaartgroep)) app.querySelector('#pakketkaart').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
     const pin = e.target.closest('[data-opkaart]');
     if (!pin) return;
     const k = await kaartKlaar;
@@ -11218,15 +11264,17 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
       const eigen = { sleutel: n.knoop.id, zoek: knoopTekst(n.knoop).toLowerCase(), knoop: n.knoop, niveau: n.niveau };
       const binnen = [...pad, eigen];
       for (const oid of n.objectIds) padVan.set(oid, binnen);
+      groepKnopen.set(n.knoop.id, { ids: n.alle, label: `${hoofdletter(GR.NIVEAU_KORT[n.niveau] ?? '')} ${knoopTekst(n.knoop)} (${n.alle.length} bouwde${n.alle.length === 1 ? 'el' : 'len'})` });
       const kop = `<tr class="rd-groep" data-groep="${esc(n.knoop.id)}" data-niveau="${esc(n.niveau)}" data-st="${gst}" data-pad="${esc(pad.map((x) => x.sleutel).join(' '))}" data-zoek="${esc(zoek)}" style="--diepte:${diepte}">
         <td><span class="rd-groepnaam"><button type="button" class="rd-klap" data-rd-klap="${esc(n.knoop.id)}" aria-expanded="true" aria-label="${esc(knoopTekst(n.knoop))} in- of uitklappen"><span class="rd-pijl" aria-hidden="true">▾</span></button>
           <span><span class="rd-niveau">${esc(GR.NIVEAU_KORT[n.niveau] ?? n.niveau)}</span> <strong>${esc(knoopTekst(n.knoop))}</strong></span></span></td>
         <td><span class="rd-stip">${statusStip(kl)}</span>${label}</td>
         <td><small>${klaar}/${n.alle.length} bouwde${n.alle.length === 1 ? 'el' : 'len'} gedaan${over ? ` · ${over} overgeslagen` : ''}</small></td>
-        <td class="rd-acties">${n.niveau === v.registratieNiveau && open1 && r.status !== 'afgerond' ? `<a class="knop klein" href="${pakketHref(v, open1, false)}" title="Alle open bouwdelen van dit ${esc(GR.NIVEAU_KORT[n.niveau])} in één keer afmelden">Uitvoeren</a>` : ''}</td></tr>`;
+        <td class="rd-acties">${n.alle.some((oid) => objectGeometrie(gR.objectMap.get(oid) ?? {})) ? `<button type="button" class="knop klein" data-rd-kaartgroep="${esc(n.knoop.id)}" title="Alle bouwdelen op de kaart" aria-label="${esc(knoopTekst(n.knoop))} op de kaart">${I.locatie}</button>` : ''}${n.niveau === v.registratieNiveau && open1 && r.status !== 'afgerond' ? `<a class="knop klein" href="${pakketHref(v, open1, false)}" title="Alle open bouwdelen van dit ${esc(GR.NIVEAU_KORT[n.niveau])} in één keer afmelden">Uitvoeren</a>` : ''}</td></tr>`;
       return kop + n.kinderen.map((c) => groepRij(c, binnen)).join('')
         + n.objectIds.map((oid) => regelVan.get(oid)).filter(Boolean).map((x) => objRij(x, binnen)).join('');
     };
+    const groepKnopen = new Map(); // knoop-id → { label, ids } voor "op de kaart"
     const objRijen = () => {
       padVan.clear();
       if (!boomAan) return lijst.map((x) => objRij(x)).join('');
@@ -11423,6 +11471,16 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
         const det = d.querySelector('[data-blok="objecten"] details'); if (det) det.open = true;
         filterObjecten();
         d.querySelector('[data-blok="objecten"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+      const kg = e.target.closest('[data-rd-kaartgroep]');
+      if (kg) {
+        if (!kaartObj) return melding('Het blok Kaart staat niet in je weergave. Voeg het toe via Weergave aanpassen.');
+        const gk = groepKnopen.get(kg.dataset.rdKaartgroep);
+        if (!gk) return;
+        const det = d.querySelector('[data-blok="kaart"] details'); if (det) det.open = true;
+        d.querySelector('[data-blok="kaart"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setTimeout(() => { kaartObj?.map.invalidateSize(); kaartObj?.toonGroep?.(gk.ids, gk.label); }, 80);
         return;
       }
       const kk = e.target.closest('[data-rd-kaart]');
@@ -13351,7 +13409,8 @@ async function tekenPakketKaart(el, { pakket, objecten, statusVan, positie = nul
          <button class="knop klein" data-overslaan="${esc(o.id)}">Overslaan</button></div>`
         : `<small>${st === 'gedaan' ? I.vink + ' Gedaan' : st === 'ingediend' ? `${I.wacht} Wacht op beoordeling` : I.overslaan + ' Overgeslagen'}</small>`;
     const grp = groepVoor(pakket, o.id);
-    return `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}${grp ? `<br><small class="groeplabel">${I.lagen} ${esc(GR.groepNaam(grp))} – samen afmelden</small>` : ''}<br>${knoppen}${mobiel ? '' : `<br><a href="#/objecten/${esc(o.id)}">Object openen</a>`}`;
+    return `<strong>${esc(o.code)}</strong> – ${esc(o.naam)}${grp ? `<br><small class="groeplabel">${I.lagen} ${esc(GR.groepNaam(grp))} – samen afmelden</small>
+      <br><button type="button" class="linkknop" data-kaartgroep="${esc(o.id)}">${I.locatie} Toon alle bouwdelen van dit ${esc(GR.NIVEAU_KORT[grp.knoop.niveau])}</button>` : ''}<br>${knoppen}${mobiel ? '' : `<br><a href="#/objecten/${esc(o.id)}">Object openen</a>`}`;
   };
   const laag = L.geoJSON(fc, {
     style: (f) => statusStijl(statusVan(f.properties.id), f.geometry.type.includes('Point')),
@@ -13388,9 +13447,24 @@ async function tekenPakketKaart(el, { pakket, objecten, statusVan, positie = nul
   const bovenop = () => stapelLagen(perId.values(), { teDoen: (l) => isTeDoen(statusVan(l.feature.properties.id)), opKaart: (l) => laag.hasLayer(l) });
   bovenop();
   gebrekLaag.eachLayer((l) => l.bringToFront());
+  let markering = null;
+  /** Element/beheerobject van dit object aanwijzen: alle bouwdelen in dit werkpakket gemarkeerd en in beeld. */
+  const toonGroep = (objectId) => {
+    const grp = groepVoor(pakket, objectId);
+    if (!grp) return false;
+    map.closePopup();
+    markering?.wis();
+    grp.objectIds.forEach((id) => { const l = perId.get(id); if (l && !laag.hasLayer(l)) laag.addLayer(l); });
+    markering = markeerGroepOpKaart(L, map, grp.objectIds.map((id) => objectMap.get(id)).filter(Boolean), groepLabelKaart(grp));
+    return Boolean(markering);
+  };
+  map.on('popupopen', (e) => {
+    e.popup.getElement()?.querySelector('[data-kaartgroep]')?.addEventListener('click', (ev) => { ev.preventDefault(); toonGroep(ev.currentTarget.dataset.kaartgroep); });
+  });
   return {
     map,
     zetPositie,
+    toonGroep,
     toon(ids) {
       perId.forEach((l, id) => {
         if (ids.has(id)) { if (!laag.hasLayer(l)) laag.addLayer(l); } else if (laag.hasLayer(l)) laag.removeLayer(l);
@@ -13399,6 +13473,7 @@ async function tekenPakketKaart(el, { pakket, objecten, statusVan, positie = nul
       gebrekLaag.eachLayer((l) => l.bringToFront());
     },
     zoomNaar(id) {
+      markering?.wis(); markering = null;
       const l = perId.get(id);
       if (!l) return false;
       if (!laag.hasLayer(l)) laag.addLayer(l);
@@ -14551,7 +14626,7 @@ async function pakketDetail(id, q = new URLSearchParams()) {
     const r = v.gedaan.get(o.id) ?? v.wacht?.get(o.id) ?? v.afgekeurd?.get(o.id);
     const ov = v.overgeslagen.get(o.id);
     return `<tr data-id="${esc(o.id)}" data-status="${st}">
-          <td><a href="#/objecten/${esc(o.id)}"><strong>${esc(o.code)}</strong></a>${objectGeometrie(o) ? ` <button type="button" class="kaartpin" data-opkaart="${esc(o.id)}" title="Toon op de kaart" aria-label="${esc(o.code)} op de kaart tonen">${I.locatie}</button>` : ''}</td><td>${esc(o.naam)}${(() => { const gr = groepen ? GR.groepVan(groepen, o.id) : null; return gr && gr.objectIds.length > 1 ? `<br><small class="groeplabel">${I.lagen} ${esc(GR.groepNaam(gr))}</small>` : ''; })()}${p.vrijgaveVereist ? `<br>${vrijgaveLabel(eco.vrijgaveVoorObject(vrijgavenProject, o.id, vandaag()))}` : ''}</td>
+          <td><a href="#/objecten/${esc(o.id)}"><strong>${esc(o.code)}</strong></a>${objectGeometrie(o) ? ` <button type="button" class="kaartpin" data-opkaart="${esc(o.id)}" title="Toon op de kaart" aria-label="${esc(o.code)} op de kaart tonen">${I.locatie}</button>` : ''}</td><td>${esc(o.naam)}${(() => { const gr = groepen ? GR.groepVan(groepen, o.id) : null; return gr && gr.objectIds.length > 1 ? `<br><small class="groeplabel">${I.lagen} ${esc(GR.groepNaam(gr))}</small> <button type="button" class="kaartpin" data-opkaartgroep="${esc(o.id)}" title="Alle bouwdelen van dit ${esc(GR.NIVEAU_KORT[gr.knoop.niveau])} op de kaart" aria-label="${esc(GR.groepNaam(gr, { aantal: false }))} op de kaart tonen">${I.locatie}</button>` : ''; })()}${p.vrijgaveVereist ? `<br>${vrijgaveLabel(eco.vrijgaveVoorObject(vrijgavenProject, o.id, vandaag()))}` : ''}</td>
           <td><span class="label-status ${STATUS_KLASSE[st] ?? ''}">${STATUS_LABEL[st]}</span>${st === 'afgekeurd' ? `<br><small>${afkeurTekst(v.afgekeurd.get(o.id))}</small>` : ''}${st === 'deels' ? `<br><small>${(v.deels.get(o.id) ?? []).map((x) => `${datumNL(x.datum)}${x.deel ? `: ${esc(x.deel)}` : ''}`).join('<br>')}</small>` : ''}</td>
           <td>${r ? `<a href="${regHref(r)}">${datumNL(r.datum)}</a> · ${esc(r.uitvoerder || r.inspecteur || '')}` : ov ? `${datumNL(ov.op)} · ${esc(ov.door)}` : '–'}</td>
           <td class="verberg-mobiel">${ov ? `${esc(ov.reden)}${ov.toelichting ? `: ${esc(ov.toelichting)}` : ''}` : r ? esc(r.omschrijving || r.samenvatting || '') : ''}</td>
@@ -15356,7 +15431,9 @@ async function mobielPakket(id, q = new URLSearchParams()) {
   };
   const tekenLijst = () => {
     const zoek = zoekTermen(app.querySelector('#m-zoek')?.value);
-    const metAfstand = open.filter((o) => objectPast(o, zoek)).map((o) => ({ o, afstand: laatstePositie ? gis.afstandTot(laatstePositie, objectGeometrie(o)) : null }));
+    // Zoeken vindt ook de naam van het element/beheerobject waarop wordt afgemeld.
+    const groepTekst = (o) => { const gr = groepVoor(p, o.id); return gr ? GR.groepNaam(gr, { aantal: false }).toLowerCase() : ''; };
+    const metAfstand = open.filter((o) => objectPast(o, zoek) || (zoek.length && zoek.every((t) => groepTekst(o).includes(t)))).map((o) => ({ o, afstand: laatstePositie ? gis.afstandTot(laatstePositie, objectGeometrie(o)) : null }));
     if (laatstePositie) metAfstand.sort((a, b) => (a.afstand ?? Infinity) - (b.afstand ?? Infinity));
     const el = app.querySelector('#open-lijst');
     if (!el) return [];
@@ -15378,6 +15455,7 @@ async function mobielPakket(id, q = new URLSearchParams()) {
       <li><div class="mregel">
         <a href="${pakketHref(p, o.id, true)}" class="mregel-link"><span><strong>${gr ? `${I.lagen} ${esc(GR.groepNaam(gr, { aantal: false }))}` : `${esc(o.code)} – ${esc(o.naam)}`}</strong>${gr ? `<small>${gr.objectIds.length} bouwdelen: ${gr.objectIds.map((oid) => esc(g.objectMap.get(oid)?.code ?? '')).join(', ')}</small>` : ''}
           <small>${esc(o.type || '')}${afstand != null ? ` · ${afstand === 0 ? I.locatie + ' hier' : afstandTekst(afstand)}` : ''}</small>${v.deels?.has(o.id) ? `<small class="deelstag"><span class="label-status deels">Gedeeltelijk</span> ${v.deels.get(o.id).map((x) => esc(x.deel || datumNL(x.datum))).join(', ')}</small>` : ''}${vrijgaveChip(o)}${meerHier(o)}</span></a>
+        ${gr ? `<button class="knop klein" data-kaartgroep="${esc(o.id)}" aria-label="${esc(GR.groepNaam(gr, { aantal: false }))} op de kaart tonen" title="Alle bouwdelen op de kaart">${I.locatie}</button>` : ''}
         <button class="knop klein" data-overslaan="${esc(o.id)}" aria-label="${esc(o.code)} overslaan">${I.overslaan}</button>
         <a class="knop klein primair" href="${pakketHref(p, o.id, true)}">${I.start}</a></div></li>`).join('')
       : zoek.length ? '<li class="leeg">Geen objecten gevonden.</li>' : '';
@@ -15403,6 +15481,8 @@ async function mobielPakket(id, q = new URLSearchParams()) {
     (await kaart)?.toon(ids);
   };
   if (app.querySelector('#mtedoen')?.checked) kaartBijwerken();
+  // Vanaf de objectpagina "Element op de kaart": meteen het element met zijn bouwdelen aanwijzen.
+  if (q.get('groep')) kaart.then((k) => k?.toonGroep(q.get('groep')));
   app.querySelector('#mtedoen')?.addEventListener('change', (e) => { instelling.schrijf('mKaartTeDoen', e.target.checked ? '1' : ''); kaartBijwerken(); });
   app.querySelector('#m-zoek')?.addEventListener('input', () => { tekenLijst(); kaartBijwerken(); });
   app.querySelector('#nieuweboom')?.addEventListener('click', () => nieuweBoomHier(p));
@@ -15417,6 +15497,12 @@ async function mobielPakket(id, q = new URLSearchParams()) {
     if (gesorteerd[0]) location.hash = naarObject(gesorteerd[0].o.id);
   });
   const klik = async (e) => {
+    const kg = e.target.closest('#open-lijst [data-kaartgroep]');
+    if (kg) {
+      const k = await kaart;
+      if (k?.toonGroep(kg.dataset.kaartgroep)) app.querySelector('#pakketkaart')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
     const over = e.target.closest('[data-overslaan]');
     if (over && await slaObjectOver(p, g.objectMap.get(over.dataset.overslaan))) router();
     const terug = e.target.closest('[data-terug]');
