@@ -509,6 +509,19 @@ Andere browsers tonen de standaard uitklaplijst, maar wel met het nieuwe dichte 
   - In het meldformulier kies je uit de werkpakketten van het object.
   - Gebreken uit het koppelschema krijgen het schouwpakket mee.
 - **Zoeken:** het zoekveld vindt ook het nummer en het werkpakket.
+- **Exporteren naar Excel** (knop op de registerpagina): kies wat er meegaat (wat nu in de lijst staat, of alles) en een
+  periode.
+  - Kies of de **registraties van het verhelpen** meegaan: van alles, alleen van de opgeloste, of niet.
+  - Blad **Register**: per storing of gebrek de status, doorlooptijd, uren en wie het heeft opgelost met wat er is
+    gedaan.
+  - Blad **Registraties**, per registratie:
+    - nummer, soort, status, melding en werkpakket;
+    - wanneer, door wie en met welk resultaat;
+    - wat is gedaan en eventueel vervolg;
+    - materiaal, afgehandelde maatregelen en het aantal foto's;
+    - bestede uren;
+    - een kolom per eigen formuliervraag.
+  - Blad **Bestede uren**: elke regel uit de tabel Bestede uren.
 
 ## Storingen- en gebrekenregister op de kaart
 

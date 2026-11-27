@@ -89,3 +89,29 @@ test('zaken: nummer en werkpakket uit melding of registratie', () => {
   const z = S.zaken({ meldingen: [{ id: 'm', objectId: 'o', nummer: 'X-S26-0001', pakketId: 'P1', melding: 'x' }], werk: [{ id: 'w', objectId: 'o', werkpakketId: 'P2', storing: { type: 'Storing', nummer: 'X-S26-0002' } }] });
   assert.deepEqual(z.map((x) => [x.nummer, x.pakketId]).sort(), [['X-S26-0001', 'P1'], ['X-S26-0002', 'P2']]);
 });
+
+test('storingen-export: registraties van het verhelpen (alle, alleen opgeloste, geen) en eigen formuliervelden', async () => {
+  const SX = await import('../js/storingenexcel.js');
+  const z = S.zaken({
+    meldingen: [{ id: 'm1', objectId: 'o1', type: 'Storing', melding: 'Slagboom', nummer: 'P-S26-0001', pakketId: 'WP1' }, { id: 'm2', objectId: 'o1', type: 'Gebrek', melding: 'Tegel', nummer: 'P-G26-0002' }],
+    werk: [
+      { id: 'w1', objectId: 'o1', datum: '2026-11-18', uitvoerder: 'Jan', omschrijving: 'Motor vervangen', materiaal: 'Motor 24V', fotoIds: ['f1', 'f2'], extra: { q: 'ja' }, storing: { meldingId: 'm1', resultaat: 'opgelost', opgelostOp: '2026-11-18T14:00' } },
+      { id: 'w2', objectId: 'o1', datum: '2026-11-19', uitvoerder: 'Piet', omschrijving: 'Afgezet', storing: { meldingId: 'm2', resultaat: 'tijdelijk', opgelostOp: '2026-11-19T10:00' } },
+    ],
+  });
+  const fmt = { object: () => ({ code: 'KW-1', naam: 'Brug' }), naam: (e) => e ?? '', resultaat: (k) => k, beoordeling: () => '', pakket: (id) => (id ? 'WP1 Onderhoud' : ''),
+    extra: (a) => (a.extra ? [['Monteur gebeld?', a.extra.q]] : []), maatregelen: () => '', fotos: (a) => (a.fotoIds ?? []).length || '' };
+  const alle = SX.rijen(z, fmt);
+  assert.equal(alle.regRijen.length, 2);
+  assert.deepEqual(alle.extraLabels, ['Monteur gebeld?']);
+  const kol = (rij, naam) => rij.waarden[[...SX.REG_KOLOMMEN, ['Monteur gebeld?']].findIndex(([k]) => k === naam)];
+  const r1 = alle.regRijen.find((r) => r.waarden.includes('w1'));
+  assert.equal(kol(r1, 'Gemeld vanuit werkpakket'), 'WP1 Onderhoud');
+  assert.equal(kol(r1, 'Materiaal'), 'Motor 24V');
+  assert.equal(kol(r1, "Foto's"), 2);
+  assert.equal(kol(r1, 'Monteur gebeld?'), 'ja');
+  assert.equal(SX.rijen(z, fmt, { registraties: 'opgelost' }).regRijen.length, 1);
+  assert.equal(SX.rijen(z, fmt, { registraties: 'geen' }).regRijen.length, 0);
+  const zr = alle.zaakRijen.find((r) => r.waarden[0] === 'P-S26-0001').waarden;
+  assert.deepEqual(zr.slice(-2), ['Jan', 'Motor vervangen']);
+});

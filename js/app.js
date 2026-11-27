@@ -15342,7 +15342,7 @@ async function storingenPagina(_, __, { mobiel = false } = {}) {
         ${magBeheren() ? '<button type="button" class="linkknop" id="s-afk">Afkorting wijzigen</button>' : ''}</small></p></div>
       <div class="knoppen"><a class="knop primair" href="#/storingen/nieuw">${I.lijst} ＋ Storing of gebrek klaarzetten</a>
         ${mag('storing') ? `<a class="knop" href="#/storing">${I.let} Zelf oplossen</a>` : ''}
-        <button type="button" class="knop" id="s-export">${I.excel} Exporteren</button></div></div>
+        <button type="button" class="knop" id="s-export">${I.excel} Exporteren naar Excel</button></div></div>
     ${ontbreekt ? `<div class="kaart waarschuwingskaart">${I.let} <strong>Klaargezette meldingen worden nog niet gedeeld.</strong> Voer in Supabase (SQL Editor) eenmalig het script <code>supabase/008_meldingen.sql</code> uit; tot die tijd staan ze alleen op deze computer.</div>` : ''}
     <div class="tegels klein">
       <span class="tegel let"><strong>${tel.open}</strong><span>open</span></span>
@@ -15447,13 +15447,17 @@ async function storingenPagina(_, __, { mobiel = false } = {}) {
         <div class="knoppen" style="flex-wrap:wrap;gap:.4rem">
           <select id="sx-periode">${optie('', 'Alle perioden')}${optie('jaar', `Dit jaar (${jaar})`)}${optie('vorigjaar', `Vorig jaar (${Number(jaar) - 1})`)}${optie('maand', 'Deze maand')}${optie('eigen', 'Eigen periode…')}</select>
           <span id="sx-eigen" hidden><input type="date" id="sx-van" aria-label="Van"> t/m <input type="date" id="sx-tot" aria-label="Tot en met"></span></div></div>
-      <p><small>Excel met de bladen <strong>Register</strong> (per storing: status, doorlooptijd, uren), <strong>Registraties</strong> (alle registraties, ook tijdelijk opgelost en vervolg) en <strong>Bestede uren</strong> (werknemer, auto, boot, …).</small></p>
+      <div class="veld"><label>Registraties van het verhelpen</label>
+        ${segment('sx-reg', 'alle', [['alle', 'Van alles'], ['opgelost', 'Alleen opgeloste'], ['geen', 'Niet meenemen']])}
+        <small>Per registratie: wanneer, door wie, resultaat, wat is gedaan, materiaal, afgehandelde maatregelen, aantal foto's, bestede uren en de eigen formuliervelden.</small></div>
+      <p><small>Excel met de bladen <strong>Register</strong> (per storing of gebrek: status, doorlooptijd, uren en wat er bij het oplossen is gedaan), <strong>Registraties</strong> (de registraties van het verhelpen) en <strong>Bestede uren</strong> (werknemer, auto, boot, …).</small></p>
       <div class="formvoet"><button class="knop" value="nee">Annuleren</button><button class="knop primair" value="ja">${I.excel} Exporteren</button></div></form>`;
     document.body.append(d);
     d.querySelector('#sx-periode').addEventListener('change', (e) => { d.querySelector('#sx-eigen').hidden = e.target.value !== 'eigen'; });
     d.showModal();
     const keuze = await new Promise((ok) => d.addEventListener('close', () => ok(d.returnValue), { once: true }));
     const wat = d.querySelector('input[name=sx-wat]:checked')?.value ?? 'filter';
+    const regKeuze = d.querySelector('input[name=sx-reg]:checked')?.value ?? 'alle';
     const per = d.querySelector('#sx-periode').value;
     let van = ''; let tot = '';
     if (per === 'jaar') { van = `${jaar}-01-01`; tot = `${jaar}-12-31`; }
@@ -15467,13 +15471,21 @@ async function storingenPagina(_, __, { mobiel = false } = {}) {
     if (!selectie.length) return melding('Er zijn geen storingen of gebreken in deze selectie.', 'fout');
     const ExcelJS = await PX.laadExcelJS();
     const tekstSelectie = [wat === 'alles' ? 'alle storingen en gebreken' : 'zoals gefilterd in het register', van || tot ? `gemeld ${van ? datumNL(van) : '…'} t/m ${tot ? datumNL(tot) : '…'}` : ''].filter(Boolean).join(', ');
+    // Eigen formuliervelden en afgehandelde maatregelen van de registraties.
+    const werkDefs = velden.opNiveau((project?.velden ?? []).filter((dd) => dd.formulier === 'werk'), 'inspectie');
+    const inspecties = await inProject('inspecties');
+    const inspMap = new Map(inspecties.map((i) => [i.id, i]));
+    const extraVan = (a) => extraWeergave(a, werkDefs).map(({ d: dd, v }) => [dd.label, dd.type === 'foto' ? `${(v ?? []).length} foto('s)` : dd.type === 'bijlage' ? (v ?? []).map((x) => x.naam).join(', ') : velden.toonWaarde(dd, v, datumNL)]);
+    const maatregelenVan = (a) => (a.maatregelen ?? []).map((m) => { const g = KP.bevindingen(inspMap.get(m.inspectieId) ?? {}).find((x) => x.id === m.gebrekId) ?? (inspMap.get(m.inspectieId)?.gebreken ?? []).find((x) => x.id === m.gebrekId); return g ? [g.bouwdeel, g.gebrek, KP.maatregelNaam(g)].filter(Boolean).join(' – ') : ''; }).filter(Boolean).join('; ');
     const wb = SX.maakWerkboek(ExcelJS, selectie, { project: project?.naam ?? '', selectie: `${tekstSelectie} – ${selectie.length} stuks` }, {
       object: (id) => objectMap.get(id), naam: (e) => (e ? naamVan(e) : ''), resultaat: (k) => STORING_RESULTAAT[k]?.label ?? '', pakket: pakketVan,
-      beoordeling: (r) => BEOORDELING[beoordelingVan(r)]?.label ?? '',
-    });
+      beoordeling: (r) => BEOORDELING[beoordelingVan(r)]?.label ?? '', extra: extraVan, maatregelen: maatregelenVan,
+      fotos: (a) => [...(a.fotoIds ?? []), ...(a.extraFotoIds ?? [])].length || '',
+    }, { registraties: regKeuze });
     const buf = await wb.xlsx.writeBuffer();
     download(`storingen-en-gebreken-${String(project?.naam ?? 'project').replace(/[^\w-]+/g, '_')}-${vandaag()}.xlsx`, buf, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    melding(`${selectie.length} storingen en gebreken geëxporteerd`);
+    const nReg = selectie.filter((z) => regKeuze === 'alle' || z.status === 'opgelost').reduce((t, z) => t + z.acties.length, 0);
+    melding(`${selectie.length} storing${selectie.length === 1 ? ' of gebrek' : 'en en gebreken'} geëxporteerd${regKeuze !== 'geen' ? `, met ${nReg} registratie${nReg === 1 ? '' : 's'} van het verhelpen` : ''}`);
   });
   app.querySelector('#s-rijen').addEventListener('click', async (e) => {
     const r = e.target.closest('[data-ref]');

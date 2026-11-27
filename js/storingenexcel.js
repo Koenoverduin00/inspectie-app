@@ -20,10 +20,12 @@ export function doorlooptijdUren(van, tot) {
 export const ZAAK_KOLOMMEN = [['Nummer', 15], ['Referentie opdrachtgever', 18], ['Status', 14], ['Urgentie', 13], ['Objectcode', 13], ['Object', 26], ['Soort', 14],
   ['Melding', 44], ['Gemeld vanuit werkpakket', 30], ['Gemeld om', 16, 'dt'], ['Herkomst', 12], ['Gemeld / klaargezet door', 22], ['Toegewezen aan', 20], ['Instructie', 30],
   ['Registraties', 11], ['Laatste registratie', 16, 'dt'], ['Laatste resultaat', 24], ['Vervolg nodig', 30], ['Opgelost om', 16, 'dt'],
-  ['Doorlooptijd (uur)', 12, 'getal'], ['Manuren', 10, 'getal'], ['Materieeluren', 12, 'getal'], ['Totaal uren', 11, 'getal']];
-export const REG_KOLOMMEN = [['Nummer', 15], ['Referentie opdrachtgever', 18], ['Objectcode', 13], ['Object', 26], ['Opgelost / gestopt om', 18, 'dt'], ['Uitvoerder', 20],
-  ['Resultaat', 24], ['Wat is gedaan', 40], ['Vervolg nodig', 30], ['Beoordeling', 13], ['Bestede uren', 40], ['Manuren', 10, 'getal'],
-  ['Materieeluren', 12, 'getal'], ['Registratie-id', 22]];
+  ['Doorlooptijd (uur)', 12, 'getal'], ['Manuren', 10, 'getal'], ['Materieeluren', 12, 'getal'], ['Totaal uren', 11, 'getal'],
+  ['Opgelost door', 20], ['Wat is gedaan bij het oplossen', 44]];
+export const REG_KOLOMMEN = [['Nummer', 15], ['Referentie opdrachtgever', 18], ['Soort', 14], ['Status storing/gebrek', 16], ['Objectcode', 13], ['Object', 26],
+  ['Melding', 36], ['Gemeld vanuit werkpakket', 28], ['Opgelost / gestopt om', 18, 'dt'], ['Uitvoerder', 20],
+  ['Resultaat', 24], ['Wat is gedaan', 40], ['Vervolg nodig', 30], ['Materiaal', 24], ['Afgehandelde maatregelen', 36], ["Foto's", 8, 'getal'],
+  ['Beoordeling', 13], ['Bestede uren', 40], ['Manuren', 10, 'getal'], ['Materieeluren', 12, 'getal'], ['Registratie-id', 22]];
 export const INZET_KOLOMMEN = [['Nummer', 15], ['Referentie opdrachtgever', 18], ['Objectcode', 13], ['Datum', 16, 'dt'], ['Uitvoerder', 20], ['Wat', 18], ['Wie / welke', 22],
   ['Aantal', 8, 'getal'], ['Uren', 8, 'getal'], ['Totaal uren', 11, 'getal']];
 
@@ -31,10 +33,13 @@ export const INZET_KOLOMMEN = [['Nummer', 15], ['Referentie opdrachtgever', 18],
  * @param {ReturnType<typeof SR.zaken>} zaken
  * @param {{ object: (id) => object, naam: (email) => string, resultaat: (k) => string, beoordeling: (r) => string }} fmt
  */
-export function rijen(zaken, fmt) {
+export function rijen(zaken, fmt, { registraties = 'alle' } = {}) {
   const zaakRijen = [];
   const regRijen = [];
   const inzetRijen = [];
+  // Eigen formuliervelden van de registraties: elke vraag een eigen kolom (in volgorde van eerste voorkomen).
+  const extraLabels = [];
+  for (const z of zaken) for (const a of z.acties) for (const [l] of fmt.extra?.(a) ?? []) if (!extraLabels.includes(l)) extraLabels.push(l);
   for (const z of zaken) {
     const o = fmt.object(z.objectId) ?? {};
     const l = z.laatste;
@@ -42,14 +47,21 @@ export function rijen(zaken, fmt) {
       waarden: [z.nummer ?? '', z.referentie, SR.STATUS[z.status].label, SR.URGENTIE_LABEL[z.urgentie] ?? '', o.code ?? '', o.naam ?? '', z.type, z.omschrijving, fmt.pakket?.(z.pakketId) ?? '',
         datumTijd(z.gemeldOp), z.bron === 'kantoor' ? 'Kantoor' : 'Buiten', fmt.naam(z.door), fmt.naam(z.toegewezenAan), z.melding?.opmerking ?? '',
         z.acties.length, datumTijd(l?.storing?.opgelostOp || l?.datum), l ? fmt.resultaat(l.storing?.resultaat) : '', l?.storing?.resultaat !== 'opgelost' ? (l?.vervolg ?? '') : '',
-        datumTijd(z.opgelostOp), z.opgelostOp ? doorlooptijdUren(z.gemeldOp, z.opgelostOp) : '', z.uren.manuren || '', z.uren.materieeluren || '', z.uren.totaal || ''],
+        datumTijd(z.opgelostOp), z.opgelostOp ? doorlooptijdUren(z.gemeldOp, z.opgelostOp) : '', z.uren.manuren || '', z.uren.materieeluren || '', z.uren.totaal || '',
+        z.status === 'opgelost' ? (l?.uitvoerder ?? '') : '', z.status === 'opgelost' ? (l?.omschrijving ?? '') : ''],
       status: z.status,
     });
-    for (const a of z.acties) {
+    // Registraties van het verhelpen: van alle zaken, alleen van opgeloste, of geen.
+    const regMee = registraties === 'alle' || (registraties === 'opgelost' && z.status === 'opgelost');
+    for (const a of regMee ? z.acties : []) {
       const t = IZ.totalen(a.storing?.inzet);
+      const extra = new Map(fmt.extra?.(a) ?? []);
       regRijen.push({
-        waarden: [z.nummer ?? '', z.referentie, o.code ?? '', o.naam ?? '', datumTijd(a.storing?.opgelostOp || a.datum), a.uitvoerder ?? '', fmt.resultaat(a.storing?.resultaat),
-          a.omschrijving ?? '', a.vervolg ?? '', fmt.beoordeling(a), IZ.tekst(a.storing?.inzet), t.manuren || '', t.materieeluren || '', a.id],
+        waarden: [z.nummer ?? '', z.referentie, z.type ?? '', SR.STATUS[z.status]?.label ?? '', o.code ?? '', o.naam ?? '', z.omschrijving ?? '', fmt.pakket?.(z.pakketId) ?? '',
+          datumTijd(a.storing?.opgelostOp || a.datum), a.uitvoerder ?? '', fmt.resultaat(a.storing?.resultaat),
+          a.omschrijving ?? '', a.vervolg ?? '', a.materiaal ?? '', fmt.maatregelen?.(a) ?? '', fmt.fotos?.(a) ?? ((a.fotoIds ?? []).length || ''),
+          fmt.beoordeling(a), IZ.tekst(a.storing?.inzet), t.manuren || '', t.materieeluren || '', a.id,
+          ...extraLabels.map((l) => extra.get(l) ?? '')],
         status: a.storing?.resultaat === 'opgelost' ? 'opgelost' : 'bezig',
       });
       for (const r of IZ.normaliseer(a.storing?.inzet)) {
@@ -57,13 +69,17 @@ export function rijen(zaken, fmt) {
       }
     }
   }
-  return { zaakRijen, regRijen, inzetRijen };
+  return { zaakRijen, regRijen, inzetRijen, extraLabels };
 }
 
 const KLEUR = { open: 'FFE8710A', bezig: 'FFB8860B', opgelost: 'FF1A7F37', vervallen: 'FF6B7785' };
 
-export function maakWerkboek(ExcelJS, zaken, meta, fmt) {
-  const { zaakRijen, regRijen, inzetRijen } = rijen(zaken, fmt);
+/** Kolomnummer (1-based) op naam, voor de statuskleur. */
+const kolomNr = (kolommen, naam) => kolommen.findIndex(([k]) => k === naam) + 1;
+
+export function maakWerkboek(ExcelJS, zaken, meta, fmt, opties = {}) {
+  const { zaakRijen, regRijen, inzetRijen, extraLabels } = rijen(zaken, fmt, opties);
+  const regKolommen = [...REG_KOLOMMEN, ...extraLabels.map((l) => [l, 22])];
   const wb = new ExcelJS.Workbook();
   wb.creator = 'BaasOverBuiten';
   wb.created = new Date();
@@ -100,11 +116,16 @@ export function maakWerkboek(ExcelJS, zaken, meta, fmt) {
   s.addRow(['Manuren', uren.manuren]);
   s.addRow(['Materieeluren', uren.materieeluren]);
   s.addRow([]);
-  for (const t of ['Bladen:', '• Register – één regel per storing of gebrek (zaak), met status, doorlooptijd en uren.',
-    '• Registraties – alle registraties (ook tijdelijk opgelost en vervolg), één regel per registratie.',
-    '• Bestede uren – elke regel uit de tabel Bestede uren (werknemer, auto, boot, …).']) s.addRow([t]);
-  blad('Register', ZAAK_KOLOMMEN, zaakRijen, 2);
-  blad('Registraties', REG_KOLOMMEN, regRijen, 6);
-  blad('Bestede uren', INZET_KOLOMMEN, inzetRijen, 0);
+  const regTekst = { alle: 'van alle storingen en gebreken', opgelost: 'alleen van de opgeloste storingen en gebreken', geen: 'niet meegenomen' }[opties.registraties ?? 'alle'];
+  s.addRow(['Registraties van het verhelpen', regTekst]);
+  s.addRow([]);
+  for (const t of ['Bladen:', '• Register – één regel per storing of gebrek (zaak), met status, doorlooptijd, uren en wat er bij het oplossen is gedaan.',
+    ...(opties.registraties === 'geen' ? [] : ['• Registraties – de registraties van het verhelpen (ook tijdelijk opgelost en vervolg): wat is gedaan, materiaal, afgehandelde maatregelen, foto\'s, uren en de eigen formuliervelden.',
+      '• Bestede uren – elke regel uit de tabel Bestede uren (werknemer, auto, boot, …).'])]) s.addRow([t]);
+  blad('Register', ZAAK_KOLOMMEN, zaakRijen, kolomNr(ZAAK_KOLOMMEN, 'Status'));
+  if (opties.registraties !== 'geen') {
+    blad('Registraties', regKolommen, regRijen, kolomNr(regKolommen, 'Resultaat'));
+    blad('Bestede uren', INZET_KOLOMMEN, inzetRijen, 0);
+  }
   return wb;
 }
