@@ -495,6 +495,13 @@ De uitkomst van een schouw of inspectie (gebreken met een maatregel) kan de inpu
     - **Aan of uit.**
   - Vóór het opslaan zie je hoeveel bevindingen er door zouden gaan.
 - **Moment:** pas als de inspectie is **goedgekeurd** (of afgerond, als het project niet beoordeelt).
+- **Storingen en gebreken als doel:** het register staat rechts in het schema als werkpakket. Elk doorgezet gebrek
+  wordt een melding (soort *Gebrek*) met de urgentie van het gebrek: direct → direct, binnen 3 maanden → deze week,
+  anders normaal. De melding komt op de telefoons onder *Storingen en gebreken*.
+  - Bij het oplossen staat de maatregel van het gebrek vooraf aangevinkt. Opgelost = werklocatie *uitgevoerd*.
+  - Wordt het gebrek teruggetrokken (afgekeurd, niet uitvoeren, vervallen) voordat er iets aan is gedaan, dan vervalt
+    de melding.
+  - Vaste id `wp:<werklocatie>`, dus nooit dubbel.
 - **Doorzetbak** (*Werkpakketten → Doorzetbak*, beheerders en beoordelaars):
   - De bevindingen die op een besluit wachten, gesorteerd op urgentie, met raming, bron en doel.
   - **Selecteren:** *Voorstel* (urgent, of eerder bij dezelfde maatregel doorgezet), *Alle*, *Geen*, *Eerste N* of

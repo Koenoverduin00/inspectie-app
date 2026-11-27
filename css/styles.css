@@ -2426,3 +2426,5 @@ body.kiesmodus .mfilterchips, body.kiesmodus .mtedoenseg, body.kiesmodus .ff-fil
 .dz-let { color: #a35400 !important; }
 .dz-n { display: inline-flex; align-items: center; gap: .3rem; }
 .dz-n input { width: 4rem; padding: .2rem .4rem; }
+
+.ks-kaart.storingen { border-style: dashed; background: color-mix(in srgb, #e8710a 6%, var(--kaart, #fff)); }

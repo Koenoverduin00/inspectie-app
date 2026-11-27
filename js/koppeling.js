@@ -10,6 +10,13 @@
 //   (ronde.herstel.items), zodat kaart, formulier en afvinken werken zoals bij een herstelronde.
 // Puur en testbaar: geen DOM, geen opslag.
 
+/** Het storingen- en gebrekenregister als doel: gebreken worden daar een melding (zaak). */
+export const STORINGEN = '__storingen';
+export const STORINGEN_NAAM = 'Storingen en gebreken';
+/** Urgentie van een gebrek → urgentie van een melding in het register. */
+export const MELDING_URGENTIE = { direct: 'direct', '3maanden': 'week', '1jaar': 'normaal', '3jaar': 'normaal', '5jaar': 'normaal', monitoren: 'normaal' };
+export const meldingId = (werkpuntId) => `wp:${werkpuntId}`;
+
 export const MODI = {
   altijd: { label: 'Altijd', uitleg: 'Passende gebreken worden direct een werklocatie in het werkpakket.' },
   controle: { label: 'Met controle', uitleg: 'Passende gebreken komen eerst in de doorzetbak; een werkvoorbereider besluit per gebrek.' },
