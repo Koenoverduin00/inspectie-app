@@ -4922,9 +4922,19 @@ async function koppelschemaPagina() {
     f?.urgentieTot ? `urgentie t/m ${URGENTIES.find((u) => u.id === f.urgentieTot)?.label ?? f.urgentieTot}` : '', f?.conditieVanaf ? `conditie ${f.conditieVanaf} of slechter` : ''].filter(Boolean).join(' · ') || 'alle bevindingen';
   app.innerHTML = `${isMobiel() ? '' : tabbalk('/koppelschema', 'werkpakketten')}
     <div class="paginakop"><div><h1>Koppelschema</h1>
-      <p>Welke schouw of inspectie levert werk op voor welk werkpakket? ${beheer ? 'Trek een lijn van een schouw (links) naar een werkpakket (rechts): klik op het rondje links en dan op het rondje rechts, of sleep.' : ''}
-      Gebreken worden pas doorgezet als de inspectie is goedgekeurd.</p></div>
+      <p>Welke schouw of inspectie levert werk op voor welk werkpakket.</p></div>
       <div class="knoppen"><a class="knop" href="#/doorzetten">${I.lijst} Doorzetbak${punten.filter((x) => x.status === 'te beoordelen').length ? ` <span class="teller">${punten.filter((x) => x.status === 'te beoordelen').length}</span>` : ''}</a></div></div>
+    <details class="kaart ks-uitleg" id="ks-uitleg" ${instelling.lees('ksUitlegDicht') === '1' ? '' : 'open'}>
+      <summary><strong>${I.lagen} Zo werkt het</strong><small class="zacht">in- of uitklappen</small></summary>
+      <ol class="ks-stappen">
+        <li><strong>Relatie leggen.</strong> Klik links op het rondje bij een schouw en daarna rechts op een werkpakket (of sleep een lijn). Met <strong>↺</strong> leg je een relatie binnen hetzelfde pakket, bijv. snoeiwerk uit de BVC.</li>
+        <li><strong>Instellen.</strong> Kies <em>Altijd</em> (direct door) of <em>Met controle</em> (eerst naar de doorzetbak), in welke ronde het werk komt en welke gebreken meetellen.</li>
+        <li><strong>Goedkeuren.</strong> Gebreken gaan pas door als de inspectie is goedgekeurd. Wat de inspecteur ter plekke heeft gedaan (<em>Direct uitgevoerd</em>), telt meteen als uitgevoerd.</li>
+        <li><strong>Beoordelen.</strong> Bij <em>Met controle</em> kies je in de <a href="#/doorzetten">doorzetbak</a> wat er gebeurt: doorzetten, meerwerk, nader onderzoek of niet uitvoeren.</li>
+        <li><strong>Uitvoeren.</strong> Elk gebrek wordt een werklocatie op de kaart van het werkpakket. Afmelden met een werkzaamheid vinkt hem af. Naar <em>Storingen en gebreken</em> wordt het een melding in het register.</li>
+      </ol>
+      <p class="ks-uitleg-voet zacht"><small>Klik op een lijn om een relatie te wijzigen of te verwijderen. Een afgekeurde of aangepaste inspectie zet zijn werklocaties terug naar de doorzetbak.</small></p>
+    </details>
     <div class="ks-legenda"><span><i class="ks-l altijd"></i> Altijd</span><span><i class="ks-l controle"></i> Met controle</span><span><i class="ks-l uit"></i> Uitgeschakeld</span></div>
     ${!bronnen.length ? '<div class="kaart leeg"><p>Er zijn nog geen schouw- of inspectiepakketten. Maak eerst een inspectiepakket aan.</p></div>' : `
     <div class="ks-schema" id="ks-schema">
@@ -4948,6 +4958,7 @@ async function koppelschemaPagina() {
         <td>${beheer ? `<button type="button" class="knop klein" data-ks-bewerk="${esc(k.id)}">Bewerken</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>`
     : '<p class="leeg">Nog geen relaties. Trek een lijn in het schema hierboven.</p>'}</section>`;
 
+  app.querySelector('#ks-uitleg')?.addEventListener('toggle', (e) => instelling.schrijf('ksUitlegDicht', e.target.open ? '' : '1'));
   const schema = app.querySelector('#ks-schema');
   const svg = app.querySelector('#ks-lijnen');
   const middenVan = (el) => { const r = el.getBoundingClientRect(); const s = schema.getBoundingClientRect(); return [r.left + r.width / 2 - s.left, r.top + r.height / 2 - s.top]; };

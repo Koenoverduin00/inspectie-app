@@ -2505,3 +2505,11 @@ body.kiesmodus .mfilterchips, body.kiesmodus .mtedoenseg, body.kiesmodus .ff-fil
 .ks-optie.uit { opacity: .55; cursor: not-allowed; }
 .ks-optie.uit .ks-optie-kop::after { display: none; }
 .ks-zelf.actief { border-style: solid; border-color: var(--primair); background: color-mix(in srgb, var(--primair) 12%, var(--kaart, #fff)); }
+
+/* Koppelschema: uitleg */
+.ks-uitleg { margin-bottom: 1rem; padding: .8rem 1.1rem; border-left: 4px solid var(--primair); }
+.ks-uitleg summary { display: flex; justify-content: space-between; align-items: center; gap: .5rem; cursor: pointer; list-style: none; }
+.ks-uitleg summary::-webkit-details-marker { display: none; }
+.ks-stappen { margin: .7rem 0 .2rem; padding-left: 1.3rem; display: grid; gap: .45rem; line-height: 1.45; }
+.ks-stappen li::marker { font-weight: 700; color: var(--primair); }
+.ks-uitleg-voet { margin: .4rem 0 0; }
