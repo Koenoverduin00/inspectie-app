@@ -8166,12 +8166,12 @@ async function mobielLocatie(objectId, q = new URLSearchParams()) {
       ${isTeDoen(x.st) ? `<div class="locregel-knoppen">
           <a class="knop ${x.st === 'afgekeurd' ? '' : 'primair'}" href="${pakketHref(x.v, objectId, true)}" title="Gereed melden gaat altijd via het formulier van dit werkpakket">${x.v.soort === 'inspectie' ? `${I.start} Inspecteren` : `${I.vink} ${x.st === 'deels' ? 'Volledig klaar melden' : 'Gereed melden'}`}</a>
           ${x.v.soort === 'werk' && x.v.deelsAfmelden ? `<a class="knop" href="${pakketHref(x.v, objectId, true)}&deel=1" title="Een deel is gedaan; het vak is nog niet helemaal klaar (bijv. een andere ploeg doet de rest). Je vult het formulier in met foto's.">${I.werk} Deels gedaan</a>` : ''}
-          <button class="knop" type="button" data-overslaan="${esc(sleutel)}">${I.overslaan} Overslaan</button>
-          <a class="knop" href="#/m/melding/nieuw?${new URLSearchParams({ object: objectId, pakket: x.v.id })}" title="Storing of gebrek melden vanuit dit werkpakket">${I.let} Melden</a></div>`
+          <button class="knop" type="button" data-overslaan="${esc(sleutel)}">${I.overslaan} Overslaan</button></div>`
     : x.st === 'ingediend' ? `<div class="locregel-status"><span class="label-status ingediend">${I.wacht} Wacht op beoordeling</span> <a href="${x.v.soort === 'inspectie' ? esc(inspectieHref(x.vg.wacht.get(objectId))) : `#/m/werk/${esc(x.vg.wacht.get(objectId).id)}`}">${datumNL(x.vg.wacht.get(objectId).datum)}</a></div>`
     : x.st === 'gedaan' ? `<div class="locregel-status"><span class="label-status afgerond">${I.vink} Gedaan</span> <a href="${regHref(x)}">${datumNL(r.datum)}${r.uitvoerder || r.inspecteur ? ` · ${esc(r.uitvoerder || r.inspecteur)}` : ''}</a></div>`
       : `<div class="locregel-status"><span class="label-status">${I.overslaan} Overgeslagen</span> <small>${esc(ov?.reden ?? '')}</small>
           <button class="knop klein" type="button" data-terug="${esc(sleutel)}">Terugzetten</button></div>`}
+      <a class="locregel-melden" href="#/m/melding/nieuw?${new URLSearchParams({ object: objectId, pakket: x.v.id })}" title="Storing of gebrek melden vanuit dit werkpakket">${I.let} Storing of gebrek melden</a>
     </li>`;
   };
   app.innerHTML = `

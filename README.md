@@ -475,6 +475,19 @@ Op alle kaarten met voortgang (mobiele kaart, werkpakketkaart, dashboardkaart me
   **voor iedereen in het project** (wordt gesynchroniseerd); iedereen kan ook een eigen opmaak **alleen op dit apparaat**
   kiezen. *Standaard herstellen* zet alles terug. De voortgangsbalken en legenda's volgen dezelfde kleuren.
 
+## Keuzelijsten
+
+Alle keuzelijsten (dropdowns) hebben de stijl van de app:
+- een eigen pijltje, een rustige rand en een hover-rand, en bij focus een blauwe rand met gloed;
+- ze werken in licht en donker.
+
+In Chrome, Edge en op Android is ook de uitklaplijst zelf opgemaakt (`appearance: base-select`):
+- afgeronde hoeken en een schaduw;
+- een vinkje bij de gekozen waarde;
+- een lichte achtergrond onder de muis.
+
+Andere browsers tonen de standaard uitklaplijst, maar wel met het nieuwe dichte veld.
+
 ## Storingen- en gebrekenregister: nummer en werkpakket
 
 - **Eigen nummer:** elke storing en elk gebrek krijgt automatisch een nummer, bijv. **`OPZ-G26-0042`**:
@@ -491,7 +504,8 @@ Op alle kaarten met voortgang (mobiele kaart, werkpakketkaart, dashboardkaart me
   opdrachtgever*, naast het eigen nummer.
 - **Gemeld vanuit werkpakket:** een melding onthoudt uit welk werkpakket hij komt. Code en naam staan in de kolom
   *Melding*, in de kaartpopup en in de Excel-export (kolom *Gemeld vanuit werkpakket*).
-  - Op de objectpagina in een werkpakket staat een knop **Melden**; die vult het werkpakket vooraf in.
+  - Op de objectpagina in een werkpakket staat bij elk werkpakket de link **Storing of gebrek melden**, ook als het
+    object al klaar is. Die vult het werkpakket vooraf in.
   - In het meldformulier kies je uit de werkpakketten van het object.
   - Gebreken uit het koppelschema krijgen het schouwpakket mee.
 - **Zoeken:** het zoekveld vindt ook het nummer en het werkpakket.

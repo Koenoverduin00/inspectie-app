@@ -2605,3 +2605,5 @@ select optgroup { font-weight: 700; color: var(--tekst-zacht); }
   select optgroup { padding: .35rem .2rem .15rem; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
   select hr { border: 0; border-top: 1px solid var(--rand); margin: .3rem .2rem; }
 }
+.locregel-melden { display: inline-flex; align-items: center; gap: .35rem; margin-top: .55rem; font-size: .88rem; color: var(--tekst-zacht); text-decoration: none; }
+.locregel-melden:hover, .locregel-melden:focus-visible { color: var(--primair); text-decoration: underline; }
