@@ -1,6 +1,7 @@
 :root {
   --primair: #0b4f6c;
   --primair-licht: #e3f0f6;
+  --selectpijl: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%235b6875' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --accent: #f2a900;
   --tekst: #1d2733;
   --tekst-zacht: #5b6875;
@@ -18,6 +19,7 @@
 :root[data-thema="donker"] {
   --primair: #5fb3d6;
   --primair-licht: #17303d;
+  --selectpijl: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%239aa7b4' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --tekst: #e6edf3;
   --tekst-zacht: #9aa7b4;
   --rand: #2e3a46;
@@ -32,6 +34,7 @@
   :root[data-thema="systeem"] {
     --primair: #5fb3d6;
     --primair-licht: #17303d;
+  --selectpijl: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%239aa7b4' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
     --tekst: #e6edf3;
     --tekst-zacht: #9aa7b4;
     --rand: #2e3a46;
@@ -2563,3 +2566,42 @@ h1 .regnummer { font-size: 1rem; padding: .15rem .5rem; border-radius: 6px; back
 .registertabel td:nth-child(4) { min-width: 14rem; }
 .registertabel td.regref { width: 1%; }
 .registertabel td.regref .subregel { white-space: nowrap; }
+
+/* ---------------------------------------------------------------------------
+   Keuzelijsten (dropdowns): eigen pijltje, rustige rand, duidelijke hover en focus.
+   In browsers met aanpasbare keuzelijsten (Chrome/Edge/Android) ook de uitklaplijst zelf in de stijl van de app.
+   --------------------------------------------------------------------------- */
+select:not([multiple]):not([size]) {
+  -webkit-appearance: none; appearance: none;
+  padding-right: 2.2rem;
+  background-color: var(--vlak);
+  background-image: var(--selectpijl);
+  background-repeat: no-repeat; background-position: right .75rem center; background-size: 12px 8px;
+  cursor: pointer; text-overflow: ellipsis; white-space: nowrap;
+  transition: border-color .12s ease, box-shadow .12s ease, background-color .12s ease;
+}
+select:not([multiple]):not([size]):hover:not(:disabled) { border-color: color-mix(in srgb, var(--primair) 45%, var(--rand)); }
+select:focus { outline: none; border-color: var(--primair); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primair) 22%, transparent); }
+select:disabled { opacity: .6; cursor: not-allowed; background-color: var(--achtergrond); }
+select option { color: var(--tekst); background: var(--vlak); }
+select optgroup { font-weight: 700; color: var(--tekst-zacht); }
+
+@supports (appearance: base-select) {
+  select:not([multiple]):not([size]), select:not([multiple]):not([size])::picker(select) { appearance: base-select; }
+  select:not([multiple]):not([size]) { display: inline-flex; align-items: center; }
+  select:not([multiple]):not([size])::picker-icon { display: none; } /* we gebruiken ons eigen pijltje */
+  select:not([multiple]):not([size]):open { border-color: var(--primair); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primair) 22%, transparent); }
+  ::picker(select) {
+    border: 1px solid var(--rand); border-radius: 12px; padding: .3rem; margin-block: 6px;
+    background: var(--vlak); color: var(--tekst);
+    box-shadow: 0 12px 32px rgba(16, 24, 40, .18), 0 2px 6px rgba(16, 24, 40, .08);
+    max-height: min(60vh, 420px); overflow-y: auto; min-width: anchor-size(width);
+  }
+  select option { padding: .5rem .7rem; border-radius: 8px; gap: .5rem; cursor: pointer; white-space: normal; line-height: 1.35; }
+  select option:hover, select option:focus-visible { background: var(--primair-licht); outline: none; }
+  select option:checked { font-weight: 600; color: var(--primair); background: color-mix(in srgb, var(--primair) 10%, var(--vlak)); }
+  select option::checkmark { color: var(--primair); }
+  select option:disabled { opacity: .5; }
+  select optgroup { padding: .35rem .2rem .15rem; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
+  select hr { border: 0; border-top: 1px solid var(--rand); margin: .3rem .2rem; }
+}
