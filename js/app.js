@@ -2445,7 +2445,7 @@ async function kiesOpKaart({ huidig = null, objectId = '' } = {}) {
     document.body.append(d);
     d.showModal();
     const el = d.querySelector('.kaartkies-kaart');
-    const map = L.map(el, { zoomAnimation: false, fadeAnimation: false });
+    const map = L.map(el, {});
     el.leafletKaart = map;
     voegAchtergrondToe(L, map, { ingewonnen: 'formulier' });
     if (geom) {
@@ -2776,7 +2776,7 @@ async function tekenObjectKaartje(el, o, kleur = '#e07b00', punten = []) {
   }
   if (!el.isConnected) return;
   el.innerHTML = '';
-  const map = L.map(el, { zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false, scrollWheelZoom: false });
+  const map = L.map(el, { scrollWheelZoom: false });
   voegAchtergrondToe(L, map);
   const ander = o.laagId ? (await inProject('objecten')).filter((x) => x.laagId === o.laagId && x.id !== o.id).slice(0, 3000) : [];
   const context = L.geoJSON({ type: 'FeatureCollection', features: ander.map((x) => ({ type: 'Feature', geometry: objectGeometrie(x), properties: {} })).filter((f) => f.geometry) }, {
@@ -8535,7 +8535,7 @@ async function mobielVrijgaven(_, q = new URLSearchParams()) {
     const el = inhoud.querySelector('#ff-kaart');
     if (!el?.isConnected) return;
     el.innerHTML = '';
-    const map = L.map(el, { preferCanvas: true, renderer: L.canvas({ tolerance: 6 }), zoomAnimation: false, fadeAnimation: false });
+    const map = L.map(el, { preferCanvas: true, renderer: L.canvas({ tolerance: 6 }) });
     kaart = map;
     el.leafletKaart = map;
     voegAchtergrondToe(L, map);
@@ -11270,7 +11270,7 @@ async function toonImportVoorstel(kandidaten, fouten, { doel = null } = {}) {
     if (!L || !vak.isConnected) return;
     voorbeeld?.remove();
     vak.innerHTML = '';
-    voorbeeld = L.map(vak, { preferCanvas: true, renderer: L.canvas({ tolerance: 6 }), zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
+    voorbeeld = L.map(vak, { preferCanvas: true, renderer: L.canvas({ tolerance: 6 }) });
     voegAchtergrondToe(L, voorbeeld);
     const lagenOpKaart = voorstel.filter((v) => v.actie !== 'overslaan' && v.laag.features.length).map((v) => L.geoJSON(
       { type: 'FeatureCollection', features: v.laag.features.slice(0, 20000).map((f) => ({ type: 'Feature', geometry: f.geometry, properties: {} })) },
@@ -11871,9 +11871,47 @@ async function exporteerIngewonnen() {
   d.showModal();
 }
 
+// Eén plek voor het kaartgedrag van alle kaarten in de app.
+// Touch (telefoon/tablet): fijne zoomstappen (knijpen landt op kwartstappen, de +/− knoppen zoomen een halve stap),
+// vloeiende zoomanimaties en geen 'terugveren' aan de zoomgrenzen.
+const isTouch = () => (globalThis.matchMedia?.('(pointer: coarse)').matches ?? false) || (navigator.maxTouchPoints ?? 0) > 0;
+const actieveKaarten = new Set();
+function ruimKaartenOp() {
+  for (const map of actieveKaarten) {
+    const c = map.getContainer?.();
+    if (c?.isConnected) continue;
+    actieveKaarten.delete(map);
+    try {
+      if (map._animatingZoom) map._onZoomTransitionEnd?.(); // lopende zoomanimatie eerst afronden
+      map.stop?.();
+      map.remove();
+    } catch { /* al opgeruimd */ }
+  }
+}
+function stelLeafletIn(L) {
+  if (!L || L._baasIngesteld) return L;
+  L._baasIngesteld = true;
+  const touch = isTouch();
+  L.Map.mergeOptions({
+    zoomAnimation: true,
+    markerZoomAnimation: true,
+    fadeAnimation: true,
+    bounceAtZoomLimits: false,
+    inertia: true,
+    ...(touch
+      ? { zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 120, inertiaDeceleration: 2500, tapTolerance: 20 }
+      : { zoomSnap: 0.5, zoomDelta: 1, wheelPxPerZoomLevel: 90 }),
+  });
+  // Tegels: niet bij elke tussenstap van een knijpbeweging opnieuw laden, en een ruimere buffer zodat schuiven geen witte randen geeft.
+  L.GridLayer.mergeOptions({ updateWhenZooming: false, keepBuffer: touch ? 4 : 2 });
+  L.Map.addInitHook(function () { actieveKaarten.add(this); });
+  window.addEventListener('hashchange', () => setTimeout(ruimKaartenOp, 0));
+  return L;
+}
+
 let leafletBelofte;
 function laadLeaflet() {
-  if (window.L) return Promise.resolve(window.L);
+  if (window.L) return Promise.resolve(stelLeafletIn(window.L));
   leafletBelofte ??= new Promise((resolve, reject) => {
     const css = document.createElement('link');
     css.rel = 'stylesheet';
@@ -11881,7 +11919,7 @@ function laadLeaflet() {
     document.head.append(css);
     const js = document.createElement('script');
     js.src = 'vendor/leaflet/leaflet.js';
-    js.onload = () => resolve(window.L);
+    js.onload = () => resolve(stelLeafletIn(window.L));
     js.onerror = () => { leafletBelofte = null; reject(new Error('Kaartbibliotheek kon niet worden geladen.')); };
     document.head.append(js);
   });
@@ -12082,7 +12120,7 @@ async function tekenGisKaart(el, { groepen, kleur, groepVan }) {
   }
   if (!el.isConnected) return null; // inmiddels naar een andere pagina
   el.innerHTML = '';
-  const map = L.map(el, { preferCanvas: true, renderer: L.canvas({ tolerance: 6 }), zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
+  const map = L.map(el, { preferCanvas: true, renderer: L.canvas({ tolerance: 6 }) });
   el.leafletKaart = map; // voor tests en debuggen
   voegAchtergrondToe(L, map);
 
@@ -12187,7 +12225,7 @@ async function tekenObjectenKaart(el, { objecten, kleurVan, statusVan = null, po
   }
   if (!el.isConnected) return null;
   el.innerHTML = '';
-  const map = L.map(el, { preferCanvas: true, renderer: L.canvas({ tolerance: 6 }), zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
+  const map = L.map(el, { preferCanvas: true, renderer: L.canvas({ tolerance: 6 }) });
   el.leafletKaart = map; // voor tests en debuggen
   voegAchtergrondToe(L, map);
   const groep = L.featureGroup().addTo(map);
@@ -13767,7 +13805,7 @@ async function locatieKaart(blok, id, extra, alleDefs) {
   let L;
   try { L = await laadLeaflet(); } catch (fout) { el.innerHTML = `<p class="leeg">${esc(fout.message)}</p>`; return; }
   if (el._kaart) { el._kaart.invalidateSize(); return; }
-  const map = L.map(el, { zoomAnimation: false, fadeAnimation: false });
+  const map = L.map(el, {});
   el._kaart = map;
   voegAchtergrondToe(L, map, { ingewonnen: 'formulier' });
   const d = alleDefs.find((x) => x.id === id);
@@ -13875,7 +13913,7 @@ async function extraBlok(blok, defsNu, record, { ns = '', nieuw = !record } = {}
     let L;
     try { L = await laadLeaflet(); } catch (fout) { el.innerHTML = `<p class="leeg">${esc(fout.message)}</p>`; return; }
     if (el._kaart || !el.isConnected) return;
-    const map = L.map(el, { zoomAnimation: false, fadeAnimation: false });
+    const map = L.map(el, {});
     el._kaart = map;
     voegAchtergrondToe(L, map, { ingewonnen: 'formulier' });
     const objectId = app.querySelector('#f-object')?.value;
@@ -15029,8 +15067,8 @@ async function tekenPakketKaart(el, { pakket, objecten, statusVan, positie = nul
   }
   if (!el.isConnected) return null;
   el.innerHTML = '';
-  // Zonder animaties: die lopen anders door nadat je de pagina al hebt verlaten.
-  const map = L.map(el, { preferCanvas: true, renderer: L.canvas({ tolerance: 6 }), zoomControl: !mobiel, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
+  // Zoomanimaties staan aan; kaarten van een verlaten pagina ruimt ruimKaartenOp() netjes op.
+  const map = L.map(el, { preferCanvas: true, renderer: L.canvas({ tolerance: 6 }), zoomControl: !mobiel });
   el.leafletKaart = map; // voor tests en debuggen
   voegAchtergrondToe(L, map);
   const metGeo = objecten.filter((o) => objectGeometrie(o));
@@ -15222,7 +15260,7 @@ async function tekenRegisterKaart(el, { objectMap, popup }) {
   try { L = await laadLeaflet(); } catch (fout) { el.innerHTML = `<p class="leeg">${esc(fout.message)}</p>`; return null; }
   if (!el.isConnected) return null;
   el.innerHTML = '';
-  const map = L.map(el, { preferCanvas: true, renderer: L.canvas({ tolerance: 6 }), zoomAnimation: false, fadeAnimation: false });
+  const map = L.map(el, { preferCanvas: true, renderer: L.canvas({ tolerance: 6 }) });
   el.leafletKaart = map;
   voegAchtergrondToe(L, map);
   const laag = L.featureGroup().addTo(map);
@@ -16677,7 +16715,7 @@ async function herstelLijst(pakketId, q = new URLSearchParams()) {
     try { L = await laadLeaflet(); } catch (fout) { el.innerHTML = `<p class="leeg">${esc(fout.message)}</p>`; return; }
     if (!el.isConnected) return;
     el.innerHTML = '';
-    const map = L.map(el, { preferCanvas: true, renderer: L.canvas({ tolerance: 6 }), zoomAnimation: false, fadeAnimation: false });
+    const map = L.map(el, { preferCanvas: true, renderer: L.canvas({ tolerance: 6 }) });
     el.leafletKaart = map;
     voegAchtergrondToe(L, map);
     const objs = [...new Set(items.map((x) => x.objectId))].map((id) => g.objectMap.get(id)).filter((o) => o && objectGeometrie(o));
@@ -17577,7 +17615,7 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
       vak.dataset.klaar = '1';
       const i = Number(vak.dataset.wKaart);
       const w = W[i];
-      const map = L.map(vak, { zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false, scrollWheelZoom: false });
+      const map = L.map(vak, { scrollWheelZoom: false });
       wKaarten.push(map);
       voegAchtergrondToe(L, map);
       const omtrek = objGeo ? L.geoJSON({ type: 'Feature', geometry: objGeo, properties: {} }, {

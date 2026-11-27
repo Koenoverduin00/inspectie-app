@@ -1776,6 +1776,13 @@ Daaronder **Perceelgrenzen (Kadaster)**: de kadastrale kaart als extra laag over
 scrolt het. Keuze, perceelgrenzen en sterkte worden per apparaat onthouden en gelden voor alle kaarten. Wisselen van achtergrond
 verandert nooit het zoomniveau.
 
+**Zoomen op telefoon en tablet**: alle kaarten zoomen in fijne stappen. Knijpen landt op kwartstappen en de +/− knoppen
+zoomen een halve stap (op de pc een hele stap, met het scrollwiel halve stappen), zodat je bij uitzoomen niet meer te ver
+wegschiet. Zoomen en schuiven gaan vloeiend (zoomanimatie, uitlopen na een veegbeweging, geen terugveren aan de zoomgrenzen);
+tegels worden pas na het knijpen geladen en er wordt een ruimere rand vooruit geladen, zodat schuiven geen witte vlakken geeft.
+Kaarten van een pagina die je verlaat worden direct opgeruimd, ook als er nog een zoomanimatie liep. Alles staat op één plek
+(`stelLeafletIn` in `js/app.js`).
+
 ## Mobiele app (Android en iOS)
 
 Naast de website is er een echte app voor telefoons, gemaakt met [Capacitor](https://capacitorjs.com): dezelfde code, verpakt als
