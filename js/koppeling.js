@@ -74,6 +74,27 @@ export function bevindingen(insp) {
   };
   return [...(insp?.gebreken ?? []), ...(insp?.bvc?.maatregelen ?? []), ...(insp?.stowa?.waarnemingen ?? [])].filter(telt);
 }
+/** Past het antwoord op een eigen vraag (per bevinding) bij de gekozen waarden? vraag = { id, type, waarden: [...] } */
+export function vraagPast(vraag, waarde) {
+  const w = vraag?.waarden ?? [];
+  if (!vraag?.id || !w.length) return false;
+  if (vraag.type === 'janee') return (w.includes('Ja') && waarde === true) || (w.includes('Nee') && waarde === false);
+  if (Array.isArray(waarde)) return waarde.some((x) => w.includes(x));
+  return waarde != null && w.includes(String(waarde));
+}
+
+/**
+ * De bevindingen die een relatie bekijkt. Met een vraag als voorwaarde: elke bevinding waarbij die vraag zo is
+ * beantwoord (ook zonder maatregel of oordeel). Anders: de bevindingen die werk opleveren (zie bevindingen()).
+ */
+export function kandidaten(insp, filter) {
+  if (filter?.vraag?.id) {
+    return [...(insp?.gebreken ?? []), ...(insp?.bvc?.maatregelen ?? []), ...(insp?.stowa?.waarnemingen ?? [])]
+      .filter((g) => g?.id && vraagPast(filter.vraag, g.extra?.[filter.vraag.id]));
+  }
+  return bevindingen(insp);
+}
+
 export const maatregelNaam = (g) => String(g?.bvcMaatregel || g?.maatregel || '').trim();
 export const gebrekNaam = (g) => String(g?.gebrek || g?.omschrijving || g?.checkpunt || g?.code || '').trim();
 
@@ -122,7 +143,7 @@ export function bijwerken(koppeling, inspecties, bestaande, { nu = '', conditieV
   for (const i of inspecties) {
     if (i.werkpakketId !== koppeling.bronPakketId) continue;
     const goed = inspectieGoedgekeurd(i);
-    const gebreken = new Map(bevindingen(i).map((g) => [g.id, g]));
+    const gebreken = new Map(kandidaten(i, koppeling.filter).map((g) => [g.id, g]));
     // Bestaande werkpunten van deze inspectie: bron gewijzigd, afgekeurd of gebrek verdwenen?
     for (const [gid, g] of gebreken) {
       const id = werkpuntId(i.id, gid, kid);
@@ -151,16 +172,17 @@ export function bijwerken(koppeling, inspecties, bestaande, { nu = '', conditieV
     for (const wp of bestaande.values()) {
       if (wp.koppelingId !== kid || wp.bron?.inspectieId !== i.id || gebreken.has(wp.bron.gebrekId)) continue;
       gezien.add(wp.id);
-      if (!['gedaan', 'vervallen'].includes(wp.status)) gewijzigd.push({ ...wp, status: 'vervallen', vorigeStatus: wp.status, reden: 'Gebrek staat niet meer in de inspectie', gewijzigd: nu });
+      if (!['gedaan', 'vervallen'].includes(wp.status)) gewijzigd.push({ ...wp, status: 'vervallen', vorigeStatus: wp.status, reden: VERDWENEN, gewijzigd: nu });
     }
   }
   return { nieuw, gewijzigd };
 }
 
 const AFGEKEURD = 'De inspectie is afgekeurd of opnieuw ingediend';
+const VERDWENEN = 'De bevinding staat niet meer in de inspectie (of telt niet meer mee)';
 /** Een bestaand werkpunt bijwerken; null als er niets verandert. */
 export function bijgewerkt(wp, { goed, gebrek, nu, modus = 'controle', insp = null }) {
-  if (wp.status === 'vervallen' && gebrek && goed && wp.reden === 'Gebrek staat niet meer in de inspectie') {
+  if (wp.status === 'vervallen' && gebrek && goed && wp.reden === VERDWENEN) {
     return { ...wp, status: wp.vorigeStatus || 'te beoordelen', reden: '', gewijzigd: nu };
   }
   // Uitgevoerd (via een werkzaamheid die de maatregel afhandelt): de werklocatie is klaar.
@@ -243,7 +265,7 @@ export function diagnose(koppeling, inspecties, { conditieVan = () => null } = {
   const uit = { wacht: 0, afgekeurd: 0, concept: 0, voorStart: 0, buitenFilter: 0, inspWacht: 0, inspAfgekeurd: 0 };
   for (const i of inspecties ?? []) {
     if (i.werkpakketId !== koppeling.bronPakketId) continue;
-    const bev = bevindingen(i);
+    const bev = kandidaten(i, koppeling.filter);
     if (!bev.length) continue;
     const st = i.beoordeling?.status ?? 'goedgekeurd';
     if (i.status !== 'afgerond') { uit.concept += bev.length; continue; }
@@ -253,4 +275,48 @@ export function diagnose(koppeling, inspecties, { conditieVan = () => null } = {
     uit.buitenFilter += bev.filter((g) => !past(koppeling.filter, g, { conditie: conditieVan(g, i), oordeel: oordeelLabel(i, g) })).length;
   }
   return uit;
+}
+
+/**
+ * Het gekoppelde formulier inlezen: wat telt er mee, welke keuzes zijn er om op te filteren, en zijn er problemen?
+ * @param type      inspectietype (eigen of standaard) of null bij een protocol
+ * @param protocol  'bvc' | 'stowa' | ''
+ * @param vragen    eigen vragen per bevinding die bij dit type horen
+ */
+export function formulierAnalyse({ naam = '', type = null, protocol = '', vragen = [], bvcMaatregelen = [] }) {
+  const uit = { naam, methodiek: protocol || type?.methodiek || 'nen', regel: '', oordelen: [], schaal: [], gebreken: [], onderdelen: [], punten: [], maatregelen: [],
+    vragen: (vragen ?? []).filter((v) => ['janee', 'keuze', 'meerkeuze'].includes(v.type)), waarschuwingen: [] };
+  if (protocol === 'bvc') { uit.regel = 'Elke boomveiligheidsmaatregel telt mee (bijv. snoeien, kappen).'; uit.maatregelen = [...bvcMaatregelen]; return uit; }
+  if (protocol === 'stowa') { uit.regel = 'Elke waarneming op de waterkering telt mee.'; return uit; }
+  if (!type) { uit.waarschuwingen.push(`Het formulier "${naam}" is niet (meer) gevonden in dit project. Controleer de inspectietypen.`); uit.regel = 'Bevindingen met een maatregel of urgentie tellen mee.'; return uit; }
+  uit.gebreken = [...(type.gebreken ?? [])];
+  uit.onderdelen = [...(type.onderdelen ?? [])];
+  if (type.methodiek === 'oordeel') {
+    const schaal = type.schaal?.length ? type.schaal : STANDAARD_SCHAAL;
+    const beste = Math.min(...schaal.map((x) => Number(x.waarde)));
+    uit.schaal = schaal.map((x) => ({ label: x.label, kleur: x.kleur, telt: Number(x.waarde) > beste }));
+    uit.oordelen = uit.schaal.filter((x) => x.telt).map((x) => x.label);
+    uit.regel = `Bevindingen met het oordeel ${uit.oordelen.map((x) => `"${x}"`).join(' of ')} tellen mee, ook zonder maatregel. "${schaal.find((x) => Number(x.waarde) === beste)?.label}" telt niet mee.`;
+    if (schaal.length < 2) uit.waarschuwingen.push('De schaal heeft maar één niveau: er kan nooit iets worden afgekeurd.');
+  } else if (type.methodiek === 'checklist') {
+    uit.punten = [...(type.punten ?? [])];
+    uit.regel = 'Elk controlepunt dat "niet in orde" is telt mee, ook zonder maatregel.';
+    if (!uit.punten.length) uit.waarschuwingen.push('De checklist heeft geen controlepunten.');
+  } else {
+    uit.regel = 'Elk gebrek met een advies maatregel of een urgentie telt mee (NEN 2767).';
+  }
+  return uit;
+}
+
+/**
+ * Proef met de bestaande inspecties van de bron: hoeveel bevindingen zijn er, hoeveel tellen mee en hoeveel
+ * zouden nu doorgaan (los van wat er al is doorgezet).
+ */
+export function proef(koppeling, inspecties, { conditieVan = () => null } = {}) {
+  const eigen = (inspecties ?? []).filter((i) => i.werkpakketId === koppeling.bronPakketId);
+  const alle = eigen.reduce((t, i) => t + [...(i.gebreken ?? []), ...(i.bvc?.maatregelen ?? []), ...(i.stowa?.waarnemingen ?? [])].length, 0);
+  const kand = eigen.flatMap((i) => kandidaten(i, koppeling.filter).map((g) => ({ i, g })));
+  const passend = kand.filter(({ i, g }) => past(koppeling.filter, g, { conditie: conditieVan(g, i), oordeel: oordeelLabel(i, g) }));
+  const klaar = passend.filter(({ i }) => inspectieGoedgekeurd(i) && !(koppeling.vanaf && String(i.datum ?? '') < koppeling.vanaf));
+  return { inspecties: eigen.length, bevindingen: alle, tellen: kand.length, passend: passend.length, door: klaar.length };
 }

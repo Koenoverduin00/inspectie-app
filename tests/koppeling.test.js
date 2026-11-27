@@ -136,3 +136,30 @@ test('diagnose: waarom komt iets niet door', () => {
   ]);
   assert.deepEqual(d, { wacht: 2, afgekeurd: 2, concept: 2, voorStart: 2, buitenFilter: 1, inspWacht: 1, inspAfgekeurd: 1 });
 });
+
+test('eigen vraag per bevinding als voorwaarde, formulieranalyse en proef', () => {
+  const i = insp({ gebreken: [
+    { id: 'v1', gebrek: 'Paal', extra: { herstel: true } },
+    { id: 'v2', gebrek: 'Bord', extra: { herstel: false } },
+    { id: 'v3', gebrek: 'Hek', extra: { actie: ['Vervangen', 'Schilderen'] } },
+  ] });
+  const k = kop({ filter: { vraag: { id: 'herstel', type: 'janee', waarden: ['Ja'] } } });
+  assert.deepEqual(K.bijwerken(k, [i], new Map()).nieuw.map((x) => x.bron.gebrekId), ['v1']);
+  assert.ok(K.vraagPast({ id: 'actie', type: 'meerkeuze', waarden: ['Vervangen'] }, ['Vervangen', 'Schilderen']));
+  assert.ok(!K.vraagPast({ id: 'x', type: 'keuze', waarden: [] }, 'a'));
+  // antwoord later op nee → werkpunt vervalt
+  const eerst = new Map(K.bijwerken(k, [i], new Map(), { nu: 'T' }).nieuw.map((x) => [x.id, x]));
+  const nee = insp({ gebreken: [{ id: 'v1', gebrek: 'Paal', extra: { herstel: false } }] });
+  assert.equal(K.bijwerken(k, [nee], eerst, { nu: 'T2' }).gewijzigd[0].status, 'vervallen');
+
+  const a = K.formulierAnalyse({ naam: 'Schouw BK', type: { methodiek: 'oordeel', schaal: [{ waarde: 1, label: 'Goed' }, { waarde: 2, label: 'Matig' }, { waarde: 3, label: 'Afgekeurd' }], gebreken: ['Onkruid'] }, vragen: [{ id: 'q', type: 'janee', label: 'Herstel?' }, { id: 't', type: 'tekst' }] });
+  assert.deepEqual(a.oordelen, ['Matig', 'Afgekeurd']);
+  assert.deepEqual(a.vragen.map((v) => v.id), ['q']);
+  assert.match(a.regel, /"Goed" telt niet mee/);
+  assert.equal(K.formulierAnalyse({ naam: 'X', type: { methodiek: 'checklist', punten: [] } }).waarschuwingen.length, 1);
+  assert.equal(K.formulierAnalyse({ naam: 'Weg', type: null }).waarschuwingen.length, 1);
+  assert.equal(K.formulierAnalyse({ protocol: 'bvc', bvcMaatregelen: ['Snoeien'] }).maatregelen[0], 'Snoeien');
+
+  const p = K.proef(kop(), [insp(), insp({ id: 'i2', beoordeling: { status: 'ingediend' } })]);
+  assert.deepEqual(p, { inspecties: 2, bevindingen: 6, tellen: 4, passend: 4, door: 2 });
+});

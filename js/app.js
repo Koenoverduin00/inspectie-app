@@ -5124,12 +5124,37 @@ async function koppelschemaPagina() {
     const bronInsp = inspecties.filter((i) => i.werkpakketId === k.bronPakketId);
     const alleBev = (bronInsp.length ? bronInsp : inspecties).flatMap((i) => KP.bevindingen(i));
     const uniek = (l) => [...new Set(l.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'nl'));
-    const maatregelen = uniek([...alleBev.map(KP.maatregelNaam), ...(k.filter?.maatregelen ?? [])]);
-    const gebreken = uniek([...alleBev.map(KP.gebrekNaam), ...(k.filter?.gebreken ?? [])]);
-    const oordelen = uniek([...(bronInsp.length ? bronInsp : inspecties).flatMap((i) => KP.bevindingen(i).map((g) => KP.oordeelLabel(i, g))), ...(k.filter?.oordelen ?? [])]);
+    let maatregelen = uniek([...alleBev.map(KP.maatregelNaam), ...(k.filter?.maatregelen ?? [])]);
+    let gebreken = uniek([...alleBev.map(KP.gebrekNaam), ...(k.filter?.gebreken ?? [])]);
+    let oordelen = uniek([...(bronInsp.length ? bronInsp : inspecties).flatMap((i) => KP.bevindingen(i).map((g) => KP.oordeelLabel(i, g))), ...(k.filter?.oordelen ?? [])]);
     const lijstVink = (naam2, opties, gekozen) => (opties.length ? `<div class="ks-keuzechips">${opties.map((x) => `<label class="ks-keuzechip" title="${esc(x)}"><input type="checkbox" name="${naam2}" value="${esc(x)}" ${gekozen?.includes(x) ? 'checked' : ''}><span>${esc(x)}</span></label>`).join('')}</div>`
       : '<p class="ks-dhulp">Nog geen bevindingen in deze schouw; alles telt mee.</p>');
     const d = document.createElement('dialog');
+    // Het gekoppelde formulier inlezen: welke inspectietypen worden in de bron gebruikt, en wat telt daarin mee?
+    const bronP = pakketten.find((x) => x.id === k.bronPakketId);
+    const formNamen = [...new Set([
+      ...(bronP ? rondesVan(bronP).filter((r) => (r.soort ?? bronP.soort) === 'inspectie').map((r) => r.inspectiesoort || bronP.inspectiesoort) : []),
+      ...bronInsp.map((i) => (i.bvc ? BV.BVC_SOORT : i.stowa ? ST.STOWA_SOORT : i.soort)),
+    ].filter(Boolean))];
+    const alleTypen = inspectieTypen(project, { ookVerborgen: true });
+    const bevVragen = velden.opNiveau((project.velden ?? []).filter((dd) => dd.formulier === 'inspectie'), 'bevinding');
+    const analyses = formNamen.map((fn) => {
+      const protocol = fn === BV.BVC_SOORT ? 'bvc' : fn === ST.STOWA_SOORT ? 'stowa' : '';
+      const type = protocol ? null : alleTypen.find((t) => t.naam === fn) ?? null;
+      const a = KP.formulierAnalyse({ naam: fn, type, protocol, vragen: velden.zichtbareVelden(bevVragen, 'inspectie', fn), bvcMaatregelen: BV.MAATREGELEN });
+      // Inspecties die met een oudere versie van het formulier zijn gedaan (andere schaal): melden.
+      if (type?.methodiek === 'oordeel') {
+        const nu = JSON.stringify((type.schaal ?? []).map((x) => x.label));
+        const oud = bronInsp.filter((i) => i.soort === fn && i.type?.schaal && JSON.stringify(i.type.schaal.map((x) => x.label)) !== nu).length;
+        if (oud) a.waarschuwingen.push(`${oud} inspectie${oud === 1 ? ' is' : 's zijn'} gedaan met een oudere schaal van dit formulier; daarvoor geldt de schaal van dat moment.`);
+      }
+      return a;
+    });
+    // Keuzes uit het formulier zelf (ook als er nog geen inspecties zijn gedaan).
+    oordelen = uniek([...oordelen, ...analyses.flatMap((a) => a.oordelen)]);
+    gebreken = uniek([...gebreken, ...analyses.flatMap((a) => [...a.gebreken, ...a.punten])]);
+    maatregelen = uniek([...maatregelen, ...analyses.flatMap((a) => a.maatregelen)]);
+    const formVragen = [...new Map(analyses.flatMap((a) => a.vragen).map((v) => [v.id, v])).values()];
     const isReg = k.doelPakketId === KP.STORINGEN;
     const doelP = pakketten.find((x) => x.id === k.doelPakketId);
     const doelHeeftWerk = doelP ? rondesVan(doelP).some((r) => (r.soort ?? doelP.soort ?? 'werk') !== 'inspectie') : true;
@@ -5147,6 +5172,17 @@ async function koppelschemaPagina() {
         ${isReg ? `<p class="ks-dhulp">Elk doorgezet gebrek wordt een melding (soort <em>Gebrek</em>) in het register, met de urgentie van het gebrek. Bij het oplossen staat de maatregel al aangevinkt.</p>` : ''}
       </header>
       <div class="ks-dinhoud">
+        <section class="ks-sectie ks-form"><h3>Gekoppeld formulier</h3>
+          ${analyses.length ? analyses.map((a) => `<div class="ks-formkaart">
+            <div class="ks-formkop"><strong>${I.inspectie} ${esc(a.naam)}</strong><span class="ks-modus">${esc(a.methodiek === 'bvc' ? 'Protocol BVC' : a.methodiek === 'stowa' ? 'Protocol waterkering' : TY.METHODIEKEN[a.methodiek]?.label ?? a.methodiek)}</span></div>
+            <p class="ks-formregel">${I.vink} ${esc(a.regel)}</p>
+            ${a.schaal.length ? `<div class="ks-schaal">${a.schaal.map((x) => `<span class="ks-schaalniveau${x.telt ? ' telt' : ''}" style="--k:${esc(x.kleur || '#8a96a3')}">${esc(x.label)}${x.telt ? ' ✓' : ''}</span>`).join('')}</div>` : ''}
+            ${a.punten.length ? `<p class="ks-dhulp">${a.punten.length} controlepunt${a.punten.length === 1 ? '' : 'en'}: ${esc(a.punten.slice(0, 6).join(', '))}${a.punten.length > 6 ? ' …' : ''}</p>` : ''}
+            ${a.vragen.length ? `<p class="ks-dhulp">Eigen vragen per bevinding: ${a.vragen.map((v) => esc(v.label)).join(', ')} (bruikbaar als voorwaarde, zie hieronder).</p>` : ''}
+            ${a.waarschuwingen.map((w) => `<p class="ks-formlet">${I.let} ${esc(w)}</p>`).join('')}</div>`).join('')
+    : `<p class="ks-formlet">${I.let} Er is nog geen inspectieronde met een formulier in dit pakket. Bevindingen met een maatregel of urgentie tellen mee.</p>`}
+          <p class="ks-proef" id="ks-proef" aria-live="polite"></p>
+        </section>
         <section class="ks-sectie"><h3>Hoe gaat het door?</h3>
           <div class="ks-opties twee">
             ${optieKaart('modus', 'altijd', KP.MODI.altijd.label, KP.MODI.altijd.uitleg, k.modus === 'altijd', '<i class="ks-l altijd"></i>')}
@@ -5158,6 +5194,10 @@ async function koppelschemaPagina() {
     : optieKaart('doelRonde', id, m.label, m.uitleg, (k.doelRonde ?? 'lopend') === id))).join('')}</div>
           <div class="veld ks-hnaamveld" id="ks-herstelnaam" ${(k.doelRonde ?? 'lopend') === 'herstel' ? '' : 'hidden'}><label for="ks-hnaam">Naam van de herstelronde</label><input id="ks-hnaam" value="${esc(k.herstelNaam ?? '')}" placeholder="${zelf(k) ? 'bijv. Snoeiwerk uit BVC 2026' : 'bijv. Herstel uit schouw'}"></div>
         </section>
+        ${formVragen.length ? `<section class="ks-sectie"><h3>Doorzetten op een eigen vraag <small class="zacht">(optioneel)</small></h3>
+          <div class="ks-filterrij"><div class="veld"><label for="ks-vraag">Vraag per bevinding</label><select id="ks-vraag"><option value="">Niet gebruiken</option>${formVragen.map((v) => optie(v.id, v.label, k.filter?.vraag?.id ?? '')).join('')}</select></div>
+            <div class="veld"><label>Bij antwoord</label><div class="ks-keuzechips ks-vraagwaarden" id="ks-vraagwaarden"></div></div></div>
+          <p class="ks-dhulp">Met een vraag telt elke bevinding waarbij die vraag zo is beantwoord, ook zonder maatregel of oordeel. De filters hieronder gelden daarnaast.</p></section>` : ''}
         <section class="ks-sectie"><h3>Welke bevindingen?</h3>
           <div class="ks-filterrij">
             <div class="veld"><label for="ks-urg">Urgentie</label><select id="ks-urg"><option value="">Alle urgenties</option>${URGENTIES.map((u) => optie(u.id, `t/m ${u.label}`, k.filter?.urgentieTot ?? '')).join('')}</select></div>
@@ -5183,12 +5223,27 @@ async function koppelschemaPagina() {
     const lees = () => ({
       ...k, modus: d.querySelector('input[name=modus]:checked')?.value ?? 'controle', doelRonde: d.querySelector('input[name=doelRonde]:checked')?.value ?? 'lopend',
       herstelNaam: d.querySelector('#ks-hnaam').value.trim(),
-      filter: { oordelen: [...d.querySelectorAll('input[name=oordeel]:checked')].map((x) => x.value), maatregelen: [...d.querySelectorAll('input[name=maatregel]:checked')].map((x) => x.value), gebreken: [...d.querySelectorAll('input[name=gebrek]:checked')].map((x) => x.value),
+      filter: { ...(d.querySelector('#ks-vraag')?.value ? { vraag: { id: d.querySelector('#ks-vraag').value, type: formVragen.find((v) => v.id === d.querySelector('#ks-vraag').value)?.type, waarden: [...d.querySelectorAll('input[name=vraagwaarde]:checked')].map((x) => x.value) } } : {}),
+        oordelen: [...d.querySelectorAll('input[name=oordeel]:checked')].map((x) => x.value), maatregelen: [...d.querySelectorAll('input[name=maatregel]:checked')].map((x) => x.value), gebreken: [...d.querySelectorAll('input[name=gebrek]:checked')].map((x) => x.value),
         urgentieTot: d.querySelector('#ks-urg').value, conditieVanaf: d.querySelector('#ks-cond').value ? Number(d.querySelector('#ks-cond').value) : '' },
       vanaf: d.querySelector('#ks-bestaand').checked ? '' : (k.vanaf || vandaag()), actief: d.querySelector('#ks-actief').checked, gewijzigd: new Date().toISOString(),
     });
+    const tekenVraagwaarden = (gekozen = null) => {
+      const el = d.querySelector('#ks-vraagwaarden');
+      if (!el) return;
+      const v = formVragen.find((y) => y.id === d.querySelector('#ks-vraag').value);
+      const waarden = !v ? [] : v.type === 'janee' ? ['Ja', 'Nee'] : (v.opties ?? []);
+      const gek = gekozen ?? (v && k.filter?.vraag?.id === v.id ? k.filter.vraag.waarden : v?.type === 'janee' ? ['Ja'] : []);
+      el.innerHTML = v ? waarden.map((w) => `<label class="ks-keuzechip"><input type="checkbox" name="vraagwaarde" value="${esc(w)}" ${gek.includes(w) ? 'checked' : ''}><span>${esc(w)}</span></label>`).join('') : '<span class="ks-dhulp">Kies eerst een vraag.</span>';
+    };
+    tekenVraagwaarden();
+    d.querySelector('#ks-vraag')?.addEventListener('change', () => tekenVraagwaarden([]));
     const voorbeeld = () => {
       const x = lees();
+      const pr = KP.proef({ ...x, actief: true }, inspecties, { conditieVan: (g, i) => (i.gebreken?.includes(g) && TY.methodiekVan(i) === 'nen' ? gebrekScore(g) : null) });
+      d.querySelector('#ks-proef').innerHTML = !pr.inspecties ? `${I.let} Nog geen inspecties in dit pakket om mee te proberen; de controle gebeurt zodra er inspecties zijn.`
+        : `<strong>Proef met de bestaande inspecties:</strong> ${pr.inspecties} inspectie${pr.inspecties === 1 ? '' : 's'}, ${pr.bevindingen} bevinding${pr.bevindingen === 1 ? '' : 'en'}. Daarvan ${pr.tellen === 1 ? 'telt' : 'tellen'} er <strong>${pr.tellen}</strong> mee volgens het formulier${pr.tellen !== pr.passend ? `, ${pr.passend} na het filter` : ''}; <strong>${pr.door}</strong> ${pr.door === 1 ? 'gaat' : 'gaan'} nu door${pr.passend > pr.door ? ` (de rest wacht op goedkeuring of ligt vóór de startdatum)` : ''}.
+          ${pr.bevindingen && !pr.tellen ? `<br>${I.let} <strong>Let op:</strong> geen enkele bevinding telt mee. Controleer of er een maatregel, een slechter oordeel of de gekozen vraag is ingevuld.` : pr.tellen && !pr.passend ? `<br>${I.let} <strong>Let op:</strong> het filter laat niets door.` : ` ${I.vink}`}`;
       const nieuwP = KP.bijwerken({ ...x, actief: true }, bronInsp, new Map(punten.filter((p) => p.koppelingId === k.id).map((p) => [p.id, p])), { conditieVan: (g, i) => (i.gebreken?.includes(g) && TY.methodiekVan(i) === 'nen' ? gebrekScore(g) : null) }).nieuw;
       const dg = KP.diagnose(x, bronInsp, { conditieVan: (g, i) => (i.gebreken?.includes(g) && TY.methodiekVan(i) === 'nen' ? gebrekScore(g) : null) });
       const wacht = bronInsp.filter((i) => i.status === 'afgerond' && !KP.inspectieGoedgekeurd(i)).length;

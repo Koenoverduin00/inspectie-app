@@ -501,6 +501,21 @@ De uitkomst van een schouw of inspectie (gebreken met een maatregel) kan de inpu
   - bij een eigen oordeelschaal elk oordeel dat slechter is dan het beste niveau (bijv. *Afgekeurd*, *Matig*). Dat
     geldt ook zonder ingevulde maatregel.
   - In de relatie kun je filteren op **oordeel**.
+  - Dit geldt ook voor **zelfgemaakte inspectietypen**: de eigen schaal, checklistpunten en gebrekenlijst worden
+    gebruikt.
+- **Gekoppeld formulier:** het relatievenster leest het formulier (inspectietype) van de schouw direct in.
+  - **Methodiek en regel:** welke methodiek het formulier gebruikt en wat er meetelt. Bij een eigen schaal staan de
+    niveaus erbij, met een vinkje bij de niveaus die meetellen.
+  - **Waarschuwingen:** het formulier is niet gevonden, de schaal heeft één niveau, de checklist is leeg, of er zijn
+    inspecties met een oudere schaal.
+  - De **keuzes om op te filteren** (oordelen, gebreken, checkpunten, BVC-maatregelen) komen uit het formulier zelf,
+    dus ook als er nog geen inspecties zijn.
+  - **Proef met de bestaande inspecties:** hoeveel inspecties en bevindingen er zijn, hoeveel volgens het formulier
+    meetellen, hoeveel het filter doorlaat en hoeveel er nu doorgaan. Er komt een waarschuwing als er niets meetelt of
+    het filter alles tegenhoudt.
+  - **Doorzetten op een eigen vraag:** heeft het formulier eigen vragen per bevinding (ja/nee, keuze of meerkeuze,
+    bijv. *Herstel door aannemer?*), dan kun je zeggen: elke bevinding waarbij deze vraag *Ja* is, gaat door. Dat
+    geldt ook zonder maatregel of oordeel. Verandert het antwoord later, dan vervalt de werklocatie.
 - **Waarom staat iets er niet in?** Bovenaan de doorzetbak staat per relatie wat nog wordt tegengehouden: wacht op
   goedkeuring, afgekeurde inspectie, concept, van vóór de startdatum, of buiten het filter. Is de lijst leeg, dan staat
   die uitleg open. Ook het relatievenster meldt hoeveel bevindingen van vóór de startdatum pas meetellen met *Ook
