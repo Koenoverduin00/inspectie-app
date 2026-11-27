@@ -2546,3 +2546,10 @@ body.kiesmodus .mfilterchips, body.kiesmodus .mtedoenseg, body.kiesmodus .ff-fil
 
 /* Keuzerondjes in kaartjes (methodiek, keuzekaart): gewone, kleine rondjes in plaats van een uitgerekt invoerveld */
 .methodiek input[type=radio], .keuzekaart input[type=radio] { flex: none; width: 1.15rem; height: 1.15rem; min-height: 0; margin: .2rem 0 0; padding: 0; accent-color: var(--primair); box-shadow: none; }
+
+/* Storingen- en gebrekenregister op de kaart */
+.regkaart { height: min(65vh, 620px); padding: 0; overflow: hidden; }
+.mkaart.regkaart { height: 58dvh; border-radius: 12px; }
+.reglegenda { margin: .5rem 0; }
+.regstip { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.2); margin-right: .35rem; vertical-align: -1px; }
+.mregkopregel { display: flex; justify-content: space-between; align-items: center; gap: .5rem; flex-wrap: wrap; }

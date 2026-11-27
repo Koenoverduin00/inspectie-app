@@ -15178,6 +15178,68 @@ async function storingenKaart() {
     <small><strong>${lijst.length}</strong> geregistreerd · ${recent} afgelopen 7 dagen${open ? ` · <strong style="color:#e8710a">${open} met vervolg nodig</strong>` : ''}</small></a>`;
 }
 
+// --- Register op de kaart ------------------------------------------------------
+/** Kleur van een zaak op de kaart: open (naar urgentie), in behandeling, opgelost of vervallen. */
+const zaakKleur = (z) => (z.status === 'opgelost' ? '#1a7f37' : z.status === 'vervallen' ? '#9aa5b1' : z.status === 'bezig' ? '#e8a33d'
+  : z.urgentie === 'direct' ? '#b3261e' : z.urgentie === '24u' ? '#d1452f' : '#e8710a');
+/** Plek van een zaak: de exacte locatie van de melding (bijv. uit het koppelschema), anders het midden van het object. */
+function zaakPlek(z, objectMap) {
+  const l = z.melding?.locatie;
+  if (l && Number.isFinite(Number(l.lat)) && Number.isFinite(Number(l.lng))) return [Number(l.lng), Number(l.lat)];
+  const geo = objectGeometrie(objectMap.get(z.objectId) ?? {});
+  return geo ? gis.middelpunt(geo) : null;
+}
+
+/**
+ * Kaart van het storingen- en gebrekenregister: elke zaak als stip in de kleur van status en urgentie, met een venster
+ * om hem op te lossen of te bewerken. Meerdere zaken op hetzelfde object staan in een kringetje rond het object.
+ */
+async function tekenRegisterKaart(el, { objectMap, popup }) {
+  let L;
+  try { L = await laadLeaflet(); } catch (fout) { el.innerHTML = `<p class="leeg">${esc(fout.message)}</p>`; return null; }
+  if (!el.isConnected) return null;
+  el.innerHTML = '';
+  const map = L.map(el, { preferCanvas: true, renderer: L.canvas({ tolerance: 6 }), zoomAnimation: false, fadeAnimation: false });
+  el.leafletKaart = map;
+  voegAchtergrondToe(L, map);
+  const laag = L.featureGroup().addTo(map);
+  map.setView([52.1, 5.1], 8, { animate: false });
+  let eerste = true;
+  return {
+    map,
+    toon(zaken) {
+      laag.clearLayers();
+      const perPlek = new Map();
+      let zonder = 0;
+      for (const z of zaken) {
+        const p = zaakPlek(z, objectMap);
+        if (!p) { zonder += 1; continue; }
+        const sl = `${p[0].toFixed(6)},${p[1].toFixed(6)}`;
+        perPlek.set(sl, [...(perPlek.get(sl) ?? []), { z, p }]);
+      }
+      for (const groep of perPlek.values()) {
+        groep.forEach(({ z, p }, n) => {
+          // Meer zaken op dezelfde plek: een klein kringetje eromheen, zodat je ze apart kunt aantikken.
+          const hoek = (2 * Math.PI * n) / groep.length;
+          const r = groep.length > 1 ? 0.00006 * Math.min(4, Math.ceil(groep.length / 6)) : 0;
+          const lat = p[1] + r * Math.sin(hoek); const lng = p[0] + r * Math.cos(hoek) * 1.6;
+          const actief = z.status === 'open' || z.status === 'bezig';
+          L.circleMarker([lat, lng], { radius: actief ? 9 : 7, color: '#fff', weight: 2, fillColor: zaakKleur(z), fillOpacity: actief ? 0.95 : 0.75 })
+            .bindPopup(() => popup(z), { maxWidth: 320 }).addTo(laag);
+        });
+      }
+      const b = laag.getBounds();
+      if (b.isValid()) map.fitBounds(b, { padding: [30, 30], maxZoom: eerste ? 17 : 18, animate: false });
+      eerste = false;
+      setTimeout(() => map.invalidateSize(), 50);
+      return { getoond: zaken.length - zonder, zonder };
+    },
+  };
+}
+const registerLegenda = () => `<div class="mlegenda reglegenda">
+  <span><i class="regstip" style="background:#b3261e"></i>Open, direct</span><span><i class="regstip" style="background:#e8710a"></i>Open</span>
+  <span><i class="regstip" style="background:#e8a33d"></i>In behandeling</span><span><i class="regstip" style="background:#1a7f37"></i>Opgelost</span><span><i class="regstip" style="background:#9aa5b1"></i>Vervallen</span></div>`;
+
 /** Storingen- en gebrekenregister: kantoor zet meldingen klaar, buiten worden ze opgelost of nieuw gemeld. */
 async function storingenPagina(_, __, { mobiel = false } = {}) {
   const [werk, objecten, meldingen, project] = await Promise.all([inProject('werkzaamheden'), inProject('objecten'), inProject('meldingen'), actiefProject()]);
@@ -15201,7 +15263,10 @@ async function storingenPagina(_, __, { mobiel = false } = {}) {
       <div class="mregknoppen">
         ${mag('storing') ? `<a class="knop primair mgroot" href="#/m/storing">${I.let} Storing of gebrek oplossen</a>` : ''}
         <a class="knop mgroot" href="#/m/melding/nieuw">${I.lijst} Alleen melden – later oplossen</a></div>
-      <h2 class="mlijstkop">Klaar om op te lossen (${voorMij.length})</h2>
+      <div class="mregkopregel"><h2 class="mlijstkop">Klaar om op te lossen (${voorMij.length})</h2>
+        <div class="segment weergavekeuze" role="radiogroup" aria-label="Weergave"><label><input type="radio" name="mregw" value="lijst" ${instelling.lees('mRegWeergave') === 'kaart' ? '' : 'checked'}><span>${I.lijst} Lijst</span></label><label><input type="radio" name="mregw" value="kaart" ${instelling.lees('mRegWeergave') === 'kaart' ? 'checked' : ''}><span>${I.kaart} Kaart</span></label></div></div>
+      <div id="mreg-kaartblok" ${instelling.lees('mRegWeergave') === 'kaart' ? '' : 'hidden'}><div class="mkaart regkaart" id="mreg-kaart"><p class="leeg">Kaart laden…</p></div>${registerLegenda()}<p class="zacht" id="mreg-zonder"></p></div>
+      <div id="mreg-lijst" ${instelling.lees('mRegWeergave') === 'kaart' ? 'hidden' : ''}>
       ${voorMij.length ? `<ul class="mlijst mregister">${voorMij.map((z) => {
     const o = objectMap.get(z.objectId);
     return `<li><a href="${oplosHref(z)}" class="mregel-link"><span>
@@ -15212,11 +15277,27 @@ async function storingenPagina(_, __, { mobiel = false } = {}) {
           ${z.laatste ? `<small class="zacht">Laatst: ${datumTijdNL(z.laatsteOp)} – ${esc(STORING_RESULTAAT[z.laatste.storing?.resultaat]?.label ?? '')}${z.laatste.vervolg ? `: ${esc(z.laatste.vervolg)}` : ''}</small>` : ''}
           ${z.toegewezenAan ? `<small class="zacht">${I.gebruiker} ${esc(naamVan(z.toegewezenAan))}</small>` : ''}</span>
         <span class="knop klein primair">${I.start} ${z.status === 'bezig' ? 'Vervolg' : 'Oplossen'}</span></a></li>`;
-  }).join('')}</ul>` : '<p class="mleeg">Er staat niets klaar. Nieuwe meldingen van kantoor verschijnen hier vanzelf.</p>'}`;
+  }).join('')}</ul>` : '<p class="mleeg">Er staat niets klaar. Nieuwe meldingen van kantoor verschijnen hier vanzelf.</p>'}</div>`;
+    let mkaart = null;
+    const popupM = (z) => { const o = objectMap.get(z.objectId); return `<strong>${o ? `${esc(o.code)} – ${esc(o.naam)}` : 'Onbekend object'}</strong><br>${statusChip(z)}${urgChip(z)}<br><small>${esc(z.type || 'Storing')}${z.gemeldOp ? ` · ${datumTijdNL(z.gemeldOp)}` : ''}</small><br><small>${esc(String(z.omschrijving || '').slice(0, 160))}</small>
+      <div class="popupknoppen"><a class="knop klein primair" href="${oplosHref(z)}">${I.start} ${z.status === 'bezig' ? 'Vervolg' : 'Oplossen'}</a>${o ? `<a class="knop klein" href="${locatiePagina(o.id)}">Object</a>` : ''}</div>`; };
+    const toonKaartM = async () => {
+      if (!mkaart) mkaart = await tekenRegisterKaart(app.querySelector('#mreg-kaart'), { objectMap, popup: popupM });
+      const r = mkaart?.toon(voorMij);
+      if (r) app.querySelector('#mreg-zonder').textContent = r.zonder ? `${r.zonder} zonder locatie (staan alleen in de lijst).` : '';
+    };
+    app.querySelectorAll('input[name=mregw]').forEach((r) => r.addEventListener('change', () => {
+      instelling.schrijf('mRegWeergave', r.value);
+      app.querySelector('#mreg-kaartblok').hidden = r.value !== 'kaart';
+      app.querySelector('#mreg-lijst').hidden = r.value === 'kaart';
+      if (r.value === 'kaart') toonKaartM();
+    }));
+    if (instelling.lees('mRegWeergave') === 'kaart') toonKaartM();
     return;
   }
 
   const filterStatus = instelling.lees('regStatus', 'actief');
+  let regWeergave = instelling.lees('regWeergave') === 'kaart' ? 'kaart' : 'lijst';
   app.innerHTML = `
     <div class="paginakop"><div><p><a href="#/werkpakketten">← Werkpakketten</a></p><h1>${I.let} Storingen- en gebrekenregister</h1>
       <p>Alle storingen en gebreken op één plek: <strong>klaargezet</strong> door kantoor en <strong>buiten gemeld of opgelost</strong>. Een melding blijft open tot een registratie hem oplost.</p></div>
@@ -15233,8 +15314,10 @@ async function storingenPagina(_, __, { mobiel = false } = {}) {
       <select id="s-status" aria-label="Status">${optie('actief', 'Open en in behandeling', filterStatus)}${optie('', 'Alle', filterStatus)}${Object.entries(SR.STATUS).map(([k, x]) => optie(k, x.label, filterStatus)).join('')}</select>
       <select id="s-type" aria-label="Soort"><option value="">Alle soorten</option>${STORING_TYPEN.map((t) => optie(t, t)).join('')}</select>
       <select id="s-bron" aria-label="Herkomst">${optie('', 'Kantoor en buiten')}${optie('kantoor', 'Klaargezet door kantoor')}${optie('veld', 'Buiten gemeld')}</select>
+      <div class="segment weergavekeuze" role="radiogroup" aria-label="Weergave"><label><input type="radio" name="regw" value="lijst" ${regWeergave === 'kaart' ? '' : 'checked'}><span>${I.lijst} Lijst</span></label><label><input type="radio" name="regw" value="kaart" ${regWeergave === 'kaart' ? 'checked' : ''}><span>${I.kaart} Kaart</span></label></div>
     </div>
-    <div class="kaart" style="padding:0"><div class="tabelhouder"><table class="registertabel">
+    <div id="s-kaartblok" ${regWeergave === 'kaart' ? '' : 'hidden'}><div class="kaart regkaart" id="s-kaart"><p class="leeg">Kaart laden…</p></div>${registerLegenda()}<p class="zacht" id="s-zonder"></p></div>
+    <div class="kaart" id="s-lijstblok" style="padding:0" ${regWeergave === 'kaart' ? 'hidden' : ''}><div class="tabelhouder"><table class="registertabel">
       <thead><tr><th>Referentie</th><th>Status</th><th>Object</th><th>Melding</th><th class="verberg-mobiel">Gemeld</th><th>Acties</th><th class="verberg-mobiel">Uren</th><th></th></tr></thead>
       <tbody id="s-rijen"></tbody></table></div></div>`;
   const f = ['s-zoek', 's-status', 's-type', 's-bron'].map((x) => app.querySelector(`#${x}`));
@@ -15254,7 +15337,7 @@ async function storingenPagina(_, __, { mobiel = false } = {}) {
       <td class="regref">${z.referentie ? `<strong>${esc(z.referentie)}</strong> <button type="button" class="refknop" data-ref="${esc(z.id)}" title="Referentie wijzigen" aria-label="Referentie wijzigen">${I.concept}</button>`
     : `<button type="button" class="knop klein refkoppel" data-ref="${esc(z.id)}" title="Referentie achteraf koppelen">＋ Koppelen</button>`}</td>
       <td>${statusChip(z)}${urgChip(z)}</td>
-      <td>${objectNaam(o)}<small class="subregel">${esc(z.type || '')}</small></td>
+      <td>${objectNaam(o)}${zaakPlek(z, objectMap) ? ` <button type="button" class="kaartpin" data-regkaart="${esc(z.id)}" title="Op de kaart tonen" aria-label="Op de kaart tonen">${I.locatie}</button>` : ''}<small class="subregel">${esc(z.type || '')}</small></td>
       <td>${esc(String(z.omschrijving || '').slice(0, 140))}${z.melding?.opmerking ? `<small class="subregel">${I.taak} ${esc(z.melding.opmerking)}</small>` : ''}${z.toegewezenAan ? `<small class="subregel">${I.gebruiker} ${esc(naamVan(z.toegewezenAan))}</small>` : ''}</td>
       <td class="verberg-mobiel nowrap">${z.gemeldOp ? datumTijdNL(z.gemeldOp) : '–'}<small class="subregel">${bronTekst(z)}</small></td>
       <td>${z.acties.length ? z.acties.map((a) => `<a href="${regHref(a)}" class="regactie"><span class="stip" style="background:${STORING_RESULTAAT[a.storing?.resultaat]?.kleur ?? '#8a96a3'}"></span>${datumTijdNL(a.storing?.opgelostOp) || datumNL(a.datum)}${a.uitvoerder ? ` · ${esc(a.uitvoerder)}` : ''} – ${esc(STORING_RESULTAAT[a.storing?.resultaat]?.label ?? '')} ${beoordelingLabel(a)}</a>`).join('') : '<small class="zacht">Nog niets gedaan</small>'}
@@ -15267,7 +15350,42 @@ async function storingenPagina(_, __, { mobiel = false } = {}) {
     }).join('')
       : `<tr><td colspan="8" class="leeg">${alle.length ? 'Niets gevonden met deze filters.' : 'Nog geen storingen of gebreken. Zet er een klaar of los er buiten een op.'}</td></tr>`;
   };
-  f.forEach((x) => x.addEventListener('input', () => { instelling.schrijf('regStatus', f[1].value); toon(); }));
+  // Kaart: dezelfde filters als de lijst.
+  let regKaart = null;
+  const popupPc = (z) => { const o = objectMap.get(z.objectId); const actief = z.status === 'open' || z.status === 'bezig';
+    return `${z.referentie ? `<small class="zacht">${esc(z.referentie)}</small><br>` : ''}<strong>${o ? `${esc(o.code)} – ${esc(o.naam)}` : 'Onbekend object'}</strong><br>${statusChip(z)}${urgChip(z)}
+      <br><small>${esc(z.type || '')}${z.gemeldOp ? ` · ${datumTijdNL(z.gemeldOp)}` : ''} · ${bronTekst(z)}</small><br><small>${esc(String(z.omschrijving || '').slice(0, 200))}</small>
+      <div class="popupknoppen">${actief && mag('storing') ? `<a class="knop klein primair" href="${oplosHref(z)}">${z.status === 'bezig' ? 'Vervolg' : 'Oplossen'}</a>` : ''}${z.melding && z.status !== 'opgelost' ? `<a class="knop klein" href="#/storingen/${esc(z.id)}/bewerken">Bewerken</a>` : ''}${o ? `<a class="knop klein" href="#/objecten/${esc(o.id)}">Object</a>` : ''}</div>`; };
+  const toonKaart = async () => {
+    if (regWeergave !== 'kaart') return;
+    if (!regKaart) regKaart = await tekenRegisterKaart(app.querySelector('#s-kaart'), { objectMap, popup: popupPc });
+    const r = regKaart?.toon(alle.filter(pastFilter));
+    if (r) app.querySelector('#s-zonder').textContent = r.zonder ? `${r.zonder} storing${r.zonder === 1 ? '' : 'en'} zonder locatie (object zonder ligging): alleen in de lijst.` : '';
+  };
+  app.querySelectorAll('input[name=regw]').forEach((r) => r.addEventListener('change', () => {
+    regWeergave = r.value;
+    instelling.schrijf('regWeergave', r.value);
+    app.querySelector('#s-kaartblok').hidden = r.value !== 'kaart';
+    app.querySelector('#s-lijstblok').hidden = r.value === 'kaart';
+    toonKaart();
+  }));
+  app.querySelector('#s-rijen').addEventListener('click', async (e) => {
+    const pin = e.target.closest('[data-regkaart]');
+    if (!pin) return;
+    e.stopPropagation();
+    app.querySelector('input[name=regw][value=kaart]').checked = true;
+    regWeergave = 'kaart'; instelling.schrijf('regWeergave', 'kaart');
+    app.querySelector('#s-kaartblok').hidden = false; app.querySelector('#s-lijstblok').hidden = true;
+    await toonKaart();
+    const z = alle.find((x) => x.id === pin.dataset.regkaart);
+    const p = z ? zaakPlek(z, objectMap) : null;
+    if (p && regKaart) {
+      regKaart.map.setView([p[1], p[0]], 18, { animate: false });
+      regKaart.map.eachLayer((l) => { if (l.getLatLng && l.getPopup && Math.abs(l.getLatLng().lat - p[1]) < 0.0003 && Math.abs(l.getLatLng().lng - p[0]) < 0.0005) l.openPopup(); });
+    }
+  }, true);
+  f.forEach((x) => x.addEventListener('input', () => { instelling.schrijf('regStatus', f[1].value); toon(); toonKaart(); }));
+  toonKaart();
   app.querySelector('#s-export').addEventListener('click', async () => {
     const jaar = vandaag().slice(0, 4);
     const d = document.createElement('dialog');

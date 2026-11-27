@@ -475,6 +475,22 @@ Op alle kaarten met voortgang (mobiele kaart, werkpakketkaart, dashboardkaart me
   **voor iedereen in het project** (wordt gesynchroniseerd); iedereen kan ook een eigen opmaak **alleen op dit apparaat**
   kiezen. *Standaard herstellen* zet alles terug. De voortgangsbalken en legenda's volgen dezelfde kleuren.
 
+## Storingen- en gebrekenregister op de kaart
+
+Het register heeft een omschakeling **Lijst / Kaart**, op de pc en op de telefoon. De keuze wordt per apparaat
+onthouden.
+- **Stippen:** elke storing of elk gebrek is een stip in de kleur van status en urgentie: open-direct donkerrood,
+  open-24 uur rood, open oranje, in behandeling geel, opgelost groen, vervallen grijs. Er staat een legenda onder de
+  kaart.
+- **Plek:** de exacte locatie van de melding (bijv. uit het koppelschema), anders het midden van het object.
+  - Meer meldingen op hetzelfde object staan in een klein kringetje eromheen, zodat je ze apart kunt aantikken.
+  - Meldingen bij een object zonder ligging staan alleen in de lijst; de kaart meldt hoeveel dat er zijn.
+- **pc:** de kaart volgt dezelfde filters als de lijst (zoeken, status, soort, herkomst).
+  - De popup toont object, status, urgentie, soort, wanneer en door wie gemeld, en de melding.
+  - Vanuit de popup kun je oplossen, bewerken of naar het object. In de lijst staat per regel een kaartspeld die de
+    melding op de kaart opent.
+- **Telefoon:** de kaart toont wat klaarstaat om op te lossen, met in de popup *Oplossen* en de objectpagina.
+
 ## Koppelschema: schouw en inspectie als bron voor werkpakketten
 
 De uitkomst van een schouw of inspectie (gebreken met een maatregel) kan de input zijn voor een werkpakket. Je legt
