@@ -20,3 +20,6 @@ SQL
 $P -d test -f 013_bedrijven.sql >/dev/null 2>&1 || { echo "FOUT in 013 (1e keer)"; exit 1; }
 $P -d test -f 013_bedrijven.sql >/dev/null 2>&1 || { echo "FOUT in 013 (2e keer)"; exit 1; }
 $P -d test -f tests/013_bedrijven_test.sql 2>&1 | grep -E "MISLUKT|ERROR|GESLAAGD|ok " | sed 's/psql:[^:]*:[0-9]*: //'
+$P -d test -f 014_werkpunten.sql >/dev/null 2>&1 || { echo "FOUT in 014 (1e keer)"; exit 1; }
+$P -d test -f 014_werkpunten.sql >/dev/null 2>&1 || { echo "FOUT in 014 (2e keer)"; exit 1; }
+$P -d test -f tests/014_werkpunten_test.sql 2>&1 | grep -E "MISLUKT|ERROR|GESLAAGD|ok " | sed 's/psql:[^:]*:[0-9]*: //'

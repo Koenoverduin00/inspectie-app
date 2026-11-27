@@ -41,6 +41,7 @@ import * as GR from './groepering.js';
 import * as OT from './objecttabel.js';
 import * as SC from './scope.js';
 import * as RP from './rapport.js';
+import * as KP from './koppeling.js';
 import * as IMP from './gisimport.js';
 import * as ST from './stowa.js';
 import * as DG from './digigids.js';
@@ -153,17 +154,19 @@ const ROUTES = [
   [/^\/bibliotheek\/([^/]+)$/, 'bibliotheek', (id) => inspectietypeEditor(id, { bibliotheek: true })],
   [/^\/inrichting$/, 'inrichting', inrichtingPagina],
   [/^\/rapporten$/, 'rapporten', rapportenPagina],
+  [/^\/koppelschema$/, 'koppelschema', koppelschemaPagina],
+  [/^\/doorzetten$/, 'doorzetten', doorzetbakPagina],
   [/^\/inbox$/, 'inbox', inboxPagina],
 ];
 
 // Het hoofdmenu is compact: onderdelen vallen onder een hoofdgroep en hebben daar een tabblad.
-const NAV_GROEP = { inspecties: 'werkpakketten', werkzaamheden: 'werkpakketten', maatregelen: 'werkpakketten', taken: 'planning', kaart: 'instellingen', personen: 'instellingen', decompositie: 'instellingen', eisen: 'instellingen', inspectietypen: 'instellingen', bibliotheek: 'instellingen', rapporten: 'instellingen', toewijzen: 'werkpakketten' };
+const NAV_GROEP = { inspecties: 'werkpakketten', werkzaamheden: 'werkpakketten', maatregelen: 'werkpakketten', taken: 'planning', kaart: 'instellingen', personen: 'instellingen', decompositie: 'instellingen', eisen: 'instellingen', inspectietypen: 'instellingen', bibliotheek: 'instellingen', rapporten: 'instellingen', koppelschema: 'werkpakketten', doorzetten: 'werkpakketten', toewijzen: 'werkpakketten' };
 const TABBLADEN = {
-  werkpakketten: () => [['#/werkpakketten', I.pakket + ' Werkpakketten'], ['#/inspecties', I.inspectie + ' Inspecties'], ['#/werkzaamheden', I.werk + ' Werkzaamheden'], ['#/maatregelen', I.let + ' Maatregelen'], ...(magBeheren() ? [['#/toewijzen', I.personen + ' Toewijzen']] : [])],
+  werkpakketten: () => [['#/werkpakketten', I.pakket + ' Werkpakketten'], ['#/inspecties', I.inspectie + ' Inspecties'], ['#/werkzaamheden', I.werk + ' Werkzaamheden'], ['#/maatregelen', I.let + ' Maatregelen'], ...(magBeheren() || magGoedkeuren() ? [['#/doorzetten', I.door + ' Doorzetbak']] : []), ...(magBeheren() ? [['#/koppelschema', I.lagen + ' Koppelschema'], ['#/toewijzen', I.personen + ' Toewijzen']] : [])],
   instellingen: () => (magBeheren() ? [['#/instellingen', I.instellingen + ' Algemeen'], ['#/personen', I.personen + ' Personen'], ['#/kaart', I.kaart + ' Kaart & GIS'], ['#/inspectietypen', I.inspectie + ' Inspectietypen'], ['#/bibliotheek', I.lijst + ' Bibliotheek'], ['#/decompositie', I.lagen + ' Decompositie'], ['#/eisen', I.taak + ' Eisen'], ['#/rapporten', I.bestand + ' Rapporten']] : []),
 };
 // Alleen de overzichtspagina's krijgen tabbladen (geen formulieren of details).
-const TAB_PAGINAS = /^\/(werkpakketten|inspecties|werkzaamheden|maatregelen|toewijzen|instellingen|personen|bedrijven|kaart|decompositie|inspectietypen|bibliotheek|eisen|rapporten)$/;
+const TAB_PAGINAS = /^\/(werkpakketten|inspecties|werkzaamheden|maatregelen|toewijzen|instellingen|personen|bedrijven|kaart|decompositie|inspectietypen|bibliotheek|eisen|rapporten|koppelschema|doorzetten)$/;
 
 function tabbalk(pad, groep) {
   const tabs = TABBLADEN[groep]?.() ?? [];
@@ -291,6 +294,8 @@ async function toonRoute() {
       if (!/^\/m\/account$/.test(pad)) return;
     }
     if (magBeheren() && await actiefProject()) await verwerkScope();
+    // Koppelschema: goedgekeurde schouwen zetten gebreken door naar de werkpakketten (alleen als er iets is veranderd).
+    if (await actiefProject()) await verwerkKoppelingen().catch((e) => console.warn('Koppelschema verwerken mislukt', e));
     if (isDemoGebruiker() && DEMO_DICHT.test(pad)) {
       location.replace('#/');
       melding('Dit onderdeel is in de demo niet beschikbaar.');
@@ -4725,6 +4730,385 @@ async function rapportenPagina() {
     });
   };
   teken();
+}
+
+// ---------------------------------------------------------------------------
+// Koppelschema: schouw- en inspectiepakketten als bron voor werkpakketten (zie koppeling.js)
+// ---------------------------------------------------------------------------
+const hashTekst = (t) => { let h = 5381; for (let i = 0; i < t.length; i += 1) h = ((h << 5) + h + t.charCodeAt(i)) | 0; return h; };
+let koppelSignatuur = '';
+let koppelBezig = null;
+
+/**
+ * Werkpunten bijwerken voor alle relaties en ze in de juiste ronde van het werkpakket zetten.
+ * Draait bij elke paginawissel, maar doet alleen iets als er (bij de bronpakketten) iets is veranderd.
+ */
+async function verwerkKoppelingen({ forceer = false } = {}) {
+  const project = await actiefProject();
+  const koppelingen = (project?.koppelingen ?? []).filter((k) => k.actief !== false && k.bronPakketId && k.doelPakketId);
+  if (!koppelingen.length) return { nieuw: 0 };
+  if (koppelBezig) return koppelBezig;
+  koppelBezig = (async () => {
+    const [inspecties, punten] = await Promise.all([inProject('inspecties'), inProject('werkpunten')]);
+    const bron = new Set(koppelingen.map((k) => k.bronPakketId));
+    const relevant = inspecties.filter((i) => bron.has(i.werkpakketId));
+    const sig = `${project.id}|${vandaag()}|${hashTekst(JSON.stringify(koppelingen))}|${hashTekst(relevant.map((i) => `${i.id}${i.gewijzigd}`).join())}|${hashTekst(punten.map((p) => `${p.id}${p.gewijzigd}${p.doel?.rondeId}`).join())}`;
+    if (!forceer && sig === koppelSignatuur) return { nieuw: 0 };
+    const nu = new Date().toISOString();
+    const bestaande = new Map(punten.map((p) => [p.id, p]));
+    let nieuwAantal = 0;
+    for (const k of koppelingen) {
+      const { nieuw, gewijzigd } = KP.bijwerken(k, relevant, bestaande, { nu, conditieVan: (g, i) => (i.gebreken?.includes(g) && TY.methodiekVan(i) === 'nen' ? gebrekScore(g) : null) });
+      for (const wp of [...nieuw, ...gewijzigd]) { await db.bewaar('werkpunten', { ...wp, projectId: wp.projectId ?? projectId() }); bestaande.set(wp.id, wp); }
+      nieuwAantal += nieuw.length;
+    }
+    await plaatsWerkpunten(koppelingen, [...bestaande.values()]);
+    koppelSignatuur = sig.replace(/\|[^|]*$/, `|${hashTekst((await inProject('werkpunten')).map((p) => `${p.id}${p.gewijzigd}${p.doel?.rondeId}`).join())}`);
+    return { nieuw: nieuwAantal };
+  })().finally(() => { koppelBezig = null; });
+  return koppelBezig;
+}
+
+/** Open werkpunten in de doelronde zetten (als herstelitems) en teruggetrokken punten eruit halen. */
+async function plaatsWerkpunten(koppelingen, punten) {
+  const nu = new Date().toISOString();
+  const perDoel = new Map();
+  for (const k of koppelingen) perDoel.set(k.doelPakketId, [...(perDoel.get(k.doelPakketId) ?? []), k]);
+  for (const [pid, ks] of perDoel) {
+    let p = await db.haal('werkpakketten', pid);
+    if (!p) continue;
+    let rondes = rondesVan(p).map((r) => ({ ...r }));
+    let anders = false;
+    for (const k of ks) {
+      const mijn = punten.filter((wp) => wp.koppelingId === k.id);
+      // Nog geen ronde: kiezen (of een herstelronde maken).
+      for (const wp of mijn.filter((x) => x.status === 'open' && !rondes.some((r) => r.id === x.doel?.rondeId && r.status !== 'afgerond'))) {
+        // Alleen werkrondes (een pakket kan ook schouwrondes hebben).
+        let r = KP.doelRonde(rondes.filter((x) => (x.soort ?? p.soort ?? 'werk') !== 'inspectie'), k.doelRonde ?? 'lopend', { vandaag: vandaag(), koppelingId: k.id });
+        if (!r && (k.doelRonde ?? 'lopend') === 'herstel') {
+          const bronP = await db.haal('werkpakketten', k.bronPakketId);
+          r = { id: nieuwId(), nummer: Math.max(0, ...rondes.map((x) => Number(x.nummer) || 0)) + 1, naam: k.herstelNaam || `Herstel uit ${metCode(bronP ?? { naam: 'schouw' })}`,
+            soort: 'werk', werksoort: 'Herstel gebreken', inspectiesoort: '', start: '', eind: '', status: 'gepland', objectIds: null,
+            herstel: { koppelingId: k.id, bronPakketId: k.bronPakketId, items: [] } };
+          rondes.push(r);
+          anders = true;
+        }
+        if (!r) continue; // geen geschikte ronde: blijft open staan tot er een ronde is
+        const bijgewerkt = { ...wp, doel: { pakketId: pid, rondeId: r.id }, gewijzigd: nu };
+        await db.bewaar('werkpunten', bijgewerkt);
+        Object.assign(wp, bijgewerkt);
+      }
+      for (const r of rondes) {
+        const inDeze = mijn.filter((wp) => wp.doel?.rondeId === r.id);
+        if (!inDeze.length) continue;
+        const nieuw = KP.rondeMetPunten(r, inDeze, { koppelingId: '', bronPakketId: k.bronPakketId });
+        if (nieuw) { rondes = rondes.map((x) => (x.id === r.id ? nieuw : x)); anders = true; }
+      }
+    }
+    if (anders) {
+      p = await db.haal('werkpakketten', pid);
+      // Rondes samenvoegen met de actuele versie (er kan intussen iets zijn gewijzigd): alleen herstel en nieuwe herstelrondes overnemen.
+      const actueel = rondesVan(p);
+      const samen = [...actueel.map((r) => { const m = rondes.find((x) => x.id === r.id); return m ? { ...r, herstel: m.herstel, objectIds: m.objectIds ?? r.objectIds } : r; }),
+        ...rondes.filter((r) => !actueel.some((x) => x.id === r.id))];
+      await db.bewaar('werkpakketten', { ...p, rondes: samen, gewijzigd: nu });
+    }
+  }
+}
+
+/** Werkpakketten die bron (inspectie) of doel (werk) kunnen zijn. */
+// De soort staat per ronde (een pakket kan bijv. eerst een schouw en daarna werk hebben).
+const heeftSoort = (p, soort) => rondesVan(p).some((r) => (r.soort ?? p.soort ?? 'werk') === soort) || (isAfroep(p) && (p.afroepSoort ?? 'werk') === soort);
+const kanBron = (p) => heeftSoort(p, 'inspectie') && pakketZichtbaar(p);
+const kanDoel = (p) => heeftSoort(p, 'werk') && pakketZichtbaar(p);
+
+/** Koppelschema: lijnen trekken van schouw/inspectie naar werkpakket. */
+async function koppelschemaPagina() {
+  const [project, pakketten, punten, inspecties] = await Promise.all([actiefProject(), inProject('werkpakketten'), inProject('werkpunten'), inProject('inspecties')]);
+  const beheer = magBeheren();
+  const bronnen = pakketten.filter(kanBron).sort((a, b) => metCode(a).localeCompare(metCode(b), 'nl', { numeric: true }));
+  const doelen = pakketten.filter(kanDoel).sort((a, b) => metCode(a).localeCompare(metCode(b), 'nl', { numeric: true }));
+  const koppelingen = project.koppelingen ?? [];
+  const tel = KP.tellingen(punten);
+  let bronKeuze = null;
+  const lijnStijl = (k) => (k.actief === false ? 'uit' : k.modus === 'altijd' ? 'altijd' : 'controle');
+  const naam = (id) => { const p = pakketten.find((x) => x.id === id); return p ? metCode(p) : '(verwijderd werkpakket)'; };
+  const filterTekst = (f) => [f?.maatregelen?.length ? `maatregel: ${f.maatregelen.join(', ')}` : '', f?.gebreken?.length ? `gebrek: ${f.gebreken.join(', ')}` : '',
+    f?.urgentieTot ? `urgentie t/m ${URGENTIES.find((u) => u.id === f.urgentieTot)?.label ?? f.urgentieTot}` : '', f?.conditieVanaf ? `conditie ${f.conditieVanaf} of slechter` : ''].filter(Boolean).join(' · ') || 'alle bevindingen';
+  app.innerHTML = `${isMobiel() ? '' : tabbalk('/koppelschema', 'werkpakketten')}
+    <div class="paginakop"><div><h1>Koppelschema</h1>
+      <p>Welke schouw of inspectie levert werk op voor welk werkpakket? ${beheer ? 'Trek een lijn van een schouw (links) naar een werkpakket (rechts): klik op het rondje links en dan op het rondje rechts, of sleep.' : ''}
+      Gebreken worden pas doorgezet als de inspectie is goedgekeurd.</p></div>
+      <div class="knoppen"><a class="knop" href="#/doorzetten">${I.lijst} Doorzetbak${punten.filter((x) => x.status === 'te beoordelen').length ? ` <span class="teller">${punten.filter((x) => x.status === 'te beoordelen').length}</span>` : ''}</a></div></div>
+    <div class="ks-legenda"><span><i class="ks-l altijd"></i> Altijd</span><span><i class="ks-l controle"></i> Met controle</span><span><i class="ks-l uit"></i> Uitgeschakeld</span></div>
+    ${!bronnen.length || !doelen.length ? `<div class="kaart leeg"><p>${!bronnen.length ? 'Er zijn nog geen schouw- of inspectiepakketten.' : 'Er zijn nog geen werkpakketten.'} Maak eerst ${!bronnen.length ? 'een inspectiepakket' : 'een werkpakket'} aan.</p></div>` : `
+    <div class="ks-schema" id="ks-schema">
+      <svg class="ks-lijnen" id="ks-lijnen" aria-hidden="true"></svg>
+      <div class="ks-kolom"><h2>Schouw en inspectie</h2>${bronnen.map((p) => `<div class="ks-kaart bron" data-bron="${esc(p.id)}"><span><strong>${wpNaam(p)}</strong><small>${esc(rondesVan(p).find((r) => r.soort === 'inspectie')?.inspectiesoort || p.inspectiesoort || 'Inspectie')} · ${(p.objecten ?? []).length} objecten</small></span>
+        <button type="button" class="ks-punt" data-bronpunt="${esc(p.id)}" aria-label="Relatie trekken vanaf ${esc(metCode(p))}" ${beheer ? '' : 'disabled'}></button></div>`).join('')}</div>
+      <div class="ks-kolom"><h2>Werkpakketten</h2>${doelen.map((p) => `<div class="ks-kaart doel" data-doel="${esc(p.id)}"><button type="button" class="ks-punt" data-doelpunt="${esc(p.id)}" aria-label="Relatie naar ${esc(metCode(p))}" ${beheer ? '' : 'disabled'}></button>
+        <span><strong>${wpNaam(p)}</strong><small>${esc(p.werksoort || 'Werkzaamheden')} · ${rondesVan(p).length} ronde${rondesVan(p).length === 1 ? '' : 's'}</small></span></div>`).join('')}</div>
+    </div>
+    <p class="ks-hint zacht" id="ks-hint" hidden></p>`}
+    <section class="kaart"><h2>Relaties <small class="zacht">(${koppelingen.length})</small></h2>
+      ${koppelingen.length ? `<div class="tabelhouder"><table><thead><tr><th>Van</th><th>Naar</th><th>Wat</th><th>Modus</th><th>Ronde</th><th>Werklocaties</th><th></th></tr></thead><tbody>
+      ${koppelingen.map((k) => { const t = tel.get(k.id) ?? { totaal: 0, open: 0, teBeoordelen: 0, gedaan: 0 }; return `<tr class="${k.actief === false ? 'zacht' : ''}">
+        <td>${esc(naam(k.bronPakketId))}</td><td>${esc(naam(k.doelPakketId))}</td><td><small>${esc(filterTekst(k.filter))}</small></td>
+        <td><span class="ks-modus ${lijnStijl(k)}">${k.actief === false ? 'Uit' : esc(KP.MODI[k.modus]?.label ?? k.modus)}</span></td>
+        <td><small>${esc(KP.DOEL_RONDES[k.doelRonde ?? 'lopend']?.label ?? '')}</small></td>
+        <td><small>${t.totaal ? `${t.gedaan} uitgevoerd · ${t.open} open${t.teBeoordelen ? ` · <a href="#/doorzetten?relatie=${esc(k.id)}">${t.teBeoordelen} te beoordelen</a>` : ''}` : 'nog geen'}</small></td>
+        <td>${beheer ? `<button type="button" class="knop klein" data-ks-bewerk="${esc(k.id)}">Bewerken</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>`
+    : '<p class="leeg">Nog geen relaties. Trek een lijn in het schema hierboven.</p>'}</section>`;
+
+  const schema = app.querySelector('#ks-schema');
+  const svg = app.querySelector('#ks-lijnen');
+  const middenVan = (el) => { const r = el.getBoundingClientRect(); const s = schema.getBoundingClientRect(); return [r.left + r.width / 2 - s.left, r.top + r.height / 2 - s.top]; };
+  const pad = ([x1, y1], [x2, y2]) => { const dx = Math.max(40, (x2 - x1) / 2); return `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`; };
+  const tekenLijnen = (tijdelijk = null) => {
+    if (!schema) return;
+    const s = schema.getBoundingClientRect();
+    svg.setAttribute('viewBox', `0 0 ${s.width} ${s.height}`);
+    svg.style.width = `${s.width}px`; svg.style.height = `${s.height}px`;
+    svg.innerHTML = koppelingen.map((k) => {
+      const a = schema.querySelector(`[data-bronpunt="${CSS.escape(k.bronPakketId)}"]`);
+      const b = schema.querySelector(`[data-doelpunt="${CSS.escape(k.doelPakketId)}"]`);
+      if (!a || !b) return '';
+      const p1 = middenVan(a); const p2 = middenVan(b);
+      const t = tel.get(k.id);
+      const mx = (p1[0] + p2[0]) / 2; const my = (p1[1] + p2[1]) / 2;
+      return `<g class="ks-lijn ${lijnStijl(k)}" data-lijn="${esc(k.id)}"><path class="ks-raak" d="${pad(p1, p2)}"/><path class="ks-pad" d="${pad(p1, p2)}"/>
+        ${t?.totaal ? `<g transform="translate(${mx},${my})"><rect x="-26" y="-11" width="52" height="22" rx="11"/><text text-anchor="middle" dy="4">${t.teBeoordelen ? `${t.teBeoordelen} wacht` : `${t.open} open`}</text></g>` : ''}</g>`;
+    }).join('') + (tijdelijk ? `<path class="ks-tijdelijk" d="${pad(tijdelijk[0], tijdelijk[1])}"/>` : '');
+  };
+  tekenLijnen();
+  const opResize = () => { if (!document.body.contains(svg)) { window.removeEventListener('resize', opResize); return; } tekenLijnen(); };
+  window.addEventListener('resize', opResize);
+  const hint = app.querySelector('#ks-hint');
+  const kiesBron = (id) => {
+    bronKeuze = id;
+    schema.querySelectorAll('.ks-kaart.bron').forEach((x) => x.classList.toggle('gekozen', x.dataset.bron === id));
+    schema.classList.toggle('kiest', Boolean(id));
+    if (hint) { hint.hidden = !id; hint.textContent = id ? `Kies rechts het werkpakket voor ${naam(id)} (Esc = stoppen).` : ''; }
+  };
+  const nieuweRelatie = async (bronId, doelId) => {
+    kiesBron(null);
+    const bestaand = koppelingen.find((k) => k.bronPakketId === bronId && k.doelPakketId === doelId);
+    if (bestaand) return relatieDialoog(bestaand);
+    return relatieDialoog({ id: nieuwId(), bronPakketId: bronId, doelPakketId: doelId, modus: 'controle', doelRonde: 'lopend', filter: {}, actief: true, vanaf: vandaag() }, { nieuw: true });
+  };
+  if (schema && beheer) {
+    schema.addEventListener('click', (e) => {
+      const bp = e.target.closest('[data-bronpunt]');
+      if (bp) { kiesBron(bronKeuze === bp.dataset.bronpunt ? null : bp.dataset.bronpunt); return; }
+      const dk = e.target.closest('[data-doel]');
+      if (dk && bronKeuze) { nieuweRelatie(bronKeuze, dk.dataset.doel); return; }
+      const lijn = e.target.closest('[data-lijn]');
+      if (lijn) relatieDialoog(koppelingen.find((k) => k.id === lijn.dataset.lijn));
+    });
+    // Slepen van een bronpunt naar een werkpakket.
+    let sleep = null;
+    schema.addEventListener('pointerdown', (e) => {
+      const bp = e.target.closest('[data-bronpunt]');
+      if (!bp) return;
+      sleep = { id: bp.dataset.bronpunt, start: middenVan(bp), bewogen: false };
+      bp.setPointerCapture?.(e.pointerId);
+    });
+    schema.addEventListener('pointermove', (e) => {
+      if (!sleep) return;
+      const s = schema.getBoundingClientRect();
+      const p = [e.clientX - s.left, e.clientY - s.top];
+      if (Math.hypot(p[0] - sleep.start[0], p[1] - sleep.start[1]) > 8) sleep.bewogen = true;
+      if (sleep.bewogen) tekenLijnen([sleep.start, p]);
+    });
+    schema.addEventListener('pointerup', (e) => {
+      if (!sleep) return;
+      const s2 = sleep; sleep = null;
+      tekenLijnen();
+      if (!s2.bewogen) return; // gewone klik: afgehandeld in click
+      const doel = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-doel]');
+      if (doel) { e.preventDefault(); nieuweRelatie(s2.id, doel.dataset.doel); }
+    });
+    document.addEventListener('keydown', function esc2(e) { if (!document.body.contains(schema)) { document.removeEventListener('keydown', esc2); return; } if (e.key === 'Escape') kiesBron(null); });
+  }
+  app.querySelectorAll('[data-ks-bewerk]').forEach((k) => k.addEventListener('click', () => relatieDialoog(koppelingen.find((x) => x.id === k.dataset.ksBewerk))));
+
+  async function relatieDialoog(k, { nieuw = false } = {}) {
+    if (!k || !beheer) return;
+    const bronInsp = inspecties.filter((i) => i.werkpakketId === k.bronPakketId);
+    const alleBev = (bronInsp.length ? bronInsp : inspecties).flatMap((i) => KP.bevindingen(i));
+    const uniek = (l) => [...new Set(l.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'nl'));
+    const maatregelen = uniek([...alleBev.map(KP.maatregelNaam), ...(k.filter?.maatregelen ?? [])]);
+    const gebreken = uniek([...alleBev.map(KP.gebrekNaam), ...(k.filter?.gebreken ?? [])]);
+    const lijstVink = (naam2, opties, gekozen) => (opties.length ? `<div class="ks-vinklijst">${opties.map((x) => `<label class="vink"><input type="checkbox" name="${naam2}" value="${esc(x)}" ${gekozen?.includes(x) ? 'checked' : ''}><span>${esc(x)}</span></label>`).join('')}</div>`
+      : '<p class="zacht"><small>Nog geen bevindingen in deze schouw; alles telt mee.</small></p>');
+    const d = document.createElement('dialog');
+    d.className = 'dialoog breed';
+    d.innerHTML = `<form method="dialog" novalidate>
+      <h2>${nieuw ? 'Nieuwe relatie' : 'Relatie'}</h2>
+      <p class="ks-pijl"><strong>${esc(naam(k.bronPakketId))}</strong> → <strong>${esc(naam(k.doelPakketId))}</strong></p>
+      <div class="velden">
+        <div class="veld breed"><label>Modus</label>${Object.entries(KP.MODI).map(([id, m]) => `<label class="keuzekaart"><input type="radio" name="modus" value="${id}" ${k.modus === id ? 'checked' : ''}><span><strong>${esc(m.label)}</strong><small>${esc(m.uitleg)}</small></span></label>`).join('')}</div>
+        <div class="veld breed"><label>In welke ronde</label>${Object.entries(KP.DOEL_RONDES).map(([id, m]) => `<label class="keuzekaart"><input type="radio" name="doelRonde" value="${id}" ${(k.doelRonde ?? 'lopend') === id ? 'checked' : ''}><span><strong>${esc(m.label)}</strong><small>${esc(m.uitleg)}</small></span></label>`).join('')}</div>
+        <div class="veld breed" id="ks-herstelnaam" ${(k.doelRonde ?? 'lopend') === 'herstel' ? '' : 'hidden'}><label for="ks-hnaam">Naam van de herstelronde</label><input id="ks-hnaam" value="${esc(k.herstelNaam ?? '')}" placeholder="bijv. Herstel uit schouw"></div>
+        <div class="veld breed"><label>Welke bevindingen <small class="zacht">(niets aangevinkt = alle)</small></label>
+          <details ${k.filter?.maatregelen?.length ? 'open' : ''}><summary>Maatregelen${k.filter?.maatregelen?.length ? ` (${k.filter.maatregelen.length})` : ''}</summary>${lijstVink('maatregel', maatregelen, k.filter?.maatregelen)}</details>
+          <details ${k.filter?.gebreken?.length ? 'open' : ''}><summary>Gebreken${k.filter?.gebreken?.length ? ` (${k.filter.gebreken.length})` : ''}</summary>${lijstVink('gebrek', gebreken, k.filter?.gebreken)}</details></div>
+        <div class="veld"><label for="ks-urg">Urgentie</label><select id="ks-urg"><option value="">Alle urgenties</option>${URGENTIES.map((u) => optie(u.id, `t/m ${u.label}`, k.filter?.urgentieTot ?? '')).join('')}</select></div>
+        <div class="veld"><label for="ks-cond">Conditie (NEN 2767)</label><select id="ks-cond"><option value="">Alle condities</option>${[2, 3, 4, 5, 6].map((c) => optie(String(c), `${c} of slechter`, String(k.filter?.conditieVanaf ?? ''))).join('')}</select></div>
+        <div class="veld breed"><label class="vink"><input type="checkbox" id="ks-bestaand" ${k.vanaf ? '' : 'checked'}><span>Ook inspecties van vóór vandaag doorzetten<small>Uit: alleen inspecties vanaf ${datumNL(k.vanaf || vandaag())}.</small></span></label></div>
+        <div class="veld breed"><label class="vink"><input type="checkbox" id="ks-actief" ${k.actief === false ? '' : 'checked'}><span>Relatie actief</span></label></div>
+      </div>
+      <p class="ks-voorbeeld" id="ks-voorbeeld"></p>
+      <div class="formvoet">${nieuw ? '' : '<button type="button" class="knop gevaar" data-ks="weg">Relatie verwijderen</button>'}<span style="flex:1"></span>
+        <button type="button" class="knop" data-ks="nee">Annuleren</button><button type="submit" class="knop primair">${I.vink} Opslaan</button></div></form>`;
+    document.body.append(d);
+    const lees = () => ({
+      ...k, modus: d.querySelector('input[name=modus]:checked')?.value ?? 'controle', doelRonde: d.querySelector('input[name=doelRonde]:checked')?.value ?? 'lopend',
+      herstelNaam: d.querySelector('#ks-hnaam').value.trim(),
+      filter: { maatregelen: [...d.querySelectorAll('input[name=maatregel]:checked')].map((x) => x.value), gebreken: [...d.querySelectorAll('input[name=gebrek]:checked')].map((x) => x.value),
+        urgentieTot: d.querySelector('#ks-urg').value, conditieVanaf: d.querySelector('#ks-cond').value ? Number(d.querySelector('#ks-cond').value) : '' },
+      vanaf: d.querySelector('#ks-bestaand').checked ? '' : (k.vanaf || vandaag()), actief: d.querySelector('#ks-actief').checked, gewijzigd: new Date().toISOString(),
+    });
+    const voorbeeld = () => {
+      const x = lees();
+      const nieuwP = KP.bijwerken({ ...x, actief: true }, bronInsp, new Map(punten.filter((p) => p.koppelingId === k.id).map((p) => [p.id, p])), { conditieVan: (g, i) => (i.gebreken?.includes(g) && TY.methodiekVan(i) === 'nen' ? gebrekScore(g) : null) }).nieuw;
+      const wacht = bronInsp.filter((i) => i.status === 'afgerond' && !KP.inspectieGoedgekeurd(i)).length;
+      d.querySelector('#ks-voorbeeld').innerHTML = `${I.let} Bij opslaan ${nieuwP.length ? `${x.modus === 'altijd' ? 'gaan' : 'komen'} <strong>${nieuwP.length}</strong> bevinding${nieuwP.length === 1 ? '' : 'en'} ${x.modus === 'altijd' ? 'direct naar het werkpakket' : 'in de doorzetbak'}` : 'wordt nu niets doorgezet'}${wacht ? `; ${wacht} inspectie${wacht === 1 ? '' : 's'} wacht${wacht === 1 ? '' : 'en'} nog op goedkeuring` : ''}.`;
+    };
+    voorbeeld();
+    d.addEventListener('change', (e) => { if (e.target.name === 'doelRonde') d.querySelector('#ks-herstelnaam').hidden = e.target.value !== 'herstel'; voorbeeld(); });
+    d.showModal();
+    const keuze = await new Promise((ok) => {
+      d.querySelector('[data-ks=nee]').onclick = () => ok(null);
+      d.querySelector('[data-ks=weg]')?.addEventListener('click', () => ok('weg'));
+      d.addEventListener('cancel', (e) => { e.preventDefault(); ok(null); });
+      d.querySelector('form').onsubmit = (e) => { e.preventDefault(); ok('ja'); };
+    });
+    const resultaat = keuze === 'ja' ? lees() : null;
+    d.close(); d.remove();
+    if (!keuze) return;
+    const nu = new Date().toISOString();
+    if (keuze === 'weg') {
+      const mijn = punten.filter((p) => p.koppelingId === k.id);
+      const teB = mijn.filter((p) => p.status === 'te beoordelen');
+      if (!(await bevestig(`Relatie ${naam(k.bronPakketId)} → ${naam(k.doelPakketId)} verwijderen?\n\n${mijn.filter((p) => p.status === 'open').length} open werklocaties blijven in het werkpakket staan.${teB.length ? ` ${teB.length} bevindingen in de doorzetbak vervallen.` : ''}`))) return;
+      for (const p of teB) await db.bewaar('werkpunten', { ...p, status: 'vervallen', reden: 'Relatie verwijderd', gewijzigd: nu });
+      await bewaarActiefProject((pr) => ({ koppelingen: (pr.koppelingen ?? []).filter((x) => x.id !== k.id) }));
+      melding('Relatie verwijderd');
+      return koppelschemaPagina();
+    }
+    await bewaarActiefProject((pr) => ({ koppelingen: [...(pr.koppelingen ?? []).filter((x) => x.id !== resultaat.id), resultaat] }));
+    const r = await verwerkKoppelingen({ forceer: true });
+    melding(`Relatie opgeslagen${r?.nieuw ? ` · ${r.nieuw} bevinding${r.nieuw === 1 ? '' : 'en'} ${resultaat.modus === 'altijd' ? 'doorgezet' : 'in de doorzetbak'}` : ''}`);
+    return koppelschemaPagina();
+  }
+}
+
+/** Doorzetbak: bevindingen die op een besluit wachten, en het overzicht van alle werklocaties. */
+async function doorzetbakPagina(_, q = new URLSearchParams()) {
+  await verwerkKoppelingen();
+  const [project, punten, pakketten, objecten, inspecties] = await Promise.all([actiefProject(), inProject('werkpunten'), inProject('werkpakketten'), inProject('objecten'), inProject('inspecties')]);
+  const kan = magBeheren() || magGoedkeuren();
+  const om = new Map(objecten.map((o) => [o.id, o]));
+  const pm = new Map(pakketten.map((p) => [p.id, p]));
+  const im = new Map(inspecties.map((i) => [i.id, i]));
+  const koppelingen = project.koppelingen ?? [];
+  let status = q.get('status') || (punten.some((p) => p.status === 'te beoordelen') ? 'te beoordelen' : 'open');
+  let relatie = q.get('relatie') || '';
+  let zoek = '';
+  const gekozen = new Set();
+  const rondeNaam = (wp) => { const p = pm.get(wp.doel?.pakketId); const r = p ? rondesVan(p).find((x) => x.id === wp.doel?.rondeId) : null; return r ? `R${r.nummer} ${r.naam}` : ''; };
+  const lijst = () => punten.filter((p) => (status === 'alles' || p.status === status) && (!relatie || p.koppelingId === relatie)
+    && (!zoek || `${om.get(p.bron.objectId)?.code ?? ''} ${om.get(p.bron.objectId)?.naam ?? ''} ${p.momentopname?.maatregel ?? ''} ${p.momentopname?.gebrek ?? ''}`.toLowerCase().includes(zoek)))
+    .sort((a, b) => KP.urgentieRang(a.momentopname?.urgentie) - KP.urgentieRang(b.momentopname?.urgentie) || String(om.get(a.bron.objectId)?.code ?? '').localeCompare(String(om.get(b.bron.objectId)?.code ?? ''), 'nl', { numeric: true }));
+  const tel = (s) => punten.filter((p) => (s === 'alles' || p.status === s) && (!relatie || p.koppelingId === relatie)).length;
+  const teken = () => {
+    const rijen = lijst();
+    for (const id of [...gekozen]) if (!rijen.some((p) => p.id === id)) gekozen.delete(id);
+    const som = rijen.filter((p) => gekozen.has(p.id)).reduce((t, p) => t + (Number(p.momentopname?.raming) || 0), 0);
+    const statussen = ['te beoordelen', 'open', 'gedaan', 'nader', 'niet uitvoeren', 'vervallen', 'alles'];
+    app.innerHTML = `${isMobiel() ? '' : tabbalk('/doorzetten', 'werkpakketten')}
+      <div class="paginakop"><div><h1>Doorzetbak</h1><p>Bevindingen uit schouw en inspectie die werk opleveren (via het <a href="#/koppelschema">koppelschema</a>). Kies wat er wordt uitgevoerd.</p></div></div>
+      <div class="filters">
+        <div class="chips" role="radiogroup" aria-label="Status">${statussen.map((s) => `<label class="chip"><input type="radio" name="dz-status" value="${s}" ${s === status ? 'checked' : ''}><span>${s === 'alles' ? 'Alles' : esc(KP.STATUS[s].label)} <small>(${tel(s)})</small></span></label>`).join('')}</div>
+        ${koppelingen.length > 1 ? `<select id="dz-relatie" aria-label="Relatie"><option value="">Alle relaties</option>${koppelingen.map((k) => optie(k.id, `${metCode(pm.get(k.bronPakketId) ?? { naam: '?' })} → ${metCode(pm.get(k.doelPakketId) ?? { naam: '?' })}`, relatie)).join('')}</select>` : ''}
+        <input type="search" id="dz-zoek" placeholder="Zoek op object of maatregel…" value="${esc(zoek)}" aria-label="Zoeken">
+      </div>
+      ${kan && status === 'te beoordelen' && rijen.length ? `<div class="kaart selectiebalk ${gekozen.size ? 'actief' : ''}">
+        <span><strong>${gekozen.size}</strong> van ${rijen.length} gekozen${som ? ` · raming ${platteTekst(euro(som))}` : ''}</span>
+        <span class="knoppen"><button type="button" class="knop klein" data-dz-kies="voorstel" title="Urgent, of eerder bij dezelfde maatregel doorgezet">Voorstel</button>
+          <button type="button" class="knop klein" data-dz-kies="alle">Alle</button><button type="button" class="knop klein" data-dz-kies="geen">Geen</button>
+          <span class="dz-n">Eerste <input type="number" id="dz-n" min="1" value="5" aria-label="Aantal"> <button type="button" class="knop klein" data-dz-kies="eerste">kiezen</button></span></span>
+        <span class="knoppen" ${gekozen.size ? '' : 'hidden'}>${Object.entries(KP.BESLUITEN).map(([id, l]) => `<button type="button" class="knop klein ${id === 'doorzetten' ? 'primair' : id === 'niet uitvoeren' ? 'gevaar' : ''}" data-dz-besluit="${id}">${esc(l)}</button>`).join('')}</span></div>` : ''}
+      ${kan && ['open', 'nader', 'niet uitvoeren'].includes(status) && gekozen.size ? `<div class="kaart selectiebalk actief"><span><strong>${gekozen.size}</strong> gekozen</span><span class="knoppen"><button type="button" class="knop klein" data-dz-besluit="terug">Terug naar de doorzetbak</button></span></div>` : ''}
+      <div class="kaart" style="padding:0"><div class="tabelhouder"><table class="dz-tabel"><thead><tr>${kan ? '<th style="width:36px"></th>' : ''}<th>Object</th><th>Bevinding</th><th>Urgentie</th>${toonKosten() ? '<th>Raming</th>' : ''}<th>Van</th><th>Naar</th><th>Status</th></tr></thead><tbody>
+      ${rijen.map((p) => { const o = om.get(p.bron.objectId); const i = im.get(p.bron.inspectieId); const st = KP.STATUS[p.status] ?? { label: p.status, kleur: '#8a96a3' };
+    return `<tr data-dz="${esc(p.id)}" class="${gekozen.has(p.id) ? 'gekozen' : ''}">${kan ? `<td><input type="checkbox" data-dz-vink="${esc(p.id)}" ${gekozen.has(p.id) ? 'checked' : ''} aria-label="Kiezen"></td>` : ''}
+        <td><a href="#/objecten/${esc(p.bron.objectId)}"><strong>${esc(o?.code ?? '?')}</strong></a> ${esc(o?.naam ?? '')}</td>
+        <td>${esc(p.momentopname?.maatregel || '–')}<small>${esc([p.momentopname?.bouwdeel, p.momentopname?.gebrek].filter(Boolean).join(' – '))}</small>${p.bronGewijzigd ? `<small class="dz-let">${I.let} ${esc(p.reden || 'Bron gewijzigd')}</small>` : ''}</td>
+        <td>${urgentieLabel(p.momentopname?.urgentie)}</td>${toonKosten() ? `<td>${p.momentopname?.raming !== '' && p.momentopname?.raming != null ? euro(p.momentopname.raming) : '–'}</td>` : ''}
+        <td><small>${esc(metCode(pm.get(p.bron.pakketId) ?? { naam: '?' }))}${i ? `<br><a href="#/inspecties/${esc(i.id)}">${datumNL(i.datum)} · ${esc(i.inspecteur || '')}</a>` : ''}</small></td>
+        <td><small>${esc(metCode(pm.get(p.doel?.pakketId) ?? { naam: '?' }))}${rondeNaam(p) ? `<br>${esc(rondeNaam(p))}` : p.status === 'open' ? '<br><span class="dz-let">nog geen ronde</span>' : ''}</small></td>
+        <td><span class="ffstatus" style="--k:${st.kleur}">${esc(st.label)}</span>${p.besluit?.keuze === 'meerwerk' ? ' <span class="label-status binnenkort">meerwerk</span>' : ''}${p.besluit?.reden ? `<small>${esc(p.besluit.reden)}</small>` : ''}</td></tr>`; }).join('') || `<tr><td colspan="9" class="leeg">${punten.length ? 'Niets met deze keuze.' : 'Nog niets doorgezet. Leg relaties aan in het koppelschema.'}</td></tr>`}
+      </tbody></table></div></div>`;
+  };
+  teken();
+  app.addEventListener('change', function wijzig(e) {
+    if (!app.querySelector('.dz-tabel')) { app.removeEventListener('change', wijzig); return; }
+    if (e.target.name === 'dz-status') { status = e.target.value; gekozen.clear(); teken(); }
+    if (e.target.id === 'dz-relatie') { relatie = e.target.value; teken(); }
+    if (e.target.dataset.dzVink) { if (e.target.checked) gekozen.add(e.target.dataset.dzVink); else gekozen.delete(e.target.dataset.dzVink); teken(); }
+  });
+  app.addEventListener('input', function typ(e) {
+    if (!app.querySelector('.dz-tabel')) { app.removeEventListener('input', typ); return; }
+    if (e.target.id === 'dz-zoek') { zoek = e.target.value.trim().toLowerCase(); const pos = e.target.selectionStart; teken(); const z = app.querySelector('#dz-zoek'); z.focus(); z.setSelectionRange(pos, pos); }
+  });
+  app.addEventListener('click', async function klik(e) {
+    if (!app.querySelector('.dz-tabel')) { app.removeEventListener('click', klik); return; }
+    const k = e.target.closest('[data-dz-kies]');
+    if (k) {
+      const rijen = lijst();
+      gekozen.clear();
+      const w = k.dataset.dzKies;
+      if (w === 'alle') rijen.forEach((p) => gekozen.add(p.id));
+      if (w === 'eerste') rijen.slice(0, Math.max(0, Number(app.querySelector('#dz-n').value) || 0)).forEach((p) => gekozen.add(p.id));
+      if (w === 'voorstel') KP.voorstel(rijen, punten).forEach((id) => gekozen.add(id));
+      return teken();
+    }
+    const b = e.target.closest('[data-dz-besluit]');
+    if (b) {
+      const keuze = b.dataset.dzBesluit;
+      let reden = '';
+      if (keuze === 'niet uitvoeren' || keuze === 'nader') {
+        reden = await vraagTekst(keuze === 'nader' ? 'Wat moet er nader worden onderzocht?' : 'Waarom wordt dit niet uitgevoerd?\n\nDe reden wordt vastgelegd bij elke gekozen bevinding.', '');
+        if (reden === null) return;
+        if (keuze === 'niet uitvoeren' && !reden.trim()) return melding('Geef een reden op.', 'fout');
+      }
+      const nu = new Date().toISOString();
+      const door = accountNaam() || ikEmail();
+      for (const id of gekozen) {
+        const p = punten.find((x) => x.id === id);
+        if (!p) continue;
+        const nieuw = keuze === 'terug' ? { ...p, status: 'te beoordelen', besluit: null, gewijzigd: nu } : KP.besluit(p, keuze, { door, reden: reden.trim(), nu });
+        await db.bewaar('werkpunten', nieuw);
+        Object.assign(p, nieuw);
+      }
+      const n = gekozen.size;
+      gekozen.clear();
+      await verwerkKoppelingen({ forceer: true });
+      const [vers, versP] = await Promise.all([inProject('werkpunten'), inProject('werkpakketten')]);
+      punten.splice(0, punten.length, ...vers);
+      for (const p of versP) pm.set(p.id, p); // er kan een herstelronde bij zijn gekomen
+      melding(`${n} bevinding${n === 1 ? '' : 'en'}: ${keuze === 'terug' ? 'terug in de doorzetbak' : KP.BESLUITEN[keuze].toLowerCase()}`);
+      return teken();
+    }
+    const rij = e.target.closest('tr[data-dz]');
+    if (rij && kan && !e.target.closest('a, input, button')) {
+      const id = rij.dataset.dz;
+      if (gekozen.has(id)) gekozen.delete(id); else gekozen.add(id);
+      teken();
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------

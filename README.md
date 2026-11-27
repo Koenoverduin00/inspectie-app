@@ -475,6 +475,50 @@ Op alle kaarten met voortgang (mobiele kaart, werkpakketkaart, dashboardkaart me
   **voor iedereen in het project** (wordt gesynchroniseerd); iedereen kan ook een eigen opmaak **alleen op dit apparaat**
   kiezen. *Standaard herstellen* zet alles terug. De voortgangsbalken en legenda's volgen dezelfde kleuren.
 
+## Koppelschema: schouw en inspectie als bron voor werkpakketten
+
+De uitkomst van een schouw of inspectie (gebreken met een maatregel) kan de input zijn voor een werkpakket. Je legt
+**relaties** aan van een schouw- of inspectiepakket naar een werkpakket. Logica in `js/koppeling.js`, getest in
+`tests/koppeling.test.js`.
+
+- **Koppelschema** (*Werkpakketten → Koppelschema*, beheerders):
+  - **Lijnen trekken:** links de schouw- en inspectiepakketten, rechts de werkpakketten. Klik op het rondje links en
+    dan op het werkpakket rechts, of sleep een lijn.
+  - **Lijnstijl:** blauw doorgetrokken = *altijd*, oranje gestippeld = *met controle*, grijs gestippeld = uit.
+  - **Teller op de lijn:** het aantal open en wachtende werklocaties.
+  - **Per relatie:**
+    - **Modus:** *Altijd* (direct door) of *Met controle* (eerst naar de doorzetbak).
+    - **Ronde:** *lopende ronde*, *volgende ronde* of *aparte herstelronde*. Die laatste maakt de app zelf aan, met
+      alleen de objecten van de werklocaties.
+    - **Filter:** maatregelen, gebreken, urgentie (t/m) en conditie NEN 2767 (vanaf).
+    - **Startdatum:** alleen inspecties vanaf vandaag, of ook eerdere.
+    - **Aan of uit.**
+  - Vóór het opslaan zie je hoeveel bevindingen er door zouden gaan.
+- **Moment:** pas als de inspectie is **goedgekeurd** (of afgerond, als het project niet beoordeelt).
+- **Doorzetbak** (*Werkpakketten → Doorzetbak*, beheerders en beoordelaars):
+  - De bevindingen die op een besluit wachten, gesorteerd op urgentie, met raming, bron en doel.
+  - **Selecteren:** *Voorstel* (urgent, of eerder bij dezelfde maatregel doorgezet), *Alle*, *Geen*, *Eerste N* of
+    zelf aanvinken. Het totaal van de raming staat erbij.
+  - **Besluiten:** *Doorzetten*, *Als meerwerk*, *Nader onderzoek* of *Niet uitvoeren* (met reden). Een besluit is
+    terug te draaien met *Terug naar de doorzetbak*.
+  - De andere tabbladen tonen alle werklocaties per status: open, uitgevoerd, niet uitvoeren, vervallen.
+- **Werklocaties (datamodel):** elk doorgezet gebrek is één record in de nieuwe tabel `werkpunten`.
+  - **Vaste sleutel** `inspectie:gebrek:relatie`, zodat er nooit iets dubbel ontstaat, ook niet bij twee toestellen.
+  - **Velden:** status, besluit (wie, wanneer, reden), een momentopname van het gebrek, bron en doel.
+  - **In de ronde:** het gebrek blijft in de inspectie staan. De werklocatie komt in de ronde als herstelitem, dus
+    met kaartpunt op de exacte locatie, de tabel *Gebreken in deze ronde* en een vooraf aangevinkte maatregel in het
+    werkformulier.
+  - **Afvinken:** wordt de maatregel uitgevoerd, dan staat de werklocatie op *uitgevoerd*.
+- **Als de bron verandert:**
+  - **Inspectie afgekeurd:** de werklocatie gaat terug naar de doorzetbak en uit de ronde. Weer goedgekeurd: bij
+    *altijd* gaat hij vanzelf weer door, bij *met controle* opnieuw beoordelen.
+  - **Gebrek aangepast na het doorzetten:** terug naar controle.
+  - **Gebrek verwijderd:** de werklocatie vervalt.
+  - **Relatie verwijderd:** wat nog beoordeeld moest worden vervalt; open werklocaties blijven staan.
+- **Server:** voer `supabase/014_werkpunten.sql` uit (nieuwe tabel met dezelfde toegangsregels als de andere
+  projectgegevens). Getest in `supabase/tests/014_werkpunten_test.sql`. Zonder dit script werkt het koppelschema op
+  het toestel, maar worden de werklocaties niet gedeeld.
+
 ## Vragen en bevestigen in de app
 
 Bevestigingen ("Deze werkzaamheid inclusief foto's verwijderen?") en invulvragen ("Naam van de kopie") verschijnen als

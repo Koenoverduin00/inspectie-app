@@ -2377,3 +2377,52 @@ body.kiesmodus .mfilterchips, body.kiesmodus .mtedoenseg, body.kiesmodus .ff-fil
 .appvraag .formvoet { display: flex; justify-content: flex-end; gap: .5rem; flex-wrap: wrap; margin-top: .75rem; }
 .knop.gevaar-vol { background: #b3261e; border-color: #b3261e; color: #fff; }
 .knop.gevaar-vol:hover { background: #8f1e18; }
+
+/* Koppelschema: schouw/inspectie → werkpakket */
+.ks-legenda { display: flex; gap: 1.2rem; flex-wrap: wrap; font-size: .88rem; color: var(--tekst-zacht); margin: 0 0 .5rem; }
+.ks-l { display: inline-block; width: 34px; height: 0; border-top: 3px solid #0b57d0; vertical-align: middle; margin-right: .3rem; }
+.ks-l.controle { border-top-style: dashed; border-color: #e07b00; }
+.ks-l.uit { border-color: #b0b8c1; border-top-style: dotted; }
+.ks-schema { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 2rem 7rem; margin-bottom: 1rem; }
+.ks-schema h2 { font-size: 1rem; margin: 0 0 .5rem; color: var(--tekst-zacht); }
+.ks-kolom { display: grid; gap: .5rem; align-content: start; }
+.ks-kaart { display: flex; align-items: center; gap: .6rem; padding: .6rem .75rem; border: 1px solid var(--rand, #d5dbe1); border-radius: 10px; background: var(--kaart, #fff); }
+.ks-kaart { min-width: 0; }
+.ks-kaart > span { flex: 1; min-width: 0; display: grid; overflow-wrap: anywhere; }
+.ks-kaart small { color: var(--tekst-zacht); }
+.ks-kaart.bron { justify-content: space-between; }
+.ks-kaart.gekozen { border-color: #0b57d0; box-shadow: 0 0 0 3px color-mix(in srgb, #0b57d0 25%, transparent); }
+.ks-schema.kiest .ks-kaart.doel { cursor: pointer; border-style: dashed; border-color: #0b57d0; }
+.ks-schema.kiest .ks-kaart.doel:hover { background: color-mix(in srgb, #0b57d0 8%, var(--kaart, #fff)); }
+.ks-punt { position: relative; z-index: 3; flex: none; width: 22px; height: 22px; border-radius: 50%; border: 3px solid #0b57d0; background: var(--kaart, #fff); cursor: crosshair; padding: 0; touch-action: none; }
+.ks-punt:hover, .ks-kaart.gekozen .ks-punt { background: #0b57d0; }
+.ks-punt:disabled { cursor: default; border-color: #b0b8c1; }
+.ks-lijnen { position: absolute; inset: 0; z-index: 2; pointer-events: none; overflow: visible; }
+.ks-lijn { pointer-events: auto; cursor: pointer; }
+.ks-lijn .ks-raak { stroke: transparent; stroke-width: 16; fill: none; }
+.ks-lijn .ks-pad { stroke: #0b57d0; stroke-width: 3; fill: none; }
+.ks-lijn.controle .ks-pad { stroke: #e07b00; stroke-dasharray: 9 6; }
+.ks-lijn.uit .ks-pad { stroke: #b0b8c1; stroke-dasharray: 2 5; }
+.ks-lijn:hover .ks-pad { stroke-width: 5; }
+.ks-lijn rect { fill: var(--kaart, #fff); stroke: currentColor; stroke-width: 1.5; color: #0b57d0; }
+.ks-lijn.controle rect { color: #e07b00; }
+.ks-lijn text { font-size: 11px; font-weight: 600; fill: var(--tekst, #1d2a36); }
+.ks-tijdelijk { stroke: #0b57d0; stroke-width: 3; fill: none; stroke-dasharray: 4 4; }
+.ks-hint { margin: -.5rem 0 1rem; }
+.ks-modus { font-size: .8rem; font-weight: 600; padding: .1rem .5rem; border-radius: 999px; background: color-mix(in srgb, #0b57d0 12%, transparent); color: #0b57d0; }
+.ks-modus.controle { background: color-mix(in srgb, #e07b00 14%, transparent); color: #a35400; }
+.ks-modus.uit { background: #eef0f2; color: #6b7785; }
+.ks-pijl { margin: 0 0 .75rem; }
+.ks-vinklijst { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: .3rem .75rem; max-height: 12rem; overflow: auto; padding: .4rem 0; }
+.ks-voorbeeld { padding: .55rem .75rem; border-radius: 8px; background: color-mix(in srgb, var(--primair) 7%, transparent); margin: .75rem 0 0; }
+.keuzekaart { display: flex; gap: .6rem; align-items: flex-start; padding: .55rem .7rem; border: 1px solid var(--rand, #d5dbe1); border-radius: 10px; margin: .3rem 0; cursor: pointer; }
+.keuzekaart:has(input:checked) { border-color: var(--primair); background: color-mix(in srgb, var(--primair) 7%, transparent); }
+.keuzekaart span { display: grid; }
+.keuzekaart small { color: var(--tekst-zacht); }
+@media (max-width: 760px) { .ks-schema { gap: 1rem 2.2rem; } .ks-kaart small { display: none; } }
+.dz-tabel td small { display: block; color: var(--tekst-zacht); }
+.dz-tabel tr.gekozen td { background: color-mix(in srgb, var(--primair) 8%, transparent); }
+.dz-tabel tbody tr[data-dz] { cursor: pointer; }
+.dz-let { color: #a35400 !important; }
+.dz-n { display: inline-flex; align-items: center; gap: .3rem; }
+.dz-n input { width: 4rem; padding: .2rem .4rem; }

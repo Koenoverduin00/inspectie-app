@@ -5,10 +5,10 @@
 import * as db from './db.js';
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
 
-const TABELLEN = ['projecten', 'lagen', 'objecten', 'inspecties', 'werkzaamheden', 'taken', 'werkpakketten', 'overgeslagen', 'vrijgaven', 'meldingen'];
+const TABELLEN = ['projecten', 'lagen', 'objecten', 'inspecties', 'werkzaamheden', 'taken', 'werkpakketten', 'overgeslagen', 'vrijgaven', 'meldingen', 'werkpunten'];
 // Tabellen die nieuwer zijn dan sommige installaties: ontbreekt de tabel op de server, dan slaat de sync hem over
 // (de gegevens blijven lokaal en in de wachtrij) in plaats van helemaal te stoppen.
-const OPTIONEEL = new Set(['meldingen']);
+const OPTIONEEL = new Set(['meldingen', 'werkpunten']);
 const ontbrekend = new Set();
 /** Ontbreekt deze (nieuwe) tabel op de server? Dan moet het SQL-script nog worden uitgevoerd. */
 export const tabelOntbreekt = (tabel) => ontbrekend.has(tabel);
@@ -385,7 +385,7 @@ export function rol() {
 // ---------------------------------------------------------------------------
 // Versturen (lokale wachtrij → server)
 // ---------------------------------------------------------------------------
-const VOLGORDE = ['fotos', 'projecten', 'lagen', 'objecten', 'werkpakketten', 'inspecties', 'werkzaamheden', 'taken', 'overgeslagen', 'vrijgaven', 'meldingen'];
+const VOLGORDE = ['fotos', 'projecten', 'lagen', 'objecten', 'werkpakketten', 'inspecties', 'werkzaamheden', 'taken', 'overgeslagen', 'vrijgaven', 'meldingen', 'werkpunten'];
 const BATCH = 200;
 
 async function verstuur() {
@@ -445,7 +445,7 @@ async function verstuur() {
 // Verbinding testen: per onderdeel van de server nagaan of het werkt, met de exacte foutmelding.
 // ---------------------------------------------------------------------------
 const SCRIPT_VOOR = { projecten: '003', lagen: '003', objecten: 'schema.sql', inspecties: 'schema.sql', taken: '003', werkzaamheden: '002',
-  werkpakketten: '004', overgeslagen: '004', vrijgaven: '005', meldingen: '008' };
+  werkpakketten: '004', overgeslagen: '004', vrijgaven: '005', meldingen: '008', werkpunten: '014' };
 const foutTekst = (f) => `${f?.status ? `HTTP ${f.status} ` : ''}${f?.code ? `(${f.code}) ` : ''}${f?.message ?? f}`;
 
 /**
@@ -515,7 +515,7 @@ const isGeenRecht = (fout) => fout?.status === 401 || fout?.status === 403 || fo
 
 const SOORT_TEKST = {
   projecten: 'projectinstellingen', lagen: 'kaartlaag', objecten: 'object', werkpakketten: 'werkpakket', inspecties: 'inspectie',
-  werkzaamheden: 'werkzaamheid', taken: 'taak', overgeslagen: 'overgeslagen object', vrijgaven: 'flora- en faunavrijgave', meldingen: 'storing of gebrek', fotos: 'foto',
+  werkzaamheden: 'werkzaamheid', taken: 'taak', overgeslagen: 'overgeslagen object', vrijgaven: 'flora- en faunavrijgave', meldingen: 'storing of gebrek', werkpunten: 'werklocatie', fotos: 'foto',
 };
 /** Leesbare samenvatting van geweigerde wijzigingen. */
 export function geweigerdTekst(lijst = status.geweigerd) {

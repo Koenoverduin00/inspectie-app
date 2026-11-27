@@ -62,7 +62,11 @@ export function rondeView(p, r) {
   // Objecten buiten scope (zie scope.js) horen alleen nog bij de rondes waarin ze bleven staan of op hun ingangsdatum wachten.
   const uit = p.uitScope ?? {};
   const hoort = (id) => { const u = uit[id]; return !u || (u.blijft ?? []).includes(r.id) || (u.wacht ?? []).includes(r.id); };
-  const objecten = (r.objectIds?.length ? r.objectIds.filter((id) => binnen.has(id)) : [...(p.objecten ?? [])]).filter(hoort);
+  // Werklocaties uit het koppelschema (herstelitems) horen bij deze ronde, ook als het object verder niet in het pakket zit.
+  // Een herstelronde uit het koppelschema bevat alleen de objecten van haar werklocaties.
+  const basis = r.herstel?.koppelingId ? [] : r.objectIds?.length ? r.objectIds.filter((id) => binnen.has(id)) : [...(p.objecten ?? [])];
+  const viaPunten = (r.herstel?.items ?? []).filter((x) => x.werkpuntId).map((x) => x.objectId);
+  const objecten = [...new Set([...basis, ...viaPunten])].filter(hoort);
   const enkel = !p.rondes?.length;
   return {
     ...p, ...r, id: p.id, rondeId: r.id, rondeNaam: r.naam, pakketNaam: p.naam,

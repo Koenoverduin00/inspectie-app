@@ -2,8 +2,8 @@
 // Wijzigingen aan objecten, inspecties en foto's worden in een wachtrij gezet
 // zodat ze naar de server kunnen worden gesynchroniseerd zodra er verbinding is.
 const DB_NAAM = 'inspectie-app';
-const DB_VERSIE = 8; // 8: index op projectId, zodat een pagina alleen het eigen project leest
-export const STORES = ['projecten', 'lagen', 'objecten', 'inspecties', 'werkzaamheden', 'taken', 'werkpakketten', 'overgeslagen', 'vrijgaven', 'meldingen', 'fotos'];
+const DB_VERSIE = 9; // 8: index op projectId, zodat een pagina alleen het eigen project leest; 9: werkpunten (koppelschema)
+export const STORES = ['projecten', 'lagen', 'objecten', 'inspecties', 'werkzaamheden', 'taken', 'werkpakketten', 'overgeslagen', 'vrijgaven', 'meldingen', 'werkpunten', 'fotos'];
 const WACHTRIJ = 'wachtrij';
 /** Stores met een projectId (alles behalve de projecten zelf). */
 const PROJECT_STORES = STORES.filter((s) => s !== 'projecten');
