@@ -503,6 +503,12 @@ De uitkomst van een schouw of inspectie (gebreken met een maatregel) kan de inpu
   - In de relatie kun je filteren op **oordeel**.
   - Dit geldt ook voor **zelfgemaakte inspectietypen**: de eigen schaal, checklistpunten en gebrekenlijst worden
     gebruikt.
+- **Onderdeel en gebrek per formulier uit te zetten** (*Inspectietypen → type → Onderdelen en gebreken*, methodiek
+  *oordeel*): met twee schakelaars kies je of de inspecteur per bevinding naar het onderdeel en het gebrek wordt
+  gevraagd.
+  - Uitgezet: het veld verdwijnt uit het formulier, en de kolom verdwijnt uit het rapport en de PDF.
+  - De keuzelijst blijft bewaard voor als je hem weer aanzet.
+  - De instelling gaat mee in de momentopname bij elke inspectie en naar de bibliotheek.
 - **Gekoppeld formulier:** het relatievenster leest het formulier (inspectietype) van de schouw direct in.
   - **Methodiek en regel:** welke methodiek het formulier gebruikt en wat er meetelt. Bij een eigen schaal staan de
     niveaus erbij, met een vinkje bij de niveaus die meetellen.

@@ -289,8 +289,8 @@ export function formulierAnalyse({ naam = '', type = null, protocol = '', vragen
   if (protocol === 'bvc') { uit.regel = 'Elke boomveiligheidsmaatregel telt mee (bijv. snoeien, kappen).'; uit.maatregelen = [...bvcMaatregelen]; return uit; }
   if (protocol === 'stowa') { uit.regel = 'Elke waarneming op de waterkering telt mee.'; return uit; }
   if (!type) { uit.waarschuwingen.push(`Het formulier "${naam}" is niet (meer) gevonden in dit project. Controleer de inspectietypen.`); uit.regel = 'Bevindingen met een maatregel of urgentie tellen mee.'; return uit; }
-  uit.gebreken = [...(type.gebreken ?? [])];
-  uit.onderdelen = [...(type.onderdelen ?? [])];
+  uit.gebreken = type.gebrekAan === false ? [] : [...(type.gebreken ?? [])];
+  uit.onderdelen = type.onderdeelAan === false ? [] : [...(type.onderdelen ?? [])];
   if (type.methodiek === 'oordeel') {
     const schaal = type.schaal?.length ? type.schaal : STANDAARD_SCHAAL;
     const beste = Math.min(...schaal.map((x) => Number(x.waarde)));

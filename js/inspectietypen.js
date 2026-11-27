@@ -71,11 +71,16 @@ export function methodiekVan(i) {
   return i?.type?.methodiek ?? 'nen';
 }
 
+/** Vraagt het formulier per bevinding naar een onderdeel en een gebrek? Standaard wel; per formulier uit te zetten. */
+export const vragenVan = (t) => ({ onderdeelAan: t?.onderdeelAan !== false, gebrekAan: t?.gebrekAan !== false });
+export const vraagtOnderdeel = (t) => t?.onderdeelAan !== false;
+export const vraagtGebrek = (t) => t?.gebrekAan !== false;
+
 /** Momentopname van het type die bij de inspectie wordt bewaard. */
 export function momentopname(t) {
   if (!t) return null;
   const { id, naam, methodiek, schaal, onderdelen, gebreken, punten, oordeelRegel, overzichtsfotos, bron } = t;
-  return { id, naam, methodiek, schaal, onderdelen, gebreken, punten, oordeelRegel, overzichtsfotos: Boolean(overzichtsfotos), versie: bron?.versie ?? null };
+  return { id, naam, methodiek, schaal, onderdelen, gebreken, punten, oordeelRegel, overzichtsfotos: Boolean(overzichtsfotos), ...vragenVan(t), versie: bron?.versie ?? null };
 }
 
 const schaalVan = (i) => (i?.type?.schaal?.length ? i.type.schaal : STANDAARD_SCHAAL);
@@ -150,6 +155,8 @@ export function controleer(t, { andereNamen = [] } = {}) {
       oordeelRegel: t?.oordeelRegel === 'handmatig' ? 'handmatig' : 'slechtste',
       // Overzichtsfoto's van de hele inspectie: standaard niet gevraagd, per type aan te zetten.
       overzichtsfotos: Boolean(t?.overzichtsfotos),
+      // Onderdeel en gebrek per bevinding: standaard gevraagd, per formulier uit te zetten.
+      ...vragenVan(t),
     },
   };
 }

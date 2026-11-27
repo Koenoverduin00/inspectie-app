@@ -163,3 +163,8 @@ test('eigen vraag per bevinding als voorwaarde, formulieranalyse en proef', () =
   const p = K.proef(kop(), [insp(), insp({ id: 'i2', beoordeling: { status: 'ingediend' } })]);
   assert.deepEqual(p, { inspecties: 2, bevindingen: 6, tellen: 4, passend: 4, door: 2 });
 });
+
+test('formulier zonder onderdeel/gebrek: geen keuzelijsten in de analyse', () => {
+  const a = K.formulierAnalyse({ naam: 'X', type: { methodiek: 'oordeel', schaal: [{ waarde: 1, label: 'Goed' }, { waarde: 2, label: 'Slecht' }], onderdelen: ['Berm'], gebreken: ['Vuil'], onderdeelAan: false, gebrekAan: false } });
+  assert.deepEqual([a.onderdelen, a.gebreken], [[], []]);
+});

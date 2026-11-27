@@ -2033,12 +2033,16 @@ async function inspectietypeEditor(id, { bibliotheek = false } = {}) {
       <section class="kaart" data-m="oordeel"><div class="paginakop" style="margin-bottom:.25rem"><h2 style="margin:0">Onderdelen en gebreken</h2>
           <span class="knoppen"><button type="button" class="knop klein" id="lijst-sjabloon">${I.sjabloon} Sjabloon</button>
             <label class="knop klein">${I.excel} Importeren uit Excel<input type="file" id="lijst-import" accept=".xlsx,.csv,.txt" hidden></label></span></div>
+        <div class="ks-schakelaars it-vragen">
+          <label class="ks-schakel"><input type="checkbox" name="onderdeelAan" ${TY.vraagtOnderdeel(t) ? 'checked' : ''}><span class="ks-schuif" aria-hidden="true"></span><span><strong>Vraag naar het onderdeel</strong><small>Uit: de inspecteur ziet geen veld <em>Onderdeel</em>.</small></span></label>
+          <label class="ks-schakel"><input type="checkbox" name="gebrekAan" ${TY.vraagtGebrek(t) ? 'checked' : ''}><span class="ks-schuif" aria-hidden="true"></span><span><strong>Vraag naar het gebrek</strong><small>Uit: de inspecteur ziet geen veld <em>Gebrek</em>.</small></span></label>
+        </div>
         <p><small>Keuzelijsten voor de inspecteur bij elke bevinding. Leeg = vrij invullen. Importeren kan met een Excel- of CSV-bestand met twee kolommen:
           <strong>A = onderdeel</strong>, <strong>B = gebrek</strong> (een kopregel mag). Tip: plak meerdere regels tegelijk in een vak, of druk op Enter voor een nieuwe regel.</small></p>
         <div class="lijsten">
-          <div><h3>Onderdelen <span class="teller" data-lijst-teller="onderdelen"></span></h3><div id="lijst-onderdelen"></div>
+          <div data-lijstkolom="onderdelen" ${TY.vraagtOnderdeel(t) ? '' : 'hidden'}><h3>Onderdelen <span class="teller" data-lijst-teller="onderdelen"></span></h3><div id="lijst-onderdelen"></div>
             <button type="button" class="knop klein" data-lijst-bij="onderdelen">＋ Onderdeel</button></div>
-          <div><h3>Gebreken <span class="teller" data-lijst-teller="gebreken"></span></h3><div id="lijst-gebreken"></div>
+          <div data-lijstkolom="gebreken" ${TY.vraagtGebrek(t) ? '' : 'hidden'}><h3>Gebreken <span class="teller" data-lijst-teller="gebreken"></span></h3><div id="lijst-gebreken"></div>
             <button type="button" class="knop klein" data-lijst-bij="gebreken">＋ Gebrek</button></div>
         </div>
       </section>
@@ -2093,6 +2097,11 @@ async function inspectietypeEditor(id, { bibliotheek = false } = {}) {
   };
   tekenLijst('onderdelen');
   tekenLijst('gebreken');
+  // Onderdeel of gebrek uit: de bijbehorende keuzelijst verbergen (de inhoud blijft bewaard voor als je hem weer aanzet).
+  form.addEventListener('change', (e) => {
+    if (e.target.name === 'onderdeelAan') form.querySelector('[data-lijstkolom=onderdelen]').hidden = !e.target.checked;
+    if (e.target.name === 'gebrekAan') form.querySelector('[data-lijstkolom=gebreken]').hidden = !e.target.checked;
+  });
   form.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' || !e.target.dataset?.lijst) return;
     e.preventDefault(); // Enter = nieuwe regel eronder, niet opslaan
@@ -2204,6 +2213,7 @@ async function inspectietypeEditor(id, { bibliotheek = false } = {}) {
       ...(bestaand ?? {}), naam: naamVast ? t.naam : d.naam, omschrijving: d.omschrijving, methodiek: d.methodiek,
       schaal, onderdelen: lijsten.onderdelen, gebreken: lijsten.gebreken, punten: regels(d.punten), oordeelRegel: d.oordeelRegel,
       overzichtsfotos: form.elements.overzichtsfotos.checked,
+      onderdeelAan: form.elements.onderdeelAan.checked, gebrekAan: form.elements.gebrekAan.checked,
     }, { andereNamen: andere });
     if (fouten.length) return melding(fouten[0], 'fout');
     const nu = new Date().toISOString();
@@ -4572,8 +4582,8 @@ async function rapportGegevens(soort, id) {
     ? { kolommen: ['#', 'Bouwdeel', 'Gebrek', 'E / I / O', 'Conditie', 'Urgentie', ...(kosten ? ['Raming'] : [])],
       rijen: gebreken.map((g, n) => [String(n + 1), g.bouwdeel, g.gebrek, `${ERNST[g.ernst]?.label ?? '–'} / ${g.intensiteit ?? '–'} / ${g.omvang === '' || g.omvang == null ? '–' : `${g.omvang}%`}`,
         { chip: `${gebrekScore(g)} · ${CONDITIES[gebrekScore(g)]?.label ?? ''}`, kleur: CONDITIES[gebrekScore(g)]?.kleur }, urgentie(g), ...(kosten ? [platteTekst(euro(g.kostenraming))] : [])]) }
-    : { kolommen: ['#', m === 'checklist' ? 'Controlepunt' : 'Onderdeel', ...(m === 'oordeel' ? ['Gebrek', 'Oordeel'] : []), 'Maatregel', 'Urgentie', ...(kosten ? ['Raming'] : [])],
-      rijen: gebreken.map((g, n) => [String(n + 1), g.bouwdeel, ...(m === 'oordeel' ? [g.gebrek, (() => { const x = TY.bevindingOordeel(i, g); return x ? { chip: x.label, kleur: x.kleur } : '–'; })()] : []),
+    : { kolommen: ['#', ...(m === 'checklist' ? ['Controlepunt'] : TY.vraagtOnderdeel(i.type) ? ['Onderdeel'] : []), ...(m === 'oordeel' ? [...(TY.vraagtGebrek(i.type) ? ['Gebrek'] : []), 'Oordeel'] : []), 'Maatregel', 'Urgentie', ...(kosten ? ['Raming'] : [])],
+      rijen: gebreken.map((g, n) => [String(n + 1), ...(m === 'checklist' || TY.vraagtOnderdeel(i.type) ? [g.bouwdeel] : []), ...(m === 'oordeel' ? [...(TY.vraagtGebrek(i.type) ? [g.gebrek] : []), (() => { const x = TY.bevindingOordeel(i, g); return x ? { chip: x.label, kleur: x.kleur } : '–'; })()] : []),
         g.maatregel || '–', urgentie(g), ...(kosten ? [platteTekst(euro(g.kostenraming))] : [])]) };
   if (kosten) { bevindingen.kostenKolom = bevindingen.kolommen.length - 1; bevindingen.totaal = ['Totaal raming', platteTekst(euro(gebreken.reduce((t, g) => t + (Number(g.kostenraming) || 0), 0)))]; }
   bevindingen.leeg = m === 'nen' ? 'Er zijn geen gebreken geconstateerd.' : 'Er zijn geen bevindingen.';
@@ -6636,8 +6646,8 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     const o = TY.bevindingOordeel(alsInspectie(), g);
     const a = adviesVelden(`data-g="${i}" data-veld`, g);
     const v = {
-      onderdeel: keuzeOfTekst(i, 'bouwdeel', type.onderdelen, g.bouwdeel, 'Onderdeel', 'bijv. rijbaan'),
-      gebrek: keuzeOfTekst(i, 'gebrek', type.gebreken, g.gebrek, 'Gebrek', 'bijv. scheurvorming'),
+      onderdeel: TY.vraagtOnderdeel(type) ? keuzeOfTekst(i, 'bouwdeel', type.onderdelen, g.bouwdeel, 'Onderdeel', 'bijv. rijbaan') : '',
+      gebrek: TY.vraagtGebrek(type) ? keuzeOfTekst(i, 'gebrek', type.gebreken, g.gebrek, 'Gebrek', 'bijv. scheurvorming') : '',
       oordeel: `<div class="veld breed"><label class="vereist">Oordeel</label><div class="segment schaalsegment" role="radiogroup">${(type.schaal ?? []).map((x) => `
         <label><input type="radio" name="oordeel-${esc(g.id)}" data-g="${i}" data-veld="oordeel" value="${x.waarde}" ${Number(g.oordeel) === Number(x.waarde) ? 'checked' : ''}><span style="--k:${esc(x.kleur)}">${esc(x.label)}</span></label>`).join('')}</div></div>`,
       locatie: `<div class="veld"><label>Plaats</label><input data-g="${i}" data-veld="locatie" value="${esc(g.locatie ?? '')}" maxlength="200" placeholder="bijv. huisnr. 12, noordzijde"></div>`,
@@ -7111,8 +7121,8 @@ async function inspectieRapport(id) {
       ${m === 'checklist' ? `<h2 style="margin-top:1rem">Controlepunten</h2>${checklistTabel(i)}` : ''}
       <h2 style="margin-top:1rem">Overzicht ${m === 'nen' ? 'gebreken' : 'bevindingen'} en maatregelen</h2>
       ${gebreken.length && m !== 'nen' ? `<div class="tabelhouder"><table>
-        <thead><tr><th>#</th><th>${m === 'checklist' ? 'Controlepunt' : 'Onderdeel'}</th>${m === 'oordeel' ? '<th>Gebrek</th><th>Oordeel</th>' : ''}<th>Maatregel</th><th>Urgentie</th>${toonKosten() ? '<th>Raming</th>' : ''}</tr></thead>
-        <tbody>${gebreken.map((g, n) => `<tr><td>${n + 1}</td><td>${esc(g.bouwdeel)}</td>${m === 'oordeel' ? `<td>${esc(g.gebrek)}</td><td>${oordeelChip(TY.bevindingOordeel(i, g))}</td>` : ''}
+        <thead><tr><th>#</th>${m === 'checklist' ? '<th>Controlepunt</th>' : TY.vraagtOnderdeel(i.type) ? '<th>Onderdeel</th>' : ''}${m === 'oordeel' ? `${TY.vraagtGebrek(i.type) ? '<th>Gebrek</th>' : ''}<th>Oordeel</th>` : ''}<th>Maatregel</th><th>Urgentie</th>${toonKosten() ? '<th>Raming</th>' : ''}</tr></thead>
+        <tbody>${gebreken.map((g, n) => `<tr><td>${n + 1}</td>${m === 'checklist' || TY.vraagtOnderdeel(i.type) ? `<td>${esc(g.bouwdeel)}</td>` : ''}${m === 'oordeel' ? `${TY.vraagtGebrek(i.type) ? `<td>${esc(g.gebrek)}</td>` : ''}<td>${oordeelChip(TY.bevindingOordeel(i, g))}</td>` : ''}
           <td>${esc(g.maatregel || '–')}</td><td>${esc(URGENTIES.find((u) => u.id === g.urgentie)?.label ?? '–')}</td>${toonKosten() ? `<td>${euro(g.kostenraming)}</td>` : ''}</tr>`).join('')}</tbody></table></div>
         <h2 style="margin-top:1rem">Detailbevindingen</h2>${details.join('')}`
     : gebreken.length ? `<div class="tabelhouder"><table>
