@@ -13,6 +13,7 @@ export const NIVEAU_LABEL = {
   systeemdeel: 'Systeemdeel',
 };
 export const NIVEAU_KORT = { element: 'element', object: 'beheerobject', systeemdeel: 'systeemdeel' };
+export const NIVEAU_MEERVOUD = { element: 'elementen', object: 'beheerobjecten', systeemdeel: 'systeemdelen' };
 
 /** Voorouder van een knoop op het gekozen niveau (of de knoop zelf als die op dat niveau ligt). */
 export function knoopOpNiveau(idx, knoopId, niveau) {

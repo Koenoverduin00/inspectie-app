@@ -7924,11 +7924,22 @@ async function mobielKaart() {
   const stopKiezen = () => { kaart.stopSelectie(); app.querySelector('#kiesbalk')?.remove(); document.body.classList.remove('kiesmodus'); kiesKnop?.classList.remove('actief'); };
   const startKiezen = ({ pakket: v, voortgang: vg }) => {
     const kiesbaar = (o) => (v.objecten ?? []).includes(o.id) && isTeDoen(rondeStatusVan(vg, o.id));
+    // Ingepland per element/beheerobject: alleen hele groepen (de nog open bouwdelen ervan) zijn te kiezen.
+    const groepVan = v.registratieNiveau ? (o) => {
+      const grp = groepVoor(v, o.id);
+      return grp ? grp.objectIds.filter((oid) => isTeDoen(rondeStatusVan(vg, oid))) : null;
+    } : null;
+    const groepTelling = (ids) => {
+      if (!groepVan) return '';
+      const sleutels = new Set(ids.map((id) => groepVoor(v, id)?.sleutel ?? id));
+      const niveau = GR.NIVEAU_KORT[v.registratieNiveau] ?? 'onderdeel';
+      return `${sleutels.size} ${sleutels.size === 1 ? niveau : GR.NIVEAU_MEERVOUD[v.registratieNiveau] ?? niveau}`;
+    };
     document.body.classList.add('kiesmodus');
     kiesKnop?.classList.add('actief');
     app.querySelector('#kiesbalk')?.remove();
     app.insertAdjacentHTML('beforeend', `<div class="kiesbalk" id="kiesbalk" role="region" aria-label="Objecten selecteren">
-      <div class="kiesbalk-kop"><span><strong>${esc(metCode(v))}</strong><small>Tik objecten aan om ze toe te voegen of weg te halen</small></span>
+      <div class="kiesbalk-kop"><span><strong>${esc(metCode(v))}</strong><small>${v.registratieNiveau ? `Ingepland per ${esc(GR.NIVEAU_KORT[v.registratieNiveau] ?? 'onderdeel')}: een tik kiest alle open bouwdelen ervan` : 'Tik objecten aan om ze toe te voegen of weg te halen'}</small></span>
         <button type="button" class="knop micoonknop" data-kies="stop" aria-label="Stoppen met selecteren">${I.kruis}</button></div>
       <div class="kiesbalk-rij"><button type="button" class="knop klein" data-kies="alle" title="Alle te doen objecten die nu in beeld zijn">Alle in beeld</button><button type="button" class="knop klein" data-kies="wis">Wissen</button>
         <a class="knop primair kiesbalk-actie" data-kies="gereed" aria-disabled="true">${I.vink} Kies objecten</a></div></div>`);
@@ -7944,9 +7955,10 @@ async function mobielKaart() {
       gekozen = set;
       const a = balk.querySelector('[data-kies=gereed]');
       const ids = [...gekozen];
-      a.innerHTML = ids.length ? `${I.vink} Gereed melden (${ids.length})` : `${I.vink} Kies objecten`;
+      const eenGroep = groepVan && ids.length && new Set(ids.map((id) => groepVoor(v, id)?.sleutel ?? id)).size === 1;
+      a.innerHTML = ids.length ? `${I.vink} Gereed melden (${groepVan ? `${groepTelling(ids)} · ${ids.length} bouwde${ids.length === 1 ? 'el' : 'len'}` : ids.length})` : `${I.vink} Kies objecten`;
       a.setAttribute('aria-disabled', String(!ids.length));
-      a.href = ids.length === 1 ? pakketHref(v, ids[0], true)
+      a.href = ids.length === 1 || eenGroep ? pakketHref(v, ids[0], true)
         : ids.length ? `#/m/werk/nieuw?${new URLSearchParams({ pakket: v.id, ...(v.rondeId ? { ronde: v.rondeId } : {}), objecten: ids.join(',') })}` : '#';
     };
     balk.addEventListener('click', (e) => {
@@ -7958,7 +7970,7 @@ async function mobielKaart() {
         kaart.zetSelectie([...kaart.zichtbareIds()].filter((id) => { const o = g.objectMap.get(id); const geom = o && objectGeometrie(o); if (!geom) return false; const [lng, lat] = geom.type === 'Point' ? geom.coordinates : gis.middelpunt(geom); return vak.contains([lat, lng]); }));
       } else if (k === 'gereed' && !gekozen.size) { e.preventDefault(); melding('Tik eerst op de objecten op de kaart.'); }
     });
-    kaart.selecteer({ kiesbaar, opWijzig: bij, opNiet: (o) => melding(`${o.code} hoort niet bij dit werkpakket of is al klaar.`) });
+    kaart.selecteer({ kiesbaar, groepVan, opWijzig: bij, opNiet: (o) => melding(`${o.code} hoort niet bij dit werkpakket of is al klaar.`) });
   };
   kiesKnop?.addEventListener('click', () => {
     if (document.body.classList.contains('kiesmodus')) { stopKiezen(); return; }
@@ -9076,8 +9088,13 @@ async function werkFormulier(id, objectId, { mobiel = false, taakId = null, maat
   // Meerdere objecten tegelijk (gekozen op de kaart): één formulier, per object een registratie. Alleen werk binnen één werkpakket.
   let batch = !bestaand && !isStoring && pakket && objectIds?.length > 1
     ? [...new Set(objectIds)].filter((oid) => objecten.some((o) => o.id === oid)) : null;
+  // Ingepland per element/beheerobject: een los bouwdeel neemt altijd de rest van zijn groep mee (ook via een oude link).
+  if (batch && !groep && pakket.registratieNiveau) {
+    const inForm = new Set(objecten.map((o) => o.id));
+    batch = [...new Set(batch.flatMap((oid) => groepVoor(pakket, oid)?.objectIds ?? [oid]))].filter((oid) => inForm.has(oid));
+  }
   // Per element/beheerobject: bouwdelen die in deze ronde al (volledig) zijn afgemeld vallen af.
-  if (batch && groep) {
+  if (batch && (groep || pakket.registratieNiveau)) {
     const klaar = new Set((await inProject('werkzaamheden')).filter((x) => x.werkpakketId === pakket.id && (x.rondeId || STANDAARD_RONDE) === (pakket.rondeId || STANDAARD_RONDE)
       && !isDeels(x) && beoordelingVan(x) !== 'afgekeurd').map((x) => x.objectId));
     const over = new Set((await inProject('overgeslagen')).filter((x) => x.pakketId === pakket.id && (x.rondeId || STANDAARD_RONDE) === (pakket.rondeId || STANDAARD_RONDE)).map((x) => x.objectId));
@@ -12299,8 +12316,11 @@ async function tekenObjectenKaart(el, { objecten, kleurVan, statusVan = null, po
       if (!kies) return;
       L.DomEvent.stop(e);
       if (!kies.kiesbaar(o)) { kies.opNiet?.(o); return; }
-      if (kies.set.has(o.id)) kies.set.delete(o.id); else kies.set.add(o.id);
-      laag.setStyle(stijl(o, punt));
+      // Afmelden per element/beheerobject: een tik kiest (of wist) altijd de hele groep, nooit een los bouwdeel.
+      const ids = (kies.groepVan?.(o) ?? [o.id]).filter((id) => lagen.has(id) && kies.kiesbaar(lagen.get(id).object));
+      if (!ids.includes(o.id)) ids.push(o.id);
+      const weg = ids.every((id) => kies.set.has(id));
+      for (const id of ids) { if (weg) kies.set.delete(id); else kies.set.add(id); lagen.get(id)?.setStyle(stijl(lagen.get(id).object, lagen.get(id).punt)); }
       kies.opWijzig(new Set(kies.set));
     });
     lagen.set(o.id, laag);
@@ -12337,9 +12357,9 @@ async function tekenObjectenKaart(el, { objecten, kleurVan, statusVan = null, po
       bovenop();
     },
     /** Selectiemodus aan: kiesbaar(o) bepaalt welke objecten mogen; opWijzig(set) na elke tik. */
-    selecteer({ kiesbaar, opWijzig, opNiet = null, begin = [] }) {
+    selecteer({ kiesbaar, opWijzig, opNiet = null, begin = [], groepVan = null }) {
       map.closePopup();
-      kies = { set: new Set(begin), kiesbaar, opWijzig, opNiet };
+      kies = { set: new Set(begin), kiesbaar, opWijzig, opNiet, groepVan };
       if (popup) lagen.forEach((laag) => laag.unbindPopup());
       map.getContainer().classList.add('kaart-kiezen');
       lagen.forEach((laag) => laag.setStyle(stijl(laag.object, laag.punt)));
@@ -12348,7 +12368,10 @@ async function tekenObjectenKaart(el, { objecten, kleurVan, statusVan = null, po
     /** Alle (zichtbare) kiesbare objecten selecteren, of niets. */
     zetSelectie(ids) {
       if (!kies) return;
-      kies.set = new Set([...ids].filter((id) => lagen.has(id) && kies.kiesbaar(lagen.get(id).object)));
+      const past = (id) => lagen.has(id) && kies.kiesbaar(lagen.get(id).object);
+      // Per groep: een gekozen bouwdeel neemt de rest van zijn element mee.
+      const uitgebreid = [...ids].filter(past).flatMap((id) => kies.groepVan?.(lagen.get(id).object) ?? [id]);
+      kies.set = new Set(uitgebreid.filter(past));
       lagen.forEach((laag) => laag.setStyle(stijl(laag.object, laag.punt)));
       kies.opWijzig(new Set(kies.set));
     },

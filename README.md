@@ -1485,6 +1485,10 @@ Sommige opdrachtgevers willen het onderhoud niet per bouwdeel afgemeld zien, maa
     de rondedialoog.
   - Bouwdelen die al zijn afgemeld vallen af. Is er nog één over, dan opent gewoon het formulier van dat bouwdeel.
 - **Overslaan.** Overslaat de nog openstaande bouwdelen van de groep in één keer, met dezelfde reden.
+- **Meerdere objecten selecteren (telefoon).** Is het werkpakket ingepland per element of beheerobject, dan kun je in de
+  selectiemodus geen losse bouwdelen kiezen: een tik op een bouwdeel kiest (of wist) alle nog open bouwdelen van dat
+  element, ook bij *Alle in beeld*. De knop telt *2 elementen · 5 bouwdelen*. Eén element gekozen opent het
+  groepsformulier; ook een losse link met bouwdelen wordt in het formulier aangevuld tot hele elementen.
 - **Weergave.**
   - Op de telefoon toont de lijst van het werkpakket één regel per groep, met de bouwdelen erbij.
   - Op de objectpagina staat *"Wordt afgemeld per element: …"*.
