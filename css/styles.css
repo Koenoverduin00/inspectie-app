@@ -2620,3 +2620,12 @@ select optgroup { font-weight: 700; color: var(--tekst-zacht); }
 .rondedialoog .rd-signaal ul { margin: 0; padding-left: 1.1rem; }
 .rondedialoog .rd-signaal li { margin: .1rem 0; }
 .rondedialoog .rd-signaal svg { width: 1em; height: 1em; vertical-align: -.12em; }
+
+/* Vandaag: feitje van de dag */
+.feitje { display: flex; gap: .75rem; align-items: flex-start; margin: 1rem 0; padding: .85rem 1rem;
+  background: linear-gradient(135deg, color-mix(in srgb, #f4b400 14%, var(--vlak)), var(--vlak)); border-left: 4px solid #f4b400; }
+.feitje h2 { margin: 0 0 .2rem; font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--tekst-zacht); }
+.feitje p { margin: 0 0 .35rem; font-size: 1.02rem; line-height: 1.4; }
+.feitje .feitje-icoon { flex: 0 0 auto; background: color-mix(in srgb, #f4b400 25%, var(--vlak)); color: #8a5a00; }
+:root[data-thema="donker"] .feitje .feitje-icoon { color: #ffd36b; }
+@media (prefers-color-scheme: dark) { :root[data-thema="systeem"] .feitje .feitje-icoon { color: #ffd36b; } }

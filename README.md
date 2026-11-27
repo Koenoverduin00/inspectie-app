@@ -74,6 +74,12 @@ objecten (bijv. *WP-2027-001 Groenonderhoud Park Zuid*); de rondes zijn de keren
   *Weet ik niet*). Dit wordt bewaard bij het overgeslagen object (`juisteActiviteit`, `gekoppeldeActiviteit`) en overal
   getoond als "Verkeerde onderhoudsactiviteit gekoppeld → Snoeien". Het rondevenster (planning/werkpakket) toont de
   beheerder bovenaan een oranje melding met deze objecten en een knop om ze in de objectenlijst te tonen.
+- **Feitje van de dag** – op de Vandaag-pagina (telefoon) staat een leuk weetje dat uit de projectgegevens wordt berekend
+  (`js/feitjes.js`): de vlakken samen in voetbalvelden, de lijnen in rondjes atletiekbaan of Domtorens, het grootste vlak,
+  het meest voorkomende objecttype, de drukste dag, het populairste object, hoeveel mensen meewerkten, vroege vogels
+  (vóór 7 uur), foto's als fotoalbum, manuren in werkweken, gevonden en opgeloste gebreken en de oplostijd van storingen.
+  Alleen feitjes waarvoor genoeg gegevens zijn verschijnen; elke dag een ander (voor het hele project hetzelfde), met
+  *Nog een feitje* om verder te bladeren.
 - **Telefoon** – alleen *actieve* rondes verschijnen. Zijn er meer tegelijk actief, dan kies je eerst de ronde.
   De ronde opent met een kaart (oranje = te doen, groen = gedaan, grijs = overgeslagen, blauw = jij), de lijst op
   afstand en **Volgende dichtbij**; na opslaan ga je terug naar de ronde. Open objecten staan ook in *Logisch nu*.

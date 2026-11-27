@@ -41,6 +41,7 @@ import * as GR from './groepering.js';
 import * as OT from './objecttabel.js';
 import * as SC from './scope.js';
 import * as RP from './rapport.js';
+import * as FT from './feitjes.js';
 import * as KP from './koppeling.js';
 import * as IMP from './gisimport.js';
 import * as ST from './stowa.js';
@@ -8474,12 +8475,34 @@ async function mobielStart() {
   })).join('')}</ul>` : ''}
       <section id="mijnpakketten"></section>
       <section id="logisch"></section>
+      <section id="feitje"></section>
       <h2>Vandaag vastgelegd</h2>
       ${vandaagLijst.length ? `<ul class="mlijst">${vandaagLijst.map(regel).join('')}</ul>` : '<p class="mleeg">Nog niets vastgelegd vandaag.</p>'}
     </div>`;
   toonMijnPakketten(app.querySelector('#mijnpakketten'));
   toonLogischNu(app.querySelector('#logisch'));
+  toonFeitje(app.querySelector('#feitje'), { objecten, werk, inspecties });
   koppelInstallKaart();
+}
+
+/** Feitje van de dag: een leuk weetje uit de gegevens van het project; elke dag een ander, met "Nog een" om verder te bladeren. */
+function toonFeitje(el, { objecten, werk, inspecties }) {
+  if (!el) return;
+  let lijst = [];
+  try {
+    lijst = FT.maken({ objecten, werk, inspecties, maatVan: objectMaat, manurenVan: (w) => (w.inzet?.length ? IZ.totalen(w.inzet).manuren : Number(w.uren) || 0) });
+  } catch { return; } // een feitje mag de startpagina nooit breken
+  if (!lijst.length) return;
+  let stap = 0;
+  const teken = () => {
+    const f = FT.vanDeDag(lijst, vandaag(), projectId(), stap);
+    el.innerHTML = `<div class="kaart feitje" aria-live="polite">
+      <span class="micoon klein feitje-icoon">${I[f.icoon] ?? I.grafiek}</span>
+      <div><h2>Feitje van de dag</h2><p>${esc(f.tekst)}</p>
+        ${lijst.length > 1 ? '<button type="button" class="linkknop" data-feitje>Nog een feitje</button>' : ''}</div></div>`;
+  };
+  teken();
+  el.addEventListener('click', (e) => { if (e.target.closest('[data-feitje]')) { stap += 1; teken(); } });
 }
 
 // ---------------------------------------------------------------------------
