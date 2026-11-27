@@ -67,6 +67,11 @@ test('BVC: RD-coördinaten, termijnen en SUF', () => {
   }
   assert.equal(bvc.uitvoerenVoor('acuut', '2026-08-30'), '2026-09-01');
   assert.equal(bvc.uitvoerenVoor('3maanden', '2026-08-15'), '2026-11-15');
+  // Einde van de maand: geen doorschuiven naar de maand erna.
+  assert.equal(bvc.uitvoerenVoor('3maanden', '2026-11-30'), '2027-02-28');
+  assert.equal(bvc.uitvoerenVoor('3maanden', '2027-11-30'), '2028-02-29');
+  assert.equal(bvc.uitvoerenVoor('3maanden', '2027-05-31'), '2027-08-31');
+  assert.equal(bvc.uitvoerenVoor('3maanden', '2026-12-31'), '2027-03-31');
   assert.ok(bvc.inControleperiode('2026-07-01') && bvc.inControleperiode('2026-11-30') && !bvc.inControleperiode('2026-03-10'));
   assert.equal(bvc.gebrekType('Zwavelzwam'), 'Zwam');
   const [lng, lat] = rdNaarWgs84(136000, 455800);

@@ -183,9 +183,13 @@ export const BOOMSOORTEN = [
 export function uitvoerenVoor(urgentie, datum) {
   const d = new Date(`${datum}T12:00:00Z`);
   if (Number.isNaN(d.getTime())) return '';
-  if (urgentie === 'acuut') d.setUTCDate(d.getUTCDate() + 2);
-  else d.setUTCMonth(d.getUTCMonth() + 3);
-  return d.toISOString().slice(0, 10);
+  if (urgentie === 'acuut') { d.setUTCDate(d.getUTCDate() + 2); return d.toISOString().slice(0, 10); }
+  // 3 maanden later; bestaat die dag niet (bijv. 30 november → februari), dan de laatste dag van die maand.
+  const dag = d.getUTCDate();
+  const doel = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 3, 1, 12));
+  const laatste = new Date(Date.UTC(doel.getUTCFullYear(), doel.getUTCMonth() + 1, 0)).getUTCDate();
+  doel.setUTCDate(Math.min(dag, laatste));
+  return doel.toISOString().slice(0, 10);
 }
 
 /** Bijzondere boom (bijlage 7) op basis van de stamdiameter (dbh, cm) en standplaats. */

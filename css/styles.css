@@ -187,6 +187,7 @@ dl.gegevens dd { margin: 0; }
   position: fixed; left: 50%; bottom: 1.5rem; transform: translateX(-50%); z-index: 3000;
   background: #1d2733; color: #fff; padding: .7rem 1.1rem; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.25);
   transition: opacity .4s; max-width: calc(100% - 2rem);
+  pointer-events: none; /* alleen tekst: tikken en klikken gaan door naar wat eronder ligt (bijv. een planningbalk of kaart) */
 }
 .toast-fout { background: #a12a1d; }
 .toast.weg { opacity: 0; }
