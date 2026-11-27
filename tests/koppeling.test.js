@@ -108,3 +108,31 @@ test('afgekeurd en weer goedgekeurd: altijd → weer open, controle → blijft t
   const klaar = insp({ gebreken: insp().gebreken.map((g) => (g.id === 'g1' ? { ...g, maatregelStatus: 'uitgevoerd' } : g)) });
   assert.equal(K.bijwerken(kop(), [klaar], na, { nu: 'T3' }).gewijzigd.find((x) => x.id === 'i1:g1:k1').status, 'gedaan');
 });
+
+test('afgekeurd bij een eigen oordeelschaal en "niet in orde" bij een checklist tellen mee, ook zonder maatregel', () => {
+  const schouw = insp({
+    type: { methodiek: 'oordeel', schaal: [{ waarde: 1, label: 'Goedgekeurd' }, { waarde: 2, label: 'Afgekeurd' }] },
+    gebreken: [{ id: 'a', bouwdeel: 'Berm', gebrek: 'Zwerfvuil', oordeel: 2 }, { id: 'b', bouwdeel: 'Berm', gebrek: 'Netjes', oordeel: 1 }],
+  });
+  assert.deepEqual(K.bevindingen(schouw).map((g) => g.id), ['a']);
+  const r = K.bijwerken(kop(), [schouw], new Map(), { nu: 'T' }).nieuw;
+  assert.deepEqual(r.map((x) => [x.id, x.momentopname.oordeel, x.momentopname.gebrek]), [['i1:a:k1', 'Afgekeurd', 'Zwerfvuil']]);
+  // filter op oordeel
+  assert.equal(K.bijwerken(kop({ filter: { oordelen: ['Matig'] } }), [schouw], new Map()).nieuw.length, 0);
+  const check = insp({ type: { methodiek: 'checklist' }, gebreken: [{ id: 'c', checkpunt: 'Bord leesbaar', bouwdeel: 'Bord leesbaar' }] });
+  assert.equal(K.bevindingen(check).length, 1);
+  assert.equal(K.oordeelLabel(check, check.gebreken[0]), 'Niet in orde');
+  // oude momentopname zonder oordeel: niet als "gewijzigd" zien
+  const oud = { ...r[0], momentopname: { ...r[0].momentopname } };
+  delete oud.momentopname.oordeel;
+  assert.equal(K.bijwerken(kop(), [schouw], new Map([[oud.id, oud]]), { nu: 'T2' }).gewijzigd.length, 0);
+});
+
+test('diagnose: waarom komt iets niet door', () => {
+  const i = (over) => insp({ ...over });
+  const d = K.diagnose(kop({ vanaf: '2026-11-15', filter: { urgentieTot: 'direct' } }), [
+    i({ id: 'w', beoordeling: { status: 'ingediend' } }), i({ id: 'x', beoordeling: { status: 'afgekeurd' } }),
+    i({ id: 'c', status: 'concept' }), i({ id: 'oud', datum: '2026-11-01' }), i({ id: 'nieuw', datum: '2026-11-20' }),
+  ]);
+  assert.deepEqual(d, { wacht: 2, afgekeurd: 2, concept: 2, voorStart: 2, buitenFilter: 1, inspWacht: 1, inspAfgekeurd: 1 });
+});

@@ -495,6 +495,16 @@ De uitkomst van een schouw of inspectie (gebreken met een maatregel) kan de inpu
     - **Aan of uit.**
   - Vóór het opslaan zie je hoeveel bevindingen er door zouden gaan.
 - **Moment:** pas als de inspectie is **goedgekeurd** (of afgerond, als het project niet beoordeelt).
+- **Welke bevindingen tellen:**
+  - een maatregel of urgentie;
+  - bij een checklist elk punt *niet in orde*;
+  - bij een eigen oordeelschaal elk oordeel dat slechter is dan het beste niveau (bijv. *Afgekeurd*, *Matig*). Dat
+    geldt ook zonder ingevulde maatregel.
+  - In de relatie kun je filteren op **oordeel**.
+- **Waarom staat iets er niet in?** Bovenaan de doorzetbak staat per relatie wat nog wordt tegengehouden: wacht op
+  goedkeuring, afgekeurde inspectie, concept, van vóór de startdatum, of buiten het filter. Is de lijst leeg, dan staat
+  die uitleg open. Ook het relatievenster meldt hoeveel bevindingen van vóór de startdatum pas meetellen met *Ook
+  eerdere inspecties*.
 - **Binnen hetzelfde pakket** (bijv. BVC met snoeiwerk door dezelfde ploeg):
   - **Ter plekke uitgevoerd:** zet in het inspectie- of BVC-formulier per maatregel *Uitvoering* op **Direct
     uitgevoerd (ter plekke)**.

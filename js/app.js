@@ -5126,6 +5126,7 @@ async function koppelschemaPagina() {
     const uniek = (l) => [...new Set(l.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'nl'));
     const maatregelen = uniek([...alleBev.map(KP.maatregelNaam), ...(k.filter?.maatregelen ?? [])]);
     const gebreken = uniek([...alleBev.map(KP.gebrekNaam), ...(k.filter?.gebreken ?? [])]);
+    const oordelen = uniek([...(bronInsp.length ? bronInsp : inspecties).flatMap((i) => KP.bevindingen(i).map((g) => KP.oordeelLabel(i, g))), ...(k.filter?.oordelen ?? [])]);
     const lijstVink = (naam2, opties, gekozen) => (opties.length ? `<div class="ks-keuzechips">${opties.map((x) => `<label class="ks-keuzechip" title="${esc(x)}"><input type="checkbox" name="${naam2}" value="${esc(x)}" ${gekozen?.includes(x) ? 'checked' : ''}><span>${esc(x)}</span></label>`).join('')}</div>`
       : '<p class="ks-dhulp">Nog geen bevindingen in deze schouw; alles telt mee.</p>');
     const d = document.createElement('dialog');
@@ -5162,6 +5163,7 @@ async function koppelschemaPagina() {
             <div class="veld"><label for="ks-urg">Urgentie</label><select id="ks-urg"><option value="">Alle urgenties</option>${URGENTIES.map((u) => optie(u.id, `t/m ${u.label}`, k.filter?.urgentieTot ?? '')).join('')}</select></div>
             <div class="veld"><label for="ks-cond">Conditie (NEN 2767)</label><select id="ks-cond"><option value="">Alle condities</option>${[2, 3, 4, 5, 6].map((c) => optie(String(c), `${c} of slechter`, String(k.filter?.conditieVanaf ?? ''))).join('')}</select></div>
           </div>
+          ${oordelen.length ? `<details class="ks-lijstkeuze" ${k.filter?.oordelen?.length ? 'open' : ''}><summary><span>Oordelen</span><small data-tel="oordeel">${telTekst(k.filter?.oordelen?.length)}</small></summary>${lijstVink('oordeel', oordelen, k.filter?.oordelen)}</details>` : ''}
           <details class="ks-lijstkeuze" ${k.filter?.maatregelen?.length ? 'open' : ''}><summary><span>Maatregelen</span><small data-tel="maatregel">${telTekst(k.filter?.maatregelen?.length)}</small></summary>${lijstVink('maatregel', maatregelen, k.filter?.maatregelen)}</details>
           <details class="ks-lijstkeuze" ${k.filter?.gebreken?.length ? 'open' : ''}><summary><span>Gebreken</span><small data-tel="gebrek">${telTekst(k.filter?.gebreken?.length)}</small></summary>${lijstVink('gebrek', gebreken, k.filter?.gebreken)}</details>
           <p class="ks-dhulp">Niets aangevinkt in een lijst = alles uit die lijst telt mee.</p>
@@ -5181,22 +5183,23 @@ async function koppelschemaPagina() {
     const lees = () => ({
       ...k, modus: d.querySelector('input[name=modus]:checked')?.value ?? 'controle', doelRonde: d.querySelector('input[name=doelRonde]:checked')?.value ?? 'lopend',
       herstelNaam: d.querySelector('#ks-hnaam').value.trim(),
-      filter: { maatregelen: [...d.querySelectorAll('input[name=maatregel]:checked')].map((x) => x.value), gebreken: [...d.querySelectorAll('input[name=gebrek]:checked')].map((x) => x.value),
+      filter: { oordelen: [...d.querySelectorAll('input[name=oordeel]:checked')].map((x) => x.value), maatregelen: [...d.querySelectorAll('input[name=maatregel]:checked')].map((x) => x.value), gebreken: [...d.querySelectorAll('input[name=gebrek]:checked')].map((x) => x.value),
         urgentieTot: d.querySelector('#ks-urg').value, conditieVanaf: d.querySelector('#ks-cond').value ? Number(d.querySelector('#ks-cond').value) : '' },
       vanaf: d.querySelector('#ks-bestaand').checked ? '' : (k.vanaf || vandaag()), actief: d.querySelector('#ks-actief').checked, gewijzigd: new Date().toISOString(),
     });
     const voorbeeld = () => {
       const x = lees();
       const nieuwP = KP.bijwerken({ ...x, actief: true }, bronInsp, new Map(punten.filter((p) => p.koppelingId === k.id).map((p) => [p.id, p])), { conditieVan: (g, i) => (i.gebreken?.includes(g) && TY.methodiekVan(i) === 'nen' ? gebrekScore(g) : null) }).nieuw;
+      const dg = KP.diagnose(x, bronInsp, { conditieVan: (g, i) => (i.gebreken?.includes(g) && TY.methodiekVan(i) === 'nen' ? gebrekScore(g) : null) });
       const wacht = bronInsp.filter((i) => i.status === 'afgerond' && !KP.inspectieGoedgekeurd(i)).length;
       const al = nieuwP.filter((p) => p.status === 'gedaan').length;
       nieuwP.splice(0, nieuwP.length, ...nieuwP.filter((p) => p.status !== 'gedaan'));
-      d.querySelector('#ks-voorbeeld').innerHTML = `${I.let} ${al ? `${al} al ter plekke uitgevoerd. ` : ''}Bij opslaan ${nieuwP.length ? `${x.modus === 'altijd' ? (nieuwP.length === 1 ? 'gaat' : 'gaan') : (nieuwP.length === 1 ? 'komt' : 'komen')} <strong>${nieuwP.length}</strong> bevinding${nieuwP.length === 1 ? '' : 'en'} ${x.modus === 'altijd' ? (k.doelPakketId === KP.STORINGEN ? 'direct als melding naar het register' : 'direct naar het werkpakket') : 'in de doorzetbak'}` : 'wordt nu niets doorgezet'}${wacht ? `; ${wacht} inspectie${wacht === 1 ? '' : 's'} wacht${wacht === 1 ? '' : 'en'} nog op goedkeuring` : ''}.`;
+      d.querySelector('#ks-voorbeeld').innerHTML = `${I.let} ${al ? `${al} al ter plekke uitgevoerd. ` : ''}Bij opslaan ${nieuwP.length ? `${x.modus === 'altijd' ? (nieuwP.length === 1 ? 'gaat' : 'gaan') : (nieuwP.length === 1 ? 'komt' : 'komen')} <strong>${nieuwP.length}</strong> bevinding${nieuwP.length === 1 ? '' : 'en'} ${x.modus === 'altijd' ? (k.doelPakketId === KP.STORINGEN ? 'direct als melding naar het register' : 'direct naar het werkpakket') : 'in de doorzetbak'}` : 'wordt nu niets doorgezet'}${wacht ? `; ${wacht} inspectie${wacht === 1 ? ' is' : 's zijn'} nog niet goedgekeurd` : ''}.${dg.voorStart ? ` <strong>${dg.voorStart}</strong> bevinding${dg.voorStart === 1 ? '' : 'en'} van vóór vandaag ${dg.voorStart === 1 ? 'telt' : 'tellen'} pas mee als je <em>Ook eerdere inspecties</em> aanzet.` : ''}`;
     };
     voorbeeld();
     d.addEventListener('change', (e) => {
       if (e.target.name === 'doelRonde') d.querySelector('#ks-herstelnaam').hidden = e.target.value !== 'herstel';
-      if (e.target.name === 'maatregel' || e.target.name === 'gebrek') d.querySelector(`[data-tel="${e.target.name}"]`).textContent = telTekst(d.querySelectorAll(`input[name=${e.target.name}]:checked`).length);
+      if (['maatregel', 'gebrek', 'oordeel'].includes(e.target.name)) d.querySelector(`[data-tel="${e.target.name}"]`).textContent = telTekst(d.querySelectorAll(`input[name=${e.target.name}]:checked`).length);
       voorbeeld();
     });
     d.showModal();
@@ -5244,6 +5247,22 @@ async function doorzetbakPagina(_, q = new URLSearchParams()) {
     && (!zoek || `${om.get(p.bron.objectId)?.code ?? ''} ${om.get(p.bron.objectId)?.naam ?? ''} ${p.momentopname?.maatregel ?? ''} ${p.momentopname?.gebrek ?? ''}`.toLowerCase().includes(zoek)))
     .sort((a, b) => KP.urgentieRang(a.momentopname?.urgentie) - KP.urgentieRang(b.momentopname?.urgentie) || String(om.get(a.bron.objectId)?.code ?? '').localeCompare(String(om.get(b.bron.objectId)?.code ?? ''), 'nl', { numeric: true }));
   const tel = (s) => punten.filter((p) => (s === 'alles' || p.status === s) && (!relatie || p.koppelingId === relatie)).length;
+  // Waarom staat iets (nog) niet in de doorzetbak? Per relatie de bevindingen die worden tegengehouden.
+  const diagnoseHtml = () => {
+    const regels = koppelingen.filter((k) => k.actief !== false && (!relatie || k.id === relatie)).map((k) => {
+      const dg = KP.diagnose(k, inspecties, { conditieVan: (g, i) => (i.gebreken?.includes(g) && TY.methodiekVan(i) === 'nen' ? gebrekScore(g) : null) });
+      const delen = [
+        dg.wacht ? `<strong>${dg.wacht}</strong> wacht${dg.wacht === 1 ? '' : 'en'} op goedkeuring van de inspectie (${dg.inspWacht}) – <a href="#/inbox">naar de inbox</a>` : '',
+        dg.afgekeurd ? `<strong>${dg.afgekeurd}</strong> uit ${dg.inspAfgekeurd === 1 ? 'een afgekeurde inspectie' : `${dg.inspAfgekeurd} afgekeurde inspecties`} (${dg.afgekeurd === 1 ? 'komt' : 'komen'} door zodra de inspectie opnieuw is ingediend en goedgekeurd)` : '',
+        dg.concept ? `<strong>${dg.concept}</strong> uit inspecties die nog concept zijn` : '',
+        dg.voorStart ? `<strong>${dg.voorStart}</strong> uit inspecties van vóór ${datumNL(k.vanaf)} – zet in de relatie <em>Ook eerdere inspecties</em> aan` : '',
+        dg.buitenFilter ? `<strong>${dg.buitenFilter}</strong> vallen buiten het filter van de relatie` : '',
+      ].filter(Boolean);
+      return delen.length ? `<li><span>${esc(metCode(pm.get(k.bronPakketId) ?? { naam: '?' }))} → ${esc(k.doelPakketId === KP.STORINGEN ? KP.STORINGEN_NAAM : k.doelPakketId === k.bronPakketId ? 'binnen dit pakket' : metCode(pm.get(k.doelPakketId) ?? { naam: '?' }))}</span>
+        <ul>${delen.map((x) => `<li>${x}</li>`).join('')}</ul>${magBeheren() ? `<a class="knop klein" href="#/koppelschema">Relatie aanpassen</a>` : ''}</li>` : '';
+    }).filter(Boolean);
+    return regels.length ? `<details class="kaart dz-diagnose" ${lijst().length ? '' : 'open'}><summary>${I.let} <strong>Nog niet in de doorzetbak</strong> <small class="zacht">waarom staat niet alles hier?</small></summary><ul class="dz-diaglijst">${regels.join('')}</ul></details>` : '';
+  };
   const teken = () => {
     const rijen = lijst();
     for (const id of [...gekozen]) if (!rijen.some((p) => p.id === id)) gekozen.delete(id);
@@ -5251,6 +5270,7 @@ async function doorzetbakPagina(_, q = new URLSearchParams()) {
     const statussen = ['te beoordelen', 'open', 'gedaan', 'nader', 'niet uitvoeren', 'vervallen', 'alles'];
     app.innerHTML = `${isMobiel() ? '' : tabbalk('/doorzetten', 'werkpakketten')}
       <div class="paginakop"><div><h1>Doorzetbak</h1><p>Bevindingen uit schouw en inspectie die werk opleveren (via het <a href="#/koppelschema">koppelschema</a>). Kies wat er wordt uitgevoerd.</p></div></div>
+      ${diagnoseHtml()}
       <div class="filters">
         <div class="chips" role="radiogroup" aria-label="Status">${statussen.map((s) => `<label class="chip"><input type="radio" name="dz-status" value="${s}" ${s === status ? 'checked' : ''}><span>${s === 'alles' ? 'Alles' : esc(KP.STATUS[s].label)} <small>(${tel(s)})</small></span></label>`).join('')}</div>
         ${koppelingen.length > 1 ? `<select id="dz-relatie" aria-label="Relatie"><option value="">Alle relaties</option>${koppelingen.map((k) => optie(k.id, `${metCode(pm.get(k.bronPakketId) ?? { naam: '?' })} → ${k.doelPakketId === KP.STORINGEN ? KP.STORINGEN_NAAM : k.doelPakketId === k.bronPakketId ? 'binnen dit pakket' : metCode(pm.get(k.doelPakketId) ?? { naam: '?' })}`, relatie)).join('')}</select>` : ''}
@@ -5267,7 +5287,7 @@ async function doorzetbakPagina(_, q = new URLSearchParams()) {
       ${rijen.map((p) => { const o = om.get(p.bron.objectId); const i = im.get(p.bron.inspectieId); const st = KP.STATUS[p.status] ?? { label: p.status, kleur: '#8a96a3' };
     return `<tr data-dz="${esc(p.id)}" class="${gekozen.has(p.id) ? 'gekozen' : ''}">${kan ? `<td><input type="checkbox" data-dz-vink="${esc(p.id)}" ${gekozen.has(p.id) ? 'checked' : ''} aria-label="Kiezen"></td>` : ''}
         <td><a href="#/objecten/${esc(p.bron.objectId)}"><strong>${esc(o?.code ?? '?')}</strong></a> ${esc(o?.naam ?? '')}</td>
-        <td>${esc(p.momentopname?.maatregel || '–')}<small>${esc([p.momentopname?.bouwdeel, p.momentopname?.gebrek].filter(Boolean).join(' – '))}</small>${p.bronGewijzigd ? `<small class="dz-let">${I.let} ${esc(p.reden || 'Bron gewijzigd')}</small>` : ''}</td>
+        <td>${esc(p.momentopname?.maatregel || [p.momentopname?.bouwdeel, p.momentopname?.gebrek].filter(Boolean).join(' – ') || '–')}${p.momentopname?.oordeel ? ` <span class="label-status verlopen">${esc(p.momentopname.oordeel)}</span>` : ''}<small>${esc(p.momentopname?.maatregel ? [p.momentopname?.bouwdeel, p.momentopname?.gebrek].filter(Boolean).join(' – ') : p.momentopname?.toelichting ?? '')}</small>${p.bronGewijzigd ? `<small class="dz-let">${I.let} ${esc(p.reden || 'Bron gewijzigd')}</small>` : ''}</td>
         <td>${urgentieLabel(p.momentopname?.urgentie)}</td>${toonKosten() ? `<td>${p.momentopname?.raming !== '' && p.momentopname?.raming != null ? euro(p.momentopname.raming) : '–'}</td>` : ''}
         <td><small>${esc(metCode(pm.get(p.bron.pakketId) ?? { naam: '?' }))}${i ? `<br><a href="#/inspecties/${esc(i.id)}">${datumNL(i.datum)} · ${esc(i.inspecteur || '')}</a>` : ''}</small></td>
         <td><small>${p.doel?.pakketId === KP.STORINGEN ? `${I.let} ${KP.STORINGEN_NAAM}${p.status === 'open' && p.doel?.rondeId ? '<br><a href="#/storingen">melding in het register</a>' : ''}`

@@ -2524,3 +2524,11 @@ body.kiesmodus .mfilterchips, body.kiesmodus .mtedoenseg, body.kiesmodus .ff-fil
 .apptip.onder::after { top: 0; transform: rotate(225deg); }
 @keyframes apptip-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .apptip { animation: none; } }
+
+.dz-diagnose { margin-bottom: 1rem; padding: .75rem 1rem; border-left: 4px solid #e8a33d; }
+.dz-diagnose summary { cursor: pointer; display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.dz-diaglijst { list-style: none; margin: .6rem 0 0; padding: 0; display: grid; gap: .6rem; }
+.dz-diaglijst > li { display: grid; gap: .25rem; }
+.dz-diaglijst > li > span { font-weight: 600; }
+.dz-diaglijst ul { margin: 0; padding-left: 1.2rem; font-size: .9rem; }
+.dz-diaglijst .knop { justify-self: start; }

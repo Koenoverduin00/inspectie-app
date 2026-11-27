@@ -9,6 +9,7 @@
 //   Het gebrek blijft in de inspectie staan; de werklocatie wordt in de doelronde gezet als herstelitem
 //   (ronde.herstel.items), zodat kaart, formulier en afvinken werken zoals bij een herstelronde.
 // Puur en testbaar: geen DOM, geen opslag.
+import { methodiekVan, STANDAARD_SCHAAL, CHECK } from './inspectietypen.js';
 
 /** Het storingen- en gebrekenregister als doel: gebreken worden daar een melding (zaak). */
 export const STORINGEN = '__storingen';
@@ -46,13 +47,35 @@ export const STATUS_NA_BESLUIT = { doorzetten: 'open', meerwerk: 'open', nader: 
 const URGENTIE_RANG = { direct: 0, '3maanden': 1, '1jaar': 2, '3jaar': 3, '5jaar': 4, monitoren: 5 };
 export const urgentieRang = (u) => URGENTIE_RANG[u] ?? 9;
 
-/** Alle bevindingen van een inspectie die om een maatregel vragen (gebreken, BVC-maatregelen, STOWA-waarnemingen). */
+const schaalVan = (insp) => (insp?.type?.schaal?.length ? insp.type.schaal : STANDAARD_SCHAAL);
+/** Oordeel van een bevinding als tekst: het niveau uit de eigen schaal, of "Niet in orde" bij een checklist. */
+export function oordeelLabel(insp, g) {
+  const m = methodiekVan(insp);
+  if (m === 'checklist' || g?.checkpunt) return CHECK.nok;
+  if (m === 'oordeel') return schaalVan(insp).find((x) => Number(x.waarde) === Number(g?.oordeel))?.label ?? '';
+  return '';
+}
+
+/**
+ * Alle bevindingen van een inspectie die werk kunnen opleveren:
+ * - met een maatregel of urgentie (gebreken, BVC-maatregelen, STOWA-waarnemingen);
+ * - checklist: elk punt dat "niet in orde" is;
+ * - eigen oordeelschaal: elk oordeel dat slechter is dan het beste niveau (bijv. "Afgekeurd", "Matig", "Slecht").
+ */
 export function bevindingen(insp) {
-  return [...(insp?.gebreken ?? []), ...(insp?.bvc?.maatregelen ?? []), ...(insp?.stowa?.waarnemingen ?? [])]
-    .filter((g) => g && g.id && (g.maatregel || g.urgentie || g.bvcMaatregel));
+  const m = methodiekVan(insp);
+  const beste = Math.min(...schaalVan(insp).map((x) => Number(x.waarde)).filter(Number.isFinite));
+  const telt = (g) => {
+    if (!g?.id) return false;
+    if (g.maatregel || g.urgentie || g.bvcMaatregel) return true;
+    if (m === 'checklist' || g.checkpunt) return true;
+    if (m === 'oordeel') return Number(g.oordeel) > beste;
+    return Boolean(insp?.stowa);
+  };
+  return [...(insp?.gebreken ?? []), ...(insp?.bvc?.maatregelen ?? []), ...(insp?.stowa?.waarnemingen ?? [])].filter(telt);
 }
 export const maatregelNaam = (g) => String(g?.bvcMaatregel || g?.maatregel || '').trim();
-export const gebrekNaam = (g) => String(g?.gebrek || g?.omschrijving || g?.code || '').trim();
+export const gebrekNaam = (g) => String(g?.gebrek || g?.omschrijving || g?.checkpunt || g?.code || '').trim();
 
 export const werkpuntId = (inspectieId, gebrekId, koppelingId) => `${inspectieId}:${gebrekId}:${koppelingId}`;
 
@@ -63,8 +86,9 @@ export const inspectieGoedgekeurd = (i) => i?.status === 'afgerond' && (i.beoord
  * Past een bevinding binnen het filter van een relatie? Lege filteronderdelen laten alles door.
  * filter = { maatregelen: [namen], gebreken: [namen], urgentieTot: 'direct'|'3maanden'|…, conditieVanaf: 1..6 }
  */
-export function past(filter, gebrek, { conditie = null } = {}) {
+export function past(filter, gebrek, { conditie = null, oordeel = '' } = {}) {
   const f = filter ?? {};
+  if (f.oordelen?.length && !f.oordelen.includes(oordeel)) return false;
   if (f.maatregelen?.length && !f.maatregelen.includes(maatregelNaam(gebrek))) return false;
   if (f.gebreken?.length && !f.gebreken.includes(gebrekNaam(gebrek))) return false;
   if (f.urgentieTot && urgentieRang(gebrek.urgentie) > urgentieRang(f.urgentieTot)) return false;
@@ -73,11 +97,13 @@ export function past(filter, gebrek, { conditie = null } = {}) {
 }
 
 /** Een gebrek zoals het bij het doorzetten was (zodat later te zien is of de bron is gewijzigd). */
-export const momentopname = (g) => ({
+export const momentopname = (g, insp = null) => ({
   maatregel: maatregelNaam(g), gebrek: gebrekNaam(g), bouwdeel: g.bouwdeel ?? '', urgentie: g.urgentie ?? '',
   raming: g.kostenraming ?? '', toelichting: g.toelichting ?? '', locatie: g.locatie ?? null,
+  ...(insp ? { oordeel: oordeelLabel(insp, g) } : {}),
 });
-const zelfdeOpname = (a, b) => JSON.stringify({ ...a, locatie: a?.locatie ?? null }) === JSON.stringify({ ...b, locatie: b?.locatie ?? null });
+// Alleen de velden vergelijken die al in de oude momentopname stonden (nieuwe velden tellen niet als wijziging).
+const zelfdeOpname = (a, b) => Object.keys(a ?? {}).every((k) => JSON.stringify(a[k] ?? null) === JSON.stringify(b?.[k] ?? null));
 
 /**
  * Wat er moet gebeuren voor één relatie: nieuwe werkpunten en wijzigingen aan bestaande.
@@ -103,19 +129,19 @@ export function bijwerken(koppeling, inspecties, bestaande, { nu = '', conditieV
       gezien.add(id);
       const wp = bestaande.get(id);
       if (wp) {
-        const upd = bijgewerkt(wp, { goed, gebrek: g, nu, modus: koppeling.modus });
+        const upd = bijgewerkt(wp, { goed, gebrek: g, nu, modus: koppeling.modus, insp: i });
         if (upd) gewijzigd.push(upd);
         continue;
       }
       if (!goed) continue;
       if (koppeling.vanaf && String(i.datum ?? '') < koppeling.vanaf) continue;
-      if (!past(koppeling.filter, g, { conditie: conditieVan(g, i) })) continue;
+      if (!past(koppeling.filter, g, { conditie: conditieVan(g, i), oordeel: oordeelLabel(i, g) })) continue;
       const uitgevoerd = g.maatregelStatus === 'uitgevoerd';
       nieuw.push({
         id, projectId: i.projectId, koppelingId: kid,
         bron: { inspectieId: i.id, gebrekId: gid, objectId: i.objectId, pakketId: i.werkpakketId, rondeId: i.rondeId ?? '' },
         doel: { pakketId: koppeling.doelPakketId, rondeId: '' },
-        momentopname: momentopname(g),
+        momentopname: momentopname(g, i),
         status: uitgevoerd ? 'gedaan' : koppeling.modus === 'altijd' ? 'open' : 'te beoordelen',
         besluit: koppeling.modus === 'altijd' ? { keuze: 'doorzetten', door: 'automatisch', op: nu } : null,
         aangemaakt: nu, gewijzigd: nu,
@@ -133,7 +159,7 @@ export function bijwerken(koppeling, inspecties, bestaande, { nu = '', conditieV
 
 const AFGEKEURD = 'De inspectie is afgekeurd of opnieuw ingediend';
 /** Een bestaand werkpunt bijwerken; null als er niets verandert. */
-export function bijgewerkt(wp, { goed, gebrek, nu, modus = 'controle' }) {
+export function bijgewerkt(wp, { goed, gebrek, nu, modus = 'controle', insp = null }) {
   if (wp.status === 'vervallen' && gebrek && goed && wp.reden === 'Gebrek staat niet meer in de inspectie') {
     return { ...wp, status: wp.vorigeStatus || 'te beoordelen', reden: '', gewijzigd: nu };
   }
@@ -144,11 +170,11 @@ export function bijgewerkt(wp, { goed, gebrek, nu, modus = 'controle' }) {
   // Inspectie afgekeurd of aangepast na het doorzetten: terug naar controle (niet automatisch verder).
   if (!goed && wp.status !== 'te beoordelen') return { ...wp, status: 'te beoordelen', bronGewijzigd: true, reden: AFGEKEURD, vorigeStatus: wp.status, gewijzigd: nu };
   // Weer goedgekeurd zonder inhoudelijke wijziging: bij 'altijd' gaat hij vanzelf weer door, anders blijft hij ter controle.
-  if (goed && wp.status === 'te beoordelen' && wp.reden === AFGEKEURD && gebrek && zelfdeOpname(wp.momentopname, momentopname(gebrek))) {
+  if (goed && wp.status === 'te beoordelen' && wp.reden === AFGEKEURD && gebrek && zelfdeOpname(wp.momentopname, momentopname(gebrek, insp))) {
     return modus === 'altijd' ? { ...wp, status: 'open', bronGewijzigd: false, reden: '', gewijzigd: nu } : { ...wp, reden: 'Opnieuw goedgekeurd na afkeuren: opnieuw beoordelen', gewijzigd: nu };
   }
-  if (goed && gebrek && wp.momentopname && !zelfdeOpname(wp.momentopname, momentopname(gebrek))) {
-    return { ...wp, momentopname: momentopname(gebrek), bronGewijzigd: true, status: wp.status === 'open' ? 'te beoordelen' : wp.status, reden: 'Het gebrek is aangepast na het doorzetten', gewijzigd: nu };
+  if (goed && gebrek && wp.momentopname && !zelfdeOpname(wp.momentopname, momentopname(gebrek, insp))) {
+    return { ...wp, momentopname: momentopname(gebrek, insp), bronGewijzigd: true, status: wp.status === 'open' ? 'te beoordelen' : wp.status, reden: 'Het gebrek is aangepast na het doorzetten', gewijzigd: nu };
   }
   return null;
 }
@@ -207,4 +233,24 @@ export function tellingen(werkpunten) {
 export function voorstel(punten, eerdere = []) {
   const doorgezet = new Set(eerdere.filter((p) => ['open', 'gedaan'].includes(p.status) && p.besluit?.keuze !== undefined).map((p) => p.momentopname?.maatregel));
   return new Set(punten.filter((p) => urgentieRang(p.momentopname?.urgentie) <= 1 || doorgezet.has(p.momentopname?.maatregel)).map((p) => p.id));
+}
+
+/**
+ * Waarom komt een bevinding uit de bron (nog) niet door? Per relatie: hoeveel wachten op goedkeuring, zijn afgekeurd,
+ * staan nog als concept, liggen vóór de startdatum of vallen buiten het filter.
+ */
+export function diagnose(koppeling, inspecties, { conditieVan = () => null } = {}) {
+  const uit = { wacht: 0, afgekeurd: 0, concept: 0, voorStart: 0, buitenFilter: 0, inspWacht: 0, inspAfgekeurd: 0 };
+  for (const i of inspecties ?? []) {
+    if (i.werkpakketId !== koppeling.bronPakketId) continue;
+    const bev = bevindingen(i);
+    if (!bev.length) continue;
+    const st = i.beoordeling?.status ?? 'goedgekeurd';
+    if (i.status !== 'afgerond') { uit.concept += bev.length; continue; }
+    if (st === 'ingediend') { uit.wacht += bev.length; uit.inspWacht += 1; continue; }
+    if (st === 'afgekeurd') { uit.afgekeurd += bev.length; uit.inspAfgekeurd += 1; continue; }
+    if (koppeling.vanaf && String(i.datum ?? '') < koppeling.vanaf) { uit.voorStart += bev.length; continue; }
+    uit.buitenFilter += bev.filter((g) => !past(koppeling.filter, g, { conditie: conditieVan(g, i), oordeel: oordeelLabel(i, g) })).length;
+  }
+  return uit;
 }
