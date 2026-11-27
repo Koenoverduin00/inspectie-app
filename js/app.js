@@ -4974,29 +4974,52 @@ async function koppelschemaPagina() {
     const uniek = (l) => [...new Set(l.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'nl'));
     const maatregelen = uniek([...alleBev.map(KP.maatregelNaam), ...(k.filter?.maatregelen ?? [])]);
     const gebreken = uniek([...alleBev.map(KP.gebrekNaam), ...(k.filter?.gebreken ?? [])]);
-    const lijstVink = (naam2, opties, gekozen) => (opties.length ? `<div class="ks-vinklijst">${opties.map((x) => `<label class="vink"><input type="checkbox" name="${naam2}" value="${esc(x)}" ${gekozen?.includes(x) ? 'checked' : ''}><span>${esc(x)}</span></label>`).join('')}</div>`
-      : '<p class="zacht"><small>Nog geen bevindingen in deze schouw; alles telt mee.</small></p>');
+    const lijstVink = (naam2, opties, gekozen) => (opties.length ? `<div class="ks-keuzechips">${opties.map((x) => `<label class="ks-keuzechip" title="${esc(x)}"><input type="checkbox" name="${naam2}" value="${esc(x)}" ${gekozen?.includes(x) ? 'checked' : ''}><span>${esc(x)}</span></label>`).join('')}</div>`
+      : '<p class="ks-dhulp">Nog geen bevindingen in deze schouw; alles telt mee.</p>');
     const d = document.createElement('dialog');
-    d.className = 'dialoog breed';
+    const isReg = k.doelPakketId === KP.STORINGEN;
+    const optieKaart = (naam2, id, titel, uitleg, gekozen, voorbeeld = '') => `<label class="ks-optie"><input type="radio" name="${naam2}" value="${id}" ${gekozen ? 'checked' : ''}>
+      <span class="ks-optie-kop">${voorbeeld}<strong>${esc(titel)}</strong></span><small>${esc(uitleg)}</small></label>`;
+    const telTekst = (n) => (n ? `${n} gekozen` : 'alle');
+    d.className = 'dialoog ks-dialoog';
     d.innerHTML = `<form method="dialog" novalidate>
-      <h2>${nieuw ? 'Nieuwe relatie' : 'Relatie'}</h2>
-      <p class="ks-pijl"><strong>${esc(naam(k.bronPakketId))}</strong> → <strong>${esc(naam(k.doelPakketId))}</strong></p>
-      ${k.doelPakketId === KP.STORINGEN ? `<p class="hulptekst">${I.let} Elk doorgezet gebrek wordt een melding (soort <em>Gebrek</em>) in het storingen- en gebrekenregister, met de urgentie van het gebrek. Wie hem oplost, vinkt de maatregel van het gebrek in één keer mee af.</p>` : ''}
-      <div class="velden">
-        <div class="veld breed"><label>Modus</label>${Object.entries(KP.MODI).map(([id, m]) => `<label class="keuzekaart"><input type="radio" name="modus" value="${id}" ${k.modus === id ? 'checked' : ''}><span><strong>${esc(m.label)}</strong><small>${esc(m.uitleg)}</small></span></label>`).join('')}</div>
-        <div class="veld breed" ${k.doelPakketId === KP.STORINGEN ? 'hidden' : ''}><label>In welke ronde</label>${Object.entries(KP.DOEL_RONDES).map(([id, m]) => `<label class="keuzekaart"><input type="radio" name="doelRonde" value="${id}" ${(k.doelRonde ?? 'lopend') === id ? 'checked' : ''}><span><strong>${esc(m.label)}</strong><small>${esc(m.uitleg)}</small></span></label>`).join('')}</div>
-        <div class="veld breed" id="ks-herstelnaam" ${(k.doelRonde ?? 'lopend') === 'herstel' ? '' : 'hidden'}><label for="ks-hnaam">Naam van de herstelronde</label><input id="ks-hnaam" value="${esc(k.herstelNaam ?? '')}" placeholder="bijv. Herstel uit schouw"></div>
-        <div class="veld breed"><label>Welke bevindingen <small class="zacht">(niets aangevinkt = alle)</small></label>
-          <details ${k.filter?.maatregelen?.length ? 'open' : ''}><summary>Maatregelen${k.filter?.maatregelen?.length ? ` (${k.filter.maatregelen.length})` : ''}</summary>${lijstVink('maatregel', maatregelen, k.filter?.maatregelen)}</details>
-          <details ${k.filter?.gebreken?.length ? 'open' : ''}><summary>Gebreken${k.filter?.gebreken?.length ? ` (${k.filter.gebreken.length})` : ''}</summary>${lijstVink('gebrek', gebreken, k.filter?.gebreken)}</details></div>
-        <div class="veld"><label for="ks-urg">Urgentie</label><select id="ks-urg"><option value="">Alle urgenties</option>${URGENTIES.map((u) => optie(u.id, `t/m ${u.label}`, k.filter?.urgentieTot ?? '')).join('')}</select></div>
-        <div class="veld"><label for="ks-cond">Conditie (NEN 2767)</label><select id="ks-cond"><option value="">Alle condities</option>${[2, 3, 4, 5, 6].map((c) => optie(String(c), `${c} of slechter`, String(k.filter?.conditieVanaf ?? ''))).join('')}</select></div>
-        <div class="veld breed"><label class="vink"><input type="checkbox" id="ks-bestaand" ${k.vanaf ? '' : 'checked'}><span>Ook inspecties van vóór vandaag doorzetten<small>Uit: alleen inspecties vanaf ${datumNL(k.vanaf || vandaag())}.</small></span></label></div>
-        <div class="veld breed"><label class="vink"><input type="checkbox" id="ks-actief" ${k.actief === false ? '' : 'checked'}><span>Relatie actief</span></label></div>
+      <header class="ks-dkop">
+        <h2>${nieuw ? 'Nieuwe relatie' : 'Relatie bewerken'}</h2>
+        <div class="ks-route"><span class="ks-route-deel"><small>Van</small><strong>${esc(naam(k.bronPakketId))}</strong></span>
+          <span class="ks-route-pijl" aria-hidden="true">→</span>
+          <span class="ks-route-deel${isReg ? ' reg' : ''}"><small>Naar</small><strong>${isReg ? `${I.let} ` : ''}${esc(naam(k.doelPakketId))}</strong></span></div>
+        ${isReg ? `<p class="ks-dhulp">Elk doorgezet gebrek wordt een melding (soort <em>Gebrek</em>) in het register, met de urgentie van het gebrek. Bij het oplossen staat de maatregel al aangevinkt.</p>` : ''}
+      </header>
+      <div class="ks-dinhoud">
+        <section class="ks-sectie"><h3>Hoe gaat het door?</h3>
+          <div class="ks-opties twee">
+            ${optieKaart('modus', 'altijd', KP.MODI.altijd.label, KP.MODI.altijd.uitleg, k.modus === 'altijd', '<i class="ks-l altijd"></i>')}
+            ${optieKaart('modus', 'controle', KP.MODI.controle.label, KP.MODI.controle.uitleg, k.modus !== 'altijd', '<i class="ks-l controle"></i>')}
+          </div></section>
+        <section class="ks-sectie" ${isReg ? 'hidden' : ''}><h3>In welke ronde?</h3>
+          <div class="ks-opties drie">${Object.entries(KP.DOEL_RONDES).map(([id, m]) => optieKaart('doelRonde', id, m.label, m.uitleg, (k.doelRonde ?? 'lopend') === id)).join('')}</div>
+          <div class="veld ks-hnaamveld" id="ks-herstelnaam" ${(k.doelRonde ?? 'lopend') === 'herstel' ? '' : 'hidden'}><label for="ks-hnaam">Naam van de herstelronde</label><input id="ks-hnaam" value="${esc(k.herstelNaam ?? '')}" placeholder="bijv. Herstel uit schouw"></div>
+        </section>
+        <section class="ks-sectie"><h3>Welke bevindingen?</h3>
+          <div class="ks-filterrij">
+            <div class="veld"><label for="ks-urg">Urgentie</label><select id="ks-urg"><option value="">Alle urgenties</option>${URGENTIES.map((u) => optie(u.id, `t/m ${u.label}`, k.filter?.urgentieTot ?? '')).join('')}</select></div>
+            <div class="veld"><label for="ks-cond">Conditie (NEN 2767)</label><select id="ks-cond"><option value="">Alle condities</option>${[2, 3, 4, 5, 6].map((c) => optie(String(c), `${c} of slechter`, String(k.filter?.conditieVanaf ?? ''))).join('')}</select></div>
+          </div>
+          <details class="ks-lijstkeuze" ${k.filter?.maatregelen?.length ? 'open' : ''}><summary><span>Maatregelen</span><small data-tel="maatregel">${telTekst(k.filter?.maatregelen?.length)}</small></summary>${lijstVink('maatregel', maatregelen, k.filter?.maatregelen)}</details>
+          <details class="ks-lijstkeuze" ${k.filter?.gebreken?.length ? 'open' : ''}><summary><span>Gebreken</span><small data-tel="gebrek">${telTekst(k.filter?.gebreken?.length)}</small></summary>${lijstVink('gebrek', gebreken, k.filter?.gebreken)}</details>
+          <p class="ks-dhulp">Niets aangevinkt in een lijst = alles uit die lijst telt mee.</p>
+        </section>
+        <section class="ks-sectie"><h3>Instellingen</h3>
+          <div class="ks-schakelaars">
+            <label class="ks-schakel"><input type="checkbox" id="ks-bestaand" ${k.vanaf ? '' : 'checked'}><span class="ks-schuif" aria-hidden="true"></span><span><strong>Ook eerdere inspecties</strong><small>Uit: alleen inspecties vanaf ${datumNL(k.vanaf || vandaag())}.</small></span></label>
+            <label class="ks-schakel"><input type="checkbox" id="ks-actief" ${k.actief === false ? '' : 'checked'}><span class="ks-schuif" aria-hidden="true"></span><span><strong>Relatie actief</strong><small>Uit: er wordt tijdelijk niets doorgezet.</small></span></label>
+          </div></section>
       </div>
-      <p class="ks-voorbeeld" id="ks-voorbeeld"></p>
-      <div class="formvoet">${nieuw ? '' : '<button type="button" class="knop gevaar" data-ks="weg">Relatie verwijderen</button>'}<span style="flex:1"></span>
-        <button type="button" class="knop" data-ks="nee">Annuleren</button><button type="submit" class="knop primair">${I.vink} Opslaan</button></div></form>`;
+      <footer class="ks-dvoet">
+        <p class="ks-voorbeeld" id="ks-voorbeeld" aria-live="polite"></p>
+        <div class="ks-dknoppen">${nieuw ? '' : '<button type="button" class="knop gevaar" data-ks="weg">Verwijderen</button>'}<span class="ks-ruimte"></span>
+          <button type="button" class="knop" data-ks="nee">Annuleren</button><button type="submit" class="knop primair">${I.vink} Opslaan</button></div>
+      </footer></form>`;
     document.body.append(d);
     const lees = () => ({
       ...k, modus: d.querySelector('input[name=modus]:checked')?.value ?? 'controle', doelRonde: d.querySelector('input[name=doelRonde]:checked')?.value ?? 'lopend',
@@ -5012,7 +5035,11 @@ async function koppelschemaPagina() {
       d.querySelector('#ks-voorbeeld').innerHTML = `${I.let} Bij opslaan ${nieuwP.length ? `${x.modus === 'altijd' ? 'gaan' : 'komen'} <strong>${nieuwP.length}</strong> bevinding${nieuwP.length === 1 ? '' : 'en'} ${x.modus === 'altijd' ? (k.doelPakketId === KP.STORINGEN ? 'direct als melding naar het register' : 'direct naar het werkpakket') : 'in de doorzetbak'}` : 'wordt nu niets doorgezet'}${wacht ? `; ${wacht} inspectie${wacht === 1 ? '' : 's'} wacht${wacht === 1 ? '' : 'en'} nog op goedkeuring` : ''}.`;
     };
     voorbeeld();
-    d.addEventListener('change', (e) => { if (e.target.name === 'doelRonde') d.querySelector('#ks-herstelnaam').hidden = e.target.value !== 'herstel'; voorbeeld(); });
+    d.addEventListener('change', (e) => {
+      if (e.target.name === 'doelRonde') d.querySelector('#ks-herstelnaam').hidden = e.target.value !== 'herstel';
+      if (e.target.name === 'maatregel' || e.target.name === 'gebrek') d.querySelector(`[data-tel="${e.target.name}"]`).textContent = telTekst(d.querySelectorAll(`input[name=${e.target.name}]:checked`).length);
+      voorbeeld();
+    });
     d.showModal();
     const keuze = await new Promise((ok) => {
       d.querySelector('[data-ks=nee]').onclick = () => ok(null);

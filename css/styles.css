@@ -2428,3 +2428,72 @@ body.kiesmodus .mfilterchips, body.kiesmodus .mtedoenseg, body.kiesmodus .ff-fil
 .dz-n input { width: 4rem; padding: .2rem .4rem; }
 
 .ks-kaart.storingen { border-style: dashed; background: color-mix(in srgb, #e8710a 6%, var(--kaart, #fff)); }
+
+/* Venster relatie (koppelschema) */
+.ks-dialoog { width: min(760px, calc(100vw - 1.5rem)); max-width: none; max-height: none; padding: 0; overflow: clip; display: flex; }
+.ks-dialoog[open] { display: flex; }
+.ks-dialoog form { display: flex; flex-direction: column; max-height: min(calc(100dvh - 2rem), 900px); width: 100%; min-height: 0; }
+.ks-dinhoud { flex: 1 1 auto; min-height: 0; }
+.ks-dkop { padding: 1.1rem 1.4rem .9rem; border-bottom: 1px solid var(--rand, #d5dbe1); }
+.ks-dkop h2 { margin: 0 0 .7rem; font-size: 1.2rem; }
+.ks-route { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: .6rem; align-items: stretch; }
+.ks-route-deel { display: grid; gap: .1rem; padding: .5rem .75rem; border-radius: 10px; background: color-mix(in srgb, var(--primair) 7%, transparent); min-width: 0; }
+.ks-route-deel.reg { background: color-mix(in srgb, #e8710a 9%, transparent); }
+.ks-route-deel small { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--tekst-zacht); }
+.ks-route-deel strong { overflow-wrap: anywhere; line-height: 1.3; }
+.ks-route-pijl { align-self: center; font-size: 1.3rem; color: var(--tekst-zacht); }
+.ks-dhulp { margin: .6rem 0 0; font-size: .86rem; color: var(--tekst-zacht); }
+.ks-dinhoud { overflow-y: auto; padding: .4rem 1.4rem 1rem; }
+.ks-sectie { padding: .9rem 0; border-bottom: 1px solid var(--rand, #e4e8ec); }
+.ks-sectie:last-child { border-bottom: 0; }
+.ks-sectie h3 { margin: 0 0 .6rem; font-size: .95rem; }
+.ks-opties { display: grid; gap: .5rem; }
+.ks-opties.twee { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ks-opties.drie { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ks-optie { position: relative; display: grid; gap: .25rem; align-content: start; padding: .7rem .8rem; border: 1.5px solid var(--rand, #d5dbe1); border-radius: 10px; cursor: pointer; background: var(--kaart, #fff); transition: border-color .12s, background .12s; }
+.ks-optie input, .ks-schakel input, .ks-keuzechip input { left: .5rem; top: .5rem; }
+.ks-optie input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.ks-optie-kop { display: flex; align-items: center; gap: .5rem; }
+.ks-optie-kop::after { content: ''; margin-left: auto; width: 16px; height: 16px; border-radius: 50%; border: 2px solid #b0b8c1; flex: none; box-sizing: border-box; }
+.ks-optie small { color: var(--tekst-zacht); font-size: .82rem; line-height: 1.35; }
+.ks-optie:hover { border-color: color-mix(in srgb, var(--primair) 50%, var(--rand, #d5dbe1)); }
+.ks-optie:has(input:checked) { border-color: var(--primair); background: color-mix(in srgb, var(--primair) 7%, var(--kaart, #fff)); }
+.ks-optie:has(input:checked) .ks-optie-kop::after { border: 5px solid var(--primair); }
+.ks-optie:has(input:focus-visible) { outline: 2px solid var(--primair); outline-offset: 2px; }
+.ks-optie .ks-l { margin-right: 0; width: 26px; }
+.ks-hnaamveld { margin-top: .6rem; }
+.ks-filterrij { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .6rem; margin-bottom: .6rem; }
+.ks-filterrij .veld { margin: 0; }
+.ks-lijstkeuze { border: 1px solid var(--rand, #d5dbe1); border-radius: 10px; margin-top: .45rem; }
+.ks-lijstkeuze summary { display: flex; justify-content: space-between; align-items: center; padding: .55rem .8rem; cursor: pointer; font-weight: 600; list-style: none; }
+.ks-lijstkeuze summary::-webkit-details-marker { display: none; }
+.ks-lijstkeuze summary::before { content: '▸'; margin-right: .5rem; color: var(--tekst-zacht); }
+.ks-lijstkeuze[open] summary::before { content: '▾'; }
+.ks-lijstkeuze summary span { flex: 1; }
+.ks-lijstkeuze summary small { font-weight: 500; color: var(--tekst-zacht); }
+.ks-keuzechips { display: flex; flex-wrap: wrap; gap: .35rem; padding: 0 .8rem .7rem; max-height: 11rem; overflow-y: auto; }
+.ks-keuzechip { position: relative; display: inline-flex; max-width: 100%; cursor: pointer; }
+.ks-keuzechip input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.ks-keuzechip span { padding: .3rem .7rem; border: 1px solid var(--rand, #d5dbe1); border-radius: 999px; font-size: .84rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 22rem; background: var(--kaart, #fff); }
+.ks-keuzechip:has(input:checked) span { background: var(--primair); border-color: var(--primair); color: #fff; }
+.ks-keuzechip:has(input:focus-visible) span { outline: 2px solid var(--primair); outline-offset: 1px; }
+.ks-schakelaars { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .6rem; }
+.ks-schakel { position: relative; display: flex; gap: .6rem; align-items: flex-start; padding: .6rem .75rem; border: 1px solid var(--rand, #d5dbe1); border-radius: 10px; cursor: pointer; }
+.ks-schakel input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.ks-schakel > span:last-child { display: grid; gap: .1rem; }
+.ks-schakel small { color: var(--tekst-zacht); font-size: .82rem; }
+.ks-schuif { flex: none; width: 38px; height: 22px; border-radius: 999px; background: #c4ccd4; position: relative; transition: background .15s; margin-top: .05rem; }
+.ks-schuif::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; box-shadow: 0 1px 2px rgba(0, 0, 0, .25); }
+.ks-schakel:has(input:checked) .ks-schuif { background: var(--primair); }
+.ks-schakel:has(input:checked) .ks-schuif::after { transform: translateX(16px); }
+.ks-schakel:has(input:focus-visible) .ks-schuif { outline: 2px solid var(--primair); outline-offset: 2px; }
+.ks-dvoet { border-top: 1px solid var(--rand, #d5dbe1); padding: .75rem 1.4rem 1rem; background: var(--kaart, #fff); }
+.ks-dvoet .ks-voorbeeld { margin: 0 0 .7rem; }
+.ks-dknoppen { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.ks-ruimte { flex: 1; }
+@media (max-width: 640px) {
+  .ks-opties.twee, .ks-opties.drie, .ks-filterrij, .ks-schakelaars { grid-template-columns: 1fr; }
+  .ks-dkop, .ks-dinhoud, .ks-dvoet { padding-left: 1rem; padding-right: 1rem; }
+  .ks-route { grid-template-columns: 1fr; }
+  .ks-route-pijl { transform: rotate(90deg); justify-self: center; line-height: 1; }
+}
