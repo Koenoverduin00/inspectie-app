@@ -475,6 +475,27 @@ Op alle kaarten met voortgang (mobiele kaart, werkpakketkaart, dashboardkaart me
   **voor iedereen in het project** (wordt gesynchroniseerd); iedereen kan ook een eigen opmaak **alleen op dit apparaat**
   kiezen. *Standaard herstellen* zet alles terug. De voortgangsbalken en legenda's volgen dezelfde kleuren.
 
+## Storingen- en gebrekenregister: nummer en werkpakket
+
+- **Eigen nummer:** elke storing en elk gebrek krijgt automatisch een nummer, bijv. **`OPZ-G26-0042`**:
+  - `OPZ`: afkorting van het project. Die is instelbaar via *Afkorting wijzigen* op de registerpagina; anders wordt de
+    projectcode gebruikt, of de beginletters van de projectnaam.
+  - `G`: soort (S storing, G gebrek, D schade, M melding, C calamiteit, A anders).
+  - `26`: jaar van melden.
+  - `0042`: volgnummer, per project per jaar doorlopend over alle soorten.
+- **Wanneer:** het nummer wordt gegeven bij klaarzetten (kantoor), melden (buiten), direct oplossen zonder melding, en
+  bij gebreken die via het koppelschema in het register komen.
+- **Oude zaken en dubbele nummers:** oude zaken krijgen bij het openen van het register alsnog een nummer, op volgorde
+  van melden. Twee toestellen die offline hetzelfde nummer gaven, worden rechtgezet: de eerst gemelde houdt het nummer.
+- **Referentie van de opdrachtgever:** het meldingsnummer van de opdrachtgever blijft apart bestaan als *Ref.
+  opdrachtgever*, naast het eigen nummer.
+- **Gemeld vanuit werkpakket:** een melding onthoudt uit welk werkpakket hij komt. Code en naam staan in de kolom
+  *Melding*, in de kaartpopup en in de Excel-export (kolom *Gemeld vanuit werkpakket*).
+  - Op de objectpagina in een werkpakket staat een knop **Melden**; die vult het werkpakket vooraf in.
+  - In het meldformulier kies je uit de werkpakketten van het object.
+  - Gebreken uit het koppelschema krijgen het schouwpakket mee.
+- **Zoeken:** het zoekveld vindt ook het nummer en het werkpakket.
+
 ## Storingen- en gebrekenregister op de kaart
 
 Het register heeft een omschakeling **Lijst / Kaart**, op de pc en op de telefoon. De keuze wordt per apparaat

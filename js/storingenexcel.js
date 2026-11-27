@@ -17,14 +17,14 @@ export function doorlooptijdUren(van, tot) {
   return Math.round(((b - a) / 3600000) * 10) / 10;
 }
 
-export const ZAAK_KOLOMMEN = [['Referentie', 16], ['Status', 14], ['Urgentie', 13], ['Objectcode', 13], ['Object', 26], ['Soort', 14],
-  ['Melding', 44], ['Gemeld om', 16, 'dt'], ['Herkomst', 12], ['Gemeld / klaargezet door', 22], ['Toegewezen aan', 20], ['Instructie', 30],
+export const ZAAK_KOLOMMEN = [['Nummer', 15], ['Referentie opdrachtgever', 18], ['Status', 14], ['Urgentie', 13], ['Objectcode', 13], ['Object', 26], ['Soort', 14],
+  ['Melding', 44], ['Gemeld vanuit werkpakket', 30], ['Gemeld om', 16, 'dt'], ['Herkomst', 12], ['Gemeld / klaargezet door', 22], ['Toegewezen aan', 20], ['Instructie', 30],
   ['Registraties', 11], ['Laatste registratie', 16, 'dt'], ['Laatste resultaat', 24], ['Vervolg nodig', 30], ['Opgelost om', 16, 'dt'],
   ['Doorlooptijd (uur)', 12, 'getal'], ['Manuren', 10, 'getal'], ['Materieeluren', 12, 'getal'], ['Totaal uren', 11, 'getal']];
-export const REG_KOLOMMEN = [['Referentie', 16], ['Objectcode', 13], ['Object', 26], ['Opgelost / gestopt om', 18, 'dt'], ['Uitvoerder', 20],
+export const REG_KOLOMMEN = [['Nummer', 15], ['Referentie opdrachtgever', 18], ['Objectcode', 13], ['Object', 26], ['Opgelost / gestopt om', 18, 'dt'], ['Uitvoerder', 20],
   ['Resultaat', 24], ['Wat is gedaan', 40], ['Vervolg nodig', 30], ['Beoordeling', 13], ['Bestede uren', 40], ['Manuren', 10, 'getal'],
   ['Materieeluren', 12, 'getal'], ['Registratie-id', 22]];
-export const INZET_KOLOMMEN = [['Referentie', 16], ['Objectcode', 13], ['Datum', 16, 'dt'], ['Uitvoerder', 20], ['Wat', 18], ['Wie / welke', 22],
+export const INZET_KOLOMMEN = [['Nummer', 15], ['Referentie opdrachtgever', 18], ['Objectcode', 13], ['Datum', 16, 'dt'], ['Uitvoerder', 20], ['Wat', 18], ['Wie / welke', 22],
   ['Aantal', 8, 'getal'], ['Uren', 8, 'getal'], ['Totaal uren', 11, 'getal']];
 
 /**
@@ -39,7 +39,7 @@ export function rijen(zaken, fmt) {
     const o = fmt.object(z.objectId) ?? {};
     const l = z.laatste;
     zaakRijen.push({
-      waarden: [z.referentie, SR.STATUS[z.status].label, SR.URGENTIE_LABEL[z.urgentie] ?? '', o.code ?? '', o.naam ?? '', z.type, z.omschrijving,
+      waarden: [z.nummer ?? '', z.referentie, SR.STATUS[z.status].label, SR.URGENTIE_LABEL[z.urgentie] ?? '', o.code ?? '', o.naam ?? '', z.type, z.omschrijving, fmt.pakket?.(z.pakketId) ?? '',
         datumTijd(z.gemeldOp), z.bron === 'kantoor' ? 'Kantoor' : 'Buiten', fmt.naam(z.door), fmt.naam(z.toegewezenAan), z.melding?.opmerking ?? '',
         z.acties.length, datumTijd(l?.storing?.opgelostOp || l?.datum), l ? fmt.resultaat(l.storing?.resultaat) : '', l?.storing?.resultaat !== 'opgelost' ? (l?.vervolg ?? '') : '',
         datumTijd(z.opgelostOp), z.opgelostOp ? doorlooptijdUren(z.gemeldOp, z.opgelostOp) : '', z.uren.manuren || '', z.uren.materieeluren || '', z.uren.totaal || ''],
@@ -48,12 +48,12 @@ export function rijen(zaken, fmt) {
     for (const a of z.acties) {
       const t = IZ.totalen(a.storing?.inzet);
       regRijen.push({
-        waarden: [z.referentie, o.code ?? '', o.naam ?? '', datumTijd(a.storing?.opgelostOp || a.datum), a.uitvoerder ?? '', fmt.resultaat(a.storing?.resultaat),
+        waarden: [z.nummer ?? '', z.referentie, o.code ?? '', o.naam ?? '', datumTijd(a.storing?.opgelostOp || a.datum), a.uitvoerder ?? '', fmt.resultaat(a.storing?.resultaat),
           a.omschrijving ?? '', a.vervolg ?? '', fmt.beoordeling(a), IZ.tekst(a.storing?.inzet), t.manuren || '', t.materieeluren || '', a.id],
         status: a.storing?.resultaat === 'opgelost' ? 'opgelost' : 'bezig',
       });
       for (const r of IZ.normaliseer(a.storing?.inzet)) {
-        inzetRijen.push({ waarden: [z.referentie, o.code ?? '', datumTijd(a.storing?.opgelostOp || a.datum), a.uitvoerder ?? '', r.middel, r.omschrijving, r.aantal, r.uren, Math.round(r.aantal * r.uren * 100) / 100] });
+        inzetRijen.push({ waarden: [z.nummer ?? '', z.referentie, o.code ?? '', datumTijd(a.storing?.opgelostOp || a.datum), a.uitvoerder ?? '', r.middel, r.omschrijving, r.aantal, r.uren, Math.round(r.aantal * r.uren * 100) / 100] });
       }
     }
   }

@@ -44,6 +44,7 @@ export function zaken({ meldingen = [], werk = [] }) {
     uit.push(maak(id, 'veld', {
       objectId: eerste.objectId, type: eerste.storing.type, melding: eerste.storing.melding, gemeldOp: eerste.storing.gemeldOp,
       referentie: '', urgentie: '', toegewezenAan: '', door: eerste.uitvoerder || eerste.beoordeling?.ingediendDoor || '',
+      nummer: eerste.storing?.nummer || '', pakketId: eerste.werkpakketId || '',
     }, acties));
   }
   return uit.sort((a, b) => STATUS_RANG[a.status] - STATUS_RANG[b.status]
@@ -59,6 +60,8 @@ function maak(id, bron, m, acties) {
     id, bron, melding: m.id ? m : null,
     objectId: m.objectId, type: m.type || laatste?.storing?.type || '', omschrijving: m.melding || '',
     referentie: m.referentie || acties.map((a) => a.storing?.referentie).find(Boolean) || '',
+    nummer: m.nummer || acties.map((a) => a.storing?.nummer).find(Boolean) || '',
+    pakketId: m.pakketId || acties.map((a) => a.werkpakketId).find(Boolean) || '',
     gemeldOp: m.gemeldOp || '', urgentie: m.urgentie || '', toegewezenAan: m.toegewezenAan || '', door: m.door || '',
     acties, laatste, laatsteOp: laatste ? moment(laatste) : '', status,
     opgelostOp: status === 'opgelost' ? moment(laatste) : '',
@@ -77,4 +80,63 @@ export function telling(lijst) {
   const t = { open: 0, bezig: 0, opgelost: 0, vervallen: 0 };
   for (const z of lijst) t[z.status] += 1;
   return t;
+}
+
+// ---------------------------------------------------------------------------
+// Registernummer: elke storing en elk gebrek krijgt automatisch een eigen nummer, bijv. OPZ-S26-0042.
+//   OPZ   = afkorting van het project (instelbaar; anders de projectcode of de beginletters van de naam)
+//   S/G   = soort: S storing, G gebrek, D schade, M melding, C calamiteit, A anders
+//   26    = jaar waarin het is gemeld
+//   0042  = volgnummer, per project per jaar doorlopend over alle soorten
+// Het eigen nummer staat los van de referentie van de opdrachtgever (die kan er altijd naast).
+// ---------------------------------------------------------------------------
+const LETTER = { storing: 'S', gebrek: 'G', schade: 'D', melding: 'M', calamiteit: 'C', anders: 'A' };
+export const soortLetter = (type) => LETTER[String(type ?? '').trim().split(/\s/)[0].toLowerCase()] ?? 'S';
+
+/** Afkorting voor het project: zelf ingesteld, de projectcode, of de beginletters van de naam (zonder getallen). */
+export function projectAfkorting(project) {
+  const schoon = (x) => String(x ?? '').normalize('NFKD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const eigen = schoon(project?.registerAfkorting) || schoon(project?.code);
+  if (eigen) return eigen.slice(0, 8);
+  const woorden = String(project?.naam ?? '').normalize('NFKD').replace(/[̀-ͯ]/g, '').split(/[\s\-_/]+/).filter((w) => /^[A-Za-z]/.test(w));
+  const letters = woorden.map((w) => w[0].toUpperCase()).join('').slice(0, 4);
+  return letters.length >= 2 ? letters : (schoon(project?.naam).slice(0, 3) || 'REG');
+}
+
+const PATROON = /^([A-Z0-9]+)-([A-Z])(\d{2})-(\d{4,})$/;
+/** Ontleed een nummer, of null. */
+export function ontleed(nummer) {
+  const m = PATROON.exec(String(nummer ?? ''));
+  return m ? { afk: m[1], letter: m[2], jj: m[3], nr: Number(m[4]) } : null;
+}
+
+/** Het volgende vrije nummer voor dit project en jaar. */
+export function nieuwNummer({ afkorting, type, datum, bestaande = [] }) {
+  const jj = String(datum || '').slice(2, 4) || String(new Date().getFullYear()).slice(2);
+  let max = 0;
+  for (const n of bestaande) {
+    const o = ontleed(n);
+    if (o && o.afk === afkorting && o.jj === jj && o.nr > max) max = o.nr;
+  }
+  return `${afkorting}-${soortLetter(type)}${jj}-${String(max + 1).padStart(4, '0')}`;
+}
+
+/**
+ * Zaken zonder nummer (van vóór deze functie) of met een dubbel nummer (twee toestellen tegelijk offline): nieuwe
+ * nummers, op volgorde van melden. De eerst gemelde houdt bij een dubbel zijn nummer.
+ * @returns {{ id: string, nummer: string }[]}
+ */
+export function nummersBijwerken(zaken, afkorting) {
+  const op = (z) => String(z.gemeldOp || z.acties?.[0]?.datum || '');
+  const gesorteerd = [...zaken].sort((a, b) => op(a).localeCompare(op(b)) || String(a.id).localeCompare(String(b.id)));
+  const gezien = new Set();
+  const bestaande = zaken.map((z) => z.nummer).filter(Boolean);
+  const uit = [];
+  for (const z of gesorteerd) {
+    if (z.nummer && !gezien.has(z.nummer)) { gezien.add(z.nummer); continue; }
+    const nummer = nieuwNummer({ afkorting, type: z.type, datum: op(z) || undefined, bestaande: [...bestaande, ...uit.map((x) => x.nummer)] });
+    uit.push({ id: z.id, nummer });
+    gezien.add(nummer);
+  }
+  return uit;
 }

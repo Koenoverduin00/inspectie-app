@@ -54,13 +54,38 @@ test('storingen-export: rijen per zaak, registratie en bestede uren', async () =
   const r = SX.rijen(z, fmt);
   assert.equal(r.zaakRijen.length, 1);
   const zr = r.zaakRijen[0].waarden;
-  assert.equal(zr[0], 'MLD-1');
-  assert.equal(zr[1], 'Opgelost');
-  assert.equal(zr[17], 6); // 08:00 → 14:00
-  assert.deepEqual([zr[18], zr[19], zr[20]], [2, 1.5, 3.5]);
+  const kol = (naam) => zr[SX.ZAAK_KOLOMMEN.findIndex(([k]) => k === naam)];
+  assert.equal(kol('Referentie opdrachtgever'), 'MLD-1');
+  assert.equal(kol('Status'), 'Opgelost');
+  assert.equal(kol('Doorlooptijd (uur)'), 6); // 08:00 → 14:00
+  assert.deepEqual([kol('Manuren'), kol('Materieeluren'), kol('Totaal uren')], [2, 1.5, 3.5]);
   assert.equal(r.regRijen.length, 2);
   assert.equal(r.inzetRijen.length, 2);
-  assert.equal(r.inzetRijen[0][8] ?? r.inzetRijen[0].waarden[8], 2);
+  assert.equal(r.inzetRijen[0].waarden[SX.INZET_KOLOMMEN.findIndex(([k]) => k === 'Totaal uren')], 2);
+  assert.equal(r.regRijen[0].waarden.length, SX.REG_KOLOMMEN.length);
   assert.equal(SX.doorlooptijdUren('2026-11-18T08:00', '2026-11-18T07:00'), '');
   assert.equal(zr.length, SX.ZAAK_KOLOMMEN.length);
+});
+
+test('registernummer: opbouw, volgnummer per project en jaar, bijwerken en ontdubbelen', () => {
+  assert.equal(S.projectAfkorting({ naam: 'Onderhoud Park Zuid 2026' }), 'OPZ');
+  assert.equal(S.projectAfkorting({ naam: 'X', code: 'pz-01' }), 'PZ01');
+  assert.equal(S.projectAfkorting({ naam: 'Gemeente', registerAfkorting: 'gem' }), 'GEM');
+  assert.equal(S.projectAfkorting({ naam: 'Brug' }), 'BRU');
+  assert.equal(S.soortLetter('Gebrek'), 'G');
+  assert.equal(S.soortLetter('Melding (burger of klant)'), 'M');
+  assert.equal(S.nieuwNummer({ afkorting: 'OPZ', type: 'Storing', datum: '2026-11-27', bestaande: [] }), 'OPZ-S26-0001');
+  assert.equal(S.nieuwNummer({ afkorting: 'OPZ', type: 'Gebrek', datum: '2026-11-27', bestaande: ['OPZ-S26-0007', 'OPZ-G25-0099', 'ANDER-S26-0050'] }), 'OPZ-G26-0008');
+  assert.deepEqual(S.ontleed('OPZ-G26-0008'), { afk: 'OPZ', letter: 'G', jj: '26', nr: 8 });
+  const zaken = [
+    { id: 'a', type: 'Storing', gemeldOp: '2026-11-01T08:00', nummer: 'OPZ-S26-0001' },
+    { id: 'b', type: 'Gebrek', gemeldOp: '2026-11-02T08:00', nummer: 'OPZ-S26-0001' },
+    { id: 'c', type: 'Gebrek', gemeldOp: '2026-11-03T08:00', nummer: '' },
+  ];
+  assert.deepEqual(S.nummersBijwerken(zaken, 'OPZ'), [{ id: 'b', nummer: 'OPZ-G26-0002' }, { id: 'c', nummer: 'OPZ-G26-0003' }]);
+});
+
+test('zaken: nummer en werkpakket uit melding of registratie', () => {
+  const z = S.zaken({ meldingen: [{ id: 'm', objectId: 'o', nummer: 'X-S26-0001', pakketId: 'P1', melding: 'x' }], werk: [{ id: 'w', objectId: 'o', werkpakketId: 'P2', storing: { type: 'Storing', nummer: 'X-S26-0002' } }] });
+  assert.deepEqual(z.map((x) => [x.nummer, x.pakketId]).sort(), [['X-S26-0001', 'P1'], ['X-S26-0002', 'P2']]);
 });
