@@ -7896,6 +7896,7 @@ async function mobielKaart() {
     return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
   };
   const kaart = await tekenObjectenKaart(app.querySelector('#veldkaart'), {
+    geheugen: `veldkaart:${projectId()}`,
     objecten: lijst.map((x) => x.o),
     kleurVan: (o) => PAKKET_KLEUR[statusVan(o.id)],
     statusVan: (o) => statusVan(o.id),
@@ -8059,7 +8060,7 @@ async function mobielKaart() {
     werkTellingBij();
   };
   kaart.map.on('zoomend moveend', tekenLabels);
-  toonPakket(gekozenPk.size > 0);
+  toonPakket(gekozenPk.size > 0 && !kaart.hersteld);
   app.querySelectorAll('input[name=mtd]').forEach((x) => x.addEventListener('change', () => {
     st.teDoen = x.value === '1';
     instelling.schrijf('mKaartTeDoen', st.teDoen ? '1' : '');
@@ -11909,6 +11910,31 @@ function stelLeafletIn(L) {
   return L;
 }
 
+/**
+ * Kaartbeeld onthouden: uitsnede en zoom per kaart (sleutel), voor deze sessie. Kom je terug op dezelfde kaart
+ * (bijv. na afmelden of overslaan), dan staat de kaart weer precies zoals je hem achterliet.
+ */
+const KAARTBEELD_GELDIG_MS = 8 * 3600 * 1000;
+function kaartGeheugen(map, sleutel) {
+  const k = `inspectie-app:kaartbeeld:${sleutel}`;
+  let bewaard = null;
+  try {
+    const x = JSON.parse(sessionStorage.getItem(k) || 'null');
+    if (x && Number.isFinite(x.lat) && Number.isFinite(x.lng) && Number.isFinite(x.z) && Date.now() - x.t < KAARTBEELD_GELDIG_MS) bewaard = x;
+  } catch { /* geen opslag */ }
+  const bewaar = () => {
+    const c = map.getContainer?.();
+    if (!c?.isConnected || !c.clientWidth || !c.clientHeight) return; // verborgen of al weg: niets onthouden
+    try { const m = map.getCenter(); sessionStorage.setItem(k, JSON.stringify({ lat: m.lat, lng: m.lng, z: map.getZoom(), t: Date.now() })); } catch { /* vol of geblokkeerd */ }
+  };
+  return {
+    /** Zet het onthouden beeld terug; false als er niets (geldigs) is. */
+    herstel() { if (!bewaard) return false; map.setView([bewaard.lat, bewaard.lng], bewaard.z, { animate: false }); return true; },
+    /** Vanaf nu elke verschuiving en zoom onthouden. */
+    volg() { map.on('moveend', bewaar); },
+  };
+}
+
 let leafletBelofte;
 function laadLeaflet() {
   if (window.L) return Promise.resolve(stelLeafletIn(window.L));
@@ -12215,7 +12241,7 @@ const groepLabelKaart = (gr) => `${hoofdletter(GR.NIVEAU_KORT[gr.knoop.niveau] ?
  * @param {{ objecten: object[], kleurVan: (o) => string, popup?: (o) => string, opKlik?: (o) => void }} opties
  * @returns {Promise<null | { map, toon(ids:Set), herkleur(), zoomNaar(id), gebied(cb), aantal: number }>}
  */
-async function tekenObjectenKaart(el, { objecten, kleurVan, statusVan = null, popup = null, opKlik = null, opOpen = null }) {
+async function tekenObjectenKaart(el, { objecten, kleurVan, statusVan = null, popup = null, opKlik = null, opOpen = null, geheugen = '' }) {
   let L;
   try {
     L = await laadLeaflet();
@@ -12281,13 +12307,17 @@ async function tekenObjectenKaart(el, { objecten, kleurVan, statusVan = null, po
     groep.addLayer(laag);
   }
   const passend = (b) => (b.isValid() ? map.fitBounds(b, { padding: [24, 24], maxZoom: 18, animate: false }) : map.setView([52.1, 5.1], 8, { animate: false }));
-  passend(groep.getBounds());
+  const beeld = geheugen ? kaartGeheugen(map, geheugen) : null;
+  const hersteld = Boolean(beeld?.herstel());
+  if (!hersteld) passend(groep.getBounds());
+  beeld?.volg();
   let zichtbaar = new Set(lagen.keys());
   let jij = null;
   let markering = null;
   return {
     map,
     aantal: lagen.size,
+    hersteld, // kaartbeeld van een eerder bezoek teruggezet: niet automatisch inzoomen
     zetPositie(pos) {
       if (!pos) return;
       if (jij) jij.setLatLng([pos[1], pos[0]]);
@@ -15100,9 +15130,12 @@ async function tekenPakketKaart(el, { pakket, objecten, statusVan, positie = nul
   });
   // Eerst het kaartbeeld bepalen, dan pas de vlakken toevoegen (anders kan Leaflet niet clippen).
   const b = laag.getBounds();
-  if (b.isValid()) map.fitBounds(b, { padding: [24, 24], maxZoom: 18, animate: false });
+  // Terug op dezelfde kaart (bijv. na afmelden of overslaan): hetzelfde beeld als je had.
+  const beeld = kaartGeheugen(map, `pakket:${pakket.id}:${pakket.rondeId ?? ''}:${mobiel ? 'm' : 'pc'}`);
+  if (beeld.herstel()) { /* onthouden beeld */ } else if (b.isValid()) map.fitBounds(b, { padding: [24, 24], maxZoom: 18, animate: false });
   else if (positie) map.setView([positie[1], positie[0]], 16, { animate: false });
   else map.setView([52.1, 5.1], 8, { animate: false });
+  beeld.volg();
   laag.addTo(map);
   // Herstelronde: de doorgezette gebreken op hun exacte locatie, bovenop de objecten.
   const gebrekLaag = L.layerGroup();

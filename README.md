@@ -1789,6 +1789,10 @@ tegels worden pas na het knijpen geladen en er wordt een ruimere rand vooruit ge
 Kaarten van een pagina die je verlaat worden direct opgeruimd, ook als er nog een zoomanimatie liep. Alles staat op één plek
 (`stelLeafletIn` in `js/app.js`).
 
+**Kaartbeeld onthouden**: de veldkaart en de kaart van een werkpakket (telefoon en pc) onthouden tijdens de sessie hun
+uitsnede en zoom (per werkpakket en ronde, `kaartGeheugen`). Na afmelden, overslaan of het bekijken van een object kom je
+terug op precies hetzelfde kaartbeeld in plaats van opnieuw ingezoomd op alle objecten. Een onthouden beeld vervalt na 8 uur.
+
 ## Mobiele app (Android en iOS)
 
 Naast de website is er een echte app voor telefoons, gemaakt met [Capacitor](https://capacitorjs.com): dezelfde code, verpakt als
