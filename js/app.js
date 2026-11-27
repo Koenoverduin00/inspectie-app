@@ -4760,7 +4760,7 @@ async function verwerkKoppelingen({ forceer = false } = {}) {
     for (const k of koppelingen) {
       const { nieuw, gewijzigd } = KP.bijwerken(k, relevant, bestaande, { nu, conditieVan: (g, i) => (i.gebreken?.includes(g) && TY.methodiekVan(i) === 'nen' ? gebrekScore(g) : null) });
       for (const wp of [...nieuw, ...gewijzigd]) { await db.bewaar('werkpunten', { ...wp, projectId: wp.projectId ?? projectId() }); bestaande.set(wp.id, wp); }
-      nieuwAantal += nieuw.length;
+      nieuwAantal += nieuw.filter((x) => x.status !== 'gedaan').length; // al ter plekke uitgevoerd telt niet als doorgezet
     }
     await plaatsWerkpunten(koppelingen, [...bestaande.values()]);
     koppelSignatuur = sig.replace(/\|[^|]*$/, `|${hashTekst((await inProject('werkpunten')).map((p) => `${p.id}${p.gewijzigd}${p.doel?.rondeId}`).join())}`);
@@ -4849,6 +4849,56 @@ async function plaatsInRegister(koppelingen, punten) {
   }
 }
 
+/**
+ * Maatregelen die tijdens de inspectie direct (ter plekke) zijn uitgevoerd: per maatregel een werkregistratie,
+ * gekoppeld aan het gebrek. Zo telt het mee in uren en verantwoording, en ontstaat er geen open werklocatie.
+ * Weer op "nog uitvoeren" gezet: de automatische registratie vervalt (als niemand hem heeft aangepast).
+ */
+async function directUitgevoerdVastleggen(inspectieId) {
+  const i = await db.haal('inspecties', inspectieId);
+  if (!i || i.status !== 'afgerond') return 0;
+  const werk = await inProject('werkzaamheden');
+  const afgehandeld = new Set(werk.filter((w) => !w.uitInspectie).flatMap((w) => (w.maatregelen ?? []).map((m) => HS.sleutel(m.inspectieId, m.gebrekId))));
+  // Al eerder automatisch vastgelegd (ook als het formulier de koppeling niet heeft bewaard): niet nog een keer.
+  const direct = new Map(werk.filter((w) => w.uitInspectie).map((w) => [HS.sleutel(w.uitInspectie.inspectieId, w.uitInspectie.gebrekId), w]));
+  const nu = new Date().toISOString();
+  let n = 0;
+  let anders = false;
+  const verwerk = async (g) => {
+    const sl = HS.sleutel(i.id, g.id);
+    const al = direct.get(sl);
+    if (g.maatregelStatus === 'uitgevoerd' && !g.directWerkId && al) { g.directWerkId = al.id; anders = true; return; }
+    if (g.maatregelStatus === 'uitgevoerd' && !g.directWerkId && !afgehandeld.has(sl)) {
+      const w = {
+        id: nieuwId(), projectId: i.projectId ?? projectId(), objectId: i.objectId, datum: i.datum, eindDatum: i.datum,
+        soort: 'Direct uitgevoerd bij inspectie', uitvoerder: i.inspecteur || accountNaam(), uren: '', status: 'gereed', gereed: true,
+        omschrijving: [KP.maatregelNaam(g), [g.bouwdeel, g.gebrek || g.omschrijving].filter(Boolean).join(' – '), `Ter plekke uitgevoerd tijdens ${i.bvc ? 'de boomveiligheidscontrole' : i.soort || 'de inspectie'}.`].filter(Boolean).join('\n'),
+        maatregelen: [{ inspectieId: i.id, gebrekId: g.id }], fotoIds: [...(g.fotoIds ?? [])], fotoIdsVoor: [],
+        werkpakketId: i.werkpakketId ?? '', rondeId: i.rondeId ?? '', uitInspectie: { inspectieId: i.id, gebrekId: g.id },
+        // Hoort bij de inspectie: die wordt beoordeeld, deze registratie niet nog een keer apart.
+        beoordeling: { status: 'goedgekeurd', door: 'automatisch', opmerking: 'Onderdeel van de inspectie (direct uitgevoerd)', op: nu },
+        aangemaakt: nu, gewijzigd: nu,
+      };
+      await db.bewaar('werkzaamheden', w);
+      g.directWerkId = w.id;
+      g.uitgevoerdOp = g.uitgevoerdOp || i.datum;
+      anders = true; n += 1;
+    } else if (g.maatregelStatus !== 'uitgevoerd' && (g.directWerkId || al)) {
+      const w = await db.haal('werkzaamheden', g.directWerkId || al.id);
+      if (w && w.uitInspectie && w.gewijzigd === w.aangemaakt) await db.verwijder('werkzaamheden', w.id);
+      delete g.directWerkId;
+      g.uitgevoerdOp = '';
+      anders = true;
+    }
+  };
+  for (const g of i.gebreken ?? []) await verwerk(g);
+  for (const g of i.bvc?.maatregelen ?? []) await verwerk(g);
+  for (const g of i.stowa?.waarnemingen ?? []) await verwerk(g);
+  if (anders) await db.bewaar('inspecties', { ...i, gewijzigd: new Date().toISOString() });
+  if (n) melding(`${n} direct uitgevoerde maatregel${n === 1 ? '' : 'en'} vastgelegd als werkregistratie`);
+  return n;
+}
+
 /** Werkpakketten die bron (inspectie) of doel (werk) kunnen zijn. */
 // De soort staat per ronde (een pakket kan bijv. eerst een schouw en daarna werk hebben).
 const heeftSoort = (p, soort) => rondesVan(p).some((r) => (r.soort ?? p.soort ?? 'werk') === soort) || (isAfroep(p) && (p.afroepSoort ?? 'werk') === soort);
@@ -4865,6 +4915,8 @@ async function koppelschemaPagina() {
   const tel = KP.tellingen(punten);
   let bronKeuze = null;
   const lijnStijl = (k) => (k.actief === false ? 'uit' : k.modus === 'altijd' ? 'altijd' : 'controle');
+  const zelf = (k) => k.bronPakketId === k.doelPakketId;
+  const naarTekst = (k) => (zelf(k) ? '↺ Binnen dit pakket' : naam(k.doelPakketId));
   const naam = (id) => { if (id === KP.STORINGEN) return KP.STORINGEN_NAAM; const p = pakketten.find((x) => x.id === id); return p ? metCode(p) : '(verwijderd werkpakket)'; };
   const filterTekst = (f) => [f?.maatregelen?.length ? `maatregel: ${f.maatregelen.join(', ')}` : '', f?.gebreken?.length ? `gebrek: ${f.gebreken.join(', ')}` : '',
     f?.urgentieTot ? `urgentie t/m ${URGENTIES.find((u) => u.id === f.urgentieTot)?.label ?? f.urgentieTot}` : '', f?.conditieVanaf ? `conditie ${f.conditieVanaf} of slechter` : ''].filter(Boolean).join(' · ') || 'alle bevindingen';
@@ -4878,6 +4930,7 @@ async function koppelschemaPagina() {
     <div class="ks-schema" id="ks-schema">
       <svg class="ks-lijnen" id="ks-lijnen" aria-hidden="true"></svg>
       <div class="ks-kolom"><h2>Schouw en inspectie</h2>${bronnen.map((p) => `<div class="ks-kaart bron" data-bron="${esc(p.id)}"><span><strong>${wpNaam(p)}</strong><small>${esc(rondesVan(p).find((r) => r.soort === 'inspectie')?.inspectiesoort || p.inspectiesoort || 'Inspectie')} · ${(p.objecten ?? []).length} objecten</small></span>
+        ${beheer ? `<button type="button" class="ks-zelf${koppelingen.some((k) => k.bronPakketId === p.id && k.doelPakketId === p.id) ? ' actief' : ''}" data-zelf="${esc(p.id)}" title="Gebreken uitvoeren binnen dit pakket (bijv. snoeiwerk uit de BVC)" aria-label="Relatie binnen ${esc(metCode(p))}">↺</button>` : ''}
         <button type="button" class="ks-punt" data-bronpunt="${esc(p.id)}" aria-label="Relatie trekken vanaf ${esc(metCode(p))}" ${beheer ? '' : 'disabled'}></button></div>`).join('')}</div>
       <div class="ks-kolom"><h2>Werkpakketten</h2>${doelen.map((p) => `<div class="ks-kaart doel" data-doel="${esc(p.id)}"><button type="button" class="ks-punt" data-doelpunt="${esc(p.id)}" aria-label="Relatie naar ${esc(metCode(p))}" ${beheer ? '' : 'disabled'}></button>
         <span><strong>${wpNaam(p)}</strong><small>${esc(p.werksoort || 'Werkzaamheden')} · ${rondesVan(p).length} ronde${rondesVan(p).length === 1 ? '' : 's'}</small></span></div>`).join('')}
@@ -4888,7 +4941,7 @@ async function koppelschemaPagina() {
     <section class="kaart"><h2>Relaties <small class="zacht">(${koppelingen.length})</small></h2>
       ${koppelingen.length ? `<div class="tabelhouder"><table><thead><tr><th>Van</th><th>Naar</th><th>Wat</th><th>Modus</th><th>Ronde</th><th>Werklocaties</th><th></th></tr></thead><tbody>
       ${koppelingen.map((k) => { const t = tel.get(k.id) ?? { totaal: 0, open: 0, teBeoordelen: 0, gedaan: 0 }; return `<tr class="${k.actief === false ? 'zacht' : ''}">
-        <td>${esc(naam(k.bronPakketId))}</td><td>${esc(naam(k.doelPakketId))}</td><td><small>${esc(filterTekst(k.filter))}</small></td>
+        <td>${esc(naam(k.bronPakketId))}</td><td>${esc(naarTekst(k))}</td><td><small>${esc(filterTekst(k.filter))}</small></td>
         <td><span class="ks-modus ${lijnStijl(k)}">${k.actief === false ? 'Uit' : esc(KP.MODI[k.modus]?.label ?? k.modus)}</span></td>
         <td><small>${k.doelPakketId === KP.STORINGEN ? 'Register (melding)' : esc(KP.DOEL_RONDES[k.doelRonde ?? 'lopend']?.label ?? '')}</small></td>
         <td><small>${t.totaal ? `${t.gedaan} uitgevoerd · ${t.open} open${t.teBeoordelen ? ` · <a href="#/doorzetten?relatie=${esc(k.id)}">${t.teBeoordelen} te beoordelen</a>` : ''}` : 'nog geen'}</small></td>
@@ -4905,6 +4958,16 @@ async function koppelschemaPagina() {
     svg.setAttribute('viewBox', `0 0 ${s.width} ${s.height}`);
     svg.style.width = `${s.width}px`; svg.style.height = `${s.height}px`;
     svg.innerHTML = koppelingen.map((k) => {
+      if (zelf(k)) {
+        // Binnen hetzelfde pakket: een lus aan de schouwkaart.
+        const z = schema.querySelector(`[data-bronpunt="${CSS.escape(k.bronPakketId)}"]`);
+        if (!z) return '';
+        const [x, y] = middenVan(z);
+        const t = tel.get(k.id);
+        const lus = `M${x + 9},${y - 7} C${x + 62},${y - 44} ${x + 62},${y + 44} ${x + 9},${y + 7}`;
+        return `<g class="ks-lijn ${lijnStijl(k)}" data-lijn="${esc(k.id)}"><path class="ks-raak" d="${lus}"/><path class="ks-pad" d="${lus}"/>
+          ${t?.totaal ? `<g transform="translate(${x + 78},${y})"><rect x="-26" y="-11" width="52" height="22" rx="11"/><text text-anchor="middle" dy="4">${t.teBeoordelen ? `${t.teBeoordelen} wacht` : `${t.open} open`}</text></g>` : ''}</g>`;
+      }
       const a = schema.querySelector(`[data-bronpunt="${CSS.escape(k.bronPakketId)}"]`);
       const b = schema.querySelector(`[data-doelpunt="${CSS.escape(k.doelPakketId)}"]`);
       if (!a || !b) return '';
@@ -4933,6 +4996,15 @@ async function koppelschemaPagina() {
   };
   if (schema && beheer) {
     schema.addEventListener('click', (e) => {
+      const zk = e.target.closest('[data-zelf]');
+      if (zk) {
+        const p = pakketten.find((x) => x.id === zk.dataset.zelf);
+        const werkrondes = rondesVan(p).some((r) => (r.soort ?? p.soort ?? 'werk') !== 'inspectie');
+        const al = koppelingen.find((k) => k.bronPakketId === p.id && k.doelPakketId === p.id);
+        kiesBron(null);
+        relatieDialoog(al ?? { id: nieuwId(), bronPakketId: p.id, doelPakketId: p.id, modus: 'controle', doelRonde: werkrondes ? 'lopend' : 'herstel', filter: {}, actief: true, vanaf: vandaag() }, { nieuw: !al });
+        return;
+      }
       const bp = e.target.closest('[data-bronpunt]');
       if (bp) { kiesBron(bronKeuze === bp.dataset.bronpunt ? null : bp.dataset.bronpunt); return; }
       const dk = e.target.closest('[data-doel]');
@@ -4978,6 +5050,8 @@ async function koppelschemaPagina() {
       : '<p class="ks-dhulp">Nog geen bevindingen in deze schouw; alles telt mee.</p>');
     const d = document.createElement('dialog');
     const isReg = k.doelPakketId === KP.STORINGEN;
+    const doelP = pakketten.find((x) => x.id === k.doelPakketId);
+    const doelHeeftWerk = doelP ? rondesVan(doelP).some((r) => (r.soort ?? doelP.soort ?? 'werk') !== 'inspectie') : true;
     const optieKaart = (naam2, id, titel, uitleg, gekozen, voorbeeld = '') => `<label class="ks-optie"><input type="radio" name="${naam2}" value="${id}" ${gekozen ? 'checked' : ''}>
       <span class="ks-optie-kop">${voorbeeld}<strong>${esc(titel)}</strong></span><small>${esc(uitleg)}</small></label>`;
     const telTekst = (n) => (n ? `${n} gekozen` : 'alle');
@@ -4987,7 +5061,8 @@ async function koppelschemaPagina() {
         <h2>${nieuw ? 'Nieuwe relatie' : 'Relatie bewerken'}</h2>
         <div class="ks-route"><span class="ks-route-deel"><small>Van</small><strong>${esc(naam(k.bronPakketId))}</strong></span>
           <span class="ks-route-pijl" aria-hidden="true">→</span>
-          <span class="ks-route-deel${isReg ? ' reg' : ''}"><small>Naar</small><strong>${isReg ? `${I.let} ` : ''}${esc(naam(k.doelPakketId))}</strong></span></div>
+          <span class="ks-route-deel${isReg ? ' reg' : ''}${zelf(k) ? ' zelf' : ''}"><small>Naar</small><strong>${isReg ? `${I.let} ` : ''}${zelf(k) ? '↺ Hetzelfde pakket' : esc(naam(k.doelPakketId))}</strong></span></div>
+        ${zelf(k) ? `<p class="ks-dhulp">De gebreken worden uitgevoerd binnen dit pakket, in een werkronde (bijv. snoeiwerk uit de BVC). Wat de controleur ter plekke doet, zet hij in het formulier op <em>Direct uitgevoerd</em>; dat komt hier niet meer langs.</p>` : ''}
         ${isReg ? `<p class="ks-dhulp">Elk doorgezet gebrek wordt een melding (soort <em>Gebrek</em>) in het register, met de urgentie van het gebrek. Bij het oplossen staat de maatregel al aangevinkt.</p>` : ''}
       </header>
       <div class="ks-dinhoud">
@@ -4997,8 +5072,10 @@ async function koppelschemaPagina() {
             ${optieKaart('modus', 'controle', KP.MODI.controle.label, KP.MODI.controle.uitleg, k.modus !== 'altijd', '<i class="ks-l controle"></i>')}
           </div></section>
         <section class="ks-sectie" ${isReg ? 'hidden' : ''}><h3>In welke ronde?</h3>
-          <div class="ks-opties drie">${Object.entries(KP.DOEL_RONDES).map(([id, m]) => optieKaart('doelRonde', id, m.label, m.uitleg, (k.doelRonde ?? 'lopend') === id)).join('')}</div>
-          <div class="veld ks-hnaamveld" id="ks-herstelnaam" ${(k.doelRonde ?? 'lopend') === 'herstel' ? '' : 'hidden'}><label for="ks-hnaam">Naam van de herstelronde</label><input id="ks-hnaam" value="${esc(k.herstelNaam ?? '')}" placeholder="bijv. Herstel uit schouw"></div>
+          <div class="ks-opties drie">${Object.entries(KP.DOEL_RONDES).map(([id, m]) => (zelf(k) && !doelHeeftWerk && id !== 'herstel'
+    ? `<label class="ks-optie uit" title="Dit pakket heeft (nog) geen werkronde"><input type="radio" name="doelRonde" value="${id}" disabled><span class="ks-optie-kop"><strong>${esc(m.label)}</strong></span><small>Dit pakket heeft nog geen werkronde.</small></label>`
+    : optieKaart('doelRonde', id, m.label, m.uitleg, (k.doelRonde ?? 'lopend') === id))).join('')}</div>
+          <div class="veld ks-hnaamveld" id="ks-herstelnaam" ${(k.doelRonde ?? 'lopend') === 'herstel' ? '' : 'hidden'}><label for="ks-hnaam">Naam van de herstelronde</label><input id="ks-hnaam" value="${esc(k.herstelNaam ?? '')}" placeholder="${zelf(k) ? 'bijv. Snoeiwerk uit BVC 2026' : 'bijv. Herstel uit schouw'}"></div>
         </section>
         <section class="ks-sectie"><h3>Welke bevindingen?</h3>
           <div class="ks-filterrij">
@@ -5032,7 +5109,9 @@ async function koppelschemaPagina() {
       const x = lees();
       const nieuwP = KP.bijwerken({ ...x, actief: true }, bronInsp, new Map(punten.filter((p) => p.koppelingId === k.id).map((p) => [p.id, p])), { conditieVan: (g, i) => (i.gebreken?.includes(g) && TY.methodiekVan(i) === 'nen' ? gebrekScore(g) : null) }).nieuw;
       const wacht = bronInsp.filter((i) => i.status === 'afgerond' && !KP.inspectieGoedgekeurd(i)).length;
-      d.querySelector('#ks-voorbeeld').innerHTML = `${I.let} Bij opslaan ${nieuwP.length ? `${x.modus === 'altijd' ? 'gaan' : 'komen'} <strong>${nieuwP.length}</strong> bevinding${nieuwP.length === 1 ? '' : 'en'} ${x.modus === 'altijd' ? (k.doelPakketId === KP.STORINGEN ? 'direct als melding naar het register' : 'direct naar het werkpakket') : 'in de doorzetbak'}` : 'wordt nu niets doorgezet'}${wacht ? `; ${wacht} inspectie${wacht === 1 ? '' : 's'} wacht${wacht === 1 ? '' : 'en'} nog op goedkeuring` : ''}.`;
+      const al = nieuwP.filter((p) => p.status === 'gedaan').length;
+      nieuwP.splice(0, nieuwP.length, ...nieuwP.filter((p) => p.status !== 'gedaan'));
+      d.querySelector('#ks-voorbeeld').innerHTML = `${I.let} ${al ? `${al} al ter plekke uitgevoerd. ` : ''}Bij opslaan ${nieuwP.length ? `${x.modus === 'altijd' ? (nieuwP.length === 1 ? 'gaat' : 'gaan') : (nieuwP.length === 1 ? 'komt' : 'komen')} <strong>${nieuwP.length}</strong> bevinding${nieuwP.length === 1 ? '' : 'en'} ${x.modus === 'altijd' ? (k.doelPakketId === KP.STORINGEN ? 'direct als melding naar het register' : 'direct naar het werkpakket') : 'in de doorzetbak'}` : 'wordt nu niets doorgezet'}${wacht ? `; ${wacht} inspectie${wacht === 1 ? '' : 's'} wacht${wacht === 1 ? '' : 'en'} nog op goedkeuring` : ''}.`;
     };
     voorbeeld();
     d.addEventListener('change', (e) => {
@@ -5054,7 +5133,7 @@ async function koppelschemaPagina() {
     if (keuze === 'weg') {
       const mijn = punten.filter((p) => p.koppelingId === k.id);
       const teB = mijn.filter((p) => p.status === 'te beoordelen');
-      if (!(await bevestig(`Relatie ${naam(k.bronPakketId)} → ${naam(k.doelPakketId)} verwijderen?\n\n${mijn.filter((p) => p.status === 'open').length} open werklocaties blijven in het werkpakket staan.${teB.length ? ` ${teB.length} bevindingen in de doorzetbak vervallen.` : ''}`))) return;
+      if (!(await bevestig(`Relatie ${naam(k.bronPakketId)} → ${naarTekst(k)} verwijderen?\n\n${mijn.filter((p) => p.status === 'open').length} open werklocaties blijven in het werkpakket staan.${teB.length ? ` ${teB.length} bevindingen in de doorzetbak vervallen.` : ''}`))) return;
       for (const p of teB) await db.bewaar('werkpunten', { ...p, status: 'vervallen', reden: 'Relatie verwijderd', gewijzigd: nu });
       await bewaarActiefProject((pr) => ({ koppelingen: (pr.koppelingen ?? []).filter((x) => x.id !== k.id) }));
       melding('Relatie verwijderd');
@@ -5094,7 +5173,7 @@ async function doorzetbakPagina(_, q = new URLSearchParams()) {
       <div class="paginakop"><div><h1>Doorzetbak</h1><p>Bevindingen uit schouw en inspectie die werk opleveren (via het <a href="#/koppelschema">koppelschema</a>). Kies wat er wordt uitgevoerd.</p></div></div>
       <div class="filters">
         <div class="chips" role="radiogroup" aria-label="Status">${statussen.map((s) => `<label class="chip"><input type="radio" name="dz-status" value="${s}" ${s === status ? 'checked' : ''}><span>${s === 'alles' ? 'Alles' : esc(KP.STATUS[s].label)} <small>(${tel(s)})</small></span></label>`).join('')}</div>
-        ${koppelingen.length > 1 ? `<select id="dz-relatie" aria-label="Relatie"><option value="">Alle relaties</option>${koppelingen.map((k) => optie(k.id, `${metCode(pm.get(k.bronPakketId) ?? { naam: '?' })} → ${k.doelPakketId === KP.STORINGEN ? KP.STORINGEN_NAAM : metCode(pm.get(k.doelPakketId) ?? { naam: '?' })}`, relatie)).join('')}</select>` : ''}
+        ${koppelingen.length > 1 ? `<select id="dz-relatie" aria-label="Relatie"><option value="">Alle relaties</option>${koppelingen.map((k) => optie(k.id, `${metCode(pm.get(k.bronPakketId) ?? { naam: '?' })} → ${k.doelPakketId === KP.STORINGEN ? KP.STORINGEN_NAAM : k.doelPakketId === k.bronPakketId ? 'binnen dit pakket' : metCode(pm.get(k.doelPakketId) ?? { naam: '?' })}`, relatie)).join('')}</select>` : ''}
         <input type="search" id="dz-zoek" placeholder="Zoek op object of maatregel…" value="${esc(zoek)}" aria-label="Zoeken">
       </div>
       ${kan && status === 'te beoordelen' && rijen.length ? `<div class="kaart selectiebalk ${gekozen.size ? 'actief' : ''}">
@@ -6365,8 +6444,8 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
         ${URGENTIES.map((u) => optie(u.id, u.label, g.urgentie)).join('')}</select></div>`,
       kosten: toonKosten() ? `<div class="veld"><label>Kostenraming (€)</label>
         <input type="number" min="0" step="100" inputmode="numeric" data-g="${i}" data-veld="kostenraming" value="${esc(g.kostenraming)}"></div>` : '',
-      status: `<div class="veld"><label>Status maatregel</label><select data-g="${i}" data-veld="maatregelStatus">
-        ${optie('open', 'Open', g.maatregelStatus)}${optie('uitgevoerd', 'Uitgevoerd', g.maatregelStatus)}</select></div>`,
+      status: `<div class="veld"><label>Uitvoering maatregel</label><select data-g="${i}" data-veld="maatregelStatus">
+        ${optie('open', 'Nog uitvoeren', g.maatregelStatus)}${optie('uitgevoerd', 'Direct uitgevoerd (ter plekke)', g.maatregelStatus)}</select></div>`,
       fotos: `<div class="veld breed"><label>Foto's</label>${fotoBlok(g.fotos, `g${i}`)}</div>`,
       gps: gpsVeldHtml(g, `g${i}`),
       extra: bevExtraHtml(g.id),
@@ -6395,7 +6474,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     maatregel: `<div class="veld breed"><label>Advies maatregel</label><textarea ${attr}="maatregel" maxlength="2000" style="min-height:60px">${esc(x.maatregel ?? '')}</textarea></div>`,
     urgentie: `<div class="veld"><label>Urgentie</label><select ${attr}="urgentie"><option value="">–</option>${URGENTIES.map((u) => optie(u.id, u.label, x.urgentie)).join('')}</select></div>`,
     kosten: toonKosten() ? `<div class="veld"><label>Kostenraming (€)</label><input type="number" min="0" step="100" inputmode="numeric" ${attr}="kostenraming" value="${esc(x.kostenraming ?? '')}"></div>` : '',
-    status: `<div class="veld"><label>Status maatregel</label><select ${attr}="maatregelStatus">${optie('open', 'Open', x.maatregelStatus)}${optie('uitgevoerd', 'Uitgevoerd', x.maatregelStatus)}</select></div>`,
+    status: `<div class="veld"><label>Uitvoering maatregel</label><select ${attr}="maatregelStatus">${optie('open', 'Nog uitvoeren', x.maatregelStatus)}${optie('uitgevoerd', 'Direct uitgevoerd (ter plekke)', x.maatregelStatus)}</select></div>`,
   });
   // Methodiek "oordeel": onderdeel, gebrek en een oordeel uit de eigen schaal.
   const bevindingHtml = (g, i) => {
@@ -6734,6 +6813,7 @@ async function inspectieFormulier(id, objectId, { mobiel = false, taakId = null,
     inspectie.gebreken = inspectie.gebreken.map((g) => HS.metGeldendeLocatie(g, objVoorLocatie));
     if (await ingediendGeblokkeerd(inspectie.id)) return;
     await db.bewaar('inspecties', inspectie);
+    if (status === 'afgerond') await directUitgevoerdVastleggen(inspectie.id);
     if (data.inspecteur && !sync.profiel()?.naam && !instelling.lees('inspecteur')) instelling.schrijf('inspecteur', data.inspecteur);
     formulierGewijzigd = false;
     if (status === 'afgerond') gedaan('Inspectie afgerond en vastgelegd', { object: objecten.find((o) => o.id === inspectie.objectId), beoordeling: true });
@@ -17365,6 +17445,7 @@ async function stowaFormulier(id, objectId, { mobiel = false, taakId = null, pak
       stowa: { kering: staat.kering, moment: staat.moment, waarnemingen, zwaarste: ST.zwaarste(waarnemingen) },
       aangemaakt: bestaand?.aangemaakt ?? nu, gewijzigd: nu,
     });
+    if (status === 'afgerond') await directUitgevoerdVastleggen(inspectieId);
     if (status === 'afgerond') {
       if (staat.kering && object.stowaKering !== staat.kering) {
         const o = await db.haal('objecten', object.id);
@@ -17706,6 +17787,7 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
           <div class="veld"><label class="vereist">Maatregel</label><select data-m="${i}" data-veld="bvcMaatregel"><option value="">– kies –</option>
             ${BV.MAATREGELEN.map((x) => optie(x, x, m.bvcMaatregel)).join('')}</select></div>
           <div class="veld"><label class="vereist">Urgentie</label>${segment(`termijn-${i}`, m.termijn, Object.entries(BV.URGENTIE).map(([k, v]) => [k, v.label]), `data-m="${i}" data-veld="termijn"`)}</div>
+          <div class="veld"><label>Uitvoering</label><select data-m="${i}" data-veld="maatregelStatus">${optie('open', 'Nog uitvoeren', m.maatregelStatus ?? 'open')}${optie('uitgevoerd', 'Direct uitgevoerd (ter plekke)', m.maatregelStatus ?? 'open')}</select></div>
           <div class="veld breed"><small>Uiterlijk uitvoeren: <strong data-uiterlijk="${i}">${m.termijn ? datumNL(BV.uitvoerenVoor(m.termijn, $('#f-datum')?.value || staat.datum)) : '–'}</strong></small></div>
           ${gpsVeldHtml(m, `m${i}`).replace('<label>Locatie (GPS)</label>', `<label${locatieMoet ? ' class="vereist"' : ''}>Exacte locatie van de maatregel</label>`)}
           <div class="veld breed"><label>Plaatsomschrijving</label><input data-m="${i}" data-veld="plaatsOmschrijving" value="${esc(m.plaatsOmschrijving ?? '')}" maxlength="150" placeholder="bijv. 3e boom vanaf de kruising, oostzijde; boomnummer"></div>
@@ -17829,6 +17911,7 @@ async function bvcFormulier(id, objectId, { mobiel = false, taakId = null, pakke
       soort: BV.BVC_SOORT, datum, inspecteur, status, weer: '', samenvatting: b.opmerking, fotoIds: staat.fotos.map((f) => f.id),
       gebreken: [], bvc: bvcData, aangemaakt: bestaand?.aangemaakt ?? nu, gewijzigd: nu,
     });
+    if (status === 'afgerond') await directUitgevoerdVastleggen(inspectieId);
     if (status === 'afgerond') {
       // Basisgegevens horen bij de boom en worden bij elke controle geverifieerd (§ 6.2).
       const o = await db.haal('objecten', object.id);

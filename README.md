@@ -495,6 +495,21 @@ De uitkomst van een schouw of inspectie (gebreken met een maatregel) kan de inpu
     - **Aan of uit.**
   - Vóór het opslaan zie je hoeveel bevindingen er door zouden gaan.
 - **Moment:** pas als de inspectie is **goedgekeurd** (of afgerond, als het project niet beoordeelt).
+- **Binnen hetzelfde pakket** (bijv. BVC met snoeiwerk door dezelfde ploeg):
+  - **Ter plekke uitgevoerd:** zet in het inspectie- of BVC-formulier per maatregel *Uitvoering* op **Direct
+    uitgevoerd (ter plekke)**.
+    - Bij afronden maakt de app per maatregel automatisch een **werkregistratie**: soort *Direct uitgevoerd bij
+      inspectie*, met dezelfde datum, uitvoerder, foto's en het pakket van de inspectie. Die registratie is gekoppeld
+      aan het gebrek en hoeft niet apart beoordeeld te worden, want de inspectie wordt beoordeeld.
+    - Zet je hem weer op *Nog uitvoeren*, dan vervalt de automatische registratie, zolang die niet is aangepast.
+    - In het koppelschema telt zo'n gebrek meteen als *uitgevoerd*. Er ontstaat geen open werklocatie.
+  - **Later uitvoeren, in hetzelfde pakket:** klik in het koppelschema op **↺** bij de schouw. Je maakt dan een relatie
+    van het pakket naar zichzelf; die staat als lus op het schema en als *Binnen dit pakket* in de tabel.
+    - De gebreken gaan naar een werkronde in hetzelfde pakket: lopend, volgend, of een aparte herstelronde, bijv.
+      *Snoeiwerk uit BVC 2026*.
+    - Heeft het pakket nog geen werkronde, dan kan alleen de herstelronde.
+    - Modus, filter en goedkeuring werken als bij andere relaties.
+    - De voortgang van de controle (bomen) en van het herstel (werklocaties) blijft gescheiden.
 - **Storingen en gebreken als doel:** het register staat rechts in het schema als werkpakket. Elk doorgezet gebrek
   wordt een melding (soort *Gebrek*) met de urgentie van het gebrek: direct → direct, binnen 3 maanden → deze week,
   anders normaal. De melding komt op de telefoons onder *Storingen en gebreken*.

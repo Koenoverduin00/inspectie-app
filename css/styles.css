@@ -2497,3 +2497,11 @@ body.kiesmodus .mfilterchips, body.kiesmodus .mtedoenseg, body.kiesmodus .ff-fil
   .ks-route { grid-template-columns: 1fr; }
   .ks-route-pijl { transform: rotate(90deg); justify-self: center; line-height: 1; }
 }
+
+.ks-zelf { position: relative; z-index: 3; flex: none; width: 30px; height: 30px; border-radius: 50%; border: 1px dashed var(--rand, #b0b8c1); background: var(--kaart, #fff); color: var(--primair); font-size: 1rem; line-height: 1; cursor: pointer; padding: 0; margin-left: auto; }
+.ks-zelf:hover { border-style: solid; border-color: var(--primair); background: color-mix(in srgb, var(--primair) 8%, var(--kaart, #fff)); }
+.ks-kaart.bron { gap: .5rem; }
+.ks-route-deel.zelf { background: color-mix(in srgb, #1a7f37 9%, transparent); }
+.ks-optie.uit { opacity: .55; cursor: not-allowed; }
+.ks-optie.uit .ks-optie-kop::after { display: none; }
+.ks-zelf.actief { border-style: solid; border-color: var(--primair); background: color-mix(in srgb, var(--primair) 12%, var(--kaart, #fff)); }
