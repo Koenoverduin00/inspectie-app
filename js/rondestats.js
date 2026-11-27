@@ -139,7 +139,7 @@ export function objectRegels(ids, vg, { objectVan = () => null, wieVan = (r) => 
     }
     if (vg?.overgeslagen?.has(id)) {
       const x = vg.overgeslagen.get(id);
-      return { id, o, status: 'overgeslagen', datum: String(x.op ?? '').slice(0, 10), wie: x.door ?? '', reden: x.reden ?? '', toelichting: x.toelichting ?? '' };
+      return { id, o, status: 'overgeslagen', datum: String(x.op ?? '').slice(0, 10), wie: x.door ?? '', reden: x.reden ?? '', juisteActiviteit: x.juisteActiviteit ?? '', toelichting: x.toelichting ?? '' };
     }
     if (vg?.wacht?.has(id)) {
       const x = vg.wacht.get(id);

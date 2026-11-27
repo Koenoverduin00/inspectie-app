@@ -23,6 +23,12 @@ export const AFROEP_REDENEN = [
   'Anders',
 ];
 
+/** Reden waarmee de uitvoerder meldt dat het werkpakket de verkeerde onderhoudsactiviteit aan het object koppelt. */
+export const VERKEERDE_ACTIVITEIT = 'Verkeerde onderhoudsactiviteit gekoppeld';
+/** Keuzes voor "welke activiteit is wel nodig" naast de werksoorten. */
+export const ACTIVITEIT_ONBEKEND = 'Weet ik niet';
+export const ACTIVITEIT_GEEN = 'Geen onderhoud nodig';
+
 export const OVERSLAAN_REDENEN = [
   'Niet bereikbaar',
   'Geparkeerde auto / obstakel',
@@ -30,8 +36,18 @@ export const OVERSLAAN_REDENEN = [
   'Al uitgevoerd door derden',
   'Niet nodig',
   'Onveilige situatie',
+  VERKEERDE_ACTIVITEIT,
   'Anders',
 ];
+
+/** Tekst van een overgeslagen object: reden, bij een verkeerde activiteit met de activiteit die wél nodig is. */
+export function overslaanTekst(o, { toelichting = false } = {}) {
+  if (!o) return '';
+  const delen = [o.reden ?? ''];
+  if (o.reden === VERKEERDE_ACTIVITEIT && o.juisteActiviteit) delen[0] += ` → ${o.juisteActiviteit}`;
+  if (toelichting && o.toelichting) delen.push(o.toelichting);
+  return delen.filter(Boolean).join(': ');
+}
 
 export const STANDAARD_RONDE = 'standaard';
 

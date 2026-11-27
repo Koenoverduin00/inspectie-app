@@ -18,7 +18,7 @@ import * as BV from './bvc.js';
 import * as FI from './fotoinfo.js';
 import * as EI from './eisen.js';
 import {
-  PAKKETSTATUS, OVERSLAAN_REDENEN, overslaanId, voortgang as pakketVoortgang, voortgangRegel, VOORTGANG_STANDAARD, voorMij as pakketVoorMijBasis, filterObjecten,
+  PAKKETSTATUS, OVERSLAAN_REDENEN, VERKEERDE_ACTIVITEIT, ACTIVITEIT_ONBEKEND, ACTIVITEIT_GEEN, overslaanTekst, overslaanId, voortgang as pakketVoortgang, voortgangRegel, VOORTGANG_STANDAARD, voorMij as pakketVoorMijBasis, filterObjecten,
   rondesVan, rondeCode, rondeView, rondeVanId, pakketStatus, metCode, objectStatus as rondeStatusVan, teDoen as isTeDoen, isDeels, EENHEDEN, EENHEID_KORT, postenVan, hoeveelheidTekst, totaalVoortgang, STANDAARD_RONDE, PLANNINGSWIJZEN, isAfroep, AFROEP_REDENEN, onderscheid as rondeOnderscheid,
 } from './pakketten.js';
 import * as PX from './pakketexcel.js';
@@ -3427,7 +3427,7 @@ async function dashboard() {
       } else if (soort === 'over') {
         for (const o of g.overgeslagen) {
           if (!inPeriode(o.op) || !inPak(o.pakketId)) continue;
-          voeg(o.objectId, { datum: o.op, titel: `Overgeslagen (${metCode(g.pakketten.find((p) => p.id === o.pakketId)) || 'werkpakket'})`, label: o.reden ?? '', kleur: '#8a96a3', href: `#/werkpakketten/${o.pakketId}`, door: o.door });
+          voeg(o.objectId, { datum: o.op, titel: `Overgeslagen (${metCode(g.pakketten.find((p) => p.id === o.pakketId)) || 'werkpakket'})`, label: overslaanTekst(o), kleur: '#8a96a3', href: `#/werkpakketten/${o.pakketId}`, door: o.door });
         }
       }
       for (const l of m.values()) l.sort((a, b) => (a.rang ?? 0) - (b.rang ?? 0) || String(b.datum).localeCompare(String(a.datum)));
@@ -5684,9 +5684,9 @@ async function objectLogboek(objectId) {
   }
   for (const o of over.filter((x) => x.objectId === objectId)) {
     uit.push({
-      soort: 'overgeslagen', datum: String(o.op ?? '').slice(0, 10), titel: `Overgeslagen: ${o.reden ?? ''}`, wie: o.door, tekst: o.toelichting,
+      soort: 'overgeslagen', datum: String(o.op ?? '').slice(0, 10), titel: `Overgeslagen: ${overslaanTekst(o)}`, wie: o.door, tekst: o.toelichting,
       pakket: pakketNaam(o.pakketId, o.rondeId), labels: '', extra: '', href: o.pakketId ? `#/werkpakketten/${o.pakketId}` : '',
-      export: ['Overgeslagen', `${o.reden ?? ''}${o.toelichting ? `: ${o.toelichting}` : ''}`, ''],
+      export: ['Overgeslagen', overslaanTekst(o, { toelichting: true }), ''],
     });
   }
   for (const v of vrij.filter((x) => (x.objectIds ?? [x.objectId]).includes(objectId))) {
@@ -8178,7 +8178,7 @@ async function mobielLocatie(objectId, q = new URLSearchParams()) {
           <button class="knop" type="button" data-overslaan="${esc(sleutel)}">${I.overslaan} Overslaan</button></div>`
     : x.st === 'ingediend' ? `<div class="locregel-status"><span class="label-status ingediend">${I.wacht} Wacht op beoordeling</span> <a href="${x.v.soort === 'inspectie' ? esc(inspectieHref(x.vg.wacht.get(objectId))) : `#/m/werk/${esc(x.vg.wacht.get(objectId).id)}`}">${datumNL(x.vg.wacht.get(objectId).datum)}</a></div>`
     : x.st === 'gedaan' ? `<div class="locregel-status"><span class="label-status afgerond">${I.vink} Gedaan</span> <a href="${regHref(x)}">${datumNL(r.datum)}${r.uitvoerder || r.inspecteur ? ` · ${esc(r.uitvoerder || r.inspecteur)}` : ''}</a></div>`
-      : `<div class="locregel-status"><span class="label-status">${I.overslaan} Overgeslagen</span> <small>${esc(ov?.reden ?? '')}</small>
+      : `<div class="locregel-status"><span class="label-status">${I.overslaan} Overgeslagen</span> <small>${esc(overslaanTekst(ov))}</small>
           <button class="knop klein" type="button" data-terug="${esc(sleutel)}">Terugzetten</button></div>`}
       <a class="locregel-melden" href="#/m/melding/nieuw?${new URLSearchParams({ object: objectId, pakket: x.v.id })}" title="Storing of gebrek melden vanuit dit werkpakket">${I.let} Storing of gebrek melden</a>
     </li>`;
@@ -10285,7 +10285,7 @@ async function mijnRegistraties() {
     })),
     ...vrij.filter((v) => isIk(v.deskundige)).map((r) => ({ r, pdf: 'vrijgave', icoon: I.blad, titel: `Vrijgave · ${eco.BESLUIT[r.besluit]?.label ?? 'concept'}`,
       href: `#/m/vrijgave/${r.id}`, status: r.status === 'afgerond' ? 'vastgelegd' : 'concept', tijd: r.gewijzigd || r.datum || '', objectId: r.objectIds?.[0] })),
-    ...over.filter((x) => isIk(x.door)).map((r) => ({ r, icoon: I.overslaan, titel: `Overgeslagen${r.reden ? ` · ${r.reden}` : ''}`,
+    ...over.filter((x) => isIk(x.door)).map((r) => ({ r, icoon: I.overslaan, titel: `Overgeslagen${r.reden ? ` · ${overslaanTekst(r)}` : ''}`,
       href: r.objectId ? `#/m/locatie/${r.objectId}` : '', status: 'vastgelegd', tijd: r.gewijzigd || r.op || '', pakketId: r.pakketId })),
   ].map((x) => ({ ...x, object: objectMap.get(x.objectId ?? x.r.objectId), pakket: pakketNaam.get(x.pakketId ?? x.r.werkpakketId) ?? '' }))
     .sort((a, b) => String(b.tijd).localeCompare(String(a.tijd)));
@@ -12903,7 +12903,7 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
       const [label, kl] = STATUS[x.status];
       const detail = x.status === 'gedaan' ? `${datumNL(x.datum)}${x.wie ? ` · ${esc(x.wie)}` : ''}${x.oordeel?.label ? ` · <span class="schaalchip" style="--k:${esc(x.oordeel.kleur || '#6b7785')}">${esc(x.oordeel.label)}</span>` : ''}${x.vervolg ? ' · <strong>vervolg nodig</strong>' : ''}`
         : x.status === 'deels' ? `${x.keer}× gedeeltelijk · laatst ${datumNL(x.datum)}${x.wie ? ` · ${esc(x.wie)}` : ''}`
-          : x.status === 'overgeslagen' ? `${esc(x.reden || 'overgeslagen')}${x.toelichting ? `: ${esc(x.toelichting)}` : ''} · ${datumNL(x.datum)}${x.wie ? ` · ${esc(x.wie)}` : ''}`
+          : x.status === 'overgeslagen' ? `${esc(overslaanTekst(x, { toelichting: true }) || 'overgeslagen')} · ${datumNL(x.datum)}${x.wie ? ` · ${esc(x.wie)}` : ''}`
             : x.status === 'nietnodig' ? 'Hoeveelheden bereikt'
               : x.status === 'afgekeurd' ? `${datumNL(x.datum)}${x.wie ? ` · ${esc(x.wie)}` : ''} · <strong>reden:</strong> ${esc(x.reden || 'geen reden opgegeven')}`
                 : x.status === 'ingediend' ? `${datumNL(x.datum)}${x.wie ? ` · ${esc(x.wie)}` : ''} · ingediend, nog niet beoordeeld` : 'Nog niet bezocht';
@@ -13029,6 +13029,7 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
           ${blokInhoud(b.id)}</details></section>`;
     };
     const verborgen = () => beschikbaar.filter((id) => !cfg.some((b) => b.id === id));
+    const verkeerd = lijst.filter((x) => x.status === 'overgeslagen' && x.reden === VERKEERDE_ACTIVITEIT);
     const d = document.createElement('dialog');
     d.className = 'dialoog rondedialoog';
     d.innerHTML = `<form method="dialog">
@@ -13036,6 +13037,11 @@ async function planningsbord(el, { focusPakket = '' } = {}) {
       <div class="rd-kop"><div><h2>R${r.nummer} ${esc(r.naam)}</h2>
         <p><small>${esc(p.code ? `${p.code} · ` : '')}${esc(p.naam)} · ${pakketSoortTekst(v)}</small></p></div>
         <button type="button" class="knop klein" id="rd-aanpassen" title="Kies zelf welke blokken je ziet">${I.instellingen} Weergave aanpassen</button></div>
+      ${verkeerd.length ? `<div class="rd-signaal" role="note"><strong>${I.let} ${verkeerd.length} object${verkeerd.length === 1 ? '' : 'en'}: verkeerde onderhoudsactiviteit gekoppeld</strong>
+        <small>De uitvoerder meldt dat ${v.werksoort ? `<strong>${esc(v.werksoort)}</strong>` : 'de activiteit van dit werkpakket'} hier niet past. Pas de koppeling aan in het werkpakket.</small>
+        <ul>${verkeerd.slice(0, 8).map((x) => `<li><a href="#/objecten/${encodeURIComponent(x.id)}"><strong>${esc(x.o?.code ?? '')}</strong> ${esc(x.o?.naam ?? '')}</a> → ${esc(x.juisteActiviteit || ACTIVITEIT_ONBEKEND)}${x.wie ? ` <small class="zacht">(${esc(x.wie)}, ${datumNL(x.datum)})</small>` : ''}</li>`).join('')}
+          ${verkeerd.length > 8 ? `<li><small>en nog ${verkeerd.length - 8}…</small></li>` : ''}</ul>
+        <button type="button" class="knop klein" data-rd-filter="overgeslagen">Toon bij de objecten</button></div>` : ''}
       <div id="rd-inhoud"></div>
       <div class="knoppen rd-voet" style="margin-top:1rem;justify-content:space-between">
         <a class="knop" href="${pakketPagina(v, false)}" data-rd-pakket>Werkpakket openen</a>
@@ -15161,7 +15167,7 @@ async function tekenPakketKaart(el, { pakket, objecten, statusVan, positie = nul
 }
 
 // --- Overslaan ----------------------------------------------------------------
-function overslaanDialoog(object, groep = null) {
+function overslaanDialoog(object, groep = null, { activiteit = '', inProjectSoorten = [] } = {}) {
   return new Promise((resolve) => {
     const d = document.createElement('dialog');
     d.className = 'dialoog';
@@ -15171,6 +15177,14 @@ function overslaanDialoog(object, groep = null) {
         <p>${groep ? `<strong>${esc(GR.groepNaam(groep, { aantal: false }))}</strong><br><small>De nog openstaande bouwdelen van dit ${esc(GR.NIVEAU_KORT[groep.knoop.niveau] ?? 'onderdeel')} in dit werkpakket worden overgeslagen: ${groep.objectIds.map((id) => esc(laatsteObjectMap.get(id)?.code ?? '')).join(', ')}</small>` : objectNaam(object)}</p>
         <div class="veld"><label for="d-reden" class="vereist">Reden</label>
           <select id="d-reden" name="reden" required><option value="">– kies –</option>${OVERSLAAN_REDENEN.map((r) => optie(r, r)).join('')}</select></div>
+        <div class="veld" id="d-activiteitblok" hidden style="margin-top:.75rem">
+          <p class="hint" style="margin:0 0 .5rem"><small>${activiteit ? `Dit werkpakket koppelt <strong>${esc(activiteit)}</strong> aan dit object.` : 'De onderhoudsactiviteit van dit werkpakket past niet bij dit object.'}
+            De beheerder ziet je melding bij het werkpakket en kan de koppeling aanpassen.</small></p>
+          <label for="d-activiteit" class="vereist">Welke activiteit is hier wel nodig?</label>
+          <select id="d-activiteit" name="juisteActiviteit"><option value="">– kies –</option>
+            ${inProjectSoorten.filter((w) => w && w !== activiteit).length ? `<optgroup label="Activiteiten in dit project">${[...new Set(inProjectSoorten)].filter((w) => w && w !== activiteit).sort((x, y) => x.localeCompare(y, 'nl')).map((w) => optie(w, w)).join('')}</optgroup>` : ''}
+            <optgroup label="Alle activiteiten">${WERKSOORTEN.filter((w) => w !== activiteit && !inProjectSoorten.includes(w)).map((w) => optie(w, w)).join('')}</optgroup>
+            <optgroup label="Anders">${optie(ACTIVITEIT_GEEN, ACTIVITEIT_GEEN)}${optie(ACTIVITEIT_ONBEKEND, ACTIVITEIT_ONBEKEND)}</optgroup></select></div>
         <div class="veld" style="margin-top:.75rem"><label for="d-toelichting">Toelichting</label>
           <textarea id="d-toelichting" name="toelichting" maxlength="500" style="min-height:70px"></textarea></div>
         <div class="formvoet"><button class="knop" value="annuleer" type="button" id="d-annuleer">Annuleren</button>
@@ -15180,12 +15194,19 @@ function overslaanDialoog(object, groep = null) {
     const klaar = (waarde) => { d.close(); d.remove(); resolve(waarde); };
     d.querySelector('#d-annuleer').onclick = () => klaar(null);
     d.addEventListener('cancel', (e) => { e.preventDefault(); klaar(null); });
+    const blok = d.querySelector('#d-activiteitblok');
+    d.querySelector('#d-reden').addEventListener('change', (e) => { blok.hidden = e.target.value !== VERKEERDE_ACTIVITEIT; });
     d.querySelector('form').onsubmit = (e) => {
       e.preventDefault();
       const reden = d.querySelector('#d-reden').value;
       const toelichting = d.querySelector('#d-toelichting').value.trim();
       if (!reden) return melding('Kies een reden.', 'fout');
       if (reden === 'Anders' && !toelichting) return melding('Licht de reden toe.', 'fout');
+      if (reden === VERKEERDE_ACTIVITEIT) {
+        const juisteActiviteit = d.querySelector('#d-activiteit').value;
+        if (!juisteActiviteit) return melding('Kies welke activiteit hier wel nodig is (of "Weet ik niet").', 'fout');
+        return klaar({ reden, juisteActiviteit, ...(activiteit ? { gekoppeldeActiviteit: activiteit } : {}), toelichting });
+      }
       klaar({ reden, toelichting });
     };
     d.showModal();
@@ -15203,7 +15224,8 @@ async function slaObjectOver(pakket, object) {
     const open = grp.objectIds.filter((oid) => !klaar.has(oid));
     grp = { ...grp, objectIds: open.length ? open : [object.id] };
   }
-  const keuze = await overslaanDialoog(object, grp);
+  const inProjectSoorten = (await inProject('werkpakketten')).filter((x) => x.soort !== 'inspectie').flatMap((x) => [x.werksoort, ...(x.rondes ?? []).map((r) => r.werksoort)]).filter(Boolean);
+  const keuze = await overslaanDialoog(object, grp, { activiteit: pakket.werksoort || pakket.rondes?.find((r) => r.id === pakket.rondeId)?.werksoort || '', inProjectSoorten });
   if (!keuze) return false;
   const nu = new Date().toISOString();
   const ids = grp ? grp.objectIds : [object.id];
@@ -15211,7 +15233,7 @@ async function slaObjectOver(pakket, object) {
     id: overslaanId(pakket.id, oid, pakket.rondeId), projectId: pakket.projectId, pakketId: pakket.id, rondeId: pakket.rondeId ?? '', objectId: oid,
     ...keuze, ...(grp ? { groep: grp.sleutel } : {}), door: sync.sessie()?.gebruiker?.email || instelling.lees('inspecteur') || '', op: vandaag(), gewijzigd: nu,
   })));
-  gedaan('Overslaan vastgelegd', { object: grp ? null : object, extra: `${grp ? `${GR.groepNaam(grp)} · ` : ''}Reden: ${keuze.reden ?? ''}` });
+  gedaan('Overslaan vastgelegd', { object: grp ? null : object, extra: `${grp ? `${GR.groepNaam(grp)} · ` : ''}Reden: ${overslaanTekst(keuze)}` });
   return true;
 }
 

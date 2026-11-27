@@ -68,6 +68,12 @@ objecten (bijv. *WP-2027-001 Groenonderhoud Park Zuid*); de rondes zijn de keren
 - **Voortgang per ronde** – een object is *gedaan* zodra er vanuit die ronde een werkzaamheid of afgeronde
   inspectie is vastgelegd; uitvoerders kunnen een object *overslaan* met verplichte reden. Het pakket toont het
   totaal over alle rondes, de detailpagina een tabel met per ronde de voortgang en de knop *Actief / Afronden*.
+- **Verkeerde onderhoudsactiviteit** – bij overslaan kan de uitvoerder kiezen voor *Verkeerde onderhoudsactiviteit
+  gekoppeld*. Het venster noemt de activiteit van het werkpakket en vraagt verplicht welke activiteit er wél nodig is
+  (eerst de activiteiten uit de werkpakketten van het project, dan alle activiteiten, plus *Geen onderhoud nodig* en
+  *Weet ik niet*). Dit wordt bewaard bij het overgeslagen object (`juisteActiviteit`, `gekoppeldeActiviteit`) en overal
+  getoond als "Verkeerde onderhoudsactiviteit gekoppeld → Snoeien". Het rondevenster (planning/werkpakket) toont de
+  beheerder bovenaan een oranje melding met deze objecten en een knop om ze in de objectenlijst te tonen.
 - **Telefoon** – alleen *actieve* rondes verschijnen. Zijn er meer tegelijk actief, dan kies je eerst de ronde.
   De ronde opent met een kaart (oranje = te doen, groen = gedaan, grijs = overgeslagen, blauw = jij), de lijst op
   afstand en **Volgende dichtbij**; na opslaan ga je terug naar de ronde. Open objecten staan ook in *Logisch nu*.

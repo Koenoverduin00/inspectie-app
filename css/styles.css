@@ -2607,3 +2607,10 @@ select optgroup { font-weight: 700; color: var(--tekst-zacht); }
 }
 .locregel-melden { display: inline-flex; align-items: center; gap: .35rem; margin-top: .55rem; font-size: .88rem; color: var(--tekst-zacht); text-decoration: none; }
 .locregel-melden:hover, .locregel-melden:focus-visible { color: var(--primair); text-decoration: underline; }
+
+/* Rondevenster: signaal "verkeerde onderhoudsactiviteit gekoppeld" */
+.rondedialoog .rd-signaal { display: grid; gap: .35rem; justify-items: start; border: 1px solid color-mix(in srgb, #e8710a 45%, var(--rand)); border-left: 4px solid #e8710a;
+  background: color-mix(in srgb, #e8710a 8%, var(--vlak)); border-radius: 10px; padding: .6rem .8rem; margin-bottom: .75rem; }
+.rondedialoog .rd-signaal ul { margin: 0; padding-left: 1.1rem; }
+.rondedialoog .rd-signaal li { margin: .1rem 0; }
+.rondedialoog .rd-signaal svg { width: 1em; height: 1em; vertical-align: -.12em; }

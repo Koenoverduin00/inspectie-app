@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   voortgang, voorMij, filterObjecten, rondesVan, rondeView, pakketStatus, overslaanId, totaalVoortgang, objectStatus, teDoen, voortgangRegel,
+  OVERSLAAN_REDENEN, VERKEERDE_ACTIVITEIT, overslaanTekst,
 } from '../js/pakketten.js';
 import { takenLijst } from '../js/taken.js';
 
@@ -181,4 +182,13 @@ test('voortgangsregel: alleen goedgekeurd telt (ingediend wacht)', () => {
 test('voortgangRegel uit het project', () => {
   assert.deepEqual(voortgangRegel({}), { afgekeurd: 'teDoen', afgekeurdKleur: true, ingediend: 'telt' });
   assert.deepEqual(voortgangRegel({ voortgangRegel: { afgekeurd: 'telt', afgekeurdKleur: false, ingediend: 'wacht' } }), { afgekeurd: 'telt', afgekeurdKleur: false, ingediend: 'wacht' });
+});
+
+test('overslaan: verkeerde onderhoudsactiviteit met de activiteit die wel nodig is', () => {
+  assert.ok(OVERSLAAN_REDENEN.includes(VERKEERDE_ACTIVITEIT));
+  assert.equal(overslaanTekst({ reden: VERKEERDE_ACTIVITEIT, juisteActiviteit: 'Snoeien' }), 'Verkeerde onderhoudsactiviteit gekoppeld → Snoeien');
+  assert.equal(overslaanTekst({ reden: VERKEERDE_ACTIVITEIT, juisteActiviteit: 'Snoeien', toelichting: 'is een haag' }, { toelichting: true }),
+    'Verkeerde onderhoudsactiviteit gekoppeld → Snoeien: is een haag');
+  assert.equal(overslaanTekst({ reden: 'Niet bereikbaar', juisteActiviteit: 'Snoeien' }), 'Niet bereikbaar');
+  assert.equal(overslaanTekst(null), '');
 });
