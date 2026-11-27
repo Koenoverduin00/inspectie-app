@@ -2274,9 +2274,14 @@ html.vooraf-inlog .kop, html.vooraf-inlog .onderbalk, html.vooraf-inlog .statusr
 }
 .kiesbalk-kop { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
 .kiesbalk-kop small { display: block; color: var(--tekst-zacht); }
-.kiesbalk-rij { display: flex; gap: .4rem; align-items: stretch; }
-.kiesbalk-rij .knop.klein { min-height: 46px; padding: 0 .6rem; }
-.kiesbalk-actie { flex: 1; min-height: 46px; font-size: 1rem; justify-content: center; white-space: nowrap; }
+.kiesbalk-rij { display: flex; flex-wrap: wrap; gap: .4rem; align-items: stretch; min-width: 0; }
+.kiesbalk-rij .knop.klein { min-height: 46px; padding: 0 .6rem; flex: 0 0 auto; }
+/* De actieknop krijgt de rest van de rij; past hij niet, dan op een eigen rij over de volle breedte. Tekst mag afbreken. */
+.kiesbalk-actie { flex: 1 1 11rem; min-width: 0; min-height: 46px; font-size: 1rem; justify-content: center; text-align: center;
+  white-space: normal; line-height: 1.15; padding-block: .3rem; }
+.kiesbalk-actie .kiesbalk-telling { display: block; font-size: .78rem; font-weight: 500; opacity: .9; }
+.kiesbalk-actie > span { display: grid; min-width: 0; }
+.kiesbalk-kop > span { min-width: 0; }
 .kiesbalk-actie[aria-disabled="true"] { opacity: .55; }
 body.kiesmodus .mvoet, body.kiesmodus .mkaartlegenda { visibility: hidden; }
 .mlijstknop { display: flex; align-items: center; gap: .75rem; width: 100%; padding: .8rem .9rem; min-height: 60px; background: none; border: 0; text-align: left; color: var(--tekst); font: inherit; cursor: pointer; }

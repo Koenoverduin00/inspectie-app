@@ -7956,7 +7956,7 @@ async function mobielKaart() {
       const a = balk.querySelector('[data-kies=gereed]');
       const ids = [...gekozen];
       const eenGroep = groepVan && ids.length && new Set(ids.map((id) => groepVoor(v, id)?.sleutel ?? id)).size === 1;
-      a.innerHTML = ids.length ? `${I.vink} Gereed melden (${groepVan ? `${groepTelling(ids)} · ${ids.length} bouwde${ids.length === 1 ? 'el' : 'len'}` : ids.length})` : `${I.vink} Kies objecten`;
+      a.innerHTML = ids.length ? `${I.vink} <span>Gereed melden<small class="kiesbalk-telling">${groepVan ? `${groepTelling(ids)} · ${ids.length} bouwde${ids.length === 1 ? 'el' : 'len'}` : `${ids.length} object${ids.length === 1 ? '' : 'en'}`}</small></span>` : `${I.vink} Kies objecten`;
       a.setAttribute('aria-disabled', String(!ids.length));
       a.href = ids.length === 1 || eenGroep ? pakketHref(v, ids[0], true)
         : ids.length ? `#/m/werk/nieuw?${new URLSearchParams({ pakket: v.id, ...(v.rondeId ? { ronde: v.rondeId } : {}), objecten: ids.join(',') })}` : '#';
