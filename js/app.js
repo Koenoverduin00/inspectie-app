@@ -4905,6 +4905,8 @@ async function plaatsInRegister(koppelingen, punten) {
   const ids = new Set(koppelingen.map((k) => k.id));
   const [inspecties, werk] = await Promise.all([inProject('inspecties'), inProject('werkzaamheden')]);
   const gedaan = new Set(werk.filter((w) => w.storing).map((w) => SR.zaakVan(w)));
+  // Als wat wordt het ingeladen: per relatie in te stellen (standaard gebrek).
+  const soortVan = (wp) => koppelingen.find((k) => k.id === wp.koppelingId)?.meldingSoort || 'Gebrek';
   for (const wp of punten.filter((x) => ids.has(x.koppelingId))) {
     const mid = KP.meldingId(wp.id);
     const m = await db.haal('meldingen', mid);
@@ -4914,12 +4916,12 @@ async function plaatsInRegister(koppelingen, punten) {
       const g = insp ? KP.bevindingen(insp).find((x) => x.id === wp.bron.gebrekId) : null;
       const mo = wp.momentopname ?? {};
       await db.bewaar('meldingen', {
-        ...(m ?? {}), id: mid, projectId: wp.projectId ?? projectId(), objectId: wp.bron.objectId, type: 'Gebrek',
+        ...(m ?? {}), id: mid, projectId: wp.projectId ?? projectId(), objectId: wp.bron.objectId, type: m?.type || soortVan(wp),
         melding: [mo.maatregel, [mo.bouwdeel, mo.gebrek].filter(Boolean).join(' – '), mo.toelichting].filter(Boolean).join('\n'),
         referentie: m?.referentie ?? '', gemeldOp: m?.gemeldOp ?? nuLokaal(), urgentie: KP.MELDING_URGENTIE[mo.urgentie] ?? 'normaal',
         toegewezenAan: m?.toegewezenAan ?? '', opmerking: `Uit ${insp ? `${insp.soort || 'inspectie'} van ${datumNL(insp.datum)}` : 'een schouw'} (koppelschema)${wp.besluit?.keuze === 'meerwerk' ? ' · meerwerk' : ''}`,
         door: 'Koppelschema', bron: 'kantoor', vervallen: false, werkpuntId: wp.id, gebrekRef: { inspectieId: wp.bron.inspectieId, gebrekId: wp.bron.gebrekId },
-        nummer: m?.nummer || await nieuwRegisterNummer('Gebrek'), pakketId: m?.pakketId || wp.bron.pakketId || '',
+        nummer: m?.nummer || await nieuwRegisterNummer(soortVan(wp)), pakketId: m?.pakketId || wp.bron.pakketId || '',
         locatie: g ? HS.gebrekLocatie(g, await db.haal('objecten', wp.bron.objectId)) : null, aangemaakt: m?.aangemaakt ?? nu, gewijzigd: nu,
       });
       await db.bewaar('werkpunten', { ...wp, doel: { pakketId: KP.STORINGEN, rondeId: mid }, gewijzigd: nu });
@@ -5033,7 +5035,7 @@ async function koppelschemaPagina() {
       ${koppelingen.map((k) => { const t = tel.get(k.id) ?? { totaal: 0, open: 0, teBeoordelen: 0, gedaan: 0 }; return `<tr class="${k.actief === false ? 'zacht' : ''}">
         <td>${esc(naam(k.bronPakketId))}</td><td>${esc(naarTekst(k))}</td><td><small>${esc(filterTekst(k.filter))}</small></td>
         <td><span class="ks-modus ${lijnStijl(k)}">${k.actief === false ? 'Uit' : esc(KP.MODI[k.modus]?.label ?? k.modus)}</span></td>
-        <td><small>${k.doelPakketId === KP.STORINGEN ? 'Register (melding)' : esc(KP.DOEL_RONDES[k.doelRonde ?? 'lopend']?.label ?? '')}</small></td>
+        <td><small>${k.doelPakketId === KP.STORINGEN ? `Register, als ${(k.meldingSoort || 'Gebrek').toLowerCase()}` : esc(KP.DOEL_RONDES[k.doelRonde ?? 'lopend']?.label ?? '')}</small></td>
         <td><small>${t.totaal ? `${t.gedaan} uitgevoerd · ${t.open} open${t.teBeoordelen ? ` · <a href="#/doorzetten?relatie=${esc(k.id)}">${t.teBeoordelen} te beoordelen</a>` : ''}` : 'nog geen'}</small></td>
         <td>${beheer ? `<button type="button" class="knop klein" data-ks-bewerk="${esc(k.id)}">Bewerken</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>`
     : '<p class="leeg">Nog geen relaties. Trek een lijn in het schema hierboven.</p>'}</section>`;
@@ -5180,7 +5182,7 @@ async function koppelschemaPagina() {
           <span class="ks-route-pijl" aria-hidden="true">→</span>
           <span class="ks-route-deel${isReg ? ' reg' : ''}${zelf(k) ? ' zelf' : ''}"><small>Naar</small><strong>${isReg ? `${I.let} ` : ''}${zelf(k) ? '↺ Hetzelfde pakket' : esc(naam(k.doelPakketId))}</strong></span></div>
         ${zelf(k) ? `<p class="ks-dhulp">De gebreken worden uitgevoerd binnen dit pakket, in een werkronde (bijv. snoeiwerk uit de BVC). Wat de controleur ter plekke doet, zet hij in het formulier op <em>Direct uitgevoerd</em>; dat komt hier niet meer langs.</p>` : ''}
-        ${isReg ? `<p class="ks-dhulp">Elk doorgezet gebrek wordt een melding (soort <em>Gebrek</em>) in het register, met de urgentie van het gebrek. Bij het oplossen staat de maatregel al aangevinkt.</p>` : ''}
+        ${isReg ? `<p class="ks-dhulp">Elk doorgezet gebrek wordt een melding in het register (als gebrek of storing, zie hieronder), met de urgentie van het gebrek. Bij het oplossen staat de maatregel al aangevinkt.</p>` : ''}
       </header>
       <div class="ks-dinhoud">
         <section class="ks-sectie ks-form"><h3>Gekoppeld formulier</h3>
@@ -5199,6 +5201,12 @@ async function koppelschemaPagina() {
             ${optieKaart('modus', 'altijd', KP.MODI.altijd.label, KP.MODI.altijd.uitleg, k.modus === 'altijd', '<i class="ks-l altijd"></i>')}
             ${optieKaart('modus', 'controle', KP.MODI.controle.label, KP.MODI.controle.uitleg, k.modus !== 'altijd', '<i class="ks-l controle"></i>')}
           </div></section>
+        ${isReg ? `<section class="ks-sectie"><h3>Laden als</h3>
+          <div class="ks-opties twee">
+            ${optieKaart('meldingSoort', 'Gebrek', 'Gebrek', 'Komt in het register als gebrek (nummer met G), bijv. schade of slijtage die hersteld moet worden.', (k.meldingSoort || 'Gebrek') === 'Gebrek')}
+            ${optieKaart('meldingSoort', 'Storing', 'Storing', 'Komt in het register als storing (nummer met S), bijv. iets dat niet werkt en snel verholpen moet worden.', k.meldingSoort === 'Storing')}
+          </div>
+          <p class="ks-dhulp">Geldt voor nieuwe meldingen uit deze relatie. Per melding kun je de soort daarna nog aanpassen in het register.</p></section>` : ''}
         <section class="ks-sectie" ${isReg ? 'hidden' : ''}><h3>In welke ronde?</h3>
           <div class="ks-opties drie">${Object.entries(KP.DOEL_RONDES).map(([id, m]) => (zelf(k) && !doelHeeftWerk && id !== 'herstel'
     ? `<label class="ks-optie uit" title="Dit pakket heeft (nog) geen werkronde"><input type="radio" name="doelRonde" value="${id}" disabled><span class="ks-optie-kop"><strong>${esc(m.label)}</strong></span><small>Dit pakket heeft nog geen werkronde.</small></label>`
@@ -5232,7 +5240,8 @@ async function koppelschemaPagina() {
       </footer></form>`;
     document.body.append(d);
     const lees = () => ({
-      ...k, modus: d.querySelector('input[name=modus]:checked')?.value ?? 'controle', doelRonde: d.querySelector('input[name=doelRonde]:checked')?.value ?? 'lopend',
+      ...k, modus: d.querySelector('input[name=modus]:checked')?.value ?? 'controle',
+      ...(isReg ? { meldingSoort: d.querySelector('input[name=meldingSoort]:checked')?.value || 'Gebrek' } : {}), doelRonde: d.querySelector('input[name=doelRonde]:checked')?.value ?? 'lopend',
       herstelNaam: d.querySelector('#ks-hnaam').value.trim(),
       filter: { ...(d.querySelector('#ks-vraag')?.value ? { vraag: { id: d.querySelector('#ks-vraag').value, type: formVragen.find((v) => v.id === d.querySelector('#ks-vraag').value)?.type, waarden: [...d.querySelectorAll('input[name=vraagwaarde]:checked')].map((x) => x.value) } } : {}),
         oordelen: [...d.querySelectorAll('input[name=oordeel]:checked')].map((x) => x.value), maatregelen: [...d.querySelectorAll('input[name=maatregel]:checked')].map((x) => x.value), gebreken: [...d.querySelectorAll('input[name=gebrek]:checked')].map((x) => x.value),

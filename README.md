@@ -593,7 +593,8 @@ De uitkomst van een schouw of inspectie (gebreken met een maatregel) kan de inpu
     - Modus, filter en goedkeuring werken als bij andere relaties.
     - De voortgang van de controle (bomen) en van het herstel (werklocaties) blijft gescheiden.
 - **Storingen en gebreken als doel:** het register staat rechts in het schema als werkpakket. Elk doorgezet gebrek
-  wordt een melding (soort *Gebrek*) met de urgentie van het gebrek: direct → direct, binnen 3 maanden → deze week,
+  wordt een melding, per relatie in te stellen als **gebrek** (standaard) of **storing** (*Laden als* in het
+  relatievenster). De melding krijgt de urgentie van het gebrek: direct → direct, binnen 3 maanden → deze week,
   anders normaal. De melding komt op de telefoons onder *Storingen en gebreken*.
   - Bij het oplossen staat de maatregel van het gebrek vooraf aangevinkt. Opgelost = werklocatie *uitgevoerd*.
   - Wordt het gebrek teruggetrokken (afgekeurd, niet uitvoeren, vervallen) voordat er iets aan is gedaan, dan vervalt
