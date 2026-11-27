@@ -217,6 +217,75 @@ function vraagTekst(tekst, standaard = '') {
   return appVraagVenster({ tekst, invoer: String(standaard ?? ''), ja: 'OK' });
 }
 
+// ---------------------------------------------------------------------------
+// Hover-teksten in de stijl van de app (in plaats van het grijze/zwarte tooltipje van de browser).
+// Elk element met een title krijgt bij aanwijzen met de muis of bij toetsenbordfocus een eigen tekstballon.
+// De title wordt daarvoor verplaatst naar data-tip (en, als er geen tekst of label is, naar aria-label).
+// ---------------------------------------------------------------------------
+(() => {
+  const kanAanwijzen = window.matchMedia?.('(hover: hover) and (pointer: fine)').matches;
+  let tip = null;
+  let doel = null;
+  let timer = null;
+  const ballon = () => {
+    if (!tip) { tip = document.createElement('div'); tip.className = 'apptip'; tip.setAttribute('role', 'tooltip'); tip.hidden = true; document.body.append(tip); }
+    return tip;
+  };
+  const neem = (el) => {
+    const t = el.getAttribute('title');
+    if (t) {
+      el.dataset.tip = t;
+      if (!el.getAttribute('aria-label') && !el.textContent.trim()) el.setAttribute('aria-label', t);
+      el.removeAttribute('title');
+    }
+    return el.dataset.tip;
+  };
+  const verberg = () => { clearTimeout(timer); timer = null; doel = null; if (tip) tip.hidden = true; };
+  const toon = (el) => {
+    const tekst = el.dataset.tip;
+    if (!tekst || !el.isConnected) return;
+    const b = ballon();
+    b.textContent = tekst;
+    b.hidden = false;
+    // Naast een open <dialog> moet de ballon in dezelfde (bovenste) laag staan.
+    const dlg = el.closest('dialog[open]');
+    if (dlg && b.parentElement !== dlg) dlg.append(b); else if (!dlg && b.parentElement !== document.body) document.body.append(b);
+    const r = el.getBoundingClientRect();
+    const w = b.offsetWidth; const h = b.offsetHeight;
+    let x = r.left + r.width / 2 - w / 2;
+    x = Math.max(8, Math.min(x, window.innerWidth - w - 8));
+    let y = r.top - h - 8;
+    const onder = y < 8;
+    if (onder) y = r.bottom + 8;
+    b.classList.toggle('onder', onder);
+    b.style.left = `${Math.round(x)}px`; b.style.top = `${Math.round(y)}px`;
+    b.style.setProperty('--pijl', `${Math.round(Math.max(10, Math.min(w - 10, r.left + r.width / 2 - x)))}px`);
+  };
+  const start = (el, direct = false) => {
+    if (doel === el) return;
+    verberg();
+    doel = el;
+    timer = setTimeout(() => { if (doel === el) toon(el); }, direct ? 0 : 350);
+  };
+  document.addEventListener('pointerover', (e) => {
+    if (!kanAanwijzen || e.pointerType === 'touch') return;
+    const el = e.target.closest?.('[title], [data-tip]');
+    if (!el || el.closest('.leaflet-container svg') || el instanceof SVGElement) { if (doel && !doel.contains(e.target)) verberg(); return; }
+    if (!neem(el)) return;
+    start(el);
+  });
+  document.addEventListener('pointerout', (e) => { if (doel && !doel.contains(e.relatedTarget)) verberg(); });
+  document.addEventListener('focusin', (e) => {
+    const el = e.target.closest?.('[title], [data-tip]');
+    if (el && e.target.matches?.(':focus-visible') && neem(el)) start(el, true);
+  });
+  document.addEventListener('focusout', verberg);
+  document.addEventListener('pointerdown', verberg, true);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') verberg(); });
+  window.addEventListener('scroll', verberg, true);
+  window.addEventListener('hashchange', verberg);
+})();
+
 let formulierGewijzigd = false;
 // Luisteraars die bij één pagina horen maar aan de vaste #app hangen, worden bij een paginawissel opgeruimd.
 let paginaAbort = new AbortController();

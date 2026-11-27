@@ -549,6 +549,11 @@ venster in de stijl van de app. Eerder waren het de pop-ups van de browser, met 
   - Bij verwijderen of wissen is de knop rood (*Verwijderen*, *Wissen*) en staat de focus op *Annuleren*.
   - Escape of *Annuleren* = nee.
 - `vraagTekst(tekst, standaard)` geeft de ingevulde tekst, of `null` bij annuleren.
+- **Hover-teksten** (de uitleg bij het aanwijzen van een knop) zijn ook in de stijl van de app: een witte ballon met
+  een pijltje, die na een korte pauze verschijnt. Hij verschijnt ook bij toetsenbordfocus en werkt in vensters.
+  - Elk element met `title` krijgt hem vanzelf. De `title` wordt bij het eerste aanwijzen verplaatst naar `data-tip`
+    (en naar `aria-label` als het element geen tekst heeft), zodat de browser zijn eigen tooltip niet meer toont.
+  - Op een touchscreen verschijnt geen ballon.
 - Alleen de waarschuwing bij het sluiten van het tabblad met niet-opgeslagen wijzigingen blijft van de browser. Die
   kan een website niet zelf vormgeven.
 

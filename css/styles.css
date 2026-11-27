@@ -2513,3 +2513,14 @@ body.kiesmodus .mfilterchips, body.kiesmodus .mtedoenseg, body.kiesmodus .ff-fil
 .ks-stappen { margin: .7rem 0 .2rem; padding-left: 1.3rem; display: grid; gap: .45rem; line-height: 1.45; }
 .ks-stappen li::marker { font-weight: 700; color: var(--primair); }
 .ks-uitleg-voet { margin: .4rem 0 0; }
+
+/* Hover-teksten in de stijl van de app */
+.apptip { position: fixed; z-index: 10000; max-width: min(320px, calc(100vw - 16px)); padding: .45rem .7rem; border-radius: 8px;
+  background: var(--vlak, #fff); color: var(--tekst, #1d2a36); border: 1px solid var(--rand, #d5dbe1);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .16); font-size: .82rem; line-height: 1.35; pointer-events: none; animation: apptip-in .12s ease-out; }
+.apptip[hidden] { display: none; }
+.apptip::after { content: ''; position: absolute; left: var(--pijl, 50%); top: 100%; width: 10px; height: 10px; margin-left: -5px; margin-top: -5px;
+  background: inherit; border-right: 1px solid var(--rand, #d5dbe1); border-bottom: 1px solid var(--rand, #d5dbe1); transform: rotate(45deg); }
+.apptip.onder::after { top: 0; transform: rotate(225deg); }
+@keyframes apptip-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .apptip { animation: none; } }
